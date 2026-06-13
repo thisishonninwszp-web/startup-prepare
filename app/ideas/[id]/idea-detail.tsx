@@ -1,0 +1,651 @@
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  AI_LOCK_MESSAGE,
+  AI_ROLES,
+  HYPOTHESIS_FIELDS,
+  SIGNAL_VALUES,
+  VERDICTS,
+  isAiLocked,
+  type AiRole,
+  type ChatTurn,
+  type Hypothesis,
+  type HypothesisField,
+  type Idea,
+  type IdeaStatus,
+  type LearningLog,
+  type SignalValue,
+  type Validation,
+  type Verdict,
+} from "../types";
+import {
+  addValidation,
+  decide,
+  sendRoleMessage,
+  updateHypothesis,
+} from "../actions";
+
+const STATUS_COLOR: Record<IdeaStatus, string> = {
+  观察: "text-muted-foreground",
+  假设: "text-muted-foreground",
+  验证中: "text-orange-600",
+  MVP候选: "text-green-600",
+  归档: "text-red-600",
+};
+
+type Fields = Record<HypothesisField, string>;
+
+function initFields(h: Hypothesis): Fields {
+  const f = {} as Fields;
+  for (const field of HYPOTHESIS_FIELDS) f[field.key] = h[field.key] ?? "";
+  return f;
+}
+
+export function IdeaDetail({
+  idea,
+  hypothesis,
+  initialChats,
+  initialValidations,
+}: {
+  idea: Idea;
+  hypothesis: Hypothesis;
+  initialChats: Record<AiRole, ChatTurn[]>;
+  initialValidations: Validation[];
+}) {
+  const [fields, setFields] = useState<Fields>(initFields(hypothesis));
+  const [riskiest, setRiskiest] = useState(hypothesis.riskiest_assumption ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  // 状态会被决策改变（Go→MVP候选 / Kill→归档），用 state 承载。
+  const [status, setStatus] = useState<IdeaStatus>(idea.status);
+
+  // 强制出口机制：last_activity_at 由"记录真实接触"刷新，决定 AI 是否被锁。
+  const [lastActivityAt, setLastActivityAt] = useState(idea.last_activity_at);
+  const aiLocked = isAiLocked(status, lastActivityAt);
+
+  const complete = HYPOTHESIS_FIELDS.every((f) => fields[f.key].trim());
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveMsg(null);
+    setSaveErr(null);
+    try {
+      await updateHypothesis(idea.id, { ...fields, riskiest_assumption: riskiest });
+      setSaveMsg("已保存");
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* 标题 + 状态 */}
+      <div>
+        <div className="mb-1 text-xs text-muted-foreground">
+          状态：<span className={STATUS_COLOR[status]}>{status}</span>
+        </div>
+        <h1 className="text-xl font-semibold">{idea.title?.trim() || "（无标题）"}</h1>
+      </div>
+
+      {/* 假设句式 */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-medium">假设句式</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            填不出空，说明想法还不成立。6 个空全部填满，才能把想法拖进“验证中”。
+          </p>
+        </div>
+
+        <SentencePreview fields={fields} />
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {HYPOTHESIS_FIELDS.map((f) => (
+            <div key={f.key} className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                {f.label}
+              </label>
+              <input
+                value={fields[f.key]}
+                onChange={(e) =>
+                  setFields((prev) => ({ ...prev, [f.key]: e.target.value }))
+                }
+                placeholder={f.placeholder}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* 最关键假设 */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">
+            最关键假设
+          </label>
+          <p className="text-xs text-muted-foreground">
+            如果这件事是错的，想法直接死掉——那件事是什么？（只写一条）
+          </p>
+          <textarea
+            value={riskiest}
+            onChange={(e) => setRiskiest(e.target.value)}
+            rows={2}
+            placeholder="写下那一条最致命的假设"
+            className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "保存中…" : "保存假设"}
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {complete ? "✓ 6 个空已填满" : "尚有空未填"}
+          </span>
+          {saveMsg && <span className="text-xs text-green-600">{saveMsg}</span>}
+          {saveErr && <span className="text-xs text-destructive">{saveErr}</span>}
+        </div>
+      </section>
+
+      {/* 验证记录 */}
+      <ValidationSection
+        ideaId={idea.id}
+        initial={initialValidations}
+        onAdded={() => setLastActivityAt(new Date().toISOString())}
+      />
+
+      {/* AI 多角色质疑 */}
+      <RoleChallenge
+        ideaId={idea.id}
+        initialChats={initialChats}
+        locked={aiLocked}
+      />
+
+      {/* 做决策 */}
+      <DecisionSection ideaId={idea.id} onDecided={setStatus} />
+    </div>
+  );
+}
+
+function SentencePreview({ fields }: { fields: Fields }) {
+  const v = (k: HypothesisField) => (
+    <span className={fields[k].trim() ? "text-foreground" : "text-muted-foreground/50"}>
+      {fields[k].trim() || `____`}
+    </span>
+  );
+  return (
+    <p className="rounded-md bg-muted/40 p-3 text-sm leading-relaxed">
+      {v("target_user")} 有 {v("pain")}，现在用 {v("alternative")} 解决，但{" "}
+      {v("why_insufficient")}，如果有 {v("solution")}，愿意付 {v("willingness_to_pay")}。
+    </p>
+  );
+}
+
+function RoleChallenge({
+  ideaId,
+  initialChats,
+  locked,
+}: {
+  ideaId: string;
+  initialChats: Record<AiRole, ChatTurn[]>;
+  locked: boolean;
+}) {
+  const [active, setActive] = useState<AiRole>(AI_ROLES[0].key);
+  const [chats, setChats] = useState<Record<AiRole, ChatTurn[]>>(initialChats);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const turns = chats[active] ?? [];
+
+  async function send(message: string | null) {
+    if (sending) return;
+    setSending(true);
+    setError(null);
+
+    // 乐观显示用户消息
+    if (message) {
+      setChats((prev) => ({
+        ...prev,
+        [active]: [...(prev[active] ?? []), { role: "user", content: message }],
+      }));
+      setInput("");
+    }
+
+    try {
+      const updated = await sendRoleMessage(ideaId, active, message);
+      setChats((prev) => ({ ...prev, [active]: updated }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "质疑失败");
+      // 回滚乐观消息
+      setChats((prev) => ({
+        ...prev,
+        [active]: (prev[active] ?? []).filter(
+          (t) => !(t.role === "user" && t.content === message)
+        ),
+      }));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const msg = input.trim();
+    if (msg) void send(msg);
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-sm font-medium">AI 质疑</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          4 个角色只会追问、不会给方案。质疑基于你“已保存”的假设。
+        </p>
+      </div>
+
+      {/* 强制出口机制：锁定提示 */}
+      {locked && (
+        <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-800">
+          {AI_LOCK_MESSAGE}
+        </div>
+      )}
+
+      {/* 角色切换 */}
+      <div className="flex flex-wrap gap-2">
+        {AI_ROLES.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            disabled={locked}
+            onClick={() => {
+              setActive(r.key);
+              setInput("");
+              setError(null);
+            }}
+            className={
+              "rounded-full border px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 " +
+              (active === r.key
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-input bg-background text-muted-foreground hover:bg-muted")
+            }
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 对话 */}
+      <div className="min-h-[120px] space-y-3 rounded-lg border p-4">
+        {turns.length === 0 && !sending && (
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-sm text-muted-foreground">
+              还没有对话。让这个角色开始质疑你的假设。
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => void send(null)}
+              disabled={sending || locked}
+            >
+              开始质疑
+            </Button>
+          </div>
+        )}
+
+        {turns.map((t, i) => (
+          <div
+            key={i}
+            className={t.role === "user" ? "flex justify-end" : "flex justify-start"}
+          >
+            <div
+              className={
+                "max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm " +
+                (t.role === "user"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted")
+              }
+            >
+              {t.content}
+            </div>
+          </div>
+        ))}
+
+        {sending && <p className="text-xs text-muted-foreground">对方正在追问…</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+
+      {/* 输入 */}
+      {turns.length > 0 && !locked && (
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="回应这个角色的追问…"
+            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <Button type="submit" disabled={sending || !input.trim()}>
+            发送
+          </Button>
+        </form>
+      )}
+    </section>
+  );
+}
+
+const SIGNAL_LABEL: Record<SignalValue, string> = {
+  yes: "是",
+  no: "否",
+  unsure: "不确定",
+};
+
+function ValidationSection({
+  ideaId,
+  initial,
+  onAdded,
+}: {
+  ideaId: string;
+  initial: Validation[];
+  onAdded: () => void;
+}) {
+  const [list, setList] = useState<Validation[]>(initial);
+  const [open, setOpen] = useState(false);
+  const [hasPain, setHasPain] = useState<SignalValue | null>(null);
+  const [willPay, setWillPay] = useState<SignalValue | null>(null);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function reset() {
+    setHasPain(null);
+    setWillPay(null);
+    setNote("");
+    setError(null);
+  }
+
+  async function handleSave() {
+    if (saving || !hasPain || !willPay) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const v = await addValidation(ideaId, hasPain, willPay, note);
+      setList((prev) => [v, ...prev]);
+      onAdded(); // 刷新 last_activity_at → 解锁 AI
+      reset();
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-medium">验证记录</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            每一次真实接触，只记两件事：有真实痛？愿付钱？
+          </p>
+        </div>
+        {!open && (
+          <Button variant="outline" onClick={() => setOpen(true)}>
+            + 记录一次真实接触
+          </Button>
+        )}
+      </div>
+
+      {open && (
+        <div className="space-y-4 rounded-lg border p-4">
+          <TriState
+            label="这个人有真实痛？"
+            value={hasPain}
+            onChange={setHasPain}
+          />
+          <TriState
+            label="这个人愿意付钱？"
+            value={willPay}
+            onChange={setWillPay}
+          />
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              备注（选填）
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="对方现在怎么解决、花了多少钱…"
+              className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSave} disabled={saving || !hasPain || !willPay}>
+              {saving ? "保存中…" : "保存"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                reset();
+                setOpen(false);
+              }}
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              取消
+            </button>
+            {error && <span className="text-xs text-destructive">{error}</span>}
+          </div>
+        </div>
+      )}
+
+      {list.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          还没有验证记录。去和一个真实的人聊聊。
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {list.map((v) => (
+            <li key={v.id} className="rounded-md border p-3 text-sm">
+              <div className="flex flex-wrap gap-4 text-xs">
+                <span>
+                  有真实痛：
+                  <span className="font-medium text-foreground">
+                    {SIGNAL_LABEL[v.has_pain]}
+                  </span>
+                </span>
+                <span>
+                  愿付钱：
+                  <span className="font-medium text-foreground">
+                    {SIGNAL_LABEL[v.will_pay]}
+                  </span>
+                </span>
+                <span className="ml-auto text-muted-foreground">
+                  {new Date(v.contacted_at).toLocaleString()}
+                </span>
+              </div>
+              {v.note && (
+                <p className="mt-2 whitespace-pre-wrap text-sm">{v.note}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function TriState({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: SignalValue | null;
+  onChange: (v: SignalValue) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <div className="flex gap-2">
+        {SIGNAL_VALUES.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => onChange(s.key)}
+            className={
+              "rounded-md border px-3 py-1.5 text-sm transition-colors " +
+              (value === s.key
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-input bg-background text-muted-foreground hover:bg-muted")
+            }
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const EMPTY_LEARNING: LearningLog = {
+  original_judgment: "",
+  validation_action: "",
+  real_result: "",
+  learned: "",
+};
+
+const LEARNING_FIELDS: { key: keyof LearningLog; label: string; hint: string }[] =
+  [
+    { key: "original_judgment", label: "原始判断", hint: "当初为何觉得有机会" },
+    { key: "validation_action", label: "验证动作", hint: "问了谁、做了什么" },
+    { key: "real_result", label: "真实结果", hint: "有痛吗、愿付费吗" },
+    { key: "learned", label: "学到什么", hint: "以后如何判断类似机会" },
+  ];
+
+function DecisionSection({
+  ideaId,
+  onDecided,
+}: {
+  ideaId: string;
+  onDecided: (status: IdeaStatus) => void;
+}) {
+  const [deciding, setDeciding] = useState(false);
+  const [done, setDone] = useState<Verdict | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [killOpen, setKillOpen] = useState(false);
+  const [learning, setLearning] = useState<LearningLog>(EMPTY_LEARNING);
+
+  async function run(verdict: Verdict, log: LearningLog | null) {
+    if (deciding) return;
+    setDeciding(true);
+    setError(null);
+    try {
+      const status = await decide(ideaId, verdict, log);
+      onDecided(status);
+      setDone(verdict);
+      setKillOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "决策失败");
+    } finally {
+      setDeciding(false);
+    }
+  }
+
+  const killValid = LEARNING_FIELDS.every((f) => learning[f.key].trim());
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-sm font-medium">做决策</h2>
+
+      <div className="flex flex-wrap gap-2">
+        {VERDICTS.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            disabled={deciding}
+            onClick={() => {
+              setError(null);
+              if (v.key === "Kill") {
+                setKillOpen(true);
+              } else {
+                void run(v.key, null);
+              }
+            }}
+            className="flex flex-col items-start rounded-lg border px-4 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
+          >
+            <span className="text-sm font-medium">{v.label}</span>
+            <span className="text-xs text-muted-foreground">{v.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      {done === "Pivot" && (
+        <p className="text-sm text-muted-foreground">
+          已记录 Pivot。回到上方“假设句式”改写你的假设，再继续验证。
+        </p>
+      )}
+      {done && done !== "Pivot" && (
+        <p className="text-sm text-green-600">已记录决策：{done}</p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {/* Kill → Learning Log（界面语言用“学到了什么”，不用“失败/放弃”） */}
+      {killOpen && (
+        <div className="space-y-4 rounded-lg border p-4">
+          <div>
+            <h3 className="text-sm font-medium">你学到了什么？</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              归档不是失败，是一次有结果的实验。把它变成下次的判断力。
+            </p>
+          </div>
+
+          {LEARNING_FIELDS.map((f) => (
+            <div key={f.key} className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                {f.label}
+                <span className="ml-2 font-normal text-muted-foreground/70">
+                  {f.hint}
+                </span>
+              </label>
+              <textarea
+                value={learning[f.key]}
+                onChange={(e) =>
+                  setLearning((prev) => ({ ...prev, [f.key]: e.target.value }))
+                }
+                rows={2}
+                className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+          ))}
+
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => void run("Kill", learning)}
+              disabled={deciding || !killValid}
+            >
+              {deciding ? "保存中…" : "保存并归档"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setKillOpen(false);
+                setLearning(EMPTY_LEARNING);
+                setError(null);
+              }}
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              取消
+            </button>
+            {!killValid && (
+              <span className="text-xs text-muted-foreground">四项都填写后可归档</span>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

@@ -1,0 +1,125 @@
+/** 想法库的共享常量与类型（非 "use server" 模块，可自由导出对象/类型）。 */
+
+/** 想法状态：只有 5 个（宪法第 6 条，绝不加第 6 个）。 */
+export const IDEA_STATUSES = [
+  "观察",
+  "假设",
+  "验证中",
+  "MVP候选",
+  "归档",
+] as const;
+
+export type IdeaStatus = (typeof IDEA_STATUSES)[number];
+
+export type Idea = {
+  id: string;
+  title: string | null;
+  status: IdeaStatus;
+  tags: string[];
+  created_at: string;
+  last_activity_at: string;
+};
+
+/**
+ * 假设句式的填空字段（引导式可证伪假设）。
+ * 句式：「[目标用户] 有 [具体痛点]，现在用 [替代方案] 解决，
+ *        但 [为何不够好]，如果有 [你的方案]，愿意付 [金额/时间]。」
+ */
+export const HYPOTHESIS_FIELDS = [
+  { key: "target_user", label: "目标用户", placeholder: "谁？越具体越好（不是“所有人”）" },
+  { key: "pain", label: "具体痛点", placeholder: "他们真实遇到的问题" },
+  { key: "alternative", label: "替代方案", placeholder: "现在他们用什么来解决" },
+  { key: "why_insufficient", label: "为何不够好", placeholder: "现有方案差在哪" },
+  { key: "solution", label: "你的方案", placeholder: "你打算怎么做" },
+  { key: "willingness_to_pay", label: "愿意付（金额/时间）", placeholder: "多少钱 / 多少时间" },
+] as const;
+
+export type HypothesisField = (typeof HYPOTHESIS_FIELDS)[number]["key"];
+
+export type Hypothesis = Partial<Record<HypothesisField, string>> & {
+  /** 最关键假设：错了想法就死的那一条（宪法第 4 阶段，单条，非任务清单）。 */
+  riskiest_assumption?: string;
+};
+
+/** 假设句式 6 个空是否全部填满——空任一则不能进入“验证中”。 */
+export function isHypothesisComplete(h: Hypothesis | null | undefined): boolean {
+  if (!h) return false;
+  return HYPOTHESIS_FIELDS.every((f) => (h[f.key] ?? "").trim().length > 0);
+}
+
+/** AI 多角色质疑：4 个对抗性角色（与 DB 的 ai_role 枚举一致）。 */
+export const AI_ROLES = [
+  { key: "investor", label: "挑剔投资人" },
+  { key: "customer", label: "目标客户" },
+  { key: "operator", label: "冷酷运营者" },
+  { key: "competitor", label: "竞品老板" },
+] as const;
+
+export type AiRole = (typeof AI_ROLES)[number]["key"];
+
+/** 一轮对话（存入 ai_sessions.messages）。 */
+export type ChatTurn = { role: "user" | "assistant"; content: string };
+
+/**
+ * 验证证据只记两个二元信号（宪法第 4 条，绝不做多级分类）。
+ * 值：yes/no/unsure。
+ */
+export const SIGNAL_VALUES = [
+  { key: "yes", label: "是" },
+  { key: "no", label: "否" },
+  { key: "unsure", label: "不确定" },
+] as const;
+
+export type SignalValue = (typeof SIGNAL_VALUES)[number]["key"];
+
+export type Validation = {
+  id: string;
+  has_pain: SignalValue;
+  will_pay: SignalValue;
+  note: string | null;
+  contacted_at: string;
+};
+
+/** 强制出口机制的天数阈值（宪法第 5 条）。 */
+export const AI_LOCK_DAYS = 3;
+
+/**
+ * 强制出口机制：处于"验证中"且超过 3 天没有新活动（新 validation 会刷新
+ * last_activity_at）的想法，锁定 AI 质疑——必须先去做一次真实接触。
+ */
+export function isAiLocked(
+  status: IdeaStatus,
+  lastActivityAt: string
+): boolean {
+  if (status !== "验证中") return false;
+  const elapsed = Date.now() - new Date(lastActivityAt).getTime();
+  return elapsed > AI_LOCK_DAYS * 24 * 60 * 60 * 1000;
+}
+
+export const AI_LOCK_MESSAGE =
+  "你已经分析这个想法 3 天了。在记录一次真实对话之前，AI 质疑功能暂停。";
+
+/** Go / Pivot / Kill / Hold 决策（与 DB 的 decision_verdict 枚举一致）。 */
+export const VERDICTS = [
+  { key: "Go", label: "Go", hint: "进入 MVP 候选" },
+  { key: "Pivot", label: "Pivot", hint: "保留，去改写假设" },
+  { key: "Kill", label: "Kill", hint: "归档，并记录学到了什么" },
+  { key: "Hold", label: "Hold", hint: "保持现状" },
+] as const;
+
+export type Verdict = (typeof VERDICTS)[number]["key"];
+
+/**
+ * Kill 时的 Learning Log（宪法第 7 条：用“学到了什么”框定，绝不用“失败/放弃”）。
+ * 前三项打包进 decisions.reason，learned 单独存 decisions.learned。
+ */
+export type LearningLog = {
+  /** 原始判断：当初为何觉得有机会 */
+  original_judgment: string;
+  /** 验证动作：问了谁、做了什么 */
+  validation_action: string;
+  /** 真实结果：有痛吗、愿付费吗 */
+  real_result: string;
+  /** 学到什么：以后如何判断类似机会 */
+  learned: string;
+};
