@@ -96,6 +96,15 @@ export default async function LearningsPage() {
   );
   const insights = await computeInsights(killedIdeaIds);
 
+  // 校准：跨所有想法，已对账的预测命中/没命中计数（不打分、不用百分比）。
+  const { data: resolvedPreds } = await supabaseAdmin
+    .from("predictions")
+    .select("outcome, ideas!inner(user_id)")
+    .eq("ideas.user_id", userId)
+    .in("outcome", ["hit", "miss"]);
+  const hits = (resolvedPreds ?? []).filter((p) => p.outcome === "hit").length;
+  const misses = (resolvedPreds ?? []).filter((p) => p.outcome === "miss").length;
+
   return (
     <div className="min-h-screen">
       <AppNav />
@@ -103,6 +112,8 @@ export default async function LearningsPage() {
         <p className="mb-6 text-sm text-muted-foreground">
           归档过的想法和你从中学到的判断力。回看它们，是为了下次更早识别同类机会。
         </p>
+
+        {hits + misses > 0 && <CalibrationBlock hits={hits} misses={misses} />}
 
         {insights.killedCount > 0 && <InsightsBlock insights={insights} />}
 
@@ -147,6 +158,30 @@ export default async function LearningsPage() {
         )}
       </main>
     </div>
+  );
+}
+
+function CalibrationBlock({ hits, misses }: { hits: number; misses: number }) {
+  return (
+    <section className="mb-8 rounded-lg border bg-card p-5">
+      <h2 className="text-sm font-medium">预测校准</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        你下注前的判断，被现实验证得怎么样。看见落差，下次少自欺。
+      </p>
+      <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+        <span className={hits >= misses ? "font-medium" : "text-muted-foreground"}>
+          命中 · <span className="font-mono tabular-nums">{hits}</span>
+        </span>
+        <span className={misses > hits ? "font-medium" : "text-muted-foreground"}>
+          没命中 · <span className="font-mono tabular-nums">{misses}</span>
+        </span>
+      </div>
+      {misses > hits && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          你“没命中”的次数更多——你的直觉系统性地偏乐观。下注前先想想这一点。
+        </p>
+      )}
+    </section>
   );
 }
 

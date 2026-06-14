@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { challenge } from "@/lib/ai";
+import { challenge, draftExperiment, preMortem, realityCheck } from "@/lib/ai";
+import { tavilySearch } from "@/lib/external";
 import {
   AI_ROLES,
   HYPOTHESIS_FIELDS,
@@ -16,7 +17,11 @@ import {
   type Hypothesis,
   type Idea,
   type IdeaStatus,
+  type DeathMode,
   type LearningLog,
+  type Prediction,
+  type PredictionOutcome,
+  type RealityCheckResult,
   type SignalValue,
   type Validation,
   type Verdict,
@@ -136,6 +141,10 @@ function sanitizeHypothesis(hypothesis: Hypothesis): Hypothesis {
   if (riskiest) clean.riskiest_assumption = riskiest;
   const adv = (hypothesis.unfair_advantage ?? "").trim();
   if (adv) clean.unfair_advantage = adv;
+  const dist = (hypothesis.distribution ?? "").trim();
+  if (dist) clean.distribution = dist;
+  const test = (hypothesis.smallest_test ?? "").trim();
+  if (test) clean.smallest_test = test;
   return clean;
 }
 
@@ -172,8 +181,14 @@ function renderHypothesis(h: Hypothesis): string {
   const sentence =
     `${v("target_user")} 有 ${v("pain")}，现在用 ${v("alternative")} 解决，` +
     `但 ${v("why_insufficient")}，如果有 ${v("solution")}，愿意付 ${v("willingness_to_pay")}。`;
+  const extra: string[] = [];
   const riskiest = (h.riskiest_assumption ?? "").trim();
-  return riskiest ? `${sentence}\n最关键假设：${riskiest}` : sentence;
+  if (riskiest) extra.push(`最关键假设：${riskiest}`);
+  const adv = (h.unfair_advantage ?? "").trim();
+  if (adv) extra.push(`不公平优势：${adv}`);
+  const dist = (h.distribution ?? "").trim();
+  if (dist) extra.push(`分发设想：${dist}`);
+  return [sentence, ...extra].join("\n");
 }
 
 /**
@@ -331,4 +346,113 @@ export async function decide(
     .single();
   if (error) throw new Error(error.message);
   return row!.status as IdeaStatus;
+}
+
+/**
+ * 写下一条带日期的可证伪预测（校准回路）。错了这个方向就死的那种赌注。
+ */
+export async function createPrediction(
+  ideaId: string,
+  text: string,
+  dueAt: string
+): Promise<Prediction> {
+  const t = text.trim();
+  if (!t) throw new Error("预测内容不能为空");
+  const due = new Date(dueAt);
+  if (Number.isNaN(due.getTime())) throw new Error("非法日期");
+
+  const userId = await requireUserId();
+  await assertOwnsIdea(ideaId, userId);
+
+  const { data, error } = await supabaseAdmin
+    .from("predictions")
+    .insert({ idea_id: ideaId, text: t, due_at: due.toISOString() })
+    .select("id, text, due_at, made_at, outcome, resolved_at, note")
+    .single();
+  if (error) throw new Error(error.message);
+
+  return data as Prediction;
+}
+
+/** 对账：把一条预测标记为命中 / 没命中。 */
+export async function resolvePrediction(
+  predictionId: string,
+  outcome: PredictionOutcome,
+  note: string
+): Promise<Prediction> {
+  if (outcome !== "hit" && outcome !== "miss") throw new Error("非法结论");
+
+  const userId = await requireUserId();
+  const { data: pred, error: pErr } = await supabaseAdmin
+    .from("predictions")
+    .select("idea_id")
+    .eq("id", predictionId)
+    .single();
+  if (pErr) throw new Error(pErr.message);
+  if (!pred) throw new Error("预测不存在");
+  await assertOwnsIdea(pred.idea_id as string, userId);
+
+  const { data, error } = await supabaseAdmin
+    .from("predictions")
+    .update({
+      outcome,
+      resolved_at: new Date().toISOString(),
+      note: note.trim() || null,
+    })
+    .eq("id", predictionId)
+    .select("id, text, due_at, made_at, outcome, resolved_at, note")
+    .single();
+  if (error) throw new Error(error.message);
+
+  return data as Prediction;
+}
+
+/** 读该想法的假设，AI 草拟一个本周可做、能证伪最关键假设的最小实验。 */
+export async function draftSmallestTest(ideaId: string): Promise<string> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+  return draftExperiment(renderHypothesis((idea.hypothesis ?? {}) as Hypothesis));
+}
+
+/** 拿该想法的假设做预演死亡，返回最相关的 2-3 种死法。 */
+export async function runPreMortem(ideaId: string): Promise<DeathMode[]> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+  return preMortem(renderHypothesis((idea.hypothesis ?? {}) as Hypothesis));
+}
+
+/** 方向现实检验：联网搜该方向 → 对抗性简报 + 来源。 */
+export async function runRealityCheck(
+  ideaId: string
+): Promise<RealityCheckResult> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+
+  const h = (idea.hypothesis ?? {}) as Hypothesis;
+  const query =
+    [h.target_user, h.pain, h.solution]
+      .map((s) => (s ?? "").trim())
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 200) || "创业方向";
+  const sources = await tavilySearch(query);
+  return realityCheck(renderHypothesis(h), sources);
 }

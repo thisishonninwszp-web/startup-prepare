@@ -29,10 +29,47 @@ export default async function DashboardPage() {
 
   const items = validating ?? [];
 
+  // 到期的预测——该用现实对账了（校准回路）。
+  const { data: duePreds } = await supabaseAdmin
+    .from("predictions")
+    .select("id, text, due_at, idea_id, ideas!inner(title, user_id)")
+    .eq("outcome", "pending")
+    .lte("due_at", new Date().toISOString())
+    .eq("ideas.user_id", userId)
+    .order("due_at", { ascending: true });
+
+  const due = (duePreds ?? []).map((p) => ({
+    id: p.id as string,
+    text: p.text as string,
+    ideaId: p.idea_id as string,
+  }));
+
   return (
     <div className="min-h-screen">
       <AppNav />
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-8 sm:px-6">
+        {due.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-sm font-medium">该对账了</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              这些预测到期了。去标记命中还是没命中——别让大脑事后篡改记忆。
+            </p>
+            <ul className="mt-3 space-y-2">
+              {due.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    href={`/ideas/${p.ideaId}`}
+                    className="flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900 transition-colors hover:bg-orange-100"
+                  >
+                    <span className="min-w-0 flex-1">{p.text}</span>
+                    <span className="shrink-0 text-xs">去对账 →</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <header className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">今天该接触谁</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">

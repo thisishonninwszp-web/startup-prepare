@@ -41,7 +41,42 @@ export type Hypothesis = Partial<Record<HypothesisField, string>> & {
   riskiest_assumption?: string;
   /** 创始人-市场匹配：你凭什么是解决这个的人（不公平优势/渠道/专长）。 */
   unfair_advantage?: string;
+  /** 分发：前 10 个真实用户具体怎么找到它（没分发是头号死法）。 */
+  distribution?: string;
+  /** 最小实验：本周能做完、用来证伪最关键假设的那个动作。 */
+  smallest_test?: string;
 };
+
+/** 创业最常见的死法（蒸馏自公认 top failure reasons，用于预演死亡 pre-mortem）。 */
+export const DEATH_PATTERNS = [
+  "没人真的需要",
+  "触达不到用户（没有分发）",
+  "没人愿意付钱",
+  "不该由你来做",
+  "没有护城河，容易被复制",
+  "时机不对",
+  "单位经济算不过来",
+] as const;
+
+/** 预演死亡里的一种死法 + 为何暴露 + 一个尖锐追问。 */
+export type DeathMode = { pattern: string; why: string; question: string };
+
+// ── 外部雷达（Phase D）：联网检索 + 对抗合成，全部附来源、不做 feed ──
+
+/** Tavily 检索的一条原始结果。 */
+export type TavilyResult = { title: string; url: string; content: string };
+
+/** 外部信号：一句真实动态 + 为什么值得注意 + 来源（可存为观察）。 */
+export type ExternalSignal = { text: string; why: string; url: string };
+
+/** 方向现实检验的对抗性简报 + 来源链接。 */
+export type RealityCheckResult = {
+  text: string;
+  sources: { title: string; url: string }[];
+};
+
+/** 外部来源的观察打这个标签，便于区分"自己的感受"与"世界的信息"。 */
+export const EXTERNAL_TAG = "外部";
 
 /**
  * 捕捉标签里代表"真痛 / 愿付费"信号的子集——用于发现阶段的痛点雷达。
@@ -102,6 +137,32 @@ export type Validation = {
   note: string | null;
   contacted_at: string;
 };
+
+/**
+ * 预测与对账（校准回路）：写下带日期的可证伪预测，到期用现实对账。
+ * 对抗事后偏见 / 过度自信。结论二元：命中 / 没命中（不打分）。
+ */
+export const PREDICTION_OUTCOMES = [
+  { key: "hit", label: "命中" },
+  { key: "miss", label: "没命中" },
+] as const;
+
+export type PredictionOutcome = "pending" | "hit" | "miss";
+
+export type Prediction = {
+  id: string;
+  text: string;
+  due_at: string;
+  made_at: string;
+  outcome: PredictionOutcome;
+  resolved_at: string | null;
+  note: string | null;
+};
+
+/** 预测是否到了该对账的时候（未结且已过期）。 */
+export function isPredictionDue(p: Prediction): boolean {
+  return p.outcome === "pending" && new Date(p.due_at).getTime() <= Date.now();
+}
 
 /** 强制出口机制的天数阈值（宪法第 5 条）。 */
 export const AI_LOCK_DAYS = 3;

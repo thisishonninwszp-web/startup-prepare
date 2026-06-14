@@ -1,5 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
-import type { AiRole, ChatTurn, DirectionDraft } from "@/app/ideas/types";
+import {
+  DEATH_PATTERNS,
+  type AiRole,
+  type ChatTurn,
+  type DeathMode,
+  type DirectionDraft,
+  type ExternalSignal,
+  type RealityCheckResult,
+  type TavilyResult,
+} from "@/app/ideas/types";
 
 /**
  * 所有 AI 调用的统一封装（宪法：AI 调用统一封装在 lib/ai.ts）。
@@ -277,6 +286,189 @@ export async function themeToDirection(
   } catch {
     return empty;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 最小实验：把最关键假设逼成"本周能做完"的可证伪动作
+// ---------------------------------------------------------------------------
+
+const EXPERIMENT_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断者，服务于一个对抗认知偏误的决策系统。
+基于用户的假设（尤其是最关键假设），给出**一个**最小实验——本周内就能做完、用来证伪最关键假设的具体动作。
+
+铁律：
+- 只给一个动作，不要清单（清单让人逃避最难的那个）。
+- 必须具体：去找谁、做什么、用什么判断成立或不成立。
+- 是"接触真实世界"的动作（约人、发问卷、挂一个落地页、手动跑一遍），不是"再想想/再调研"。
+- 绝不评价好坏、不安慰、不夸奖。
+- 只输出这一个动作本身，2-3 句话，不要前后缀。`;
+
+/** 基于假设上下文，草拟一个本周可做、能证伪最关键假设的最小实验。 */
+export async function draftExperiment(hypothesisContext: string): Promise<string> {
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: hypothesisContext,
+    config: {
+      systemInstruction: EXPERIMENT_SYSTEM_PROMPT,
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 400,
+    },
+  });
+  return (response.text ?? "").trim() || "（未能草拟，请重试）";
+}
+
+// ---------------------------------------------------------------------------
+// 预演死亡（pre-mortem）：拿方向去撞最常见死法，反乐观偏误
+// ---------------------------------------------------------------------------
+
+const PREMORTEM_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断者。现在做"预演死亡"：假设这个方向已经失败了，从下面这份"最常见死法"清单里，挑出这个方向**最可能**死于的 2 到 3 种。
+
+最常见死法（只能从这里选 pattern，原样使用）：
+${DEATH_PATTERNS.map((d) => `- ${d}`).join("\n")}
+
+铁律：
+- 只选最相关的 2-3 种，不要全列。
+- 每种给出：why=为什么这个方向特别暴露在这条上（扎根于用户的假设，不空泛）；question=一个能逼用户面对它的尖锐追问。
+- 绝不安慰、不夸奖、不给解决方案。
+
+只输出 JSON：{"modes":[{"pattern":"（清单原文）","why":"","question":""}]}
+不要输出 JSON 以外的任何文字。`;
+
+/** 拿假设去撞最常见死法，返回最相关的 2-3 种。 */
+export async function preMortem(hypothesisContext: string): Promise<DeathMode[]> {
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: hypothesisContext,
+    config: {
+      systemInstruction: PREMORTEM_SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 1024,
+    },
+  });
+
+  const text = (response.text ?? "").trim();
+  try {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const parsed = JSON.parse(
+      start >= 0 && end >= 0 ? text.slice(start, end + 1) : text
+    ) as { modes?: unknown };
+    if (!Array.isArray(parsed.modes)) return [];
+    return parsed.modes
+      .map((m) => m as Record<string, unknown>)
+      .filter((m) => typeof m.pattern === "string")
+      .map((m) => ({
+        pattern: String(m.pattern).trim(),
+        why: typeof m.why === "string" ? m.why.trim() : "",
+        question: typeof m.question === "string" ? m.question.trim() : "",
+      }))
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 外部雷达（Phase D）：把 Tavily 检索结果嚼成对抗管线的原料（不做 feed、不排名）
+// ---------------------------------------------------------------------------
+
+const DIGEST_SYSTEM_PROMPT = `你是一个冷静的外部信息提炼者，服务于一个对抗认知偏误的决策系统。
+给你一个主题和一批联网检索到的资料（带编号）。提炼出与主题相关的"近期真实动态"。
+
+铁律：
+- 只陈述事实，不评价、不排名、不推荐（绝不说"好机会/值得做/赛道很火"）。
+- 每条：一句客观事实 + 一句"为什么对判断这个主题值得注意" + 标注来源编号。
+- 只保留资料里真有依据的，不要编造；编不出就少给几条。
+- 最多 6 条。
+
+只输出 JSON：{"items":[{"text":"事实","why":"为什么值得注意","source":编号}]}
+不要输出 JSON 以外的任何文字。`;
+
+/** 把检索结果嚼成若干"外部信号"（事实+为什么+来源 url），中性、不排名。 */
+export async function digestExternal(
+  topic: string,
+  sources: TavilyResult[]
+): Promise<ExternalSignal[]> {
+  if (sources.length === 0) return [];
+  const numbered = sources
+    .map((s, i) => `[${i}] ${s.title}\n${s.content}`)
+    .join("\n\n");
+
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: `主题：${topic}\n\n检索资料：\n${numbered}`,
+    config: {
+      systemInstruction: DIGEST_SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 1500,
+    },
+  });
+
+  const text = (response.text ?? "").trim();
+  try {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const parsed = JSON.parse(
+      start >= 0 && end >= 0 ? text.slice(start, end + 1) : text
+    ) as { items?: unknown };
+    if (!Array.isArray(parsed.items)) return [];
+    return parsed.items
+      .map((m) => m as Record<string, unknown>)
+      .filter((m) => typeof m.text === "string" && (m.text as string).trim())
+      .map((m) => {
+        const idx =
+          typeof m.source === "number" && m.source >= 0 && m.source < sources.length
+            ? m.source
+            : 0;
+        return {
+          text: String(m.text).trim(),
+          why: typeof m.why === "string" ? m.why.trim() : "",
+          url: sources[idx]?.url ?? "",
+        };
+      })
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+const REALITY_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断者。基于联网检索到的真实资料，对用户的方向做"现实检验"。
+
+回答这几件事（有依据才说，没查到就直说没查到）：谁已经在做 / 之前类似的尝试为何死了 / 该领域产业或政策最近的真实变化 / 对这个方向最大的外部威胁。
+
+铁律：不安慰、不夸奖、不给解决方案、不排名；只把现实摆到用户面前。简洁，3-5 句。`;
+
+/** 拿联网资料对一个方向做对抗性现实检验，附来源链接。 */
+export async function realityCheck(
+  hypothesisContext: string,
+  sources: TavilyResult[]
+): Promise<RealityCheckResult> {
+  const numbered = sources
+    .map((s, i) => `[${i}] ${s.title}\n${s.content}`)
+    .join("\n\n");
+
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: `方向假设：\n${hypothesisContext}\n\n联网资料：\n${numbered}`,
+    config: {
+      systemInstruction: REALITY_SYSTEM_PROMPT,
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 700,
+    },
+  });
+
+  const text = (response.text ?? "").trim() || "（未能生成现实检验，请重试）";
+  // 去重来源后透传作为引用
+  const seen = new Set<string>();
+  const cites: { title: string; url: string }[] = [];
+  for (const s of sources) {
+    if (s.url && !seen.has(s.url)) {
+      seen.add(s.url);
+      cites.push({ title: s.title || s.url, url: s.url });
+    }
+  }
+  return { text, sources: cites };
 }
 
 /** 从模型输出里抽出问题数组，对 JSON 外的杂质做容错。 */

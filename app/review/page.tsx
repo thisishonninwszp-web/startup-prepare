@@ -1,7 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { externalConfigured } from "@/lib/external";
 import { AppNav } from "@/components/app-nav";
 import { RecurringSignals } from "../capture/recurring-signals";
+import { listExternalSignals } from "../capture/actions";
+import { ExternalRadar } from "./external-radar";
+import { ExternalInbox } from "./external-inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +36,11 @@ export default async function ReviewPage() {
   const weekAgo = new Date(now - 7 * day).toISOString();
   const twoWeeksAgo = new Date(now - 14 * day).toISOString();
 
-  const [thisWeek, lastWeek, total] = await Promise.all([
+  const [thisWeek, lastWeek, total, inboxItems] = await Promise.all([
     countSince(userId, weekAgo),
     countSince(userId, twoWeeksAgo, weekAgo),
     countSince(userId, "1970-01-01T00:00:00.000Z"),
+    listExternalSignals(),
   ]);
 
   const stats = [
@@ -64,9 +69,13 @@ export default async function ReviewPage() {
           ))}
         </div>
 
+        <ExternalInbox items={inboxItems} />
+
+        <ExternalRadar enabled={externalConfigured()} />
+
         {total < 3 ? (
           <p className="text-sm text-muted-foreground">
-            素材还太少。多去捕捉页随手记，反复的主题才会浮现出来。
+            素材还太少。多去捕捉页随手记、或用上面的外部雷达拉点信号，反复的主题才会浮现出来。
           </p>
         ) : (
           <RecurringSignals />

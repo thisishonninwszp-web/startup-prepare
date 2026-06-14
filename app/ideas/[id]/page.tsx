@@ -9,6 +9,7 @@ import {
   type ChatTurn,
   type Hypothesis,
   type Idea,
+  type Prediction,
   type Validation,
 } from "../types";
 
@@ -58,6 +59,13 @@ export default async function IdeaDetailPage({
     .eq("idea_id", params.id)
     .order("contacted_at", { ascending: false });
 
+  // 预测（倒序）
+  const { data: predictions } = await supabaseAdmin
+    .from("predictions")
+    .select("id, text, due_at, made_at, outcome, resolved_at, note")
+    .eq("idea_id", params.id)
+    .order("made_at", { ascending: false });
+
   const ideaCore: Idea = {
     id: idea.id,
     title: idea.title,
@@ -76,6 +84,7 @@ export default async function IdeaDetailPage({
           hypothesis={(idea.hypothesis ?? {}) as Hypothesis}
           initialChats={initialChats}
           initialValidations={(validations ?? []) as Validation[]}
+          initialPredictions={(predictions ?? []) as Prediction[]}
         />
       </main>
     </div>

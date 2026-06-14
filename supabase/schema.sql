@@ -33,6 +33,16 @@ do $$ begin
   create type decision_verdict as enum ('Go', 'Pivot', 'Kill', 'Hold');
 exception when duplicate_object then null; end $$;
 
+-- 预测对账结论（校准回路）
+do $$ begin
+  create type prediction_outcome as enum ('pending', 'hit', 'miss');
+exception when duplicate_object then null; end $$;
+
+-- 外部信号 staging 状态：待审 / 已提升 / 已忽略（独立爬虫子项目的落地流转）
+do $$ begin
+  create type external_signal_status as enum ('pending', 'promoted', 'dismissed');
+exception when duplicate_object then null; end $$;
+
 -- ---------------------------------------------------------------------------
 -- 表
 -- ---------------------------------------------------------------------------
@@ -92,6 +102,22 @@ create table if not exists decisions (
   decided_at  timestamptz not null default now()
 );
 
+-- 外部信号 staging：独立爬虫写入，主应用审阅后提升为 observation。
+-- 刻意独立于 observations，避免机器噪音污染痛点雷达（CLAUDE.md 第 3 条）。
+create table if not exists external_signals (
+  id           uuid primary key default gen_random_uuid(),
+  source       text not null,
+  source_id    text not null,
+  url          text,
+  title        text,
+  raw_text     text not null,
+  query        text,
+  status       external_signal_status not null default 'pending',
+  promoted_observation_id uuid references observations (id) on delete set null,
+  fetched_at   timestamptz not null default now(),
+  constraint external_signals_uniq unique (source, source_id)
+);
+
 -- ---------------------------------------------------------------------------
 -- 索引（服务于常用查询与第 5 阶段的强制出口机制）
 -- ---------------------------------------------------------------------------
@@ -112,6 +138,24 @@ create index if not exists idx_ai_sessions_observation
 create index if not exists idx_decisions_idea
   on decisions (idea_id, decided_at desc);
 
+-- 预测：进验证前写下的带日期可证伪预测，到期对账（校准回路）
+create table if not exists predictions (
+  id          uuid primary key default gen_random_uuid(),
+  idea_id     uuid not null references ideas (id) on delete cascade,
+  text        text not null,
+  due_at      timestamptz not null,
+  made_at     timestamptz not null default now(),
+  outcome     prediction_outcome not null default 'pending',
+  resolved_at timestamptz,
+  note        text
+);
+create index if not exists idx_predictions_idea
+  on predictions (idea_id, made_at desc);
+create index if not exists idx_predictions_due
+  on predictions (outcome, due_at);
+create index if not exists idx_external_signals_status
+  on external_signals (status, fetched_at desc);
+
 -- ---------------------------------------------------------------------------
 -- 行级安全（RLS）
 -- 单用户阶段：开启 RLS（默认拒绝一切），由服务端 service role key 旁路访问。
@@ -124,3 +168,5 @@ alter table ideas        enable row level security;
 alter table validations  enable row level security;
 alter table ai_sessions  enable row level security;
 alter table decisions    enable row level security;
+alter table predictions  enable row level security;
+alter table external_signals enable row level security;
