@@ -22,15 +22,28 @@ IdeaOS 的独立爬虫。**独立进程、独立依赖、独立调度**，与主
 
 ## 二、跑
 
+三种触发方式，按省事程度从高到低：
+
+**A. 网页按钮（最省事，日常用）**：打开 IdeaOS 发现页 → "外部待审" → 输入关键词点「抓取」。
+这条路在主应用 server action 里直接抓 HN/Reddit/V2EX，**不用本子项目、不用终端**。
+
+**B. 双击 `crawl.bat`**（不想开网页时）：双击后输入关键词回车即可；直接回车则跑监控列表。
+
+**C. 命令行 / 定时**：
 ```bash
 # 单源单关键词
 npm run crawl -- --source hackernews --query "founder burnout"
+
+# HN/Reddit/V2EX 一起抓一个关键词
+npm run crawl -- --source all --query "founder burnout"
 
 # 全量监控（config.ts 里的 ENABLED_SOURCES × WATCHLIST）
 npm run watchlist
 ```
 
-可用源：`hackernews`、`reddit`、`v2ex`、`web`。
+可用源：`hackernews`、`reddit`、`v2ex`、`web`（`all` = 前三个 API 源一起）。
+
+> 网页按钮只覆盖纯 API 源；需要 Playwright 渲染的 `web` 源与无人值守的定时全量，仍走本子项目（B/C）。
 
 - `hackernews` / `reddit` / `v2ex` 走官方 JSON API，免登录免反爬。
 - `web` 是兜底：query 传一个 URL，用 Playwright 渲染后抽正文。需先装：

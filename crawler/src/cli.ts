@@ -38,13 +38,18 @@ async function main() {
         [
           "用法：",
           "  npm run watchlist",
-          "  npm run crawl -- --source <name> --query <text>",
-          `可用源：${Object.keys(SOURCES).join(", ")}`,
+          "  npm run crawl -- --source <name|all> --query <text>",
+          `可用源：${Object.keys(SOURCES).join(", ")}（all = HN/Reddit/V2EX 一起跑）`,
         ].join("\n")
       );
       process.exit(1);
     }
-    jobs = [{ source, query }];
+    // all = 所有纯 API 源（不含需要 Playwright 的 web）。
+    const apiSources = Object.keys(SOURCES).filter((s) => s !== "web");
+    jobs =
+      source === "all"
+        ? apiSources.map((s) => ({ source: s, query }))
+        : [{ source, query }];
   }
 
   console.log(`开始抓取：${jobs.length} 个任务…`);

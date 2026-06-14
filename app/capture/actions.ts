@@ -9,6 +9,7 @@ import {
   digestExternal,
 } from "@/lib/ai";
 import { tavilySearch, tavilyExtract } from "@/lib/external";
+import { crawlToStaging } from "@/lib/external-crawl";
 import {
   PAIN_TAGS,
   EXTERNAL_TAG,
@@ -192,6 +193,16 @@ export type ExternalSignalItem = {
   query: string | null;
   fetched_at: string;
 };
+
+/**
+ * 应用内一键抓取：按关键词跑 HN/Reddit/V2EX → 去重入 staging → 返回最新待审列表。
+ * 给"外部待审"收件箱的「抓取」按钮用，省去开终端敲命令。
+ */
+export async function runCrawl(query: string): Promise<ExternalSignalItem[]> {
+  await requireUserId();
+  await crawlToStaging(query);
+  return listExternalSignals();
+}
 
 /** 列出待审（pending）的外部信号，最新在前。 */
 export async function listExternalSignals(): Promise<ExternalSignalItem[]> {
