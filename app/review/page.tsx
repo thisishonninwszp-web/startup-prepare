@@ -3,7 +3,9 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { externalConfigured } from "@/lib/external";
 import { AppNav } from "@/components/app-nav";
 import { RecurringSignals } from "../capture/recurring-signals";
+import { listExternalSignals } from "../capture/actions";
 import { ExternalRadar } from "./external-radar";
+import { ExternalInbox } from "./external-inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -34,10 +36,11 @@ export default async function ReviewPage() {
   const weekAgo = new Date(now - 7 * day).toISOString();
   const twoWeeksAgo = new Date(now - 14 * day).toISOString();
 
-  const [thisWeek, lastWeek, total] = await Promise.all([
+  const [thisWeek, lastWeek, total, inboxItems] = await Promise.all([
     countSince(userId, weekAgo),
     countSince(userId, twoWeeksAgo, weekAgo),
     countSince(userId, "1970-01-01T00:00:00.000Z"),
+    listExternalSignals(),
   ]);
 
   const stats = [
@@ -65,6 +68,8 @@ export default async function ReviewPage() {
             </div>
           ))}
         </div>
+
+        <ExternalInbox items={inboxItems} />
 
         <ExternalRadar enabled={externalConfigured()} />
 

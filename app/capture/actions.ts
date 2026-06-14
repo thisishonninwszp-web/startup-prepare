@@ -11,6 +11,7 @@ import {
 import { tavilySearch, tavilyExtract } from "@/lib/external";
 import {
   PAIN_TAGS,
+  EXTERNAL_TAG,
   type DirectionDraft,
   type ExternalSignal,
 } from "../ideas/types";
@@ -177,4 +178,91 @@ export async function ingestUrl(url: string): Promise<ExternalSignal[]> {
   await requireUserId();
   const extracted = await tavilyExtract(u);
   return digestExternal(u, [extracted]);
+}
+
+// ── 外部待审收件箱：独立爬虫子项目写入 external_signals，这里审阅 + 提升 ──
+
+/** 一条待审的外部信号（staging 表行，供收件箱展示）。 */
+export type ExternalSignalItem = {
+  id: string;
+  source: string;
+  url: string | null;
+  title: string | null;
+  raw_text: string;
+  query: string | null;
+  fetched_at: string;
+};
+
+/** 列出待审（pending）的外部信号，最新在前。 */
+export async function listExternalSignals(): Promise<ExternalSignalItem[]> {
+  await requireUserId();
+  const { data, error } = await supabaseAdmin
+    .from("external_signals")
+    .select("id, source, url, title, raw_text, query, fetched_at")
+    .eq("status", "pending")
+    .order("fetched_at", { ascending: false })
+    .limit(50);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ExternalSignalItem[];
+}
+
+/**
+ * 提升一条外部信号为观察：经 digestExternal 对抗合成 → 存为带"外部"标签的观察。
+ * 这是机器数据进入捕捉管线的唯一入口（人在环，保护痛点雷达信号纯净）。
+ * 返回提升出的观察文本（前端即时反馈）。
+ */
+export async function promoteExternalSignal(id: string): Promise<string[]> {
+  await requireUserId();
+
+  const { data: row, error } = await supabaseAdmin
+    .from("external_signals")
+    .select("id, status, title, url, raw_text, query")
+    .eq("id", id)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!row) throw new Error("信号不存在");
+  if (row.status !== "pending") throw new Error("该信号已处理过");
+
+  // 把 staging 行映射成 TavilyResult 形状，复用现成的外部信号消化逻辑。
+  const topic = (row.query as string) || (row.title as string) || "外部信号";
+  const signals = await digestExternal(topic, [
+    {
+      title: (row.title as string) ?? "",
+      url: (row.url as string) ?? "",
+      content: row.raw_text as string,
+    },
+  ]);
+
+  if (signals.length === 0) {
+    // 没嚼出有依据的信号也算处理完，避免反复出现在收件箱。
+    await supabaseAdmin
+      .from("external_signals")
+      .update({ status: "dismissed" })
+      .eq("id", id);
+    return [];
+  }
+
+  let firstObservationId: string | null = null;
+  for (const s of signals) {
+    const obs = await createObservation(s.text, [EXTERNAL_TAG]);
+    if (!firstObservationId) firstObservationId = obs.id;
+  }
+
+  await supabaseAdmin
+    .from("external_signals")
+    .update({ status: "promoted", promoted_observation_id: firstObservationId })
+    .eq("id", id);
+
+  return signals.map((s) => s.text);
+}
+
+/** 忽略一条外部信号：置 dismissed，不再出现在收件箱。 */
+export async function dismissExternalSignal(id: string): Promise<void> {
+  await requireUserId();
+  const { error } = await supabaseAdmin
+    .from("external_signals")
+    .update({ status: "dismissed" })
+    .eq("id", id)
+    .eq("status", "pending");
+  if (error) throw new Error(error.message);
 }
