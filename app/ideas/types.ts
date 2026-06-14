@@ -39,6 +39,29 @@ export type HypothesisField = (typeof HYPOTHESIS_FIELDS)[number]["key"];
 export type Hypothesis = Partial<Record<HypothesisField, string>> & {
   /** 最关键假设：错了想法就死的那一条（宪法第 4 阶段，单条，非任务清单）。 */
   riskiest_assumption?: string;
+  /** 创始人-市场匹配：你凭什么是解决这个的人（不公平优势/渠道/专长）。 */
+  unfair_advantage?: string;
+};
+
+/**
+ * 捕捉标签里代表"真痛 / 愿付费"信号的子集——用于发现阶段的痛点雷达。
+ * （与 capture-client 的 TAGS 文案保持一致。）
+ */
+export const PAIN_TAGS = [
+  "客户抱怨",
+  "付费软件缺陷",
+  "高风险痛点",
+  "增收机会",
+] as const;
+
+/** AI 把一个反复主题"逼成"的候选方向草稿（先证伪，不评价）。 */
+export type DirectionDraft = {
+  /** 预填进 ideas.hypothesis 的句式字段 */
+  hypothesis: Partial<Record<HypothesisField, string>>;
+  /** 最关键假设：错了这个方向就死 */
+  riskiest_assumption: string;
+  /** 本周 1 小时内怎么初判生死 */
+  week_check: string;
 };
 
 /** 假设句式 6 个空是否全部填满——空任一则不能进入“验证中”。 */

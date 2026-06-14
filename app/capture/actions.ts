@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { runInquiry, clusterObservations } from "@/lib/ai";
+import { runInquiry, clusterObservations, themeToDirection } from "@/lib/ai";
+import { PAIN_TAGS, type DirectionDraft } from "../ideas/types";
 
 export type Observation = {
   id: string;
@@ -87,10 +88,14 @@ export type RecurringSignal = {
   /** 代表性观察（用于展示与"提升为想法"）。 */
   sampleText: string;
   repId: string;
+  /** 该主题里若干样例观察文本（喂给 AI 逼成方向）。 */
+  sampleTexts: string[];
+  /** 该主题里带"真痛/愿付费"标签的观察数（痛点雷达，绝对计数）。 */
+  painCount: number;
 };
 
 /**
- * 扫描当前用户近期的观察，找出反复出现的主题。
+ * 扫描当前用户近期的观察，找出反复出现的主题 + 痛感强度。
  * 把大脑会忽略的重复模式推到使用者面前（对抗盲区）。
  */
 export async function findRecurringSignals(): Promise<RecurringSignal[]> {
@@ -98,7 +103,7 @@ export async function findRecurringSignals(): Promise<RecurringSignal[]> {
 
   const { data: obs, error } = await supabaseAdmin
     .from("observations")
-    .select("id, raw_text")
+    .select("id, raw_text, tags")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(80);
@@ -112,13 +117,34 @@ export async function findRecurringSignals(): Promise<RecurringSignal[]> {
 
   const clusters = await clusterObservations(items);
   const textById = new Map(items.map((it) => [it.id, it.text]));
+  const tagsById = new Map(
+    (obs ?? []).map((o) => [o.id as string, (o.tags as string[]) ?? []])
+  );
+  const painSet = new Set<string>(PAIN_TAGS);
 
   return clusters
-    .sort((a, b) => b.count - a.count)
-    .map((c) => ({
-      theme: c.theme,
-      count: c.count,
-      sampleText: textById.get(c.ids[0]) ?? "",
-      repId: c.ids[0],
-    }));
+    .map((c) => {
+      const painCount = c.ids.filter((id) =>
+        (tagsById.get(id) ?? []).some((t) => painSet.has(t))
+      ).length;
+      return {
+        theme: c.theme,
+        count: c.count,
+        sampleText: textById.get(c.ids[0]) ?? "",
+        repId: c.ids[0],
+        sampleTexts: c.ids.slice(0, 3).map((id) => textById.get(id) ?? ""),
+        painCount,
+      };
+    })
+    // 痛感密集的主题排前，其次按出现次数。
+    .sort((a, b) => b.painCount - a.painCount || b.count - a.count);
+}
+
+/** 把一个反复主题逼成候选方向草稿（先证伪，不评价）。 */
+export async function draftDirectionFromTheme(
+  theme: string,
+  sampleTexts: string[]
+): Promise<DirectionDraft> {
+  await requireUserId();
+  return themeToDirection(theme, sampleTexts);
 }

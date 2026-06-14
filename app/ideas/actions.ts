@@ -118,7 +118,15 @@ export async function updateHypothesis(
   const userId = await requireUserId();
   await assertOwnsIdea(ideaId, userId);
 
-  // 仅保留已知字段，避免写入脏数据。
+  const { error } = await supabaseAdmin
+    .from("ideas")
+    .update({ hypothesis: sanitizeHypothesis(hypothesis) })
+    .eq("id", ideaId);
+  if (error) throw new Error(error.message);
+}
+
+/** 只保留已知字段、去空白，避免写入脏数据。 */
+function sanitizeHypothesis(hypothesis: Hypothesis): Hypothesis {
   const clean: Hypothesis = {};
   for (const f of HYPOTHESIS_FIELDS) {
     const v = (hypothesis[f.key] ?? "").trim();
@@ -126,12 +134,36 @@ export async function updateHypothesis(
   }
   const riskiest = (hypothesis.riskiest_assumption ?? "").trim();
   if (riskiest) clean.riskiest_assumption = riskiest;
+  const adv = (hypothesis.unfair_advantage ?? "").trim();
+  if (adv) clean.unfair_advantage = adv;
+  return clean;
+}
 
-  const { error } = await supabaseAdmin
+/**
+ * 由一个"反复主题"直接创建候选方向（idea）：status='观察'，预填 AI 草拟的假设。
+ * 候选方向就是 ideas 表里的一条 idea，不引入新实体。
+ */
+export async function createIdeaFromTheme(
+  title: string,
+  hypothesis: Hypothesis,
+  tags: string[]
+): Promise<Idea> {
+  const userId = await requireUserId();
+
+  const { data, error } = await supabaseAdmin
     .from("ideas")
-    .update({ hypothesis: clean })
-    .eq("id", ideaId);
+    .insert({
+      user_id: userId,
+      title: title.trim() || null,
+      status: "观察",
+      tags,
+      hypothesis: sanitizeHypothesis(hypothesis),
+    })
+    .select("id, title, status, tags, created_at, last_activity_at")
+    .single();
   if (error) throw new Error(error.message);
+
+  return data as Idea;
 }
 
 /** 把假设渲染成给 AI 的上下文文字。 */

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import type { AiRole, ChatTurn } from "@/app/ideas/types";
+import type { AiRole, ChatTurn, DirectionDraft } from "@/app/ideas/types";
 
 /**
  * 所有 AI 调用的统一封装（宪法：AI 调用统一封装在 lib/ai.ts）。
@@ -207,6 +207,76 @@ export async function clusterObservations(
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// 主题 → 方向假设：把一个反复主题"逼成"可证伪的候选方向（发现阶段的桥）
+// ---------------------------------------------------------------------------
+
+const DIRECTION_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断者，服务于一个对抗认知偏误的决策系统。
+用户反复观察到某个主题。你的任务不是夸它、不是说它是好生意，而是把它"逼成"一个可以被快速证伪的候选方向。
+
+铁律：
+- 绝不评价好坏、绝不鼓励（不许说"好机会/有潜力/值得做/很有意思"）。
+- 把方向写成可证伪的假设句式（目标用户要具体，不能是"所有人"）。
+- 只给一条最关键假设：错了这个方向就死的那一条。
+- 给一个本周 1 小时内就能做、能初步证伪的真实动作（要具体到去找谁、问什么）。
+- 全部基于用户给的观察，不要凭空编造数字或事实。
+
+只输出 JSON：
+{"hypothesis":{"target_user":"","pain":"","alternative":"","why_insufficient":"","solution":"","willingness_to_pay":""},"riskiest_assumption":"","week_check":""}
+不要输出 JSON 以外的任何文字。`;
+
+/** 把一个反复主题（含若干样例观察）逼成一个候选方向草稿。 */
+export async function themeToDirection(
+  theme: string,
+  sampleTexts: string[]
+): Promise<DirectionDraft> {
+  const samples = sampleTexts
+    .filter((t) => t.trim())
+    .map((t) => `- ${t.trim()}`)
+    .join("\n");
+
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: `反复主题：${theme}\n相关观察：\n${samples}`,
+    config: {
+      systemInstruction: DIRECTION_SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 1024,
+    },
+  });
+
+  const text = (response.text ?? "").trim();
+  const empty: DirectionDraft = {
+    hypothesis: {},
+    riskiest_assumption: "",
+    week_check: "",
+  };
+  try {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const parsed = JSON.parse(
+      start >= 0 && end >= 0 ? text.slice(start, end + 1) : text
+    ) as Partial<DirectionDraft>;
+    const h = (parsed.hypothesis ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+    return {
+      hypothesis: {
+        target_user: str(h.target_user),
+        pain: str(h.pain),
+        alternative: str(h.alternative),
+        why_insufficient: str(h.why_insufficient),
+        solution: str(h.solution),
+        willingness_to_pay: str(h.willingness_to_pay),
+      },
+      riskiest_assumption: str(parsed.riskiest_assumption),
+      week_check: str(parsed.week_check),
+    };
+  } catch {
+    return empty;
+  }
 }
 
 /** 从模型输出里抽出问题数组，对 JSON 外的杂质做容错。 */

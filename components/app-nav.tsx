@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const LINKS = [
   { href: "/capture", label: "捕捉" },
+  { href: "/review", label: "发现" },
   { href: "/ideas", label: "想法库" },
   { href: "/learnings", label: "复盘" },
 ];

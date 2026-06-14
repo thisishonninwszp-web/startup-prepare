@@ -56,6 +56,7 @@ export function IdeaDetail({
 }) {
   const [fields, setFields] = useState<Fields>(initFields(hypothesis));
   const [riskiest, setRiskiest] = useState(hypothesis.riskiest_assumption ?? "");
+  const [advantage, setAdvantage] = useState(hypothesis.unfair_advantage ?? "");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -74,7 +75,11 @@ export function IdeaDetail({
     setSaveMsg(null);
     setSaveErr(null);
     try {
-      await updateHypothesis(idea.id, { ...fields, riskiest_assumption: riskiest });
+      await updateHypothesis(idea.id, {
+        ...fields,
+        riskiest_assumption: riskiest,
+        unfair_advantage: advantage,
+      });
       setSaveMsg("已保存");
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "保存失败");
@@ -135,6 +140,23 @@ export function IdeaDetail({
             onChange={(e) => setRiskiest(e.target.value)}
             rows={2}
             placeholder="写下那一条最致命的假设"
+            className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        {/* 创始人-市场匹配：真需求也可能"不该你做" */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">
+            你凭什么是解决这个的人？
+          </label>
+          <p className="text-xs text-muted-foreground">
+            不公平优势 / 渠道 / 专长。答不上来，说明就算是真需求也未必该你做。
+          </p>
+          <textarea
+            value={advantage}
+            onChange={(e) => setAdvantage(e.target.value)}
+            rows={2}
+            placeholder="你比别人更可能赢的具体理由"
             className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
