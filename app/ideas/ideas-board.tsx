@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { IDEA_STATUSES, type Idea, type IdeaStatus } from "./types";
+import {
+  IDEA_STATUSES,
+  daysUntilLock,
+  type Idea,
+  type IdeaStatus,
+} from "./types";
 import { updateIdeaStatus } from "./actions";
 
 /** 各状态列的配色（宪法：验证中=橙、MVP候选=绿、归档=红、其余中性）。 */
@@ -166,7 +171,7 @@ export function IdeasBoard({ initial }: { initial: Idea[] }) {
                       setDragOver(null);
                     }}
                     className={
-                      "cursor-grab rounded-md border bg-background p-3 shadow-sm active:cursor-grabbing " +
+                      "group cursor-grab rounded-md border bg-card p-3 shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md active:cursor-grabbing " +
                       (draggingId === idea.id ? "opacity-50" : "")
                     }
                   >
@@ -185,6 +190,9 @@ export function IdeasBoard({ initial }: { initial: Idea[] }) {
                         ))}
                       </div>
                     )}
+                    {status === "验证中" && (
+                      <LockBadge lastActivityAt={idea.last_activity_at} />
+                    )}
                     <Link
                       href={`/ideas/${idea.id}`}
                       draggable={false}
@@ -200,6 +208,33 @@ export function IdeasBoard({ initial }: { initial: Idea[] }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** "验证中"卡片的锁定倒计时小徽标（强制出口机制可视化）。 */
+function LockBadge({ lastActivityAt }: { lastActivityAt: string }) {
+  const left = daysUntilLock(lastActivityAt);
+  let cls: string;
+  let text: string;
+  if (left <= 0) {
+    text = "已锁定";
+    cls = "border-red-300 bg-red-50 text-red-700";
+  } else if (left <= 1) {
+    text = `还剩 ${left} 天`;
+    cls = "border-orange-300 bg-orange-50 text-orange-700";
+  } else {
+    text = `还剩 ${left} 天`;
+    cls = "border-border bg-muted text-muted-foreground";
+  }
+  return (
+    <div
+      className={
+        "mt-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] " +
+        cls
+      }
+    >
+      {text}
     </div>
   );
 }

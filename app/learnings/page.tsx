@@ -19,6 +19,49 @@ function parseReason(reason: string | null): ReasonParts {
   }
 }
 
+type Insights = {
+  killedCount: number;
+  noPainIdeas: number;
+  noPayIdeas: number;
+  armchairKills: number;
+};
+
+/** 跨被 Kill 的想法聚合验证信号，得出绝对计数（不打分、不用百分比）。 */
+async function computeInsights(killedIdeaIds: string[]): Promise<Insights> {
+  const killedCount = killedIdeaIds.length;
+  if (killedCount === 0) {
+    return { killedCount: 0, noPainIdeas: 0, noPayIdeas: 0, armchairKills: 0 };
+  }
+
+  const { data: vals } = await supabaseAdmin
+    .from("validations")
+    .select("idea_id, has_pain, will_pay")
+    .in("idea_id", killedIdeaIds);
+
+  const byIdea = new Map<string, { has_pain: string; will_pay: string }[]>();
+  for (const v of vals ?? []) {
+    const id = v.idea_id as string;
+    const arr = byIdea.get(id) ?? [];
+    arr.push({ has_pain: v.has_pain as string, will_pay: v.will_pay as string });
+    byIdea.set(id, arr);
+  }
+
+  let noPainIdeas = 0;
+  let noPayIdeas = 0;
+  let armchairKills = 0;
+  for (const id of killedIdeaIds) {
+    const arr = byIdea.get(id);
+    if (!arr || arr.length === 0) {
+      armchairKills++; // 没接触任何真人就否决了
+      continue;
+    }
+    if (arr.some((v) => v.has_pain === "no")) noPainIdeas++;
+    if (arr.some((v) => v.will_pay === "no")) noPayIdeas++;
+  }
+
+  return { killedCount, noPainIdeas, noPayIdeas, armchairKills };
+}
+
 export default async function LearningsPage() {
   const supabase = createClient();
   const {
@@ -28,7 +71,7 @@ export default async function LearningsPage() {
 
   const { data: rows } = await supabaseAdmin
     .from("decisions")
-    .select("id, reason, learned, decided_at, ideas!inner(title, user_id)")
+    .select("id, idea_id, reason, learned, decided_at, ideas!inner(title, user_id)")
     .eq("verdict", "Kill")
     .eq("ideas.user_id", userId)
     .order("decided_at", { ascending: false });
@@ -46,13 +89,22 @@ export default async function LearningsPage() {
     };
   });
 
+  // 判断模式：跨所有 Kill 的想法 + 验证记录，用绝对计数 + 定性句揭示反复偏误。
+  // 宪法第 1 条：绝不打分、绝不用百分比。
+  const killedIdeaIds = Array.from(
+    new Set((rows ?? []).map((r) => r.idea_id as string))
+  );
+  const insights = await computeInsights(killedIdeaIds);
+
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <p className="mb-6 text-sm text-muted-foreground">
           归档过的想法和你从中学到的判断力。回看它们，是为了下次更早识别同类机会。
         </p>
+
+        {insights.killedCount > 0 && <InsightsBlock insights={insights} />}
 
         {learnings.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -95,6 +147,63 @@ export default async function LearningsPage() {
         )}
       </main>
     </div>
+  );
+}
+
+function InsightsBlock({ insights }: { insights: Insights }) {
+  const { killedCount, noPainIdeas, noPayIdeas, armchairKills } = insights;
+  const hasCause = noPainIdeas > 0 || noPayIdeas > 0;
+
+  return (
+    <section className="mb-8 rounded-lg border bg-card p-5">
+      <h2 className="text-sm font-medium">判断模式</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        这些是你反复犯的偏误。看见它，是为了下次更早识破。
+      </p>
+
+      <div className="mt-4 space-y-4 text-sm">
+        <p>
+          你一共归档了{" "}
+          <span className="font-mono tabular-nums">{killedCount}</span> 个想法。
+        </p>
+
+        {armchairKills > 0 && (
+          <div className="rounded-md border border-orange-300 bg-orange-50 p-3 text-orange-800">
+            其中{" "}
+            <span className="font-mono tabular-nums">{armchairKills}</span>{" "}
+            个，你没有接触任何真人就否决了。分析跨不过同理心鸿沟。
+          </div>
+        )}
+
+        {hasCause ? (
+          <div>
+            <div className="text-xs text-muted-foreground">最常见的死因</div>
+            <div className="mt-2 flex flex-wrap gap-x-8 gap-y-2">
+              <span
+                className={
+                  noPainIdeas >= noPayIdeas ? "font-medium" : "text-muted-foreground"
+                }
+              >
+                没人真的痛 ·{" "}
+                <span className="font-mono tabular-nums">{noPainIdeas}</span> 个
+              </span>
+              <span
+                className={
+                  noPayIdeas > noPainIdeas ? "font-medium" : "text-muted-foreground"
+                }
+              >
+                没人愿意付钱 ·{" "}
+                <span className="font-mono tabular-nums">{noPayIdeas}</span> 个
+              </span>
+            </div>
+          </div>
+        ) : armchairKills === killedCount ? (
+          <p className="text-muted-foreground">
+            你 Kill 的想法都没有任何真实验证数据——这本身就是最该警惕的模式。
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

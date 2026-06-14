@@ -83,6 +83,20 @@ export type Validation = {
 /** 强制出口机制的天数阈值（宪法第 5 条）。 */
 export const AI_LOCK_DAYS = 3;
 
+/** 距某时间至今过了几天（向下取整，最小 0）。 */
+export function daysSince(iso: string): number {
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
+}
+
+/**
+ * 距离"验证中"被锁定还剩几天（基于 last_activity_at）。
+ * 返回值：>0 = 还剩 N 天；<=0 = 已（达到）锁定。
+ */
+export function daysUntilLock(lastActivityAt: string): number {
+  return AI_LOCK_DAYS - daysSince(lastActivityAt);
+}
+
 /**
  * 强制出口机制：处于"验证中"且超过 3 天没有新活动（新 validation 会刷新
  * last_activity_at）的想法，锁定 AI 质疑——必须先去做一次真实接触。
