@@ -17,6 +17,7 @@ import {
   type HypothesisField,
   type Idea,
   type IdeaStatus,
+  type DeathMode,
   type LearningLog,
   type Prediction,
   type SignalValue,
@@ -27,7 +28,9 @@ import {
   addValidation,
   createPrediction,
   decide,
+  draftSmallestTest,
   resolvePrediction,
+  runPreMortem,
   sendRoleMessage,
   updateHypothesis,
 } from "../actions";
@@ -64,6 +67,9 @@ export function IdeaDetail({
   const [fields, setFields] = useState<Fields>(initFields(hypothesis));
   const [riskiest, setRiskiest] = useState(hypothesis.riskiest_assumption ?? "");
   const [advantage, setAdvantage] = useState(hypothesis.unfair_advantage ?? "");
+  const [distribution, setDistribution] = useState(hypothesis.distribution ?? "");
+  const [smallestTest, setSmallestTest] = useState(hypothesis.smallest_test ?? "");
+  const [drafting, setDrafting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -86,12 +92,27 @@ export function IdeaDetail({
         ...fields,
         riskiest_assumption: riskiest,
         unfair_advantage: advantage,
+        distribution,
+        smallest_test: smallestTest,
       });
       setSaveMsg("已保存");
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function draftTest() {
+    if (drafting) return;
+    setDrafting(true);
+    setSaveErr(null);
+    try {
+      setSmallestTest(await draftSmallestTest(idea.id));
+    } catch {
+      setSaveErr("AI 草拟失败，请重试（先保存假设再试）");
+    } finally {
+      setDrafting(false);
     }
   }
 
@@ -168,6 +189,47 @@ export function IdeaDetail({
           />
         </div>
 
+        {/* 分发拷问：没分发是头号死法 */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">
+            前 10 个真实用户，你具体怎么让他们找到它？
+          </label>
+          <p className="text-xs text-muted-foreground">
+            渠道说不出口 = 方向还不成立。死于“没人知道”的创业，远多于死于“做得不好”。
+          </p>
+          <textarea
+            value={distribution}
+            onChange={(e) => setDistribution(e.target.value)}
+            rows={2}
+            placeholder="具体到去哪、找谁、怎么被看到"
+            className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        {/* 最小实验：从判断走向行动 */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              测试最关键假设的最小实验（本周做得完的那个）
+            </label>
+            <button
+              type="button"
+              onClick={draftTest}
+              disabled={drafting}
+              className="shrink-0 rounded-md border px-2 py-1 text-xs transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              {drafting ? "草拟中…" : "让 AI 草拟"}
+            </button>
+          </div>
+          <textarea
+            value={smallestTest}
+            onChange={(e) => setSmallestTest(e.target.value)}
+            rows={2}
+            placeholder="一个接触真实世界、能证伪最关键假设的具体动作"
+            className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
         <div className="flex items-center gap-3">
           <Button onClick={handleSave} disabled={saving}>
             {saving ? "保存中…" : "保存假设"}
@@ -179,6 +241,9 @@ export function IdeaDetail({
           {saveErr && <span className="text-xs text-destructive">{saveErr}</span>}
         </div>
       </section>
+
+      {/* 预演死亡 */}
+      <PreMortemSection ideaId={idea.id} onUseAsRiskiest={setRiskiest} />
 
       {/* 预测与对账 */}
       <PredictionsSection ideaId={idea.id} initial={initialPredictions} />
@@ -502,6 +567,76 @@ function ValidationSection({
               {v.note && (
                 <p className="mt-2 whitespace-pre-wrap text-sm">{v.note}</p>
               )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function PreMortemSection({
+  ideaId,
+  onUseAsRiskiest,
+}: {
+  ideaId: string;
+  onUseAsRiskiest: (text: string) => void;
+}) {
+  const [modes, setModes] = useState<DeathMode[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setModes(await runPreMortem(ideaId));
+    } catch {
+      setError("预演失败，请重试（先保存假设再试）");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium">它最可能怎么死</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            假设它已经失败了。拿你的方向去撞创业最常见的死法，治乐观偏误。
+          </p>
+        </div>
+        <Button variant="outline" onClick={run} disabled={loading}>
+          {loading ? "预演中…" : modes ? "重新预演" : "预演死亡"}
+        </Button>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {modes && modes.length === 0 && !loading && (
+        <p className="text-sm text-muted-foreground">
+          没能得出明确死法。把假设填得更具体再试。
+        </p>
+      )}
+
+      {modes && modes.length > 0 && (
+        <ul className="space-y-2">
+          {modes.map((m, i) => (
+            <li key={i} className="rounded-md border p-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <span className="font-medium">{m.pattern}</span>
+                <button
+                  type="button"
+                  onClick={() => onUseAsRiskiest(`${m.pattern}：${m.why}`)}
+                  className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
+                >
+                  设为最关键假设
+                </button>
+              </div>
+              {m.why && <p className="mt-1 text-muted-foreground">{m.why}</p>}
+              {m.question && <p className="mt-2">{m.question}</p>}
             </li>
           ))}
         </ul>

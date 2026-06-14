@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { challenge } from "@/lib/ai";
+import { challenge, draftExperiment, preMortem } from "@/lib/ai";
 import {
   AI_ROLES,
   HYPOTHESIS_FIELDS,
@@ -16,6 +16,7 @@ import {
   type Hypothesis,
   type Idea,
   type IdeaStatus,
+  type DeathMode,
   type LearningLog,
   type Prediction,
   type PredictionOutcome,
@@ -138,6 +139,10 @@ function sanitizeHypothesis(hypothesis: Hypothesis): Hypothesis {
   if (riskiest) clean.riskiest_assumption = riskiest;
   const adv = (hypothesis.unfair_advantage ?? "").trim();
   if (adv) clean.unfair_advantage = adv;
+  const dist = (hypothesis.distribution ?? "").trim();
+  if (dist) clean.distribution = dist;
+  const test = (hypothesis.smallest_test ?? "").trim();
+  if (test) clean.smallest_test = test;
   return clean;
 }
 
@@ -174,8 +179,14 @@ function renderHypothesis(h: Hypothesis): string {
   const sentence =
     `${v("target_user")} 有 ${v("pain")}，现在用 ${v("alternative")} 解决，` +
     `但 ${v("why_insufficient")}，如果有 ${v("solution")}，愿意付 ${v("willingness_to_pay")}。`;
+  const extra: string[] = [];
   const riskiest = (h.riskiest_assumption ?? "").trim();
-  return riskiest ? `${sentence}\n最关键假设：${riskiest}` : sentence;
+  if (riskiest) extra.push(`最关键假设：${riskiest}`);
+  const adv = (h.unfair_advantage ?? "").trim();
+  if (adv) extra.push(`不公平优势：${adv}`);
+  const dist = (h.distribution ?? "").trim();
+  if (dist) extra.push(`分发设想：${dist}`);
+  return [sentence, ...extra].join("\n");
 }
 
 /**
@@ -392,4 +403,30 @@ export async function resolvePrediction(
   if (error) throw new Error(error.message);
 
   return data as Prediction;
+}
+
+/** 读该想法的假设，AI 草拟一个本周可做、能证伪最关键假设的最小实验。 */
+export async function draftSmallestTest(ideaId: string): Promise<string> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+  return draftExperiment(renderHypothesis((idea.hypothesis ?? {}) as Hypothesis));
+}
+
+/** 拿该想法的假设做预演死亡，返回最相关的 2-3 种死法。 */
+export async function runPreMortem(ideaId: string): Promise<DeathMode[]> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+  return preMortem(renderHypothesis((idea.hypothesis ?? {}) as Hypothesis));
 }

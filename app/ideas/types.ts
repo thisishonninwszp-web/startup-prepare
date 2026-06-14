@@ -41,7 +41,25 @@ export type Hypothesis = Partial<Record<HypothesisField, string>> & {
   riskiest_assumption?: string;
   /** 创始人-市场匹配：你凭什么是解决这个的人（不公平优势/渠道/专长）。 */
   unfair_advantage?: string;
+  /** 分发：前 10 个真实用户具体怎么找到它（没分发是头号死法）。 */
+  distribution?: string;
+  /** 最小实验：本周能做完、用来证伪最关键假设的那个动作。 */
+  smallest_test?: string;
 };
+
+/** 创业最常见的死法（蒸馏自公认 top failure reasons，用于预演死亡 pre-mortem）。 */
+export const DEATH_PATTERNS = [
+  "没人真的需要",
+  "触达不到用户（没有分发）",
+  "没人愿意付钱",
+  "不该由你来做",
+  "没有护城河，容易被复制",
+  "时机不对",
+  "单位经济算不过来",
+] as const;
+
+/** 预演死亡里的一种死法 + 为何暴露 + 一个尖锐追问。 */
+export type DeathMode = { pattern: string; why: string; question: string };
 
 /**
  * 捕捉标签里代表"真痛 / 愿付费"信号的子集——用于发现阶段的痛点雷达。

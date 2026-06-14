@@ -1,5 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
-import type { AiRole, ChatTurn, DirectionDraft } from "@/app/ideas/types";
+import {
+  DEATH_PATTERNS,
+  type AiRole,
+  type ChatTurn,
+  type DeathMode,
+  type DirectionDraft,
+} from "@/app/ideas/types";
 
 /**
  * 所有 AI 调用的统一封装（宪法：AI 调用统一封装在 lib/ai.ts）。
@@ -276,6 +282,86 @@ export async function themeToDirection(
     };
   } catch {
     return empty;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 最小实验：把最关键假设逼成"本周能做完"的可证伪动作
+// ---------------------------------------------------------------------------
+
+const EXPERIMENT_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断者，服务于一个对抗认知偏误的决策系统。
+基于用户的假设（尤其是最关键假设），给出**一个**最小实验——本周内就能做完、用来证伪最关键假设的具体动作。
+
+铁律：
+- 只给一个动作，不要清单（清单让人逃避最难的那个）。
+- 必须具体：去找谁、做什么、用什么判断成立或不成立。
+- 是"接触真实世界"的动作（约人、发问卷、挂一个落地页、手动跑一遍），不是"再想想/再调研"。
+- 绝不评价好坏、不安慰、不夸奖。
+- 只输出这一个动作本身，2-3 句话，不要前后缀。`;
+
+/** 基于假设上下文，草拟一个本周可做、能证伪最关键假设的最小实验。 */
+export async function draftExperiment(hypothesisContext: string): Promise<string> {
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: hypothesisContext,
+    config: {
+      systemInstruction: EXPERIMENT_SYSTEM_PROMPT,
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 400,
+    },
+  });
+  return (response.text ?? "").trim() || "（未能草拟，请重试）";
+}
+
+// ---------------------------------------------------------------------------
+// 预演死亡（pre-mortem）：拿方向去撞最常见死法，反乐观偏误
+// ---------------------------------------------------------------------------
+
+const PREMORTEM_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断者。现在做"预演死亡"：假设这个方向已经失败了，从下面这份"最常见死法"清单里，挑出这个方向**最可能**死于的 2 到 3 种。
+
+最常见死法（只能从这里选 pattern，原样使用）：
+${DEATH_PATTERNS.map((d) => `- ${d}`).join("\n")}
+
+铁律：
+- 只选最相关的 2-3 种，不要全列。
+- 每种给出：why=为什么这个方向特别暴露在这条上（扎根于用户的假设，不空泛）；question=一个能逼用户面对它的尖锐追问。
+- 绝不安慰、不夸奖、不给解决方案。
+
+只输出 JSON：{"modes":[{"pattern":"（清单原文）","why":"","question":""}]}
+不要输出 JSON 以外的任何文字。`;
+
+/** 拿假设去撞最常见死法，返回最相关的 2-3 种。 */
+export async function preMortem(hypothesisContext: string): Promise<DeathMode[]> {
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: hypothesisContext,
+    config: {
+      systemInstruction: PREMORTEM_SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 1024,
+    },
+  });
+
+  const text = (response.text ?? "").trim();
+  try {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const parsed = JSON.parse(
+      start >= 0 && end >= 0 ? text.slice(start, end + 1) : text
+    ) as { modes?: unknown };
+    if (!Array.isArray(parsed.modes)) return [];
+    return parsed.modes
+      .map((m) => m as Record<string, unknown>)
+      .filter((m) => typeof m.pattern === "string")
+      .map((m) => ({
+        pattern: String(m.pattern).trim(),
+        why: typeof m.why === "string" ? m.why.trim() : "",
+        question: typeof m.question === "string" ? m.question.trim() : "",
+      }))
+      .slice(0, 3);
+  } catch {
+    return [];
   }
 }
 
