@@ -70,7 +70,7 @@ export default async function IdeaDetailPage({
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <IdeaDetail
           idea={ideaCore}
           hypothesis={(idea.hypothesis ?? {}) as Hypothesis}

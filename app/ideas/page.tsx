@@ -28,7 +28,7 @@ export default async function IdeasPage() {
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="px-4 py-6 sm:px-6">
+      <main className="animate-fade-up px-4 py-6 sm:px-6">
         {initial.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             还没有想法。去{" "}
