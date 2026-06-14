@@ -2,12 +2,23 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppNav } from "@/components/app-nav";
 import { CaptureClient, type ObservationCard } from "./capture-client";
+import { RecurringSignals } from "./recurring-signals";
 
 export const dynamic = "force-dynamic";
 
 type SessionMessage = { role: string; content: unknown };
 
-export default async function CapturePage() {
+export default async function CapturePage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
+  const pick = (v: string | string[] | undefined) =>
+    typeof v === "string" ? v : "";
+  // Share Target（GET）分享进来的文字 → 预填捕捉框。
+  const sharedText =
+    pick(searchParams.text) || pick(searchParams.url) || pick(searchParams.title);
+
   const supabase = createClient();
   const {
     data: { user },
@@ -68,8 +79,9 @@ export default async function CapturePage() {
   return (
     <div className="min-h-screen">
       <AppNav />
-      <main className="px-4 py-6 sm:px-6 sm:py-8">
-        <CaptureClient initial={initial} />
+      <main className="animate-fade-up px-4 py-6 sm:px-6 sm:py-8">
+        <CaptureClient initial={initial} initialText={sharedText} />
+        <RecurringSignals />
       </main>
     </div>
   );

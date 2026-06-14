@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { createObservation, generateInquiry } from "./actions";
 import { promoteObservationToIdea } from "../ideas/actions";
@@ -28,13 +28,36 @@ export type ObservationCard = {
   inquiryError?: boolean;
 };
 
-export function CaptureClient({ initial }: { initial: ObservationCard[] }) {
-  const [text, setText] = useState("");
+export function CaptureClient({
+  initial,
+  initialText = "",
+}: {
+  initial: ObservationCard[];
+  initialText?: string;
+}) {
+  const [text, setText] = useState(initialText);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cards, setCards] = useState<ObservationCard[]>(initial);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 快捷键：在页面任意处按 "/" 直接聚焦输入框（低摩擦捕捉）。
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/") return;
+      const el = document.activeElement;
+      const typing =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        (el as HTMLElement | null)?.isContentEditable;
+      if (typing) return;
+      e.preventDefault();
+      textareaRef.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) =>
@@ -193,7 +216,7 @@ function ObservationItem({ card }: { card: ObservationCard }) {
   }
 
   return (
-    <div className="rounded-lg border p-4">
+    <div className="animate-fade-up rounded-lg border bg-card p-4 transition-colors hover:border-foreground/20">
       <div className="flex items-start justify-between gap-3">
         <p className="whitespace-pre-wrap text-sm">{card.raw_text}</p>
         {promoted ? (

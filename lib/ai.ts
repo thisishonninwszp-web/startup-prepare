@@ -131,6 +131,84 @@ ${hypothesisContext}`;
   return (response.text ?? "").trim() || "（未能生成质疑，请重试）";
 }
 
+// ---------------------------------------------------------------------------
+// 观察聚类：把反复出现的观察归组，对抗"看不见自己重复模式"的盲区
+// ---------------------------------------------------------------------------
+
+export type ObservationCluster = {
+  theme: string;
+  count: number;
+  ids: string[];
+};
+
+const CLUSTER_SYSTEM_PROMPT = `你是一个冷静的模式识别者，服务于一个对抗认知偏误的决策系统。
+给你一批编号的"观察"。把反复出现、指向同一个底层主题的观察归到一组。
+
+铁律：
+- 只归纳，不评价、不夸奖、不给建议（绝不说"好机会/有潜力/值得做"这类话）。
+- 只输出"反复出现"的主题——一个组至少包含 2 条观察；孤立的观察不要成组。
+- 主题名要短、具体、中性（不超过 12 字），描述这些观察共同指向的现象。
+- 没有任何反复主题时，clusters 返回空数组。
+
+只输出 JSON：{"clusters":[{"theme":"...","members":[编号,编号]}]}。
+不要输出 JSON 以外的任何文字。`;
+
+/**
+ * 把一批观察按反复主题聚类。用编号在 prompt 里指代，再映射回 id（比让模型回传 uuid 稳）。
+ * 只返回成员数 >= 2 的组。
+ */
+export async function clusterObservations(
+  items: { id: string; text: string }[]
+): Promise<ObservationCluster[]> {
+  if (items.length < 2) return [];
+
+  const numbered = items.map((it, i) => `[${i}] ${it.text}`).join("\n");
+
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: numbered,
+    config: {
+      systemInstruction: CLUSTER_SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 1024,
+    },
+  });
+
+  const text = (response.text ?? "").trim();
+  let parsed: { clusters?: unknown };
+  try {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    parsed = JSON.parse(
+      start >= 0 && end >= 0 ? text.slice(start, end + 1) : text
+    );
+  } catch {
+    return [];
+  }
+
+  const clusters = Array.isArray(parsed.clusters) ? parsed.clusters : [];
+  const out: ObservationCluster[] = [];
+  for (const c of clusters as { theme?: unknown; members?: unknown }[]) {
+    if (typeof c.theme !== "string") continue;
+    const members = Array.isArray(c.members) ? c.members : [];
+    const ids = Array.from(
+      new Set(
+        members
+          .filter(
+            (m): m is number =>
+              typeof m === "number" && m >= 0 && m < items.length
+          )
+          .map((m) => items[m].id)
+      )
+    );
+    if (ids.length >= 2) {
+      out.push({ theme: c.theme.trim(), count: ids.length, ids });
+    }
+  }
+  return out;
+}
+
 /** 从模型输出里抽出问题数组，对 JSON 外的杂质做容错。 */
 function parseQuestions(text: string): string[] {
   try {

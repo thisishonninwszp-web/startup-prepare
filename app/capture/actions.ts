@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { runInquiry } from "@/lib/ai";
+import { runInquiry, clusterObservations } from "@/lib/ai";
 
 export type Observation = {
   id: string;
@@ -79,4 +79,46 @@ export async function generateInquiry(
   if (insertError) throw new Error(insertError.message);
 
   return questions;
+}
+
+export type RecurringSignal = {
+  theme: string;
+  count: number;
+  /** 代表性观察（用于展示与"提升为想法"）。 */
+  sampleText: string;
+  repId: string;
+};
+
+/**
+ * 扫描当前用户近期的观察，找出反复出现的主题。
+ * 把大脑会忽略的重复模式推到使用者面前（对抗盲区）。
+ */
+export async function findRecurringSignals(): Promise<RecurringSignal[]> {
+  const userId = await requireUserId();
+
+  const { data: obs, error } = await supabaseAdmin
+    .from("observations")
+    .select("id, raw_text")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  if (error) throw new Error(error.message);
+
+  const items = (obs ?? []).map((o) => ({
+    id: o.id as string,
+    text: o.raw_text as string,
+  }));
+  if (items.length < 3) return [];
+
+  const clusters = await clusterObservations(items);
+  const textById = new Map(items.map((it) => [it.id, it.text]));
+
+  return clusters
+    .sort((a, b) => b.count - a.count)
+    .map((c) => ({
+      theme: c.theme,
+      count: c.count,
+      sampleText: textById.get(c.ids[0]) ?? "",
+      repId: c.ids[0],
+    }));
 }

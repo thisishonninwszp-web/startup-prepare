@@ -1,0 +1,18 @@
+{
+  "name": "IdeaOS",
+  "short_name": "IdeaOS",
+  "description": "对抗认知偏误的创业决策系统",
+  "start_url": "/capture",
+  "display": "standalone",
+  "background_color": "#fcfcfd",
+  "theme_color": "#18181b",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "share_target": {
+    "action": "/capture",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
+}
