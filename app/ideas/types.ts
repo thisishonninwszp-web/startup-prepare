@@ -103,6 +103,32 @@ export type Validation = {
   contacted_at: string;
 };
 
+/**
+ * 预测与对账（校准回路）：写下带日期的可证伪预测，到期用现实对账。
+ * 对抗事后偏见 / 过度自信。结论二元：命中 / 没命中（不打分）。
+ */
+export const PREDICTION_OUTCOMES = [
+  { key: "hit", label: "命中" },
+  { key: "miss", label: "没命中" },
+] as const;
+
+export type PredictionOutcome = "pending" | "hit" | "miss";
+
+export type Prediction = {
+  id: string;
+  text: string;
+  due_at: string;
+  made_at: string;
+  outcome: PredictionOutcome;
+  resolved_at: string | null;
+  note: string | null;
+};
+
+/** 预测是否到了该对账的时候（未结且已过期）。 */
+export function isPredictionDue(p: Prediction): boolean {
+  return p.outcome === "pending" && new Date(p.due_at).getTime() <= Date.now();
+}
+
 /** 强制出口机制的天数阈值（宪法第 5 条）。 */
 export const AI_LOCK_DAYS = 3;
 

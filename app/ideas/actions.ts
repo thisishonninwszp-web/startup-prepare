@@ -17,6 +17,8 @@ import {
   type Idea,
   type IdeaStatus,
   type LearningLog,
+  type Prediction,
+  type PredictionOutcome,
   type SignalValue,
   type Validation,
   type Verdict,
@@ -331,4 +333,63 @@ export async function decide(
     .single();
   if (error) throw new Error(error.message);
   return row!.status as IdeaStatus;
+}
+
+/**
+ * 写下一条带日期的可证伪预测（校准回路）。错了这个方向就死的那种赌注。
+ */
+export async function createPrediction(
+  ideaId: string,
+  text: string,
+  dueAt: string
+): Promise<Prediction> {
+  const t = text.trim();
+  if (!t) throw new Error("预测内容不能为空");
+  const due = new Date(dueAt);
+  if (Number.isNaN(due.getTime())) throw new Error("非法日期");
+
+  const userId = await requireUserId();
+  await assertOwnsIdea(ideaId, userId);
+
+  const { data, error } = await supabaseAdmin
+    .from("predictions")
+    .insert({ idea_id: ideaId, text: t, due_at: due.toISOString() })
+    .select("id, text, due_at, made_at, outcome, resolved_at, note")
+    .single();
+  if (error) throw new Error(error.message);
+
+  return data as Prediction;
+}
+
+/** 对账：把一条预测标记为命中 / 没命中。 */
+export async function resolvePrediction(
+  predictionId: string,
+  outcome: PredictionOutcome,
+  note: string
+): Promise<Prediction> {
+  if (outcome !== "hit" && outcome !== "miss") throw new Error("非法结论");
+
+  const userId = await requireUserId();
+  const { data: pred, error: pErr } = await supabaseAdmin
+    .from("predictions")
+    .select("idea_id")
+    .eq("id", predictionId)
+    .single();
+  if (pErr) throw new Error(pErr.message);
+  if (!pred) throw new Error("预测不存在");
+  await assertOwnsIdea(pred.idea_id as string, userId);
+
+  const { data, error } = await supabaseAdmin
+    .from("predictions")
+    .update({
+      outcome,
+      resolved_at: new Date().toISOString(),
+      note: note.trim() || null,
+    })
+    .eq("id", predictionId)
+    .select("id, text, due_at, made_at, outcome, resolved_at, note")
+    .single();
+  if (error) throw new Error(error.message);
+
+  return data as Prediction;
 }

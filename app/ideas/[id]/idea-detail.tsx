@@ -6,9 +6,11 @@ import {
   AI_LOCK_MESSAGE,
   AI_ROLES,
   HYPOTHESIS_FIELDS,
+  PREDICTION_OUTCOMES,
   SIGNAL_VALUES,
   VERDICTS,
   isAiLocked,
+  isPredictionDue,
   type AiRole,
   type ChatTurn,
   type Hypothesis,
@@ -16,13 +18,16 @@ import {
   type Idea,
   type IdeaStatus,
   type LearningLog,
+  type Prediction,
   type SignalValue,
   type Validation,
   type Verdict,
 } from "../types";
 import {
   addValidation,
+  createPrediction,
   decide,
+  resolvePrediction,
   sendRoleMessage,
   updateHypothesis,
 } from "../actions";
@@ -48,11 +53,13 @@ export function IdeaDetail({
   hypothesis,
   initialChats,
   initialValidations,
+  initialPredictions,
 }: {
   idea: Idea;
   hypothesis: Hypothesis;
   initialChats: Record<AiRole, ChatTurn[]>;
   initialValidations: Validation[];
+  initialPredictions: Prediction[];
 }) {
   const [fields, setFields] = useState<Fields>(initFields(hypothesis));
   const [riskiest, setRiskiest] = useState(hypothesis.riskiest_assumption ?? "");
@@ -172,6 +179,9 @@ export function IdeaDetail({
           {saveErr && <span className="text-xs text-destructive">{saveErr}</span>}
         </div>
       </section>
+
+      {/* 预测与对账 */}
+      <PredictionsSection ideaId={idea.id} initial={initialPredictions} />
 
       {/* 验证记录 */}
       <ValidationSection
@@ -497,6 +507,204 @@ function ValidationSection({
         </ul>
       )}
     </section>
+  );
+}
+
+function PredictionsSection({
+  ideaId,
+  initial,
+}: {
+  ideaId: string;
+  initial: Prediction[];
+}) {
+  const [list, setList] = useState<Prediction[]>(initial);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [due, setDue] = useState(
+    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const t = text.trim();
+    if (!t || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const p = await createPrediction(
+        ideaId,
+        t,
+        new Date(due + "T23:59:59").toISOString()
+      );
+      setList((prev) => [p, ...prev]);
+      setText("");
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-medium">预测与对账</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            验证前写下可证伪的赌注；到期用现实对账，治“我早就知道”。
+          </p>
+        </div>
+        {!open && (
+          <Button variant="outline" onClick={() => setOpen(true)}>
+            + 写一条预测
+          </Button>
+        )}
+      </div>
+
+      {open && (
+        <div className="space-y-3 rounded-lg border p-4">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={2}
+            placeholder="例：我接触 5 个目标用户，≥3 个会说现在就愿意为此付钱。"
+            className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-muted-foreground">对账日</label>
+            <input
+              type="date"
+              value={due}
+              onChange={(e) => setDue(e.target.value)}
+              className="rounded-md border bg-background px-2 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={save} disabled={saving || !text.trim()}>
+              {saving ? "保存中…" : "保存预测"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setText("");
+                setError(null);
+              }}
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              取消
+            </button>
+            {error && <span className="text-xs text-destructive">{error}</span>}
+          </div>
+        </div>
+      )}
+
+      {list.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          还没有预测。把“我觉得有人要”变成一个可证伪的赌注。
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {list.map((p) => (
+            <PredictionRow
+              key={p.id}
+              p={p}
+              onResolved={(np) =>
+                setList((prev) => prev.map((x) => (x.id === np.id ? np : x)))
+              }
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function PredictionRow({
+  p,
+  onResolved,
+}: {
+  p: Prediction;
+  onResolved: (p: Prediction) => void;
+}) {
+  const [note, setNote] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const due = isPredictionDue(p);
+
+  async function resolve(outcome: "hit" | "miss") {
+    if (resolving) return;
+    setResolving(true);
+    try {
+      onResolved(await resolvePrediction(p.id, outcome, note));
+    } catch {
+      // 失败保持原样，用户可重试
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  return (
+    <li className="rounded-md border p-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <p className="whitespace-pre-wrap">{p.text}</p>
+        {p.outcome === "hit" && (
+          <span className="shrink-0 rounded-full border border-green-300 bg-green-50 px-2 py-0.5 text-[10px] text-green-700">
+            命中
+          </span>
+        )}
+        {p.outcome === "miss" && (
+          <span className="shrink-0 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] text-red-700">
+            没命中
+          </span>
+        )}
+        {p.outcome === "pending" && (
+          <span
+            className={
+              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] " +
+              (due
+                ? "border-orange-300 bg-orange-50 text-orange-700"
+                : "border-border bg-muted text-muted-foreground")
+            }
+          >
+            {due ? "待对账" : "进行中"}
+          </span>
+        )}
+      </div>
+      <div className="mt-1 font-mono text-xs tabular-nums text-muted-foreground">
+        对账日 {new Date(p.due_at).toLocaleDateString()}
+      </div>
+
+      {p.outcome === "pending" && due && (
+        <div className="mt-2 space-y-2">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="发生了什么（选填）"
+            className="w-full rounded-md border bg-background px-2 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <div className="flex gap-2">
+            {PREDICTION_OUTCOMES.map((o) => (
+              <Button
+                key={o.key}
+                variant="outline"
+                disabled={resolving}
+                onClick={() => resolve(o.key)}
+              >
+                {o.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {p.note && p.outcome !== "pending" && (
+        <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+          {p.note}
+        </p>
+      )}
+    </li>
   );
 }
 
