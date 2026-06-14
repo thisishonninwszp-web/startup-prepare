@@ -5,6 +5,9 @@ import {
   type ChatTurn,
   type DeathMode,
   type DirectionDraft,
+  type ExternalSignal,
+  type RealityCheckResult,
+  type TavilyResult,
 } from "@/app/ideas/types";
 
 /**
@@ -363,6 +366,109 @@ export async function preMortem(hypothesisContext: string): Promise<DeathMode[]>
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// 外部雷达（Phase D）：把 Tavily 检索结果嚼成对抗管线的原料（不做 feed、不排名）
+// ---------------------------------------------------------------------------
+
+const DIGEST_SYSTEM_PROMPT = `你是一个冷静的外部信息提炼者，服务于一个对抗认知偏误的决策系统。
+给你一个主题和一批联网检索到的资料（带编号）。提炼出与主题相关的"近期真实动态"。
+
+铁律：
+- 只陈述事实，不评价、不排名、不推荐（绝不说"好机会/值得做/赛道很火"）。
+- 每条：一句客观事实 + 一句"为什么对判断这个主题值得注意" + 标注来源编号。
+- 只保留资料里真有依据的，不要编造；编不出就少给几条。
+- 最多 6 条。
+
+只输出 JSON：{"items":[{"text":"事实","why":"为什么值得注意","source":编号}]}
+不要输出 JSON 以外的任何文字。`;
+
+/** 把检索结果嚼成若干"外部信号"（事实+为什么+来源 url），中性、不排名。 */
+export async function digestExternal(
+  topic: string,
+  sources: TavilyResult[]
+): Promise<ExternalSignal[]> {
+  if (sources.length === 0) return [];
+  const numbered = sources
+    .map((s, i) => `[${i}] ${s.title}\n${s.content}`)
+    .join("\n\n");
+
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: `主题：${topic}\n\n检索资料：\n${numbered}`,
+    config: {
+      systemInstruction: DIGEST_SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 1500,
+    },
+  });
+
+  const text = (response.text ?? "").trim();
+  try {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const parsed = JSON.parse(
+      start >= 0 && end >= 0 ? text.slice(start, end + 1) : text
+    ) as { items?: unknown };
+    if (!Array.isArray(parsed.items)) return [];
+    return parsed.items
+      .map((m) => m as Record<string, unknown>)
+      .filter((m) => typeof m.text === "string" && (m.text as string).trim())
+      .map((m) => {
+        const idx =
+          typeof m.source === "number" && m.source >= 0 && m.source < sources.length
+            ? m.source
+            : 0;
+        return {
+          text: String(m.text).trim(),
+          why: typeof m.why === "string" ? m.why.trim() : "",
+          url: sources[idx]?.url ?? "",
+        };
+      })
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+const REALITY_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断者。基于联网检索到的真实资料，对用户的方向做"现实检验"。
+
+回答这几件事（有依据才说，没查到就直说没查到）：谁已经在做 / 之前类似的尝试为何死了 / 该领域产业或政策最近的真实变化 / 对这个方向最大的外部威胁。
+
+铁律：不安慰、不夸奖、不给解决方案、不排名；只把现实摆到用户面前。简洁，3-5 句。`;
+
+/** 拿联网资料对一个方向做对抗性现实检验，附来源链接。 */
+export async function realityCheck(
+  hypothesisContext: string,
+  sources: TavilyResult[]
+): Promise<RealityCheckResult> {
+  const numbered = sources
+    .map((s, i) => `[${i}] ${s.title}\n${s.content}`)
+    .join("\n\n");
+
+  const response = await getClient().models.generateContent({
+    model: MODEL,
+    contents: `方向假设：\n${hypothesisContext}\n\n联网资料：\n${numbered}`,
+    config: {
+      systemInstruction: REALITY_SYSTEM_PROMPT,
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 700,
+    },
+  });
+
+  const text = (response.text ?? "").trim() || "（未能生成现实检验，请重试）";
+  // 去重来源后透传作为引用
+  const seen = new Set<string>();
+  const cites: { title: string; url: string }[] = [];
+  for (const s of sources) {
+    if (s.url && !seen.has(s.url)) {
+      seen.add(s.url);
+      cites.push({ title: s.title || s.url, url: s.url });
+    }
+  }
+  return { text, sources: cites };
 }
 
 /** 从模型输出里抽出问题数组，对 JSON 外的杂质做容错。 */

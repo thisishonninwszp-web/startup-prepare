@@ -2,8 +2,18 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { runInquiry, clusterObservations, themeToDirection } from "@/lib/ai";
-import { PAIN_TAGS, type DirectionDraft } from "../ideas/types";
+import {
+  runInquiry,
+  clusterObservations,
+  themeToDirection,
+  digestExternal,
+} from "@/lib/ai";
+import { tavilySearch, tavilyExtract } from "@/lib/external";
+import {
+  PAIN_TAGS,
+  type DirectionDraft,
+  type ExternalSignal,
+} from "../ideas/types";
 
 export type Observation = {
   id: string;
@@ -147,4 +157,24 @@ export async function draftDirectionFromTheme(
 ): Promise<DirectionDraft> {
   await requireUserId();
   return themeToDirection(theme, sampleTexts);
+}
+
+/** 外部雷达：按主题联网检索 → 嚼成外部信号（事实+为什么+来源）。 */
+export async function scanExternalSignals(
+  topic: string
+): Promise<ExternalSignal[]> {
+  const t = topic.trim();
+  if (!t) return [];
+  await requireUserId();
+  const sources = await tavilySearch(t);
+  return digestExternal(t, sources);
+}
+
+/** 粘贴链接：抽正文 → 嚼成外部信号。 */
+export async function ingestUrl(url: string): Promise<ExternalSignal[]> {
+  const u = url.trim();
+  if (!u) return [];
+  await requireUserId();
+  const extracted = await tavilyExtract(u);
+  return digestExternal(u, [extracted]);
 }

@@ -20,6 +20,7 @@ import {
   type DeathMode,
   type LearningLog,
   type Prediction,
+  type RealityCheckResult,
   type SignalValue,
   type Validation,
   type Verdict,
@@ -31,6 +32,7 @@ import {
   draftSmallestTest,
   resolvePrediction,
   runPreMortem,
+  runRealityCheck,
   sendRoleMessage,
   updateHypothesis,
 } from "../actions";
@@ -244,6 +246,9 @@ export function IdeaDetail({
 
       {/* 预演死亡 */}
       <PreMortemSection ideaId={idea.id} onUseAsRiskiest={setRiskiest} />
+
+      {/* 现实检验（联网） */}
+      <RealityCheckSection ideaId={idea.id} onUseAsRiskiest={setRiskiest} />
 
       {/* 预测与对账 */}
       <PredictionsSection ideaId={idea.id} initial={initialPredictions} />
@@ -570,6 +575,79 @@ function ValidationSection({
             </li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+function RealityCheckSection({
+  ideaId,
+  onUseAsRiskiest,
+}: {
+  ideaId: string;
+  onUseAsRiskiest: (text: string) => void;
+}) {
+  const [result, setResult] = useState<RealityCheckResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setResult(await runRealityCheck(ideaId));
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "现实检验失败，请重试（先保存假设）"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium">现实检验（联网）</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            别在真空里想。联网看真实世界：谁在做、为何死、产业/政策怎么变、最大外部威胁。
+          </p>
+        </div>
+        <Button variant="outline" onClick={run} disabled={loading}>
+          {loading ? "联网检验中…" : result ? "重新检验" : "现实检验"}
+        </Button>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {result && (
+        <div className="space-y-3 rounded-md border p-3 text-sm">
+          <p className="whitespace-pre-wrap">{result.text}</p>
+          {result.sources.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2">
+              {result.sources.map((s, i) => (
+                <a
+                  key={i}
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="max-w-full truncate text-xs text-primary underline-offset-4 hover:underline"
+                >
+                  {s.title || s.url} ↗
+                </a>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => onUseAsRiskiest(result.text)}
+            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+          >
+            把这个威胁设为最关键假设
+          </button>
+        </div>
       )}
     </section>
   );

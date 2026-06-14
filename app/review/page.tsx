@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { externalConfigured } from "@/lib/external";
 import { AppNav } from "@/components/app-nav";
 import { RecurringSignals } from "../capture/recurring-signals";
+import { ExternalRadar } from "./external-radar";
 
 export const dynamic = "force-dynamic";
 
@@ -64,9 +66,11 @@ export default async function ReviewPage() {
           ))}
         </div>
 
+        <ExternalRadar enabled={externalConfigured()} />
+
         {total < 3 ? (
           <p className="text-sm text-muted-foreground">
-            素材还太少。多去捕捉页随手记，反复的主题才会浮现出来。
+            素材还太少。多去捕捉页随手记、或用上面的外部雷达拉点信号，反复的主题才会浮现出来。
           </p>
         ) : (
           <RecurringSignals />

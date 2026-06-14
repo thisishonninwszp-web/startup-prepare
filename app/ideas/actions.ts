@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { challenge, draftExperiment, preMortem } from "@/lib/ai";
+import { challenge, draftExperiment, preMortem, realityCheck } from "@/lib/ai";
+import { tavilySearch } from "@/lib/external";
 import {
   AI_ROLES,
   HYPOTHESIS_FIELDS,
@@ -20,6 +21,7 @@ import {
   type LearningLog,
   type Prediction,
   type PredictionOutcome,
+  type RealityCheckResult,
   type SignalValue,
   type Validation,
   type Verdict,
@@ -429,4 +431,28 @@ export async function runPreMortem(ideaId: string): Promise<DeathMode[]> {
   if (error) throw new Error(error.message);
   if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
   return preMortem(renderHypothesis((idea.hypothesis ?? {}) as Hypothesis));
+}
+
+/** 方向现实检验：联网搜该方向 → 对抗性简报 + 来源。 */
+export async function runRealityCheck(
+  ideaId: string
+): Promise<RealityCheckResult> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+
+  const h = (idea.hypothesis ?? {}) as Hypothesis;
+  const query =
+    [h.target_user, h.pain, h.solution]
+      .map((s) => (s ?? "").trim())
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 200) || "创业方向";
+  const sources = await tavilySearch(query);
+  return realityCheck(renderHypothesis(h), sources);
 }

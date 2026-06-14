@@ -61,6 +61,23 @@ export const DEATH_PATTERNS = [
 /** 预演死亡里的一种死法 + 为何暴露 + 一个尖锐追问。 */
 export type DeathMode = { pattern: string; why: string; question: string };
 
+// ── 外部雷达（Phase D）：联网检索 + 对抗合成，全部附来源、不做 feed ──
+
+/** Tavily 检索的一条原始结果。 */
+export type TavilyResult = { title: string; url: string; content: string };
+
+/** 外部信号：一句真实动态 + 为什么值得注意 + 来源（可存为观察）。 */
+export type ExternalSignal = { text: string; why: string; url: string };
+
+/** 方向现实检验的对抗性简报 + 来源链接。 */
+export type RealityCheckResult = {
+  text: string;
+  sources: { title: string; url: string }[];
+};
+
+/** 外部来源的观察打这个标签，便于区分"自己的感受"与"世界的信息"。 */
+export const EXTERNAL_TAG = "外部";
+
 /**
  * 捕捉标签里代表"真痛 / 愿付费"信号的子集——用于发现阶段的痛点雷达。
  * （与 capture-client 的 TAGS 文案保持一致。）
