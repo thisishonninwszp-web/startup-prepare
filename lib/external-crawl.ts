@@ -273,6 +273,164 @@ async function fetchLobsters(query: string): Promise<StagingRow[]> {
     .filter((r): r is StagingRow => r !== null);
 }
 
+/**
+ * Yahoo! 知恵袋：日本最大 Q&A，消费者真实提问，免费 App ID。
+ * 注册：https://e.developer.yahoo.co.jp/register → 拿 Client ID 填 YAHOO_JAPAN_APP_ID。
+ * 未配置则静默跳过。
+ */
+async function fetchChiebukuro(query: string): Promise<StagingRow[]> {
+  const appId = process.env.YAHOO_JAPAN_APP_ID;
+  if (!appId) return [];
+  const params = new URLSearchParams({
+    appid: appId,
+    query,
+    output: "json",
+    results: String(PER_SOURCE_LIMIT),
+  });
+  const res = await fetch(
+    `https://chiebukuro.yahooapis.jp/api/v1/search?${params.toString()}`,
+    { headers: { "User-Agent": "ideaos-crawler/0.1" } }
+  );
+  if (!res.ok) throw new Error(`知恵袋 ${res.status}`);
+  const data = (await res.json()) as {
+    ResultSet?: {
+      Result?:
+        | {
+            Id?: string;
+            Subject?: string;
+            DetailUrl?: string;
+            Content?: string;
+            BestAnswer?: { Content?: string };
+          }[]
+        | {
+            Id?: string;
+            Subject?: string;
+            DetailUrl?: string;
+            Content?: string;
+            BestAnswer?: { Content?: string };
+          };
+    };
+  };
+  const results = data.ResultSet?.Result;
+  const items = Array.isArray(results) ? results : results ? [results] : [];
+  return items
+    .map((it): StagingRow | null => {
+      const text = (it.BestAnswer?.Content ?? it.Content ?? it.Subject ?? "").trim();
+      if (!it.Id || !text) return null;
+      return {
+        source: "chiebukuro",
+        source_id: it.Id,
+        url: it.DetailUrl ?? null,
+        title: it.Subject ?? "知恵袋",
+        raw_text: stripHtml(text),
+        query,
+      };
+    })
+    .filter((r): r is StagingRow => r !== null);
+}
+
+/**
+ * 知乎：中文最大知识 Q&A，消费/商业话题覆盖广。使用非官方搜索接口。
+ * 无需 key，但可能被限速——失败时自动跳过。
+ */
+async function fetchZhihu(query: string): Promise<StagingRow[]> {
+  const params = new URLSearchParams({
+    t: "content",
+    q: query,
+    correction: "1",
+    offset: "0",
+    limit: String(PER_SOURCE_LIMIT),
+    search_source: "Normal",
+  });
+  const res = await fetch(
+    `https://www.zhihu.com/api/v4/search_v3?${params.toString()}`,
+    {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Referer: "https://www.zhihu.com/search?type=content&q=" + encodeURIComponent(query),
+      },
+    }
+  );
+  if (!res.ok) throw new Error(`知乎 ${res.status}`);
+  const data = (await res.json()) as {
+    data?: {
+      type?: string;
+      object?: {
+        type?: string;
+        id?: string | number;
+        title?: string;
+        question?: { title?: string; id?: number };
+        excerpt?: string;
+        url?: string;
+      };
+    }[];
+  };
+  return (data.data ?? [])
+    .map((item): StagingRow | null => {
+      const obj = item.object;
+      if (!obj) return null;
+      const title =
+        obj.title ?? obj.question?.title ?? "";
+      const text = (obj.excerpt ?? title).trim();
+      if (!text) return null;
+      const id = String(obj.id ?? obj.question?.id ?? Math.random());
+      const url =
+        obj.url ??
+        (obj.question?.id
+          ? `https://www.zhihu.com/question/${obj.question.id}`
+          : null);
+      return {
+        source: "zhihu",
+        source_id: id,
+        url,
+        title: title || "知乎",
+        raw_text: stripHtml(text),
+        query,
+      };
+    })
+    .filter((r): r is StagingRow => r !== null);
+}
+
+/**
+ * 楽天市場：日本电商商品描述 + 标题——反映消费者在意的功能与痛点。
+ * 注册：https://webservice.rakuten.co.jp → 拿 applicationId 填 RAKUTEN_APP_ID。
+ * 未配置则静默跳过。
+ */
+async function fetchRakuten(query: string): Promise<StagingRow[]> {
+  const appId = process.env.RAKUTEN_APP_ID;
+  if (!appId) return [];
+  const params = new URLSearchParams({
+    applicationId: appId,
+    keyword: query,
+    hits: String(PER_SOURCE_LIMIT),
+    format: "json",
+  });
+  const res = await fetch(
+    `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?${params.toString()}`,
+    { headers: { "User-Agent": "ideaos-crawler/0.1" } }
+  );
+  if (!res.ok) throw new Error(`楽天 ${res.status}`);
+  const data = (await res.json()) as {
+    Items?: ({ Item?: { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string } } | { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string })[];
+  };
+  return (data.Items ?? [])
+    .map((raw): StagingRow | null => {
+      const it = ("Item" in raw && raw.Item) ? raw.Item : (raw as { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string });
+      const text = (it.itemCaption ?? it.itemName ?? "").trim();
+      if (!it.itemCode || !text) return null;
+      return {
+        source: "rakuten",
+        source_id: it.itemCode,
+        url: it.itemUrl ?? null,
+        title: it.itemName ?? "楽天商品",
+        raw_text: stripHtml(text).slice(0, 2000),
+        query,
+      };
+    })
+    .filter((r): r is StagingRow => r !== null);
+}
+
 /** 源 → 语言：抓取时喂给它该语言的译词。地区展示由前端按 source 映射。 */
 const SOURCES: {
   lang: SourceLang;
@@ -283,7 +441,10 @@ const SOURCES: {
   { lang: "en", fetch: fetchDevTo },
   { lang: "en", fetch: fetchLobsters },
   { lang: "zh", fetch: fetchV2ex },
+  { lang: "zh", fetch: fetchZhihu },
   { lang: "ja", fetch: fetchQiita },
+  { lang: "ja", fetch: fetchChiebukuro },
+  { lang: "ja", fetch: fetchRakuten },
 ];
 
 /**

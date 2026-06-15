@@ -11,7 +11,10 @@ export const ENABLED_SOURCES = [
   "devto",
   "lobsters",
   "v2ex",
+  "zhihu",
   "qiita",
+  "chiebukuro",
+  "rakuten",
 ] as const;
 
 /** 盯的关键词/主题。换成你自己的痛点方向或竞品名。 */

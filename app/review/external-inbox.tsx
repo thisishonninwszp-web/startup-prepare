@@ -15,7 +15,11 @@ const SOURCE_LABELS: Record<string, string> = {
   devto: "Dev.to",
   lobsters: "Lobste.rs",
   v2ex: "V2EX",
+  zhihu: "知乎",
   qiita: "Qiita",
+  chiebukuro: "Yahoo知恵袋",
+  rakuten: "楽天",
+  xiaohongshu: "小红书",
   web: "网页",
 };
 
@@ -26,7 +30,11 @@ const SOURCE_REGION: Record<string, string> = {
   devto: "🇺🇸 英语圈",
   lobsters: "🇺🇸 英语圈",
   v2ex: "🇨🇳 中文圈",
+  zhihu: "🇨🇳 中文圈",
+  xiaohongshu: "🇨🇳 中文圈",
   qiita: "🇯🇵 日本",
+  chiebukuro: "🇯🇵 日本",
+  rakuten: "🇯🇵 日本",
   web: "🌐 网页",
 };
 
@@ -112,7 +120,7 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
         )}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        打一个关键词，自动翻成中/英/日去五个社区抓真实讨论（HN · Dev.to · Lobste.rs / V2EX / Qiita），每条标注来自哪个市场，AI 分析本批信号的痛点模式。提升 → 经对抗合成变为带来源的观察；忽略 → 不再出现。机器噪音不会自动进你的捕捉流。
+        打一个关键词，自动翻成中/英/日去八个社区抓真实讨论（HN · Dev.to · Lobste.rs / V2EX · 知乎 / Qiita · 知恵袋 · 楽天），每条标注来自哪个市场，AI 分析本批信号的痛点模式。提升 → 经对抗合成变为带来源的观察；忽略 → 不再出现。机器噪音不会自动进你的捕捉流。
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
