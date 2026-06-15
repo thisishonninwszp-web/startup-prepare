@@ -471,6 +471,60 @@ export async function realityCheck(
   return { text, sources: cites };
 }
 
+// ---------------------------------------------------------------------------
+// 多国抓取：把一个关键词翻成中/英/日，分别喂给各语言的源
+// ---------------------------------------------------------------------------
+
+/** 关键词的多语言译法（用于跨市场抓取）。 */
+export type QueryTranslations = { en: string; zh: string; ja: string };
+
+const TRANSLATE_SYSTEM_PROMPT = `你是一个术语翻译器，服务于一个跨市场的创业信号抓取系统。
+把用户给的一个"搜索关键词/主题"翻成英语、中文、日语三种，用于在各语言的社区里检索同一主题。
+
+铁律：
+- 译成各语言里人们真实会用来搜索的说法（地道术语），不是逐字直译。
+- 只译这一个词组本身，不要扩写、不要加引号、不要解释。
+- 若原文已是某语言，该语言字段就用原文的地道说法。
+
+只输出 JSON：{"en":"...","zh":"...","ja":"..."}
+不要输出 JSON 以外的任何文字。`;
+
+/**
+ * 把关键词翻成中/英/日。失败（缺 key / 解析失败）时降级：三种语言都退回原词，
+ * 调用方仍能抓取，只是不跨语言。
+ */
+export async function translateQuery(query: string): Promise<QueryTranslations> {
+  const q = query.trim();
+  const fallback: QueryTranslations = { en: q, zh: q, ja: q };
+  if (!q) return fallback;
+
+  try {
+    const response = await getClient().models.generateContent({
+      model: MODEL,
+      contents: `关键词：${q}`,
+      config: {
+        systemInstruction: TRANSLATE_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 256,
+      },
+    });
+    const text = (response.text ?? "").trim();
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const parsed = JSON.parse(
+      start >= 0 && end >= 0 ? text.slice(start, end + 1) : text
+    ) as Partial<QueryTranslations>;
+    return {
+      en: typeof parsed.en === "string" && parsed.en.trim() ? parsed.en.trim() : q,
+      zh: typeof parsed.zh === "string" && parsed.zh.trim() ? parsed.zh.trim() : q,
+      ja: typeof parsed.ja === "string" && parsed.ja.trim() ? parsed.ja.trim() : q,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 /** 从模型输出里抽出问题数组，对 JSON 外的杂质做容错。 */
 function parseQuestions(text: string): string[] {
   try {
