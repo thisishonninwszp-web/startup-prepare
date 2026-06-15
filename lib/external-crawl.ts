@@ -1,12 +1,15 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { translateQuery } from "@/lib/ai";
 
 /**
- * 应用内轻量抓取：HN/Reddit/V2EX 三个源本质就是 fetch()，可直接在 server action 里跑，
- * 让"外部待审"收件箱上的「抓取」按钮即时入库，无需独立进程/终端。
+ * 应用内多国抓取：把关键词翻成中/英/日，分别喂给各语言的社区源，结果带地区。
+ * 三个源本质就是 fetch()，可直接在 server action 里跑，让收件箱「抓取」按钮即时入库。
  *
  * 与独立 crawler/ 子项目并行：重活（Playwright 的 web 源）与定时全量仍走那边。
- * 这里只覆盖纯 API 的常用路径，写入同一张 external_signals staging 表。
+ * "哪个国家"是源的固定属性（见 SOURCES.lang）——无需检测、无需改表，展示时按 source 映射。
  */
+
+export type SourceLang = "en" | "zh" | "ja";
 
 type StagingRow = {
   source: string;
@@ -66,7 +69,35 @@ async function fetchHackerNews(query: string): Promise<StagingRow[]> {
     .filter((r): r is StagingRow => r !== null);
 }
 
+const REDDIT_UA = "web:ideaos:0.1 (signal crawler)";
+
+/**
+ * Reddit 走应用级 OAuth（client_credentials）——免认证端点已被硬封 403。
+ * 需配 REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET（reddit.com/prefs/apps 注册 script app）。
+ * 未配置则静默跳过（返回空），不报错、不刷屏。
+ */
+async function redditToken(): Promise<string | null> {
+  const id = process.env.REDDIT_CLIENT_ID;
+  const secret = process.env.REDDIT_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      Authorization:
+        "Basic " + Buffer.from(`${id}:${secret}`).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": REDDIT_UA,
+    },
+    body: "grant_type=client_credentials",
+  });
+  if (!res.ok) throw new Error(`Reddit 鉴权失败 ${res.status}`);
+  const data = (await res.json()) as { access_token?: string };
+  return data.access_token ?? null;
+}
+
 async function fetchReddit(query: string): Promise<StagingRow[]> {
+  const token = await redditToken();
+  if (!token) return []; // 未配置 OAuth → 跳过
   const params = new URLSearchParams({
     q: query,
     limit: String(PER_SOURCE_LIMIT),
@@ -74,8 +105,8 @@ async function fetchReddit(query: string): Promise<StagingRow[]> {
     t: "year",
   });
   const res = await fetch(
-    `https://www.reddit.com/search.json?${params.toString()}`,
-    { headers: { "User-Agent": "ideaos-crawler/0.1 (by /u/ideaos)" } }
+    `https://oauth.reddit.com/search?${params.toString()}`,
+    { headers: { Authorization: `bearer ${token}`, "User-Agent": REDDIT_UA } }
   );
   if (!res.ok) throw new Error(`Reddit ${res.status}`);
   const data = (await res.json()) as {
@@ -144,17 +175,60 @@ async function fetchV2ex(query: string): Promise<StagingRow[]> {
     .filter((r): r is StagingRow => r !== null);
 }
 
-const API_SOURCES = [fetchHackerNews, fetchReddit, fetchV2ex];
+async function fetchQiita(query: string): Promise<StagingRow[]> {
+  const params = new URLSearchParams({
+    query,
+    per_page: String(PER_SOURCE_LIMIT),
+  });
+  const res = await fetch(`https://qiita.com/api/v2/items?${params.toString()}`);
+  if (!res.ok) throw new Error(`Qiita ${res.status}`);
+  const items = (await res.json()) as {
+    id: string;
+    title?: string;
+    url?: string;
+    body?: string;
+  }[];
+  return items
+    .map((it): StagingRow | null => {
+      const text = (it.body ?? it.title ?? "").trim();
+      if (!text) return null;
+      return {
+        source: "qiita",
+        source_id: it.id,
+        url: it.url ?? null,
+        title: it.title ?? "Qiita",
+        raw_text: text.slice(0, 4000),
+        query,
+      };
+    })
+    .filter((r): r is StagingRow => r !== null);
+}
+
+/** 源 → 语言：抓取时喂给它该语言的译词。地区展示由前端按 source 映射。 */
+const SOURCES: {
+  lang: SourceLang;
+  fetch: (q: string) => Promise<StagingRow[]>;
+}[] = [
+  { lang: "en", fetch: fetchHackerNews },
+  { lang: "en", fetch: fetchReddit },
+  { lang: "zh", fetch: fetchV2ex },
+  { lang: "ja", fetch: fetchQiita },
+];
 
 /**
- * 跑所有 API 源抓 query，去重写入 external_signals。
- * 每源独立 try/catch：单源失败（限速/网络）不拖垮其余。返回新增条数。
+ * 多国一键抓取：关键词翻成中/英/日 → 每个源用其语言的译词抓 → 去重写入 external_signals。
+ * 每源独立隔离（allSettled）：单源失败（限速/未配置/网络）不拖垮其余。返回新增条数。
  */
 export async function crawlToStaging(query: string): Promise<number> {
   const q = query.trim();
   if (!q) return 0;
 
-  const settled = await Promise.allSettled(API_SOURCES.map((f) => f(q)));
+  // 翻译失败会降级为三语都用原词（见 translateQuery），不阻断抓取。
+  const t = await translateQuery(q);
+
+  const settled = await Promise.allSettled(
+    SOURCES.map((s) => s.fetch(t[s.lang]))
+  );
   const rows: StagingRow[] = [];
   for (const s of settled) {
     if (s.status === "fulfilled") rows.push(...s.value);

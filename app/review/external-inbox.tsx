@@ -13,7 +13,17 @@ const SOURCE_LABELS: Record<string, string> = {
   hackernews: "Hacker News",
   reddit: "Reddit",
   v2ex: "V2EX",
+  qiita: "Qiita",
   web: "网页",
+};
+
+/** 地区是源的固定属性——按 source 映射出徽章，告诉你这条来自哪个市场。 */
+const SOURCE_REGION: Record<string, string> = {
+  hackernews: "🇺🇸 英语圈",
+  reddit: "🇺🇸 英语圈",
+  v2ex: "🇨🇳 中文圈",
+  qiita: "🇯🇵 日本",
+  web: "🌐 网页",
 };
 
 /**
@@ -97,7 +107,7 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
         )}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        打个关键词抓一批外部讨论（Hacker News / Reddit / V2EX）。挑相关的提升成观察（会经过对抗合成、附来源），其余忽略——机器噪音不会自动进你的捕捉流。
+        打一个关键词，自动翻成中/英/日去三个市场抓真实讨论（V2EX / Hacker News·Reddit / Qiita），每条标注来自哪个国家。挑相关的提升成观察（会经过对抗合成、附来源），其余忽略——机器噪音不会自动进你的捕捉流。
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -130,6 +140,11 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
           {list.map((it) => (
             <li key={it.id} className="rounded-md border p-3 text-sm">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {SOURCE_REGION[it.source] && (
+                  <span className="rounded bg-muted px-1.5 py-0.5">
+                    {SOURCE_REGION[it.source]}
+                  </span>
+                )}
                 <span className="rounded bg-muted px-1.5 py-0.5">
                   {SOURCE_LABELS[it.source] ?? it.source}
                 </span>

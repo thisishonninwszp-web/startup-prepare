@@ -25,33 +25,44 @@ IdeaOS 的独立爬虫。**独立进程、独立依赖、独立调度**，与主
 三种触发方式，按省事程度从高到低：
 
 **A. 网页按钮（最省事，日常用）**：打开 IdeaOS 发现页 → "外部待审" → 输入关键词点「抓取」。
-这条路在主应用 server action 里直接抓 HN/Reddit/V2EX，**不用本子项目、不用终端**。
+这条路在主应用 server action 里**自动把关键词翻成中/英/日**，分别抓各市场，**不用本子项目、不用终端**。
 
 **B. 双击 `crawl.bat`**（不想开网页时）：双击后输入关键词回车即可；直接回车则跑监控列表。
+注意：本子项目**不翻译**，抓到的是你给的原词。要多语言请用网页按钮，或在 `config.ts` 里配多语言关键词。
 
 **C. 命令行 / 定时**：
 ```bash
 # 单源单关键词
 npm run crawl -- --source hackernews --query "founder burnout"
 
-# HN/Reddit/V2EX 一起抓一个关键词
+# 所有 API 源一起抓一个关键词（不含 web）
 npm run crawl -- --source all --query "founder burnout"
 
 # 全量监控（config.ts 里的 ENABLED_SOURCES × WATCHLIST）
 npm run watchlist
 ```
 
-可用源：`hackernews`、`reddit`、`v2ex`、`web`（`all` = 前三个 API 源一起）。
+可用源与地区：
 
-> 网页按钮只覆盖纯 API 源；需要 Playwright 渲染的 `web` 源与无人值守的定时全量，仍走本子项目（B/C）。
+| 源 | 地区 | 接入 |
+|---|---|---|
+| `hackernews` | 🇺🇸 英语圈 | HN Algolia API，免认证 |
+| `reddit` | 🇺🇸 英语圈 | **需 OAuth**（填 `REDDIT_CLIENT_ID/SECRET`，否则自动跳过） |
+| `v2ex` | 🇨🇳 中文圈 | V2EX API，免认证 |
+| `qiita` | 🇯🇵 日本 | Qiita API，免认证 |
+| `web` | 🌐 任意网页 | Playwright 兜底 |
 
-- `hackernews` / `reddit` / `v2ex` 走官方 JSON API，免登录免反爬。
+`all` = 除 `web` 外的所有 API 源。
+
+> 网页按钮只覆盖 API 源；需要 Playwright 渲染的 `web` 源与无人值守的定时全量，仍走本子项目（B/C）。
+
 - `web` 是兜底：query 传一个 URL，用 Playwright 渲染后抽正文。需先装：
   ```bash
   npm i playwright && npx playwright install chromium
   ```
 
 抓到的条目去重写入 `external_signals`（唯一约束 `source + source_id`，**重复跑不会产生重复**）。
+"哪个国家"由 `source` 决定，主应用收件箱按它显示地区徽章。
 
 ## 三、加一个新源
 
