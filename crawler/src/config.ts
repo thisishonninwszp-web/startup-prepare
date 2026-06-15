@@ -8,6 +8,8 @@
 export const ENABLED_SOURCES = [
   "hackernews",
   "reddit",
+  "devto",
+  "lobsters",
   "v2ex",
   "qiita",
 ] as const;

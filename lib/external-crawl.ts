@@ -204,6 +204,75 @@ async function fetchQiita(query: string): Promise<StagingRow[]> {
     .filter((r): r is StagingRow => r !== null);
 }
 
+async function fetchDevTo(query: string): Promise<StagingRow[]> {
+  // Dev.to 按 tag 检索；多词关键词去空格后作为 tag（e.g. "founderburout"效果有限，单词效果最好）
+  const tag = query.trim().toLowerCase().replace(/\s+/g, "");
+  const params = new URLSearchParams({ tag, per_page: String(PER_SOURCE_LIMIT) });
+  const res = await fetch(`https://dev.to/api/articles?${params.toString()}`, {
+    headers: { "User-Agent": "ideaos-crawler/0.1" },
+  });
+  if (!res.ok) throw new Error(`Dev.to ${res.status}`);
+  const items = (await res.json()) as {
+    id: number;
+    title?: string;
+    description?: string;
+    url?: string;
+    slug?: string;
+    username?: string;
+  }[];
+  return items
+    .map((it): StagingRow | null => {
+      const text = (it.description ?? it.title ?? "").trim();
+      if (!text) return null;
+      return {
+        source: "devto",
+        source_id: String(it.id),
+        url: it.url ?? null,
+        title: it.title ?? "Dev.to article",
+        raw_text: text,
+        query,
+      };
+    })
+    .filter((r): r is StagingRow => r !== null);
+}
+
+async function fetchLobsters(query: string): Promise<StagingRow[]> {
+  const params = new URLSearchParams({ q: query, what: "stories", order: "newest" });
+  const res = await fetch(`https://lobste.rs/search.json?${params.toString()}`, {
+    headers: { "User-Agent": "ideaos-crawler/0.1" },
+  });
+  if (!res.ok) throw new Error(`Lobste.rs ${res.status}`);
+  const data = (await res.json()) as Record<string, unknown>;
+  const hits = (
+    Array.isArray(data.results)
+      ? data.results
+      : Array.isArray(data.hits)
+        ? data.hits
+        : []
+  ) as {
+    short_id?: string;
+    title?: string;
+    url?: string;
+    description?: string;
+    comments_url?: string;
+  }[];
+  return hits
+    .slice(0, PER_SOURCE_LIMIT)
+    .map((h): StagingRow | null => {
+      const text = (h.description ?? h.title ?? "").trim();
+      if (!text) return null;
+      return {
+        source: "lobsters",
+        source_id: h.short_id ?? h.url ?? String(Date.now() + Math.random()),
+        url: h.comments_url ?? h.url ?? null,
+        title: h.title ?? "Lobste.rs",
+        raw_text: text,
+        query,
+      };
+    })
+    .filter((r): r is StagingRow => r !== null);
+}
+
 /** 源 → 语言：抓取时喂给它该语言的译词。地区展示由前端按 source 映射。 */
 const SOURCES: {
   lang: SourceLang;
@@ -211,6 +280,8 @@ const SOURCES: {
 }[] = [
   { lang: "en", fetch: fetchHackerNews },
   { lang: "en", fetch: fetchReddit },
+  { lang: "en", fetch: fetchDevTo },
+  { lang: "en", fetch: fetchLobsters },
   { lang: "zh", fetch: fetchV2ex },
   { lang: "ja", fetch: fetchQiita },
 ];

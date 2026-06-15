@@ -12,6 +12,8 @@ import {
 const SOURCE_LABELS: Record<string, string> = {
   hackernews: "Hacker News",
   reddit: "Reddit",
+  devto: "Dev.to",
+  lobsters: "Lobste.rs",
   v2ex: "V2EX",
   qiita: "Qiita",
   web: "网页",
@@ -21,6 +23,8 @@ const SOURCE_LABELS: Record<string, string> = {
 const SOURCE_REGION: Record<string, string> = {
   hackernews: "🇺🇸 英语圈",
   reddit: "🇺🇸 英语圈",
+  devto: "🇺🇸 英语圈",
+  lobsters: "🇺🇸 英语圈",
   v2ex: "🇨🇳 中文圈",
   qiita: "🇯🇵 日本",
   web: "🌐 网页",
@@ -38,6 +42,7 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
   const [busy, setBusy] = useState<Record<string, "promote" | "dismiss">>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<string | null>(null);
 
   async function crawl() {
     const q = query.trim();
@@ -45,14 +50,14 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
     setCrawling(true);
     setError(null);
     setNotice(null);
+    setAnalysis(null);
     try {
-      const before = list.length;
-      const fresh = await runCrawl(q);
-      setList(fresh);
-      const added = fresh.length - before;
+      const result = await runCrawl(q);
+      setList(result.items);
+      setAnalysis(result.analysis || null);
       setNotice(
-        added > 0
-          ? `抓到 ${added} 条新待审。`
+        result.newCount > 0
+          ? `抓到 ${result.newCount} 条新待审。`
           : "没抓到新内容（可能都抓过了，或换个更具体的关键词）。"
       );
     } catch (e) {
@@ -107,7 +112,7 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
         )}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        打一个关键词，自动翻成中/英/日去三个市场抓真实讨论（V2EX / Hacker News·Reddit / Qiita），每条标注来自哪个国家。挑相关的提升成观察（会经过对抗合成、附来源），其余忽略——机器噪音不会自动进你的捕捉流。
+        打一个关键词，自动翻成中/英/日去五个社区抓真实讨论（HN · Dev.to · Lobste.rs / V2EX / Qiita），每条标注来自哪个市场，AI 分析本批信号的痛点模式。提升 → 经对抗合成变为带来源的观察；忽略 → 不再出现。机器噪音不会自动进你的捕捉流。
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -130,6 +135,17 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
 
       {notice && <p className="mt-3 text-sm text-muted-foreground">{notice}</p>}
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+
+      {analysis && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
+          <p className="mb-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+            AI 信号分析
+          </p>
+          <p className="whitespace-pre-wrap text-xs text-amber-900 dark:text-amber-200">
+            {analysis}
+          </p>
+        </div>
+      )}
 
       {list.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">

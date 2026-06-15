@@ -525,6 +525,52 @@ export async function translateQuery(query: string): Promise<QueryTranslations> 
   }
 }
 
+// ---------------------------------------------------------------------------
+// 外部批量信号：AI 对抗分析
+// ---------------------------------------------------------------------------
+
+const BATCH_ANALYSIS_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业信号分析者。
+以下是从互联网各社区实时抓到的真实讨论片段，关键词由你的调用方提供。
+
+任务（按顺序回答，简洁）：
+1. 识别 2-3 个高频痛点模式（如果数量不够，就说"信号量太少，不可过度解读"）。
+2. 挑出其中最值得注意的一个，说出为什么这个问题还没有好的解法（从内容里找线索，不要编造）。
+3. 最后一句冷水：这些帖子是真实结构性痛点，还是少数人的抱怨？给出你的判断。
+
+铁律：不安慰、不夸奖、不给创业建议；3-6 句，直接，中文输出。`;
+
+/**
+ * 对一批刚抓到的外部信号做对抗性分析：识别痛点模式、判断信号强度。
+ * 失败时静默返回空字符串，不阻断收件箱展示。
+ */
+export async function analyzeExternalBatch(
+  query: string,
+  items: { title: string | null; raw_text: string; source: string }[]
+): Promise<string> {
+  if (items.length === 0) return "";
+  const snippets = items
+    .slice(0, 15)
+    .map(
+      (it, i) =>
+        `[${i + 1}][${it.source}] ${it.title ?? ""}\n${it.raw_text.slice(0, 300)}`
+    )
+    .join("\n\n");
+  try {
+    const response = await getClient().models.generateContent({
+      model: MODEL,
+      contents: `关键词：${query}\n共 ${items.length} 条片段：\n\n${snippets}`,
+      config: {
+        systemInstruction: BATCH_ANALYSIS_SYSTEM_PROMPT,
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 500,
+      },
+    });
+    return (response.text ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
 /** 从模型输出里抽出问题数组，对 JSON 外的杂质做容错。 */
 function parseQuestions(text: string): string[] {
   try {
