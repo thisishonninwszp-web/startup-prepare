@@ -26,6 +26,7 @@ IdeaOS 的独立爬虫。**独立进程、独立依赖、独立调度**，与主
 
 **A. 网页按钮（最省事，日常用）**：打开 IdeaOS 发现页 → "外部待审" → 输入关键词点「抓取」。
 这条路在主应用 server action 里**自动把关键词翻成中/英/日**，分别抓各市场，**不用本子项目、不用终端**。
+默认只跑 8 个 API 源；若按第五节部署了云端 worker，按钮还会顺带后台触发 Playwright 重型源。
 
 **B. 双击 `crawl.bat`**（不想开网页时）：双击后输入关键词回车即可；直接回车则跑监控列表。
 注意：本子项目**不翻译**，抓到的是你给的原词。要多语言请用网页按钮，或在 `config.ts` 里配多语言关键词。
@@ -91,9 +92,44 @@ Playwright 重型源（`xiaohongshu` / `producthunt` / `indiehackers` / `amazon_
   0 8 * * *  cd /path/to/startup-prepare/crawler && npm run watchlist >> crawl.log 2>&1
   ```
 - **GitHub Actions / Vercel Cron**（可选）：用 secrets 注入两个 env，定时调 `npm run watchlist`。
-  纯 API 源能跑在轻量 runner 上；用到 `web` 源才需要装 Playwright 浏览器。
+  纯 API 源能跑在轻量 runner 上；用到 Playwright 源才需要装浏览器。
 
-## 五、之后
+## 五、云端 worker（让网页按钮也能跑 Playwright 源）
+
+Vercel 是 serverless、没浏览器，跑不了 Playwright 源（亚马逊评论/小红书/Product Hunt/Indie Hackers）。
+把本子项目部署成一个常驻 **Railway** 服务即可解决——它**一个进程同时**：
+
+- **内置定时器**（`CRON_SCHEDULE`，默认每天 8:00）自动跑「全量监控 + Playwright 重型源」。
+- **HTTP 接口** `POST /crawl`（带 `CRAWLER_SECRET` 鉴权）供主应用网页「抓取」按钮按需触发。
+
+抓的结果仍写同一张 `external_signals` 表，照常出现在主应用「外部待审」收件箱。
+
+### 部署步骤（Railway）
+
+1. 把本仓库推到 GitHub。
+2. [railway.app](https://railway.app) → New Project → Deploy from GitHub repo → 选本仓库。
+3. **Settings → Root Directory** 填 `crawler`（让 Railway 只构建子项目，用其中的 `Dockerfile`）。
+4. **Variables** 里填环境变量（与 `.env.example` 同名）：
+   - `SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`（必填）
+   - `CRAWLER_SECRET`：随便生成一串长随机字符（**主应用 Vercel 里要填同一个值**）
+   - 可选：`YAHOO_JAPAN_APP_ID`、`RAKUTEN_APP_ID`、`REDDIT_CLIENT_ID/SECRET`、`CRON_SCHEDULE`
+   - `PORT` 不用填，Railway 自动注入。
+5. **Settings → Networking → Generate Domain**，拿到形如 `https://xxx.up.railway.app` 的公开域名。
+6. 回主应用（Vercel 的环境变量）填：
+   - `CRAWLER_WORKER_URL` = 上一步的域名
+   - `CRAWLER_SECRET` = 与 worker 里**完全一致**
+   重新部署 Vercel 后，网页「抓取」按钮就会在跑 8 个 API 源的同时，把 Playwright 重型源推给 worker 后台抓。
+
+### 本地起 worker（调试用）
+
+```bash
+cd crawler
+# .env 里填好 SUPABASE_*、CRAWLER_SECRET，装好 Playwright
+npm run serve         # 启动在 http://localhost:8080
+curl http://localhost:8080/health   # → {"ok":true}
+```
+
+## 六、之后
 
 到主应用 `/review`（发现页）的"外部待审"收件箱里审阅 pending 条目，
 逐条"提升"（→ 经 `digestExternal` 合成为带"外部"标签的观察）或"忽略"。

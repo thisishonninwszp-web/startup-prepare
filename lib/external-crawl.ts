@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { translateQuery } from "@/lib/ai";
+import { translateQuery, type QueryTranslations } from "@/lib/ai";
 
 /**
  * 应用内多国抓取：把关键词翻成中/英/日，分别喂给各语言的社区源，结果带地区。
@@ -448,30 +448,91 @@ const SOURCES: {
 ];
 
 /**
- * 多国一键抓取：关键词翻成中/英/日 → 每个源用其语言的译词抓 → 去重写入 external_signals。
- * 每源独立隔离（allSettled）：单源失败（限速/未配置/网络）不拖垮其余。返回新增条数。
+ * Playwright 重型源 → 用哪种语言的译词喂它。这些源跑不了 Vercel（无浏览器），
+ * 由云端 worker 执行；这里只负责把按语言分好的任务推过去。
  */
-export async function crawlToStaging(query: string): Promise<number> {
+const HEAVY_SOURCE_LANG: Record<string, SourceLang> = {
+  amazon_jp: "ja",
+  xiaohongshu: "zh",
+  producthunt: "en",
+  indiehackers: "en",
+};
+
+/**
+ * 触发云端 worker 跑 Playwright 重型源（异步，worker 立刻 202、后台慢慢抓）。
+ * 未配置 CRAWLER_WORKER_URL/SECRET 则跳过，返回 false。失败只告警、不抛。
+ * 用已算好的译词，避免重复翻译。
+ */
+async function triggerWorker(t: QueryTranslations): Promise<boolean> {
+  const url = process.env.CRAWLER_WORKER_URL;
+  const secret = process.env.CRAWLER_SECRET;
+  if (!url || !secret) return false;
+
+  const jobs = Object.entries(HEAVY_SOURCE_LANG).map(([source, lang]) => ({
+    source,
+    query: t[lang],
+  }));
+
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(`${url.replace(/\/$/, "")}/crawl`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({ jobs }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.warn(`云端 worker 触发失败 ${res.status}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("云端 worker 不可达：", e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+export type CrawlOutcome = {
+  /** 本次 API 源新增入库条数。 */
+  inserted: number;
+  /** 是否成功把 Playwright 重型源任务推给了云端 worker（后台异步抓取中）。 */
+  workerTriggered: boolean;
+};
+
+/**
+ * 多国一键抓取：关键词翻成中/英/日 → 每个 API 源用其语言的译词抓 → 去重写入 external_signals。
+ * 同时把 Playwright 重型源（亚马逊/小红书/PH/IH）任务推给云端 worker 后台跑（若已配置）。
+ * 每源独立隔离（allSettled）：单源失败不拖垮其余。
+ */
+export async function crawlToStaging(query: string): Promise<CrawlOutcome> {
   const q = query.trim();
-  if (!q) return 0;
+  if (!q) return { inserted: 0, workerTriggered: false };
 
   // 翻译失败会降级为三语都用原词（见 translateQuery），不阻断抓取。
   const t = await translateQuery(q);
 
-  const settled = await Promise.allSettled(
-    SOURCES.map((s) => s.fetch(t[s.lang]))
-  );
+  // 并行：① 本地直接能跑的 API 源；② 触发云端 worker 跑重型源。
+  const [settled, workerTriggered] = await Promise.all([
+    Promise.allSettled(SOURCES.map((s) => s.fetch(t[s.lang]))),
+    triggerWorker(t),
+  ]);
+
   const rows: StagingRow[] = [];
   for (const s of settled) {
     if (s.status === "fulfilled") rows.push(...s.value);
     else console.warn("抓取某源失败：", s.reason);
   }
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) return { inserted: 0, workerTriggered };
 
   const { data, error } = await supabaseAdmin
     .from("external_signals")
     .upsert(rows, { onConflict: "source,source_id", ignoreDuplicates: true })
     .select("id");
   if (error) throw new Error(error.message);
-  return data?.length ?? 0;
+  return { inserted: data?.length ?? 0, workerTriggered };
 }

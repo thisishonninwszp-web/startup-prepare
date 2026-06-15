@@ -69,10 +69,14 @@ export function ExternalInbox({ items }: { items: ExternalSignalItem[] }) {
       const result = await runCrawl(q);
       setList(result.items);
       setAnalysis(result.analysis || null);
-      setNotice(
+      const base =
         result.newCount > 0
           ? `抓到 ${result.newCount} 条新待审。`
-          : "没抓到新内容（可能都抓过了，或换个更具体的关键词）。"
+          : "没抓到新内容（可能都抓过了，或换个更具体的关键词）。";
+      setNotice(
+        result.workerTriggered
+          ? `${base} 云端深度源（亚马逊评论/小红书/Product Hunt/Indie Hackers）已在后台抓取，完成后刷新即可看到。`
+          : base
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "抓取失败");
