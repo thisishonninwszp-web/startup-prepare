@@ -5,7 +5,7 @@ export type RawSignal = {
   /** 源内唯一 id（HN objectID / reddit name / v2ex topic id / url），用于去重。 */
   sourceId: string;
   /** 原始链接（可空）。 */
-  url?: string;
+  url?: string | null;
   /** 标题（可空）。 */
   title?: string;
   /** 原始正文/摘要——审阅时给人看、提升时喂给 digestExternal。 */

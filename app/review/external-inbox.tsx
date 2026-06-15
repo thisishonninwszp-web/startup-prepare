@@ -14,12 +14,15 @@ const SOURCE_LABELS: Record<string, string> = {
   reddit: "Reddit",
   devto: "Dev.to",
   lobsters: "Lobste.rs",
+  producthunt: "Product Hunt",
+  indiehackers: "Indie Hackers",
   v2ex: "V2EX",
   zhihu: "知乎",
+  xiaohongshu: "小红书",
   qiita: "Qiita",
   chiebukuro: "Yahoo知恵袋",
   rakuten: "楽天",
-  xiaohongshu: "小红书",
+  amazon_jp: "Amazon.co.jp",
   web: "网页",
 };
 
@@ -29,12 +32,15 @@ const SOURCE_REGION: Record<string, string> = {
   reddit: "🇺🇸 英语圈",
   devto: "🇺🇸 英语圈",
   lobsters: "🇺🇸 英语圈",
+  producthunt: "🇺🇸 英语圈",
+  indiehackers: "🇺🇸 英语圈",
   v2ex: "🇨🇳 中文圈",
   zhihu: "🇨🇳 中文圈",
   xiaohongshu: "🇨🇳 中文圈",
   qiita: "🇯🇵 日本",
   chiebukuro: "🇯🇵 日本",
   rakuten: "🇯🇵 日本",
+  amazon_jp: "🇯🇵 日本",
   web: "🌐 网页",
 };
 

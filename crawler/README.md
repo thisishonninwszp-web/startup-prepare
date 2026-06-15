@@ -48,18 +48,30 @@ npm run watchlist
 |---|---|---|
 | `hackernews` | 🇺🇸 英语圈 | HN Algolia API，免认证 |
 | `reddit` | 🇺🇸 英语圈 | **需 OAuth**（填 `REDDIT_CLIENT_ID/SECRET`，否则自动跳过） |
+| `devto` | 🇺🇸 英语圈 | Dev.to API，免认证 |
+| `lobsters` | 🇺🇸 英语圈 | Lobste.rs 搜索 API，免认证 |
+| `producthunt` | 🇺🇸 英语圈 | Playwright 渲染搜索结果 |
+| `indiehackers` | 🇺🇸 英语圈 | Playwright 渲染搜索结果 |
 | `v2ex` | 🇨🇳 中文圈 | V2EX API，免认证 |
+| `zhihu` | 🇨🇳 中文圈 | 知乎非官方搜索接口，免认证（可能限速） |
+| `xiaohongshu` | 🇨🇳 中文圈 | Playwright 渲染搜索结果 |
 | `qiita` | 🇯🇵 日本 | Qiita API，免认证 |
+| `chiebukuro` | 🇯🇵 日本 | Yahoo知恵袋 API，**需 `YAHOO_JAPAN_APP_ID`**（否则自动跳过） |
+| `rakuten` | 🇯🇵 日本 | 楽天商品 API，**需 `RAKUTEN_APP_ID`**（否则自动跳过） |
+| `amazon_jp` | 🇯🇵 日本 | Playwright 渲染商品评论页 |
 | `web` | 🌐 任意网页 | Playwright 兜底 |
 
-`all` = 除 `web` 外的所有 API 源。
+`all` = `config.ts` 的 `ENABLED_SOURCES`（免认证/已配 key 的轻量 API 源）。
+Playwright 重型源（`xiaohongshu` / `producthunt` / `indiehackers` / `amazon_jp` / `web`）不在 `all` 里，需单独 `--source` 指定，避免每次全量都启动浏览器、被目标站限速。
 
-> 网页按钮只覆盖 API 源；需要 Playwright 渲染的 `web` 源与无人值守的定时全量，仍走本子项目（B/C）。
+> 网页按钮只覆盖免认证/已配 key 的 API 源；Playwright 渲染的源与无人值守的定时全量，仍走本子项目（B/C）。
 
-- `web` 是兜底：query 传一个 URL，用 Playwright 渲染后抽正文。需先装：
+- `web` 是兜底：query 传一个 URL，用 Playwright 渲染后抽正文；`xiaohongshu`/`producthunt`/`indiehackers`/`amazon_jp` 的 query 是搜索关键词。
+  五者都需先装 Playwright：
   ```bash
   npm i playwright && npx playwright install chromium
   ```
+  这几个源对目标站做真实浏览器请求，限速/选择器变动都可能导致失败——失败只影响该源，不拖垮其它源（见 `pipeline.ts` 的 try/catch 隔离）。
 
 抓到的条目去重写入 `external_signals`（唯一约束 `source + source_id`，**重复跑不会产生重复**）。
 "哪个国家"由 `source` 决定，主应用收件箱按它显示地区徽章。
