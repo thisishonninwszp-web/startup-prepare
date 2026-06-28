@@ -29,6 +29,16 @@ function isMissingConceptWorkspacesTable(error: {
   );
 }
 
+export async function getConceptSchemaStatus(): Promise<boolean> {
+  const { error } = await supabaseAdmin
+    .from("concept_workspaces")
+    .select("id")
+    .limit(1);
+  if (!error) return true;
+  if (isMissingConceptWorkspacesTable(error)) return false;
+  throw new Error(error.message);
+}
+
 export async function getConceptWorkspaceDetail(
   ideaId: string,
   userId: string

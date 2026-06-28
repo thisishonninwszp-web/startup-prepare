@@ -25,6 +25,9 @@ import {
   type SignalValue,
   type Validation,
   type Verdict,
+  OBSERVATION_PROMOTED_TAG,
+  observationSourceTag,
+  visibleTags,
 } from "./types";
 
 async function requireUserId(): Promise<string> {
@@ -98,19 +101,49 @@ export async function promoteObservationToIdea(
   if (obsError) throw new Error(obsError.message);
   if (!obs || obs.user_id !== userId) throw new Error("无权访问该观察");
 
+  const sourceTag = observationSourceTag(observationId);
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("ideas")
+    .select("id, title, status, tags, created_at, last_activity_at")
+    .eq("user_id", userId)
+    .contains("tags", [sourceTag])
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+
+  const observationTags = (obs.tags ?? []) as string[];
+  const promotedTags = Array.from(
+    new Set([...observationTags, OBSERVATION_PROMOTED_TAG])
+  );
+  if (existing) {
+    const { error: markerError } = await supabaseAdmin
+      .from("observations")
+      .update({ tags: promotedTags })
+      .eq("id", observationId)
+      .eq("user_id", userId);
+    if (markerError) throw new Error(markerError.message);
+    return { ...existing, tags: visibleTags(existing.tags ?? []) } as Idea;
+  }
+
   const { data, error } = await supabaseAdmin
     .from("ideas")
     .insert({
       user_id: userId,
       title: obs.raw_text,
       status: "观察",
-      tags: obs.tags ?? [],
+      tags: [...visibleTags(observationTags), sourceTag],
     })
     .select("id, title, status, tags, created_at, last_activity_at")
     .single();
   if (error) throw new Error(error.message);
 
-  return data as Idea;
+  const { error: markerError } = await supabaseAdmin
+    .from("observations")
+    .update({ tags: promotedTags })
+    .eq("id", observationId)
+    .eq("user_id", userId);
+  if (markerError) throw new Error(markerError.message);
+
+  return { ...data, tags: visibleTags(data.tags ?? []) } as Idea;
 }
 
 /**
@@ -219,12 +252,13 @@ export async function sendRoleMessage(
   }
 
   // 取该角色已有的会话（一个 idea+role 一行）。
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from("ai_sessions")
     .select("id, messages")
     .eq("idea_id", ideaId)
     .eq("role", role)
     .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
 
   const turns: ChatTurn[] = Array.isArray(existing?.messages)
     ? (existing!.messages as ChatTurn[])

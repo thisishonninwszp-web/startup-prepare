@@ -268,10 +268,11 @@ export async function promoteExternalSignal(id: string): Promise<string[]> {
 
   if (signals.length === 0) {
     // 没嚼出有依据的信号也算处理完，避免反复出现在收件箱。
-    await supabaseAdmin
+    const { error: dismissError } = await supabaseAdmin
       .from("external_signals")
       .update({ status: "dismissed" })
       .eq("id", id);
+    if (dismissError) throw new Error(dismissError.message);
     return [];
   }
 
@@ -281,10 +282,11 @@ export async function promoteExternalSignal(id: string): Promise<string[]> {
     if (!firstObservationId) firstObservationId = obs.id;
   }
 
-  await supabaseAdmin
+  const { error: promoteError } = await supabaseAdmin
     .from("external_signals")
     .update({ status: "promoted", promoted_observation_id: firstObservationId })
     .eq("id", id);
+  if (promoteError) throw new Error(promoteError.message);
 
   return signals.map((s) => s.text);
 }

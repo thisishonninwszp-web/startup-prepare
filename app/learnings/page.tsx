@@ -33,10 +33,11 @@ async function computeInsights(killedIdeaIds: string[]): Promise<Insights> {
     return { killedCount: 0, noPainIdeas: 0, noPayIdeas: 0, armchairKills: 0 };
   }
 
-  const { data: vals } = await supabaseAdmin
+  const { data: vals, error } = await supabaseAdmin
     .from("validations")
     .select("idea_id, has_pain, will_pay")
     .in("idea_id", killedIdeaIds);
+  if (error) throw new Error(error.message);
 
   const byIdea = new Map<string, { has_pain: string; will_pay: string }[]>();
   for (const v of vals ?? []) {
@@ -69,12 +70,13 @@ export default async function LearningsPage() {
   } = await supabase.auth.getUser();
   const userId = user!.id;
 
-  const { data: rows } = await supabaseAdmin
+  const { data: rows, error: rowsError } = await supabaseAdmin
     .from("decisions")
     .select("id, idea_id, reason, learned, decided_at, ideas!inner(title, user_id)")
     .eq("verdict", "Kill")
     .eq("ideas.user_id", userId)
     .order("decided_at", { ascending: false });
+  if (rowsError) throw new Error(rowsError.message);
 
   const learnings = (rows ?? []).map((r) => {
     // 嵌套关系在 PostgREST 里可能是对象或单元素数组，做个兼容。
@@ -97,11 +99,12 @@ export default async function LearningsPage() {
   const insights = await computeInsights(killedIdeaIds);
 
   // 校准：跨所有想法，已对账的预测命中/没命中计数（不打分、不用百分比）。
-  const { data: resolvedPreds } = await supabaseAdmin
+  const { data: resolvedPreds, error: resolvedPredsError } = await supabaseAdmin
     .from("predictions")
     .select("outcome, ideas!inner(user_id)")
     .eq("ideas.user_id", userId)
     .in("outcome", ["hit", "miss"]);
+  if (resolvedPredsError) throw new Error(resolvedPredsError.message);
   const hits = (resolvedPreds ?? []).filter((p) => p.outcome === "hit").length;
   const misses = (resolvedPreds ?? []).filter((p) => p.outcome === "miss").length;
 

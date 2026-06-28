@@ -69,6 +69,7 @@ export function IdeaDetail({
   initialEstimates = [],
   initialReframings = [],
   conceptSummary = null,
+  conceptAvailable = false,
 }: {
   idea: Idea;
   hypothesis: Hypothesis;
@@ -78,6 +79,7 @@ export function IdeaDetail({
   initialBeliefs?: (BayesianBelief & { current_posterior: number })[];
   initialEstimates?: FermiEstimate[];
   initialReframings?: ReframingSession[];
+  conceptAvailable?: boolean;
   conceptSummary?: {
     id: string;
     version_no: number;
@@ -149,6 +151,7 @@ export function IdeaDetail({
         <h1 className="text-xl font-semibold">{idea.title?.trim() || "（无标题）"}</h1>
       </div>
 
+      {conceptAvailable && (
       <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-xl">
@@ -187,6 +190,7 @@ export function IdeaDetail({
           </Button>
         </div>
       </section>
+      )}
 
       {/* 假设句式 */}
       <section className="space-y-4">

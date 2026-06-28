@@ -22,6 +22,7 @@ export type ObservationCard = {
   raw_text: string;
   tags: string[];
   created_at: string;
+  promoted: boolean;
   /** null = 尚未生成；[] 极少见 */
   questions: string[] | null;
   inquiryLoading: boolean;
@@ -103,6 +104,7 @@ export function CaptureClient({
         raw_text: obs.raw_text,
         tags: obs.tags,
         created_at: obs.created_at,
+        promoted: false,
         questions: null,
         inquiryLoading: true,
       };
@@ -181,7 +183,7 @@ export function CaptureClient({
       {/* 今日已记录 */}
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground">
-          今天记录的（{cards.length}）
+          最近记录（{cards.length}）
         </h2>
         {cards.length === 0 && (
           <p className="text-sm text-muted-foreground">
@@ -198,7 +200,7 @@ export function CaptureClient({
 
 function ObservationItem({ card }: { card: ObservationCard }) {
   const [promoting, setPromoting] = useState(false);
-  const [promoted, setPromoted] = useState(false);
+  const [promoted, setPromoted] = useState(card.promoted);
   const [promoteError, setPromoteError] = useState(false);
 
   async function handlePromote() {

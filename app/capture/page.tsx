@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
 import { CaptureClient, type ObservationCard } from "./capture-client";
 import { RecurringSignals } from "./recurring-signals";
+import { isObservationPromoted, visibleTags } from "../ideas/types";
 
 export const dynamic = "force-dynamic";
 
@@ -26,27 +27,21 @@ export default async function CapturePage({
   // 中间件已保证已登录；此处 user 必然存在。
   const userId = user!.id;
 
-  // 今天（服务端本地零点起）记录的观察，倒序。
-  const now = new Date();
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()
-  ).toISOString();
-
-  const { data: observations } = await supabaseAdmin
+  // 最近的捕捉历史，倒序。不要用 Vercel 服务器时区定义“今天”。
+  const { data: observations, error: observationsError } = await supabaseAdmin
     .from("observations")
     .select("id, raw_text, tags, created_at")
     .eq("user_id", userId)
-    .gte("created_at", startOfToday)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (observationsError) throw new Error(observationsError.message);
 
   const obs = observations ?? [];
 
   // 拉取这些观察对应的 inquirer 追问。
   const questionsByObs = new Map<string, string[]>();
   if (obs.length > 0) {
-    const { data: sessions } = await supabaseAdmin
+    const { data: sessions, error: sessionsError } = await supabaseAdmin
       .from("ai_sessions")
       .select("observation_id, messages")
       .eq("role", "inquirer")
@@ -54,6 +49,7 @@ export default async function CapturePage({
         "observation_id",
         obs.map((o) => o.id)
       );
+    if (sessionsError) throw new Error(sessionsError.message);
 
     for (const s of sessions ?? []) {
       const messages = (s.messages as SessionMessage[]) ?? [];
@@ -70,8 +66,9 @@ export default async function CapturePage({
   const initial: ObservationCard[] = obs.map((o) => ({
     id: o.id,
     raw_text: o.raw_text,
-    tags: o.tags ?? [],
+    tags: visibleTags(o.tags ?? []),
     created_at: o.created_at,
+    promoted: isObservationPromoted(o.tags ?? []),
     questions: questionsByObs.get(o.id) ?? null,
     inquiryLoading: false,
   }));

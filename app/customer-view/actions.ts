@@ -534,10 +534,11 @@ export async function createCustomerProxyVersion(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-  await supabaseAdmin
+  const { error: touchError } = await supabaseAdmin
     .from("customer_cases")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", run.case_id);
+  if (touchError) throw new Error(touchError.message);
   revalidatePath(`/customer-view/${run.case_id}`);
   return data.id as string;
 }
@@ -775,7 +776,7 @@ export async function runCustomerTopicNow(topicId: string) {
   }
   try {
     const result = await searchCustomerMaterials(data.case_id as string);
-    await supabaseAdmin
+    const { error: topicUpdateError } = await supabaseAdmin
       .from("customer_research_topics")
       .update({
         last_run_at: new Date().toISOString(),
@@ -785,13 +786,17 @@ export async function runCustomerTopicNow(topicId: string) {
           : null,
       })
       .eq("id", topicId);
+    if (topicUpdateError) throw new Error(topicUpdateError.message);
     return result;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "运行失败";
-    await supabaseAdmin
+    const { error: errorUpdateError } = await supabaseAdmin
       .from("customer_research_topics")
       .update({ last_run_at: new Date().toISOString(), last_error: message })
       .eq("id", topicId);
+    if (errorUpdateError) {
+      console.error("保存顾客研究主题错误状态失败", errorUpdateError.message);
+    }
     throw caught;
   }
 }

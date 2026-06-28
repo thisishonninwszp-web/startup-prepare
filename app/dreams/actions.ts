@@ -224,13 +224,14 @@ async function persistDreamAnswer(
     .select("id, branch_id, role, content, created_at")
     .single();
   if (error) {
-    const { data: raced } = await supabaseAdmin
+    const { data: raced, error: racedError } = await supabaseAdmin
       .from("dream_branch_messages")
       .select("id, branch_id, role, content, created_at")
       .eq("branch_id", branchId)
       .eq("user_id", userId)
       .eq("idempotency_key", key)
       .maybeSingle();
+    if (racedError) throw new Error(racedError.message);
     if (raced) return raced as DreamBranchMessage;
     throw new Error(error.message);
   }

@@ -2,9 +2,13 @@
   "name": "ideaos",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "postcss": "$postcss"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "db:check": "node scripts/check-schema.mjs",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run"
@@ -30,7 +34,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
-    "postcss": "^8",
+    "postcss": "^8.5.16",
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
     "vitest": "^4.1.9"

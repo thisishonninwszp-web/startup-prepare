@@ -93,3 +93,12 @@ export function assertFermiComponentValues(low: number, high: number): void {
     throw new Error("低值不能大于高值");
   }
 }
+
+export function assertLinkedIdeaOwner(
+  linkedOwnerId: string | null,
+  userId: string
+): void {
+  if (linkedOwnerId !== null && linkedOwnerId !== userId) {
+    throw new Error("无权关联该想法");
+  }
+}

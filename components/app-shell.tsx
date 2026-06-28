@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside
         className={
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-card transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:translate-x-0 " +
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-card transition-transform duration-300 ease-out md:translate-x-0 " +
           (open ? "translate-x-0 shadow-2xl" : "-translate-x-full")
         }
       >

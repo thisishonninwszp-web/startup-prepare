@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { createClient } from "@/lib/supabase/server";
-import { getConceptWorkspaceDetail } from "@/app/concepts/queries";
+import {
+  getConceptSchemaStatus,
+  getConceptWorkspaceDetail,
+} from "@/app/concepts/queries";
 import { ConceptWorkspace } from "./concept-workspace";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +19,20 @@ export default async function ConceptPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) notFound();
+
+  const available = await getConceptSchemaStatus();
+  if (!available) {
+    return (
+      <AppShell>
+        <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+          <h1 className="text-lg font-semibold">价值设计图暂未启用</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            数据库迁移尚未完成。现有想法和其他工具不受影响。
+          </p>
+        </main>
+      </AppShell>
+    );
+  }
 
   const detail = await getConceptWorkspaceDetail(params.id, user.id);
   if (!detail) notFound();

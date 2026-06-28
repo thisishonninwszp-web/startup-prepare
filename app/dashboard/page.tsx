@@ -48,6 +48,10 @@ export default async function DashboardPage() {
         .eq("user_id", userId)
         .is("archived_at", null),
     ]);
+  if (beliefCountResult.error) throw new Error(beliefCountResult.error.message);
+  if (customerCountResult.error) {
+    throw new Error(customerCountResult.error.message);
+  }
   const beliefCount = beliefCountResult.count ?? 0;
   const customerCount = customerCountResult.count ?? 0;
   const dueRealityCases = realityCases.filter(
@@ -100,23 +104,25 @@ export default async function DashboardPage() {
     lastWeeklyRetro != null;
 
   // 正在"验证中"的想法，越久没动越靠前——强制出口的主动推动。
-  const { data: validating } = await supabaseAdmin
+  const { data: validating, error: validatingError } = await supabaseAdmin
     .from("ideas")
     .select("id, title, last_activity_at")
     .eq("user_id", userId)
     .eq("status", "验证中")
     .order("last_activity_at", { ascending: true });
+  if (validatingError) throw new Error(validatingError.message);
 
   const items = validating ?? [];
 
   // 到期的预测——该用现实对账了（校准回路）。
-  const { data: duePreds } = await supabaseAdmin
+  const { data: duePreds, error: duePredsError } = await supabaseAdmin
     .from("predictions")
     .select("id, text, due_at, idea_id, ideas!inner(title, user_id)")
     .eq("outcome", "pending")
     .lte("due_at", new Date().toISOString())
     .eq("ideas.user_id", userId)
     .order("due_at", { ascending: true });
+  if (duePredsError) throw new Error(duePredsError.message);
 
   const due = (duePreds ?? []).map((p) => ({
     id: p.id as string,
@@ -299,7 +305,7 @@ export default async function DashboardPage() {
             <Link
               key={e.href}
               href={e.href}
-              className="rounded-lg border bg-card p-4 transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md"
+              className="rounded-lg border bg-card p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md"
             >
               <div className="text-sm font-medium">{e.title}</div>
               <div className="mt-1 text-xs text-muted-foreground">{e.desc}</div>
@@ -345,7 +351,7 @@ function ContactRow({
     <li>
       <Link
         href={`/ideas/${id}`}
-        className="flex items-center gap-4 rounded-lg border bg-card p-4 transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md"
+        className="flex items-center gap-4 rounded-lg border bg-card p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md"
       >
         <span className="min-w-0 flex-1 truncate text-sm">
           {title?.trim() || "（无标题）"}

@@ -171,7 +171,7 @@ export function IdeasBoard({ initial }: { initial: Idea[] }) {
                       setDragOver(null);
                     }}
                     className={
-                      "group cursor-grab rounded-md border bg-card p-3 shadow-sm transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md active:cursor-grabbing " +
+                      "group cursor-grab rounded-md border bg-card p-3 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md active:cursor-grabbing " +
                       (draggingId === idea.id ? "opacity-50" : "")
                     }
                   >

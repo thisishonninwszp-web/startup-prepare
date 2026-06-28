@@ -20,6 +20,25 @@ export type Idea = {
   last_activity_at: string;
 };
 
+export const OBSERVATION_PROMOTED_TAG = "__ideaos_promoted__";
+const OBSERVATION_SOURCE_TAG_PREFIX = "__ideaos_observation__:";
+
+export function observationSourceTag(observationId: string): string {
+  return `${OBSERVATION_SOURCE_TAG_PREFIX}${observationId}`;
+}
+
+export function isObservationPromoted(tags: string[]): boolean {
+  return tags.includes(OBSERVATION_PROMOTED_TAG);
+}
+
+export function visibleTags(tags: string[]): string[] {
+  return tags.filter(
+    (tag) =>
+      tag !== OBSERVATION_PROMOTED_TAG &&
+      !tag.startsWith(OBSERVATION_SOURCE_TAG_PREFIX)
+  );
+}
+
 /**
  * 假设句式的填空字段（引导式可证伪假设）。
  * 句式：「[目标用户] 有 [具体痛点]，现在用 [替代方案] 解决，

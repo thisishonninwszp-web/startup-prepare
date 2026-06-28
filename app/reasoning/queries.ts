@@ -31,11 +31,12 @@ export async function listBayesianBeliefs(
 
   // For each belief, fetch the latest update to get current_posterior
   const beliefIds = beliefs.map((b) => b.id);
-  const { data: latestUpdates } = await supabaseAdmin
+  const { data: latestUpdates, error: latestUpdatesError } = await supabaseAdmin
     .from("bayesian_updates")
     .select("belief_id, posterior")
     .in("belief_id", beliefIds)
     .order("recorded_at", { ascending: false });
+  if (latestUpdatesError) throw new Error(latestUpdatesError.message);
 
   const latestMap = new Map<string, number>();
   for (const u of latestUpdates ?? []) {
@@ -125,15 +126,16 @@ export async function getBayesianBeliefsForIdea(
     .order("updated_at", { ascending: false });
   if (error) {
     console.error("读取想法关联信念失败", error.message);
-    return [];
+    throw new Error("读取数据失败，请重试");
   }
   const beliefs = data ?? [];
   if (beliefs.length === 0) return [];
-  const { data: latestUpdates } = await supabaseAdmin
+  const { data: latestUpdates, error: latestUpdatesError } = await supabaseAdmin
     .from("bayesian_updates")
     .select("belief_id, posterior")
     .in("belief_id", beliefs.map((b) => b.id))
     .order("recorded_at", { ascending: false });
+  if (latestUpdatesError) throw new Error(latestUpdatesError.message);
   const latestMap = new Map<string, number>();
   for (const u of latestUpdates ?? []) {
     if (!latestMap.has(u.belief_id)) latestMap.set(u.belief_id, u.posterior);
@@ -250,7 +252,7 @@ export async function getFermiEstimatesForIdea(
     .order("updated_at", { ascending: false });
   if (error) {
     console.error("读取想法关联费米估算失败", error.message);
-    return [];
+    throw new Error("读取数据失败，请重试");
   }
   return (data ?? []).map((e) => ({
     id: e.id,
@@ -346,7 +348,7 @@ export async function getReframingSessionsForIdea(
     .order("created_at", { ascending: false });
   if (error) {
     console.error("读取想法关联重构会话失败", error.message);
-    return [];
+    throw new Error("读取数据失败，请重试");
   }
   return (data ?? []).map((s) => ({
     id: s.id,
@@ -370,7 +372,7 @@ export async function getMarkedFramePatterns(
     .eq("is_marked", true);
   if (error) {
     console.error("读取重构标记模式失败", error.message);
-    return [];
+    throw new Error("读取数据失败，请重试");
   }
   const counts = new Map<string, number>();
   for (const row of data ?? []) {

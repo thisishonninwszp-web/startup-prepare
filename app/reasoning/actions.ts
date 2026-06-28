@@ -21,6 +21,7 @@ import {
   normalizeCreateFermiEstimate,
   normalizeCreateReframingSession,
   assertFermiComponentValues,
+  assertLinkedIdeaOwner,
 } from "./validation";
 
 async function requireUserId(): Promise<string> {
@@ -32,6 +33,21 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
+async function requireOwnedOptionalIdea(
+  ideaId: string | null,
+  userId: string
+): Promise<void> {
+  if (!ideaId) return;
+  const { data, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id")
+    .eq("id", ideaId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  assertLinkedIdeaOwner(data?.user_id ?? null, userId);
+  if (!data) throw new Error("无权关联该想法");
+}
+
 // ── Bayesian ──────────────────────────────────────────────────────────────────
 
 export async function createBayesianBelief(formData: FormData): Promise<{ id: string }> {
@@ -41,6 +57,7 @@ export async function createBayesianBelief(formData: FormData): Promise<{ id: st
     prior: formData.get("prior"),
     idea_id: formData.get("idea_id"),
   });
+  await requireOwnedOptionalIdea(input.idea_id, userId);
 
   const suggestion = await suggestBayesPrior(input.question);
   const prior = input.prior ?? suggestion.suggested_prior;
@@ -82,11 +99,12 @@ export async function recordBayesUpdate(
   }
 
   // Load previous updates to determine current prior
-  const { data: prevUpdates } = await supabaseAdmin
+  const { data: prevUpdates, error: prevUpdatesError } = await supabaseAdmin
     .from("bayesian_updates")
     .select("evidence_text, posterior")
     .eq("belief_id", beliefId)
     .order("recorded_at", { ascending: true });
+  if (prevUpdatesError) throw new Error(prevUpdatesError.message);
 
   const history = (prevUpdates ?? []).map((u) => ({
     evidence_text: u.evidence_text,
@@ -121,10 +139,11 @@ export async function recordBayesUpdate(
     throw new Error("记录失败，请重试");
   }
 
-  await supabaseAdmin
+  const { error: touchError } = await supabaseAdmin
     .from("bayesian_beliefs")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", beliefId);
+  if (touchError) throw new Error(touchError.message);
 
   revalidatePath(`/reasoning/bayesian/${beliefId}`);
   return {
@@ -157,6 +176,7 @@ export async function createFermiEstimate(formData: FormData): Promise<{ id: str
     category: formData.get("category"),
     idea_id: formData.get("idea_id"),
   });
+  await requireOwnedOptionalIdea(input.idea_id, userId);
 
   const decomposition = await decomposeFermiQuestion(input.question, input.category);
 
@@ -201,6 +221,14 @@ export async function createFermiEstimate(formData: FormData): Promise<{ id: str
     .insert(componentRows);
   if (compError) {
     console.error("创建费米组成部分失败", compError.message);
+    const { error: cleanupError } = await supabaseAdmin
+      .from("fermi_estimates")
+      .delete()
+      .eq("id", estimate.id)
+      .eq("user_id", userId);
+    if (cleanupError) {
+      console.error("清理不完整费米估算失败", cleanupError.message);
+    }
     throw new Error("创建失败，请重试");
   }
 
@@ -244,10 +272,11 @@ export async function updateFermiComponent(
   }
 
   // Recompute final range from all components
-  const { data: allComponents } = await supabaseAdmin
+  const { data: allComponents, error: allComponentsError } = await supabaseAdmin
     .from("fermi_components")
     .select("low, high")
     .eq("estimate_id", component.estimate_id);
+  if (allComponentsError) throw new Error(allComponentsError.message);
 
   let final_low = 1;
   let final_high = 1;
@@ -256,7 +285,7 @@ export async function updateFermiComponent(
     final_high *= c.high;
   }
 
-  await supabaseAdmin
+  const { error: estimateUpdateError } = await supabaseAdmin
     .from("fermi_estimates")
     .update({
       final_low,
@@ -264,6 +293,7 @@ export async function updateFermiComponent(
       updated_at: new Date().toISOString(),
     })
     .eq("id", component.estimate_id);
+  if (estimateUpdateError) throw new Error(estimateUpdateError.message);
 
   revalidatePath(`/reasoning/fermi/${component.estimate_id}`);
 }
@@ -295,10 +325,11 @@ export async function computeSensitivity(estimateId: string): Promise<void> {
       (c) => c.label === sensitivity.component_label
     );
     if (!component) continue;
-    await supabaseAdmin
+    const { error: sensitivityError } = await supabaseAdmin
       .from("fermi_components")
       .update({ sensitivity: sensitivity.final_change_description })
       .eq("id", component.id);
+    if (sensitivityError) throw new Error(sensitivityError.message);
   }
 
   revalidatePath(`/reasoning/fermi/${estimateId}`);
@@ -327,6 +358,7 @@ export async function createReframingSession(formData: FormData): Promise<{ id: 
     context_note: formData.get("context_note"),
     idea_id: formData.get("idea_id"),
   });
+  await requireOwnedOptionalIdea(input.idea_id, userId);
 
   const output = await generateReframes(
     input.topic_text,
@@ -360,6 +392,14 @@ export async function createReframingSession(formData: FormData): Promise<{ id: 
     .insert(frameRows);
   if (framesError) {
     console.error("插入重构视角失败", framesError.message);
+    const { error: cleanupError } = await supabaseAdmin
+      .from("reframing_sessions")
+      .delete()
+      .eq("id", session.id)
+      .eq("user_id", userId);
+    if (cleanupError) {
+      console.error("清理不完整重构会话失败", cleanupError.message);
+    }
     throw new Error("创建失败，请重试");
   }
 

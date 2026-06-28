@@ -158,8 +158,10 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
 
 export function ReframingWorkspace({
   session,
+  centralQuestionAvailable,
 }: {
   session: ReframingSessionWithFrames;
+  centralQuestionAvailable: boolean;
 }) {
   const router = useRouter();
   const [questions, setQuestions] = useState<CentralQuestionCandidate[]>(
@@ -207,6 +209,7 @@ export function ReframingWorkspace({
         ))}
       </div>
 
+      {centralQuestionAvailable && (
       <section className="mt-10 rounded-xl border bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -329,6 +332,7 @@ export function ReframingWorkspace({
           <p className="mt-3 text-sm text-destructive">{questionError}</p>
         )}
       </section>
+      )}
     </div>
   );
 }

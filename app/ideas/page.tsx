@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
 import { IdeasBoard } from "./ideas-board";
-import type { Idea } from "./types";
+import { visibleTags, type Idea } from "./types";
 
 export const dynamic = "force-dynamic";
 
@@ -14,15 +14,16 @@ export default async function IdeasPage() {
   } = await supabase.auth.getUser();
   const userId = user!.id;
 
-  const { data: ideas } = await supabaseAdmin
+  const { data: ideas, error } = await supabaseAdmin
     .from("ideas")
     .select("id, title, status, tags, created_at, last_activity_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
 
   const initial = (ideas ?? []).map((i) => ({
     ...i,
-    tags: i.tags ?? [],
+    tags: visibleTags(i.tags ?? []),
   })) as Idea[];
 
   return (
