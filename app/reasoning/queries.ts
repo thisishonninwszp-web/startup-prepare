@@ -366,3 +366,27 @@ export async function getReframingSessionsForIdea(
     created_at: s.created_at,
   }));
 }
+
+// ── Cross-tool insights ───────────────────────────────────────────────────────
+
+export async function getMarkedFramePatterns(
+  sessionIds: string[]
+): Promise<{ frame_type: string; count: number }[]> {
+  if (sessionIds.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from("reframing_frames")
+    .select("frame_type")
+    .in("session_id", sessionIds)
+    .eq("is_marked", true);
+  if (error) {
+    console.error("读取重构标记模式失败", error.message);
+    return [];
+  }
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    counts.set(row.frame_type, (counts.get(row.frame_type) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([frame_type, count]) => ({ frame_type, count }))
+    .sort((a, b) => b.count - a.count);
+}

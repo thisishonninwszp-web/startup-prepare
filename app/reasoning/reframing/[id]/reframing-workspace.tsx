@@ -94,7 +94,7 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
 
   return (
     <div
-      className={`rounded-lg border p-4 flex flex-col gap-3 transition-opacity ${
+      className={`rounded-lg border p-3 sm:p-4 flex flex-col gap-3 transition-opacity ${
         marked ? "ring-2 ring-foreground/20" : ""
       }`}
     >
@@ -131,7 +131,7 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
           )}
         </button>
       </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">
+      <p className="text-xs leading-relaxed text-muted-foreground break-words">
         {frame.description}
       </p>
       <div className="flex items-center gap-2 pt-1 border-t border-border/50">

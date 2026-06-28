@@ -5,6 +5,7 @@ import {
   listBayesianBeliefs,
   listFermiEstimates,
   listReframingSessions,
+  getMarkedFramePatterns,
 } from "./queries";
 
 function pct(n: number): string {
@@ -19,6 +20,26 @@ function formatNum(n: number | null): string {
   return n.toFixed(0);
 }
 
+const FRAME_LABELS: Record<string, string> = {
+  time_compress: "时间压缩", time_expand: "时间拉长",
+  time_origin: "追溯起点", time_retrospect: "未来回望",
+  space_zoom_in: "放大局部", space_zoom_out: "缩小至系统",
+  person_opponent: "换位对手", person_beginner: "初学者视角", person_expert: "领域专家",
+  meaning_intent: "积极意图", meaning_rebuild: "意义重建", meaning_criteria: "标准切换",
+  assumption_flip: "反向假设", redefine_problem: "重新定义问题", second_order: "第二序改变",
+  resource_reframe: "资源重估", consequence_extend: "后果延伸", ecology_check: "生态影响",
+  emotion_separate: "情绪与事实分离", apply_to_friend: "智慧朋友框架",
+  stoic_control: "斯多葛控制二分", narrative_reframe: "叙事版本重写",
+  pattern_recognition: "反复模式识别", minimum_viable_move: "最小行动一步",
+  leverage_point: "系统杠杆点", gift_frame: "困境赠礼",
+};
+
+type Insight = {
+  kind: "low" | "high" | "blindspot";
+  text: string;
+  href: string;
+};
+
 export default async function ReasoningPage() {
   const supabase = createClient();
   const {
@@ -32,6 +53,48 @@ export default async function ReasoningPage() {
     listReframingSessions(user.id),
   ]);
 
+  const sessionIds = sessions.map((s) => s.id);
+  const markedFramePatterns = await getMarkedFramePatterns(sessionIds);
+
+  // Compute cross-tool insights (max 3, priority: low confidence > high confidence > blind spot)
+  const insights: Insight[] = [];
+
+  for (const b of beliefs.filter((b) => b.current_posterior < 0.2)) {
+    if (insights.length >= 3) break;
+    const q = b.question.length > 28 ? b.question.slice(0, 28) + "…" : b.question;
+    insights.push({
+      kind: "low",
+      text: `「${q}」的信念已跌至 ${pct(b.current_posterior)}，这个假设可能需要重新评估`,
+      href: `/reasoning/bayesian/${b.id}`,
+    });
+  }
+
+  for (const b of beliefs.filter((b) => b.current_posterior > 0.8)) {
+    if (insights.length >= 3) break;
+    const q = b.question.length > 28 ? b.question.slice(0, 28) + "…" : b.question;
+    insights.push({
+      kind: "high",
+      text: `「${q}」的信念已达 ${pct(b.current_posterior)}，可以做决策了吗？`,
+      href: `/reasoning/bayesian/${b.id}`,
+    });
+  }
+
+  for (const p of markedFramePatterns.filter((p) => p.count >= 3)) {
+    if (insights.length >= 3) break;
+    const label = FRAME_LABELS[p.frame_type] ?? p.frame_type;
+    insights.push({
+      kind: "blindspot",
+      text: `你已 ${p.count} 次标记「${label}」视角——这可能是你的认知盲区`,
+      href: `/reasoning/reframing/new`,
+    });
+  }
+
+  const insightColors = {
+    low: "border-l-red-500 bg-red-50 dark:bg-red-950/20",
+    high: "border-l-green-500 bg-green-50 dark:bg-green-950/20",
+    blindspot: "border-l-blue-500 bg-blue-50 dark:bg-blue-950/20",
+  };
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <div className="mb-8">
@@ -40,6 +103,22 @@ export default async function ReasoningPage() {
           三个对抗直觉错误的思维工具。
         </p>
       </div>
+
+      {insights.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">洞见</p>
+          {insights.map((insight, i) => (
+            <Link
+              key={i}
+              href={insight.href}
+              className={`flex items-center justify-between gap-3 rounded-md border-l-2 px-3 py-2.5 text-xs hover:opacity-80 ${insightColors[insight.kind]}`}
+            >
+              <span className="leading-relaxed">{insight.text}</span>
+              <span className="shrink-0 text-muted-foreground">查看 →</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
         <div className="rounded-md bg-muted/50 px-3 py-2.5">

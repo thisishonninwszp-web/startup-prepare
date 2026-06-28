@@ -44,11 +44,13 @@ function UpdateRow({ update }: { update: BayesianUpdate }) {
       </div>
       {open && (
         <div className="border-t bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground space-y-2">
-          <div className="font-mono text-[11px] text-foreground/60">
-            P(E|H) = {update.likelihood_if_true} · P(E|¬H) = {update.likelihood_if_false} · 似然比 = {lr.toFixed(2)}
-          </div>
-          <div className="font-mono text-[11px] text-foreground/60">
-            后验 = ({update.likelihood_if_true} × {pct(update.prior_at_time)}) ÷ ({update.likelihood_if_true} × {pct(update.prior_at_time)} + {update.likelihood_if_false} × {pct(1 - update.prior_at_time)}) = {pct(update.posterior)}
+          <div className="overflow-x-auto">
+            <div className="font-mono text-[11px] text-foreground/60 whitespace-nowrap">
+              P(E|H) = {update.likelihood_if_true} · P(E|¬H) = {update.likelihood_if_false} · 似然比 = {lr.toFixed(2)}
+            </div>
+            <div className="font-mono text-[11px] text-foreground/60 whitespace-nowrap">
+              后验 = ({update.likelihood_if_true} × {pct(update.prior_at_time)}) ÷ ({update.likelihood_if_true} × {pct(update.prior_at_time)} + {update.likelihood_if_false} × {pct(1 - update.prior_at_time)}) = {pct(update.posterior)}
+            </div>
           </div>
           <p className="whitespace-pre-wrap">{update.ai_explanation}</p>
         </div>
