@@ -37,6 +37,11 @@ import {
   sendRoleMessage,
   updateHypothesis,
 } from "../actions";
+import type {
+  BayesianBelief,
+  FermiEstimate,
+  ReframingSession,
+} from "@/app/reasoning/types";
 
 const STATUS_COLOR: Record<IdeaStatus, string> = {
   观察: "text-muted-foreground",
@@ -60,12 +65,18 @@ export function IdeaDetail({
   initialChats,
   initialValidations,
   initialPredictions,
+  initialBeliefs = [],
+  initialEstimates = [],
+  initialReframings = [],
 }: {
   idea: Idea;
   hypothesis: Hypothesis;
   initialChats: Record<AiRole, ChatTurn[]>;
   initialValidations: Validation[];
   initialPredictions: Prediction[];
+  initialBeliefs?: (BayesianBelief & { current_posterior: number })[];
+  initialEstimates?: FermiEstimate[];
+  initialReframings?: ReframingSession[];
 }) {
   const [fields, setFields] = useState<Fields>(initFields(hypothesis));
   const [riskiest, setRiskiest] = useState(hypothesis.riskiest_assumption ?? "");
@@ -259,6 +270,19 @@ export function IdeaDetail({
         ideaId={idea.id}
         initial={initialValidations}
         onAdded={() => setLastActivityAt(new Date().toISOString())}
+        hasAnyReasoningTools={
+          initialBeliefs.length > 0 ||
+          initialEstimates.length > 0 ||
+          initialReframings.length > 0
+        }
+      />
+
+      {/* 推理工具 */}
+      <ReasoningSection
+        ideaId={idea.id}
+        beliefs={initialBeliefs}
+        estimates={initialEstimates}
+        reframings={initialReframings}
       />
 
       {/* AI 多角色质疑 */}
@@ -462,10 +486,12 @@ function ValidationSection({
   ideaId,
   initial,
   onAdded,
+  hasAnyReasoningTools,
 }: {
   ideaId: string;
   initial: Validation[];
   onAdded: () => void;
+  hasAnyReasoningTools: boolean;
 }) {
   const [list, setList] = useState<Validation[]>(initial);
   const [open, setOpen] = useState(false);
@@ -558,6 +584,18 @@ function ValidationSection({
         </div>
       )}
 
+      {list.length >= 2 && !hasAnyReasoningTools && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <span>已有 {list.length} 条验证——考虑追踪你对关键假设的信念演变？</span>
+          <Link
+            href={`/reasoning/bayesian/new?idea_id=${ideaId}`}
+            className="shrink-0 rounded border px-2 py-1 text-[11px] hover:bg-muted hover:text-foreground"
+          >
+            建立信念追踪
+          </Link>
+        </div>
+      )}
+
       {list.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           还没有验证记录。去和一个真实的人聊聊。
@@ -589,6 +627,179 @@ function ValidationSection({
             </li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+function ReasoningSection({
+  ideaId,
+  beliefs,
+  estimates,
+  reframings,
+}: {
+  ideaId: string;
+  beliefs: (BayesianBelief & { current_posterior: number })[];
+  estimates: FermiEstimate[];
+  reframings: ReframingSession[];
+}) {
+  const hasAny = beliefs.length > 0 || estimates.length > 0 || reframings.length > 0;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium">推理工具</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            追踪信念 · 估算数字 · 换视角看问题
+          </p>
+        </div>
+      </div>
+
+      {!hasAny ? (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {[
+            {
+              label: "贝叶斯",
+              desc: "你对关键假设有多相信？收集验证时用它追踪信念变化",
+              href: `/reasoning/bayesian/new?idea_id=${ideaId}`,
+              cta: "建立信念追踪",
+            },
+            {
+              label: "费米估算",
+              desc: "需要估算市场规模或关键数字？拆解比直觉猜测可靠",
+              href: `/reasoning/fermi/new?idea_id=${ideaId}`,
+              cta: "开始估算",
+            },
+            {
+              label: "认知重构",
+              desc: "对这个想法卡住了？18 种视角帮你打破思维定势",
+              href: `/reasoning/reframing/new?idea_id=${ideaId}`,
+              cta: "换个视角看",
+            },
+          ].map((tool) => (
+            <Link
+              key={tool.label}
+              href={tool.href}
+              className="group rounded-md border border-dashed px-3 py-2.5 hover:border-foreground/40 hover:bg-muted/30"
+            >
+              <p className="text-xs font-medium group-hover:underline">{tool.label}</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                {tool.desc}
+              </p>
+              <p className="mt-1.5 text-[11px] font-medium text-foreground/60">
+                {tool.cta} →
+              </p>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {beliefs.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">贝叶斯信念</p>
+              <ul className="space-y-1">
+                {beliefs.map((b) => (
+                  <li key={b.id}>
+                    <Link
+                      href={`/reasoning/bayesian/${b.id}`}
+                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                    >
+                      <span className="line-clamp-1">{b.question}</span>
+                      <span className="shrink-0 font-medium text-muted-foreground">
+                        {(b.current_posterior * 100).toFixed(1)}%
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={`/reasoning/bayesian/new?idea_id=${ideaId}`}
+                className="mt-1 inline-block text-[11px] text-muted-foreground hover:underline"
+              >
+                + 新建信念追踪
+              </Link>
+            </div>
+          )}
+
+          {estimates.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">费米估算</p>
+              <ul className="space-y-1">
+                {estimates.map((e) => (
+                  <li key={e.id}>
+                    <Link
+                      href={`/reasoning/fermi/${e.id}`}
+                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                    >
+                      <span className="line-clamp-1">{e.question}</span>
+                      {e.final_low != null && (
+                        <span className="shrink-0 text-muted-foreground">
+                          {e.unit}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={`/reasoning/fermi/new?idea_id=${ideaId}`}
+                className="mt-1 inline-block text-[11px] text-muted-foreground hover:underline"
+              >
+                + 新建费米估算
+              </Link>
+            </div>
+          )}
+
+          {reframings.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">认知重构</p>
+              <ul className="space-y-1">
+                {reframings.map((s) => (
+                  <li key={s.id}>
+                    <Link
+                      href={`/reasoning/reframing/${s.id}`}
+                      className="block rounded-md px-2 py-1.5 text-xs line-clamp-1 hover:bg-muted"
+                    >
+                      {s.topic_text}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href={`/reasoning/reframing/new?idea_id=${ideaId}`}
+                className="mt-1 inline-block text-[11px] text-muted-foreground hover:underline"
+              >
+                + 新建重构会话
+              </Link>
+            </div>
+          )}
+
+          {beliefs.length === 0 && (
+            <Link
+              href={`/reasoning/bayesian/new?idea_id=${ideaId}`}
+              className="inline-block text-[11px] text-muted-foreground hover:underline"
+            >
+              + 新建信念追踪
+            </Link>
+          )}
+          {estimates.length === 0 && (
+            <Link
+              href={`/reasoning/fermi/new?idea_id=${ideaId}`}
+              className="inline-block ml-3 text-[11px] text-muted-foreground hover:underline"
+            >
+              + 费米估算
+            </Link>
+          )}
+          {reframings.length === 0 && (
+            <Link
+              href={`/reasoning/reframing/new?idea_id=${ideaId}`}
+              className="inline-block ml-3 text-[11px] text-muted-foreground hover:underline"
+            >
+              + 认知重构
+            </Link>
+          )}
+        </div>
       )}
     </section>
   );

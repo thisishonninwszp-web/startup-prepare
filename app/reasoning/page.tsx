@@ -41,6 +41,27 @@ export default async function ReasoningPage() {
         </p>
       </div>
 
+      <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
+        <div className="rounded-md bg-muted/50 px-3 py-2.5">
+          <p className="font-medium mb-0.5">贝叶斯——何时用？</p>
+          <p className="text-muted-foreground leading-relaxed">
+            当你有一个关键假设（比如 X% 的用户有这个痛），并且开始收集验证证据时。用它强制声明看到证据前你有多相信，防止事后诸葛亮和确认偏误。
+          </p>
+        </div>
+        <div className="rounded-md bg-muted/50 px-3 py-2.5">
+          <p className="font-medium mb-0.5">费米——何时用？</p>
+          <p className="text-muted-foreground leading-relaxed">
+            当你需要估算一个大数字——市场规模、开发周期、成本——但没有现成数据时。把问题拆成几个小问题相乘，比直接猜总数可靠得多。
+          </p>
+        </div>
+        <div className="rounded-md bg-muted/50 px-3 py-2.5">
+          <p className="font-medium mb-0.5">重构——何时用？</p>
+          <p className="text-muted-foreground leading-relaxed">
+            当你对某个课题一时不知道怎么办，或者感觉陷入了同一个思路绕不出去时。18 种视角强制你从不同角度看同一件事。
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {/* Bayesian */}
         <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">

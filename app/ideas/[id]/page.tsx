@@ -12,6 +12,11 @@ import {
   type Prediction,
   type Validation,
 } from "../types";
+import {
+  getBayesianBeliefsForIdea,
+  getFermiEstimatesForIdea,
+  getReframingSessionsForIdea,
+} from "@/app/reasoning/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +71,14 @@ export default async function IdeaDetailPage({
     .eq("idea_id", params.id)
     .order("made_at", { ascending: false });
 
+  // 关联推理工具
+  const [reasoningBeliefs, reasoningEstimates, reasoningSessions] =
+    await Promise.all([
+      getBayesianBeliefsForIdea(params.id, userId),
+      getFermiEstimatesForIdea(params.id, userId),
+      getReframingSessionsForIdea(params.id, userId),
+    ]);
+
   const ideaCore: Idea = {
     id: idea.id,
     title: idea.title,
@@ -84,6 +97,9 @@ export default async function IdeaDetailPage({
           initialChats={initialChats}
           initialValidations={(validations ?? []) as Validation[]}
           initialPredictions={(predictions ?? []) as Prediction[]}
+          initialBeliefs={reasoningBeliefs}
+          initialEstimates={reasoningEstimates}
+          initialReframings={reasoningSessions}
         />
       </main>
     </AppShell>
