@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Archive,
+  Brain,
   CloudMoon,
   Home,
   Inbox,
@@ -31,6 +32,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/customer-view": Users,
   "/retrospectives": RotateCcw,
   "/dreams": CloudMoon,
+  "/reasoning": Brain,
 };
 
 export function AppShell({ children }: { children: ReactNode }) {

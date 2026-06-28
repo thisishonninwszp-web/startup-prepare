@@ -27,6 +27,7 @@ export const NAV_GROUPS: AppNavGroup[] = [
       { href: "/customer-view", label: "顾客视点", shortLabel: "顾客" },
       { href: "/retrospectives", label: "复盘系统", shortLabel: "复盘" },
       { href: "/dreams", label: "梦想系统", shortLabel: "梦想" },
+      { href: "/reasoning", label: "推理工具", shortLabel: "推理" },
     ],
   },
 ];
