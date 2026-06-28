@@ -1,3 +1,5 @@
+import type { CentralQuestionCandidate } from "@/app/concepts/types";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -287,6 +289,9 @@ export type ReframingSession = {
   topic_text: string;
   context_note: string;
   idea_id: string | null;
+  central_question_candidates?: CentralQuestionCandidate[] | null;
+  selected_question_type?: string | null;
+  selected_question?: string | null;
   created_at: string;
 };
 

@@ -17,6 +17,7 @@ import {
   getFermiEstimatesForIdea,
   getReframingSessionsForIdea,
 } from "@/app/reasoning/queries";
+import { getIdeaConceptSummary } from "@/app/concepts/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -72,11 +73,17 @@ export default async function IdeaDetailPage({
     .order("made_at", { ascending: false });
 
   // 关联推理工具
-  const [reasoningBeliefs, reasoningEstimates, reasoningSessions] =
+  const [
+    reasoningBeliefs,
+    reasoningEstimates,
+    reasoningSessions,
+    conceptSummary,
+  ] =
     await Promise.all([
       getBayesianBeliefsForIdea(params.id, userId),
       getFermiEstimatesForIdea(params.id, userId),
       getReframingSessionsForIdea(params.id, userId),
+      getIdeaConceptSummary(params.id, userId),
     ]);
 
   const ideaCore: Idea = {
@@ -100,6 +107,7 @@ export default async function IdeaDetailPage({
           initialBeliefs={reasoningBeliefs}
           initialEstimates={reasoningEstimates}
           initialReframings={reasoningSessions}
+          conceptSummary={conceptSummary}
         />
       </main>
     </AppShell>

@@ -273,7 +273,7 @@ export async function listReframingSessions(
 ): Promise<ReframingSession[]> {
   const { data, error } = await supabaseAdmin
     .from("reframing_sessions")
-    .select("id, topic_text, context_note, idea_id, created_at")
+    .select("id, topic_text, context_note, idea_id, central_question_candidates, selected_question_type, selected_question, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) {
@@ -285,6 +285,9 @@ export async function listReframingSessions(
     topic_text: s.topic_text,
     context_note: s.context_note,
     idea_id: s.idea_id ?? null,
+    central_question_candidates: s.central_question_candidates?.candidates ?? null,
+    selected_question_type: s.selected_question_type ?? null,
+    selected_question: s.selected_question ?? null,
     created_at: s.created_at,
   }));
 }
@@ -295,7 +298,7 @@ export async function getReframingSession(
 ): Promise<ReframingSessionWithFrames | null> {
   const { data: session, error } = await supabaseAdmin
     .from("reframing_sessions")
-    .select("id, topic_text, context_note, idea_id, created_at, user_id")
+    .select("id, topic_text, context_note, idea_id, central_question_candidates, selected_question_type, selected_question, created_at, user_id")
     .eq("id", sessionId)
     .maybeSingle();
   if (error) {
@@ -329,6 +332,10 @@ export async function getReframingSession(
     topic_text: session.topic_text,
     context_note: session.context_note,
     idea_id: session.idea_id ?? null,
+    central_question_candidates:
+      session.central_question_candidates?.candidates ?? null,
+    selected_question_type: session.selected_question_type ?? null,
+    selected_question: session.selected_question ?? null,
     created_at: session.created_at,
     frames,
   };
@@ -340,7 +347,7 @@ export async function getReframingSessionsForIdea(
 ): Promise<ReframingSession[]> {
   const { data, error } = await supabaseAdmin
     .from("reframing_sessions")
-    .select("id, topic_text, context_note, idea_id, created_at")
+    .select("id, topic_text, context_note, idea_id, central_question_candidates, selected_question_type, selected_question, created_at")
     .eq("user_id", userId)
     .eq("idea_id", ideaId)
     .order("created_at", { ascending: false });
@@ -353,6 +360,33 @@ export async function getReframingSessionsForIdea(
     topic_text: s.topic_text,
     context_note: s.context_note,
     idea_id: s.idea_id ?? null,
+    central_question_candidates: s.central_question_candidates?.candidates ?? null,
+    selected_question_type: s.selected_question_type ?? null,
+    selected_question: s.selected_question ?? null,
     created_at: s.created_at,
   }));
+}
+
+// ── Cross-tool insights ───────────────────────────────────────────────────────
+
+export async function getMarkedFramePatterns(
+  sessionIds: string[]
+): Promise<{ frame_type: string; count: number }[]> {
+  if (sessionIds.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from("reframing_frames")
+    .select("frame_type")
+    .in("session_id", sessionIds)
+    .eq("is_marked", true);
+  if (error) {
+    console.error("读取重构标记模式失败", error.message);
+    return [];
+  }
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    counts.set(row.frame_type, (counts.get(row.frame_type) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([frame_type, count]) => ({ frame_type, count }))
+    .sort((a, b) => b.count - a.count);
 }

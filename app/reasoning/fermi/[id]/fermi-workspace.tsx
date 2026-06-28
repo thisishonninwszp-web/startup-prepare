@@ -41,8 +41,8 @@ function ComponentRow({
 
   return (
     <div className="rounded-md border bg-card p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0 sm:flex-1">
           <p className="text-sm font-medium">{component.label}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {component.rationale}
