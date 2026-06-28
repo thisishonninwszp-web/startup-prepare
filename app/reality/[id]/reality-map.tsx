@@ -5,8 +5,10 @@ import {
   CircleHelp,
   Gauge,
   HeartPulse,
+  Lightbulb,
   LockKeyhole,
 } from "lucide-react";
+import Link from "next/link";
 import type { RealityDelta, RealityMap, RealityPath } from "../types";
 
 const PATH_LABEL = {
@@ -160,6 +162,84 @@ export function RealityMapView({
           </div>
         )}
       </MapSection>
+
+      {selectedPath && (
+        <MapSection icon={Lightbulb} number="09" title="继续深化">
+          <ReasoningBridge pathType={selectedPath.type} />
+        </MapSection>
+      )}
+    </div>
+  );
+}
+
+const REASONING_BRIDGE: Record<
+  "investigate" | "act" | "wait",
+  { tool: string; href: string; reason: string; cta: string }
+> = {
+  investigate: {
+    tool: "贝叶斯信念追踪",
+    href: "/reasoning/bayesian/new",
+    reason: "调查前先写下你相信什么，调查后更新——防止你只记住支持自己的证据。",
+    cta: "建立信念追踪",
+  },
+  act: {
+    tool: "费米估算",
+    href: "/reasoning/fermi/new",
+    reason: "行动前估算关键数字（成本/时间/规模），把大问题拆解为可乘的组成部分，防止直觉失准。",
+    cta: "开始估算",
+  },
+  wait: {
+    tool: "认知重构",
+    href: "/reasoning/reframing/new",
+    reason: "等待期间用 26 种视角重新审视这个课题，也许有你没想到的角度能改变决策。",
+    cta: "换个视角看",
+  },
+};
+
+const REFRAMING_SECONDARY = {
+  tool: "认知重构",
+  href: "/reasoning/reframing/new",
+  reason: "对任何路径都适用——26 种维度打破思维定势，看清还没想到的可能性。",
+  cta: "换个视角看",
+};
+
+const BAYESIAN_SECONDARY = {
+  tool: "贝叶斯信念追踪",
+  href: "/reasoning/bayesian/new",
+  reason: "等待期间也可以先声明你现在相信什么，之后有了新信息再更新——防止事后诸葛亮。",
+  cta: "建立信念追踪",
+};
+
+function ReasoningBridge({
+  pathType,
+}: {
+  pathType: "investigate" | "act" | "wait";
+}) {
+  const primary = REASONING_BRIDGE[pathType];
+  // "wait" 的 primary 已经是重构，避免重复；改用 Bayesian 作为次要推荐
+  const secondary =
+    pathType === "wait" ? BAYESIAN_SECONDARY : REFRAMING_SECONDARY;
+
+  const cards = [primary, secondary];
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {cards.map((card) => (
+        <Link
+          key={card.href}
+          href={card.href}
+          className="group flex flex-col gap-2 rounded-lg border bg-card p-4 hover:border-foreground/40 hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">{card.tool}</span>
+            <span className="text-[10px] text-muted-foreground group-hover:text-foreground">
+              {card.cta} →
+            </span>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {card.reason}
+          </p>
+        </Link>
+      ))}
     </div>
   );
 }

@@ -14,6 +14,9 @@ const GROUP_COLORS: Record<string, string> = {
   "意义维度": "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300",
   "假设维度": "bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/30 dark:border-rose-800 dark:text-rose-300",
   "系统维度": "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300",
+  "情绪与自我": "bg-pink-50 border-pink-200 text-pink-700 dark:bg-pink-950/30 dark:border-pink-800 dark:text-pink-300",
+  "叙事与模式": "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/30 dark:border-indigo-800 dark:text-indigo-300",
+  "行动与系统": "bg-teal-50 border-teal-200 text-teal-700 dark:bg-teal-950/30 dark:border-teal-800 dark:text-teal-300",
 };
 
 const FRAME_TYPE_LABELS: Record<string, string> = {
@@ -35,6 +38,14 @@ const FRAME_TYPE_LABELS: Record<string, string> = {
   resource_reframe: "资源重估",
   consequence_extend: "后果延伸",
   ecology_check: "生态影响",
+  emotion_separate: "情绪与事实分离",
+  apply_to_friend: "智慧朋友框架",
+  stoic_control: "斯多葛控制二分",
+  narrative_reframe: "叙事版本重写",
+  pattern_recognition: "反复模式识别",
+  minimum_viable_move: "最小行动一步",
+  leverage_point: "系统杠杆点",
+  gift_frame: "困境赠礼",
 };
 
 function FrameCard({ frame }: { frame: ReframingFrame }) {

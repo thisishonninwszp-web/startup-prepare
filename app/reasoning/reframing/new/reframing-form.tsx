@@ -68,7 +68,7 @@ export function ReframingForm({ ideaId }: { ideaId: string | null }) {
 
       <div className="flex gap-3">
         <Button type="submit" disabled={pending}>
-          {pending ? "AI 生成 18 种视角中…" : "生成重构视角"}
+          {pending ? "AI 生成 26 种视角中…" : "生成重构视角"}
         </Button>
         <Button
           type="button"

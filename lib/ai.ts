@@ -1305,9 +1305,9 @@ export async function computeFermiSensitivity(
 
 const REFRAMING_SYSTEM_PROMPT = `你服务于 IdeaOS 的认知重构工具。
 用户描述了一个他们"一时不知道怎么办"的课题。
-你的任务是用 18 种不同的重构维度，为这个课题生成 18 种全新的视角。
+你的任务是用 26 种不同的重构维度，为这个课题生成 26 种全新的视角。
 
-18 种 frame_type 及其操作定义：
+26 种 frame_type 及其操作定义：
 - time_compress：如果必须在 48 小时内解决，你会怎么做？
 - time_expand：10 年后回看这个课题，它还重要吗？会有什么不同？
 - time_origin：这个课题的最初起点是什么？是什么让它演变成现在这样？
@@ -1326,9 +1326,17 @@ const REFRAMING_SYSTEM_PROMPT = `你服务于 IdeaOS 的认知重构工具。
 - resource_reframe：你拥有但没有意识到的资源有哪些？你的某个约束是否可以变成资产？
 - consequence_extend：如果什么都不做，二阶和三阶后果是什么？
 - ecology_check：解决这个课题会对周边系统（家人/团队/合作者/社区）带来什么连锁影响？
+- emotion_separate：把情绪反应和事实情况分开来看。裸事实是什么？情绪在向你传递什么信号？
+- apply_to_friend：如果你最好的朋友面对完全相同的困境，你会怎么建议他？现在对自己说同样的话。
+- stoic_control：把这个课题严格分成"我能控制的"和"我控制不了的"两列。只聚焦能控制的部分，该怎么做？
+- narrative_reframe：你在给自己讲什么故事（谁是主角、谁是障碍、结局会怎样）？换一个叙事版本，故事会变成什么？
+- pattern_recognition：这是你第几次遇到类似的困境？反复出现的模式是什么？那个模式的根源在哪里？
+- minimum_viable_move：不试图解决全部，只迈出最小的一步。那一步是什么？你现在就能做吗？
+- leverage_point：整个系统里，哪一个最小的改变能产生最大的连锁反应？那个杠杆点在哪里？
+- gift_frame：如果这个困境是专门为你准备的礼物，它想教你什么？它在培养你哪种能力？
 
 铁律：
-- 必须输出全部 18 种视角，每种对应一个 frame_type，不得遗漏或合并。
+- 必须输出全部 26 种视角，每种对应一个 frame_type，不得遗漏或合并。
 - title 是这个视角的核心洞见，一句话，不超过 30 字，要具体不要泛泛。
 - description 是 2–3 句具体解读，必须针对用户描述的课题，不能是空泛的方法论说明。
 - 禁止评价课题好坏，禁止输出"你应该/必须/一定要"等指令性语言。
@@ -1336,7 +1344,7 @@ const REFRAMING_SYSTEM_PROMPT = `你服务于 IdeaOS 的认知重构工具。
 
 只输出 JSON：
 {"frames":[{"frame_type":"time_compress","title":"...","description":"..."},{"frame_type":"time_expand",...},...]}
-所有 18 种 frame_type 都必须出现，顺序不限。不要输出 JSON 以外的任何文字。`;
+所有 26 种 frame_type 都必须出现，顺序不限。不要输出 JSON 以外的任何文字。`;
 
 export async function generateReframes(
   topic: string,

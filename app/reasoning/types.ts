@@ -243,6 +243,15 @@ export const FRAME_TYPES = [
   "resource_reframe",
   "consequence_extend",
   "ecology_check",
+  // 新增 8 种（第二批）
+  "emotion_separate",
+  "apply_to_friend",
+  "stoic_control",
+  "narrative_reframe",
+  "pattern_recognition",
+  "minimum_viable_move",
+  "leverage_point",
+  "gift_frame",
 ] as const;
 
 export type FrameType = (typeof FRAME_TYPES)[number];
@@ -258,6 +267,14 @@ export const FRAME_GROUP_LABELS: Record<string, string> = {
   consequence: "系统维度",
   ecology: "系统维度",
   redefine: "假设维度",
+  emotion: "情绪与自我",
+  apply: "情绪与自我",
+  stoic: "情绪与自我",
+  narrative: "叙事与模式",
+  pattern: "叙事与模式",
+  minimum: "行动与系统",
+  leverage: "行动与系统",
+  gift: "行动与系统",
 };
 
 export function frameGroup(frameType: string): string {
@@ -320,8 +337,8 @@ export function parseReframingOutput(value: unknown): ReframingOutput {
       description: str(row.description, `frames[${i}].description`),
     };
   });
-  if (frames.length < 10) {
-    throw new Error(`expected at least 10 frames, got ${frames.length}`);
+  if (frames.length < 20) {
+    throw new Error(`expected at least 20 frames, got ${frames.length}`);
   }
   return { frames };
 }
