@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   AI_LOCK_MESSAGE,
@@ -380,6 +381,19 @@ function RoleChallenge({
           </button>
         ))}
       </div>
+
+      {active === "customer" && (
+        <div className="rounded-md border border-dashed p-3 text-xs leading-5 text-muted-foreground">
+          这里是无证据模拟，不能代表真实顾客。若要基于网络原话和访谈材料建立顾客代理，请{" "}
+          <Link
+            href={`/customer-view/new?ideaId=${ideaId}`}
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            创建顾客研究课题
+          </Link>
+          。
+        </div>
+      )}
 
       {/* 对话 */}
       <div className="min-h-[120px] space-y-3 rounded-lg border p-4">

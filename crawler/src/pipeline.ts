@@ -1,5 +1,11 @@
 import { SOURCES } from "./sources/index.js";
 import { upsertSignals } from "./db.js";
+import {
+  finishCustomerTopic,
+  listDueCustomerTopics,
+  upsertCustomerSignals,
+  type DueCustomerTopic,
+} from "./db.js";
 import { ENABLED_SOURCES, WATCHLIST } from "./config.js";
 import type { RawSignal } from "./types.js";
 
@@ -65,4 +71,50 @@ export function watchlistJobs(): { source: string; query: string }[] {
     }
   }
   return jobs;
+}
+
+const CUSTOMER_SOURCES: Record<"cn" | "jp" | "en", string[]> = {
+  cn: ["v2ex", "zhihu", "xiaohongshu"],
+  jp: ["qiita", "chiebukuro", "rakuten", "amazon_jp"],
+  en: ["hackernews", "reddit", "devto", "lobsters", "producthunt", "indiehackers"],
+};
+
+async function runCustomerTopic(topic: DueCustomerTopic) {
+  let fetched = 0;
+  let inserted = 0;
+  const errors: string[] = [];
+  for (const market of topic.markets) {
+    const language = market === "cn" ? "zh" : market === "jp" ? "ja" : "en";
+    const query = topic.translatedQueries[language] || topic.query;
+    for (const source of CUSTOMER_SOURCES[market]) {
+      const fetcher = SOURCES[source];
+      if (!fetcher) continue;
+      try {
+        const signals = await fetcher(query);
+        fetched += signals.length;
+        inserted += await upsertCustomerSignals(topic, signals, market);
+      } catch (error) {
+        const message = `${source}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+        errors.push(message);
+        console.warn(`⚠ [顾客主题 ${topic.id}] ${message}`);
+      }
+      await sleep(GAP_MS);
+    }
+  }
+  await finishCustomerTopic(topic, errors.length ? errors.join("; ") : null);
+  return { fetched, inserted, errors };
+}
+
+export async function runDueCustomerTopics(onlyId?: string) {
+  const topics = await listDueCustomerTopics(onlyId);
+  let fetched = 0;
+  let inserted = 0;
+  for (const topic of topics) {
+    const result = await runCustomerTopic(topic);
+    fetched += result.fetched;
+    inserted += result.inserted;
+  }
+  return { topics: topics.length, fetched, inserted };
 }

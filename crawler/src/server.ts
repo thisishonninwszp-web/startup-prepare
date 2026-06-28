@@ -1,16 +1,20 @@
 import http from "node:http";
 import cron from "node-cron";
-import { runJobs, watchlistJobs } from "./pipeline.js";
+import {
+  runDueCustomerTopics,
+  runJobs,
+  watchlistJobs,
+} from "./pipeline.js";
 import { allHeavyJobs } from "./config.js";
 import { SOURCES } from "./sources/index.js";
 
 /**
  * 云端 worker：一个常驻服务同时承担两件事——
- *  ① 内置定时器（CRON_SCHEDULE，默认每天 8:00）自动跑全量监控（API 源 + Playwright 重型源）。
- *  ② HTTP 接口 POST /crawl 供主应用网页按钮按需触发（带 Bearer 密钥鉴权）。
+ *  ① 内置定时器（CRON_SCHEDULE，默认每天 8:00）自动跑全量监控和到期顾客研究主题。
+ *  ② HTTP 接口 POST /crawl 供主应用网页按钮按需触发外部任务或指定顾客主题。
  *
  * 部署在有浏览器环境的平台（Railway 等），所以 Playwright 源在这里能跑——
- * 这正是 Vercel serverless 跑不了的部分。结果仍写同一张 external_signals 表。
+ * 顾客主题结果写入该用户课题的候选材料；其他外部监控仍写 external_signals。
  */
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -49,11 +53,33 @@ const server = http.createServer(async (req, res) => {
     const auth = req.headers["authorization"] ?? "";
     if (auth !== `Bearer ${SECRET}`) return send(res, 401, { error: "unauthorized" });
 
-    let payload: { jobs?: Job[]; source?: string; query?: string };
+    let payload: {
+      jobs?: Job[];
+      source?: string;
+      query?: string;
+      customerTopicId?: string;
+    };
     try {
       payload = JSON.parse((await readBody(req)) || "{}");
     } catch {
       return send(res, 400, { error: "请求体不是合法 JSON" });
+    }
+
+    if (payload.customerTopicId) {
+      send(res, 202, { acceptedCustomerTopic: payload.customerTopicId });
+      runDueCustomerTopics(payload.customerTopicId)
+        .then((result) =>
+          console.log(
+            `[顾客主题] 完成：${result.topics} 主题，抓 ${result.fetched}，新增 ${result.inserted}`
+          )
+        )
+        .catch((error) =>
+          console.warn(
+            "[顾客主题] 失败：",
+            error instanceof Error ? error.message : error
+          )
+        );
+      return;
     }
 
     // 两种形态：{ jobs:[{source,query}] }（主应用按语言分好的多源） 或 { source, query }。
@@ -91,8 +117,13 @@ cron.schedule(SCHEDULE, async () => {
   const jobs = [...watchlistJobs(), ...allHeavyJobs()];
   console.log(`[定时] 触发，${jobs.length} 个任务…`);
   try {
-    const r = await runJobs(jobs);
-    console.log(`[定时] 完成：抓 ${r.fetched}，新增 ${r.inserted}`);
+    const [r, customer] = await Promise.all([
+      runJobs(jobs),
+      runDueCustomerTopics(),
+    ]);
+    console.log(
+      `[定时] 完成：外部信号抓 ${r.fetched}/新增 ${r.inserted}；顾客主题 ${customer.topics}/新增 ${customer.inserted}`
+    );
   } catch (e) {
     console.warn("[定时] 失败：", e instanceof Error ? e.message : e);
   }
