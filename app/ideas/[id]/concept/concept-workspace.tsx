@@ -219,7 +219,9 @@ export function ConceptWorkspace({
             optional={storyType === "insight"}
             options={detail.dreamChoices.map((item) => ({
               value: item.id,
-              label: `${item.case_title} · v${item.version_no}`,
+              label: `${item.case_title} · ${item.branch_name} · v${item.version_no}${
+                item.is_focused ? " · 当前焦点" : ""
+              }`,
             }))}
           />
           <SourceSelect

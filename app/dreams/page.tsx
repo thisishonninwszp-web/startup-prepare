@@ -92,7 +92,9 @@ export default async function DreamsPage() {
                       {item.initial_desire}
                     </p>
                     <div className="mt-auto flex items-center justify-between pt-8 text-xs text-stone-500">
-                      <span>{item.version_count} 个愿景版本</span>
+                      <span>
+                        {item.branch_count} 条路径 · {item.version_count} 个愿景版本
+                      </span>
                       <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
                     </div>
                   </div>

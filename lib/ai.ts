@@ -66,13 +66,25 @@ import {
 } from "@/app/reasoning/types";
 import {
   parseDreamDelta,
+  parseDreamBranchComparison,
+  parseDreamBranchSuggestions,
   parseDreamInterviewResult,
+  parseDreamTurn,
   parseDreamVision,
+  validateDreamInferenceReferences,
+  validateDreamPhaseTransition,
+  validateExplicitDreamPatches,
+  type DreamBranchComparison,
+  type DreamBranchMessage,
+  type DreamBranchSuggestions,
+  type DreamCanvas,
   type DreamContext,
   type DreamDelta,
   type DreamInterviewResult,
   type DreamMessage,
   type DreamScale,
+  type DreamInterviewPhase,
+  type DreamTurn,
   type DreamVision,
 } from "@/app/dreams/types";
 import {
@@ -1322,6 +1334,124 @@ export async function compareDreamVersions(
 用户说明的变化原因：${changeReason || "未补充"}`,
     parseDreamDelta
   );
+}
+
+const DREAM_TURN_PROMPT = `${DREAM_COMMON_RULES}
+你正在进行单题访谈。阶段顺序是 memory_bridge、future_day、people、inner_state、meaning、non_negotiables、fork_point。
+每次只能返回一道自然问题。先从用户真实经历中的轻松、投入或羡慕片段借桥，再逐步进入未来。
+explicit_patches只能逐字引用用户消息中的连续原话，text必须与source_quote完全一致；不得改写。任何归纳、解释或推测必须放入inferences并保持pending。
+inferences可引用用户消息ID，也可引用给定现实来源ID。引用现实来源时只能写入costs、assumptions、reality_signals、conflicts。
+画布维度只能是：memory_fragments、scene_title、horizon、location、people、sensory_details、actions、inner_state、desired_changes、past_roots、non_negotiables、costs、assumptions、reality_signals、conflicts。
+没有表达的维度放入unknown_dimensions，不要补全。
+只输出JSON：{"question":"","phase":"memory_bridge","target_dimension":"memory_fragments","explicit_patches":[{"dimension":"memory_fragments","text":"","source_quote":"","source_message_id":""}],"inferences":[{"dimension":"inner_state","text":"","source_message_ids":[""],"source_ids":[]}],"unknown_dimensions":["people"],"ready_to_synthesize":false}`;
+
+const DREAM_BRANCH_SUGGESTION_PROMPT = `${DREAM_COMMON_RULES}
+只从用户已经表达的真实取舍中提出0到3条未来分支建议。每条必须引用支持它的用户消息ID。
+不得给分、排序、推荐，不得发明用户没有表达的人物、身份、财富或社会影响。
+只输出JSON：{"suggestions":[{"label":"","fork_question":"","tradeoff":"","source_message_ids":[""]}]}`;
+
+const DREAM_BRANCH_COMPARE_PROMPT = `${DREAM_COMMON_RULES}
+比较多个未来分支的已确认画布。只描述共同点、具体维度差异和仍未知内容。
+禁止推荐胜者、排序、评分、百分比、成功概率或“更现实”等判断。
+只输出JSON：{"common_ground":[""],"differences":[{"dimension":"actions","branches":[{"branch_id":"","summary":""}]}],"unknowns":[""]}`;
+
+export async function nextDreamTurn(input: {
+  branchId: string;
+  context: DreamContext;
+  scale: DreamScale;
+  title: string;
+  initialDesire: string;
+  phase: string;
+  messages: DreamBranchMessage[];
+  canvas: DreamCanvas;
+  sources: DreamAiSource[];
+}): Promise<DreamTurn> {
+  const result = await generateRealityJson(
+    DREAM_TURN_PROMPT,
+    `语境：${input.context}
+尺度：${input.scale}
+梦想：${input.title}
+最初愿望：${input.initialDesire}
+当前阶段：${input.phase}
+已确认与待确认画布：${JSON.stringify(input.canvas)}
+消息：${JSON.stringify(input.messages)}
+现实来源（只能影响前提、代价、信号和冲突）：${JSON.stringify(input.sources)}`,
+    parseDreamTurn
+  );
+  validateDreamPhaseTransition(
+    input.phase as DreamInterviewPhase,
+    result.phase
+  );
+  validateExplicitDreamPatches(
+    result.explicit_patches,
+    input.messages,
+    input.branchId
+  );
+  const allowedIds = new Set(
+    input.messages
+      .filter((message) => message.branch_id === input.branchId)
+      .map((message) => message.id)
+  );
+  validateDreamInferenceReferences(
+    result.inferences,
+    allowedIds,
+    new Set(input.sources.map((source) => source.id))
+  );
+  return result;
+}
+
+export async function suggestDreamBranches(input: {
+  branchId: string;
+  messages: DreamBranchMessage[];
+  canvas: DreamCanvas;
+}): Promise<DreamBranchSuggestions> {
+  const result = await generateRealityJson(
+    DREAM_BRANCH_SUGGESTION_PROMPT,
+    `当前分支：${input.branchId}
+用户消息：${JSON.stringify(
+      input.messages.filter((message) => message.role === "user")
+    )}
+画布：${JSON.stringify(input.canvas)}`,
+    parseDreamBranchSuggestions
+  );
+  const allowedIds = new Set(
+    input.messages
+      .filter(
+        (message) =>
+          message.role === "user" && message.branch_id === input.branchId
+      )
+      .map((message) => message.id)
+  );
+  for (const suggestion of result.suggestions) {
+    if (
+      suggestion.source_message_ids.length === 0 ||
+      suggestion.source_message_ids.some((id) => !allowedIds.has(id))
+    ) {
+      throw new Error("分支建议引用了不属于当前分支的消息");
+    }
+  }
+  return result;
+}
+
+export async function compareDreamBranches(input: {
+  branches: { id: string; name: string; canvas: DreamCanvas }[];
+}): Promise<DreamBranchComparison> {
+  const result = await generateRealityJson(
+    DREAM_BRANCH_COMPARE_PROMPT,
+    JSON.stringify(input.branches),
+    parseDreamBranchComparison
+  );
+  const allowedIds = new Set(input.branches.map((branch) => branch.id));
+  if (
+    result.differences.some((difference) =>
+      difference.branches.some(
+        (branch) => !allowedIds.has(branch.branch_id)
+      )
+    )
+  ) {
+    throw new Error("分支比较引用了未知分支");
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
