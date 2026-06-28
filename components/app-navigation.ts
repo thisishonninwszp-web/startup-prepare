@@ -1,0 +1,36 @@
+export type AppNavItem = {
+  href: string;
+  label: string;
+  shortLabel: string;
+};
+
+export type AppNavGroup = {
+  label: string;
+  items: AppNavItem[];
+};
+
+export const NAV_GROUPS: AppNavGroup[] = [
+  {
+    label: "决策系统",
+    items: [
+      { href: "/dashboard", label: "今日行动", shortLabel: "行动" },
+      { href: "/capture", label: "捕捉", shortLabel: "捕捉" },
+      { href: "/review", label: "发现", shortLabel: "发现" },
+      { href: "/ideas", label: "想法库", shortLabel: "想法" },
+      { href: "/learnings", label: "判断复盘", shortLabel: "学习" },
+    ],
+  },
+  {
+    label: "思考系统",
+    items: [
+      { href: "/reality", label: "现状认识", shortLabel: "现状" },
+      { href: "/customer-view", label: "顾客视点", shortLabel: "顾客" },
+      { href: "/retrospectives", label: "复盘系统", shortLabel: "复盘" },
+      { href: "/dreams", label: "梦想系统", shortLabel: "梦想" },
+    ],
+  },
+];
+
+export function isActiveRoute(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { IdeasBoard } from "./ideas-board";
 import type { Idea } from "./types";
 
@@ -26,8 +26,7 @@ export default async function IdeasPage() {
   })) as Idea[];
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up px-4 py-6 sm:px-6">
         {initial.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -41,6 +40,6 @@ export default async function IdeasPage() {
           <IdeasBoard initial={initial} />
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

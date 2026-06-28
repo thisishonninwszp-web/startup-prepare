@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { externalConfigured } from "@/lib/external";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { RecurringSignals } from "../capture/recurring-signals";
 import { listExternalSignals } from "../capture/actions";
 import { ExternalRadar } from "./external-radar";
@@ -50,8 +50,7 @@ export default async function ReviewPage() {
   ];
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up mx-auto max-w-2xl px-4 py-8 sm:px-6">
         <header className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">发现</h1>
@@ -81,6 +80,6 @@ export default async function ReviewPage() {
           <RecurringSignals />
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

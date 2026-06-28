@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { IdeaDetail } from "./idea-detail";
 import {
   AI_ROLES,
@@ -76,8 +76,7 @@ export default async function IdeaDetailPage({
   };
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <IdeaDetail
           idea={ideaCore}
@@ -87,6 +86,6 @@ export default async function IdeaDetailPage({
           initialPredictions={(predictions ?? []) as Prediction[]}
         />
       </main>
-    </div>
+    </AppShell>
   );
 }

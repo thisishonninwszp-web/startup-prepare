@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { ScanSearch } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { daysSince, daysUntilLock } from "../ideas/types";
+import { listRealityCases } from "../reality/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,12 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const userId = user!.id;
+  const realityCases = await listRealityCases(userId);
+  const dueRealityCases = realityCases.filter(
+    (item) =>
+      item.review_due_at &&
+      new Date(item.review_due_at).getTime() <= Date.now()
+  );
 
   // 正在"验证中"的想法，越久没动越靠前——强制出口的主动推动。
   const { data: validating } = await supabaseAdmin
@@ -45,9 +53,33 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-8 sm:px-6">
+        {dueRealityCases.length > 0 && (
+          <section className="mb-8">
+            <div className="flex items-center gap-2">
+              <ScanSearch className="size-4 text-orange-600" />
+              <h2 className="text-sm font-medium">现状需要复查</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              当时选择的路径已经到复查日。先记录现实发生了什么，再更新地图。
+            </p>
+            <ul className="mt-3 space-y-2">
+              {dueRealityCases.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    href={`/reality/${item.id}`}
+                    className="flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950 transition-colors hover:bg-orange-100"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                    <span className="shrink-0 text-xs">更新现状 →</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {due.length > 0 && (
           <section className="mb-8">
             <h2 className="text-sm font-medium">该对账了</h2>
@@ -122,7 +154,7 @@ export default async function DashboardPage() {
           ))}
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
 

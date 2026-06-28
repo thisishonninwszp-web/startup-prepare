@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -106,8 +106,7 @@ export default async function LearningsPage() {
   const misses = (resolvedPreds ?? []).filter((p) => p.outcome === "miss").length;
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <p className="mb-6 text-sm text-muted-foreground">
           归档过的想法和你从中学到的判断力。回看它们，是为了下次更早识别同类机会。
@@ -157,7 +156,7 @@ export default async function LearningsPage() {
           </ul>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }
 

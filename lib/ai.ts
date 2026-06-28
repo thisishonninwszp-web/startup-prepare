@@ -9,6 +9,16 @@ import {
   type RealityCheckResult,
   type TavilyResult,
 } from "@/app/ideas/types";
+import {
+  parseRealityDelta,
+  parseRealityInterviewResult,
+  parseRealityMap,
+  type RealityDelta,
+  type RealityInterviewResult,
+  type RealityMap,
+  type RealityMessage,
+} from "@/app/reality/types";
+import { generateValidatedJson } from "@/lib/ai-json";
 
 /**
  * 所有 AI 调用的统一封装（宪法：AI 调用统一封装在 lib/ai.ts）。
@@ -587,4 +597,157 @@ function parseQuestions(text: string): string[] {
     // 解析失败时退回固定第一问，至少不崩。
   }
   return [FIRST_INQUIRY_QUESTION];
+}
+
+// ---------------------------------------------------------------------------
+// 现状认识：诊断式追问 → 现状地图 → 相邻版本差异
+// ---------------------------------------------------------------------------
+
+export type RealityAiSource = {
+  type: "observation" | "idea" | "validation" | "prediction";
+  label: string;
+  content: string;
+};
+
+export type RealityAiContext = {
+  mode: "specific" | "global";
+  context: "personal" | "business" | "cross";
+  title: string;
+  initialStatement: string;
+  domains: string[];
+  messages: RealityMessage[];
+  sources: RealityAiSource[];
+};
+
+const REALITY_COMMON_RULES = `你服务于 IdeaOS 的“现状认识”系统。目标是帮助用户更准确地区分现实，而不是安慰、鼓励或替用户做决定。
+铁律：
+- 明确区分：可核对事实、用户解释、未知、情绪体验。
+- 情绪是真实体验，但不是外部事实；只分析具体触发和它可能如何影响判断，不做心理诊断。
+- 不编造来源、数据、他人动机或因果关系。
+- 不评分、不排名、不输出百分比、成功率或人格判断。
+- 禁止“很有潜力”“你做得很好”“相信自己”等迎合语言。
+- 不把 AI 推测写成验证证据，不自动改变任何想法状态。
+- 涉及医疗、法律、财务时，只指出信息缺口和应咨询的现实对象，不给专业结论。`;
+
+const REALITY_INTERVIEW_PROMPT = `${REALITY_COMMON_RULES}
+你正在进行诊断式访谈。每轮只提出 1 到 3 个最关键的问题，优先追查：依据、替代解释、遗漏信息、固定约束、可影响变量、情绪触发和目标与行为的矛盾。
+如果信息已足以生成有用的现状地图，把 ready_to_synthesize 设为 true；否则为 false。
+只输出 JSON：
+{"questions":["..."],"missing_dimensions":["..."],"ready_to_synthesize":false}`;
+
+const REALITY_MAP_PROMPT = `${REALITY_COMMON_RULES}
+基于全部访谈和用户主动选择的来源，生成一份现状地图。
+要求：
+- facts 中每条事实必须标出具体来源；无法核对的内容放进 interpretations 或 unknowns。
+- emotions 写感受、触发事件、可能的判断影响。
+- constraints 必须分为 fixed、influenceable、actionable_now。
+- paths 必须恰好三条，类型分别是 investigate、act、wait，各出现一次。
+- 三条路径不是排名：每条写依据、具体动作和主要风险。
+- wait 也必须写明现实中的重新检查动作，不允许无限等待。
+只输出 JSON：
+{"topic":"","emotions":[{"feeling":"","trigger":"","judgment_impact":""}],"facts":[{"statement":"","source":""}],"interpretations":[""],"unknowns":[""],"constraints":{"fixed":[""],"influenceable":[""],"actionable_now":[""]},"contradictions":[""],"paths":[{"type":"investigate","title":"补充信息","rationale":"","action":"","risk":""},{"type":"act","title":"立即行动","rationale":"","action":"","risk":""},{"type":"wait","title":"暂不行动","rationale":"","action":"","risk":""}]}`;
+
+const REALITY_DELTA_PROMPT = `${REALITY_COMMON_RULES}
+比较同一课题相邻的两份现状地图。只描述有文本依据的变化，不评价用户是否“进步”。
+只输出 JSON：
+{"added_facts":[""],"revised_interpretations":[""],"resolved_unknowns":[""],"new_unknowns":[""],"emotion_changes":[""],"previous_path_result":"","change_reason":""}`;
+
+function renderRealityContext(input: RealityAiContext): string {
+  const mode = input.mode === "global" ? "全局扫描" : "具体课题";
+  const context = {
+    personal: "人生",
+    business: "事业",
+    cross: "人生与事业交叉",
+  }[input.context];
+  const sources =
+    input.sources.length > 0
+      ? input.sources
+          .map(
+            (source, index) =>
+              `[来源${index + 1}][${source.type}] ${source.label}\n${source.content}`
+          )
+          .join("\n\n")
+      : "（未选择历史来源）";
+  const messages =
+    input.messages.length > 0
+      ? input.messages
+          .map((message) =>
+            message.role === "user"
+              ? `用户：${message.content}`
+              : `AI：${message.content}`
+          )
+          .join("\n")
+      : "（尚无追问记录）";
+  return `模式：${mode}
+语境：${context}
+标题：${input.title}
+初始描述：${input.initialStatement}
+扫描领域：${input.domains.join("、") || "无"}
+
+用户选择的来源：
+${sources}
+
+访谈记录：
+${messages}`;
+}
+
+async function generateRealityJson<T>(
+  systemInstruction: string,
+  contents: string,
+  validate: (value: unknown) => T
+): Promise<T> {
+  return generateValidatedJson(
+    async (attempt) => {
+      const response = await getClient().models.generateContent({
+        model: MODEL,
+        contents:
+          contents +
+          (attempt === 1
+            ? "\n\n上一次输出未通过结构校验。严格按指定 JSON 字段重新输出，不要添加解释。"
+            : ""),
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          thinkingConfig: { thinkingBudget: 0 },
+          maxOutputTokens: 2048,
+        },
+      });
+      return (response.text ?? "").trim();
+    },
+    validate
+  );
+}
+
+export async function nextRealityQuestions(
+  input: RealityAiContext
+): Promise<RealityInterviewResult> {
+  return generateRealityJson(
+    REALITY_INTERVIEW_PROMPT,
+    renderRealityContext(input),
+    parseRealityInterviewResult
+  );
+}
+
+export async function synthesizeRealityMap(
+  input: RealityAiContext
+): Promise<RealityMap> {
+  return generateRealityJson(
+    REALITY_MAP_PROMPT,
+    renderRealityContext(input),
+    parseRealityMap
+  );
+}
+
+export async function compareRealityVersions(
+  previous: RealityMap,
+  current: RealityMap,
+  updateContext: string
+): Promise<RealityDelta> {
+  return generateRealityJson(
+    REALITY_DELTA_PROMPT,
+    `上次地图：\n${JSON.stringify(previous)}\n\n本次地图：\n${JSON.stringify(
+      current
+    )}\n\n用户说明的变化与上次路径结果：\n${updateContext || "未补充"}`,
+    parseRealityDelta
+  );
 }
