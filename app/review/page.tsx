@@ -51,9 +51,9 @@ export default async function ReviewPage() {
 
   return (
     <AppShell>
-      <main className="animate-fade-up mx-auto max-w-2xl px-4 py-8 sm:px-6">
+      <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">发现</h1>
+          <h1 className="text-xl font-semibold tracking-tight">发现</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             方向不是想出来的，是从你反复的观察里浮现的。先看节奏，再让反复主题逼成方向。
           </p>

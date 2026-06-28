@@ -31,13 +31,25 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const userId = user!.id;
-  const [realityCases, reflectionSettings, retroPeriods, dueRetroPredictions] =
+  const [realityCases, reflectionSettings, retroPeriods, dueRetroPredictions, beliefCountResult, customerCountResult] =
     await Promise.all([
       listRealityCases(userId),
       getReflectionSettings(userId),
       listRetroPeriods(userId),
       listDueRetroPredictions(userId),
+      supabaseAdmin
+        .from("bayesian_beliefs")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .is("archived_at", null),
+      supabaseAdmin
+        .from("customer_cases")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .is("archived_at", null),
     ]);
+  const beliefCount = beliefCountResult.count ?? 0;
+  const customerCount = customerCountResult.count ?? 0;
   const dueRealityCases = realityCases.filter(
     (item) =>
       item.review_due_at &&
@@ -69,6 +81,24 @@ export default async function DashboardPage() {
       getMonthlyReviewDate(retroToday, reflectionSettings.review_weekday) &&
     !monthlyDone;
 
+  // 最近一次完成的周复盘
+  const lastWeeklyRetro = retroPeriods
+    .filter((p) => p.period_type === "weekly" && p.status === "completed")
+    .sort((a, b) => b.period_end.localeCompare(a.period_end))[0];
+  const lastRetroDate = lastWeeklyRetro
+    ? Math.floor(
+        (Date.now() - new Date(lastWeeklyRetro.period_end).getTime()) /
+          (24 * 60 * 60 * 1000)
+      )
+    : null;
+
+  // 系统状态：有数据时显示
+  const hasSystemData =
+    beliefCount > 0 ||
+    realityCases.length > 0 ||
+    customerCount > 0 ||
+    lastWeeklyRetro != null;
+
   // 正在"验证中"的想法，越久没动越靠前——强制出口的主动推动。
   const { data: validating } = await supabaseAdmin
     .from("ideas")
@@ -96,7 +126,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell>
-      <main className="animate-fade-up mx-auto max-w-3xl px-4 py-8 sm:px-6">
+      <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
         {(weeklyDue || monthlyDue || dueRetroPredictions.length > 0) && (
           <section className="mb-8">
             <div className="flex items-center gap-2">
@@ -173,8 +203,60 @@ export default async function DashboardPage() {
           </section>
         )}
 
+        {hasSystemData && (
+          <div className="mb-8 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Link
+              href="/reasoning"
+              className="group rounded-lg border bg-card p-3 hover:bg-muted/60 transition-colors"
+            >
+              <p className="text-[10px] text-muted-foreground">推理工具</p>
+              <p className="mt-1 text-sm font-medium">
+                {beliefCount > 0 ? `${beliefCount} 条信念` : "暂无记录"}
+              </p>
+            </Link>
+            <Link
+              href="/reality"
+              className="group rounded-lg border bg-card p-3 hover:bg-muted/60 transition-colors"
+            >
+              <p className="text-[10px] text-muted-foreground">现状认识</p>
+              <p className="mt-1 text-sm font-medium">
+                {realityCases.length > 0
+                  ? `${realityCases.length} 个案例`
+                  : "暂无记录"}
+              </p>
+              {dueRealityCases.length > 0 && (
+                <p className="mt-0.5 text-[10px] text-orange-600">
+                  {dueRealityCases.length} 个待复查
+                </p>
+              )}
+            </Link>
+            <Link
+              href="/customer-view"
+              className="group rounded-lg border bg-card p-3 hover:bg-muted/60 transition-colors"
+            >
+              <p className="text-[10px] text-muted-foreground">顾客视点</p>
+              <p className="mt-1 text-sm font-medium">
+                {customerCount > 0 ? `${customerCount} 个研究` : "暂无记录"}
+              </p>
+            </Link>
+            <Link
+              href="/retrospectives"
+              className="group rounded-lg border bg-card p-3 hover:bg-muted/60 transition-colors"
+            >
+              <p className="text-[10px] text-muted-foreground">复盘系统</p>
+              <p className="mt-1 text-sm font-medium">
+                {lastRetroDate === null
+                  ? "未开始"
+                  : lastRetroDate === 0
+                  ? "今天已复盘"
+                  : `${lastRetroDate} 天前`}
+              </p>
+            </Link>
+          </div>
+        )}
+
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">今天该接触谁</h1>
+          <h1 className="text-xl font-semibold tracking-tight">今天该接触谁</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             分析跨不过同理心鸿沟，只有真实接触能。越靠上的想法，越久没有新的真实接触。
           </p>

@@ -120,6 +120,10 @@ export default async function ReasoningPage() {
         </div>
       )}
 
+      <p className="mb-4 text-xs text-muted-foreground">
+        在做现状分析、收集验证、或想法陷入僵局时最有用。
+      </p>
+
       <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
         <div className="rounded-md bg-muted/50 px-3 py-2.5">
           <p className="font-medium mb-0.5">贝叶斯——何时用？</p>

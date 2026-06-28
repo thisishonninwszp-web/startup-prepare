@@ -78,7 +78,7 @@ export default async function CapturePage({
 
   return (
     <AppShell>
-      <main className="animate-fade-up px-4 py-6 sm:px-6 sm:py-8">
+      <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
         <CaptureClient initial={initial} initialText={sharedText} />
         <RecurringSignals />
       </main>
