@@ -19,6 +19,16 @@ function first(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function isMissingConceptWorkspacesTable(error: {
+  code?: string;
+  message?: string;
+}): boolean {
+  return (
+    error.code === "PGRST205" &&
+    error.message?.includes("concept_workspaces") === true
+  );
+}
+
 export async function getConceptWorkspaceDetail(
   ideaId: string,
   userId: string
@@ -282,7 +292,10 @@ export async function getIdeaConceptSummary(
     .eq("idea_id", ideaId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isMissingConceptWorkspacesTable(error)) return null;
+    throw new Error(error.message);
+  }
   if (!workspace) return null;
   const [latestResult, confirmedResult] = await Promise.all([
     supabaseAdmin
