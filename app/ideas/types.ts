@@ -108,7 +108,7 @@ export function isHypothesisComplete(h: Hypothesis | null | undefined): boolean 
 /** AI 多角色质疑：4 个对抗性角色（与 DB 的 ai_role 枚举一致）。 */
 export const AI_ROLES = [
   { key: "investor", label: "挑剔投资人" },
-  { key: "customer", label: "目标客户" },
+  { key: "customer", label: "快速顾客质疑（无证据模拟）" },
   { key: "operator", label: "冷酷运营者" },
   { key: "competitor", label: "竞品老板" },
 ] as const;

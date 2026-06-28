@@ -7,6 +7,7 @@ import {
   clusterObservations,
   themeToDirection,
   digestExternal,
+  analyzeExternalBatch,
 } from "@/lib/ai";
 import { tavilySearch, tavilyExtract } from "@/lib/external";
 import { crawlToStaging } from "@/lib/external-crawl";
@@ -194,14 +195,35 @@ export type ExternalSignalItem = {
   fetched_at: string;
 };
 
+export type CrawlResult = {
+  items: ExternalSignalItem[];
+  /** AI 对刚抓到的这批信号的对抗性分析（痛点模式 + 冷水）。抓取失败或无新内容时为空。 */
+  analysis: string;
+  newCount: number;
+  /** 是否已把 Playwright 重型源任务推给云端 worker（后台抓取中，稍后刷新可见）。 */
+  workerTriggered: boolean;
+};
+
 /**
- * 应用内一键抓取：按关键词跑 HN/Reddit/V2EX → 去重入 staging → 返回最新待审列表。
- * 给"外部待审"收件箱的「抓取」按钮用，省去开终端敲命令。
+ * 应用内一键抓取：关键词翻成中/英/日 → 多源抓取 → 去重入 staging
+ * → AI 分析本批新信号模式 → 返回完整待审列表 + 分析。
+ * 若配置了云端 worker，同时后台触发 Playwright 重型源（亚马逊/小红书等）。
  */
-export async function runCrawl(query: string): Promise<ExternalSignalItem[]> {
+export async function runCrawl(query: string): Promise<CrawlResult> {
   await requireUserId();
-  await crawlToStaging(query);
-  return listExternalSignals();
+  const before = new Date().toISOString();
+  const { workerTriggered } = await crawlToStaging(query);
+  const items = await listExternalSignals();
+
+  // 只分析本次新抓到的（同关键词 + fetched_at 在本次抓取之后）
+  const newItems = items.filter(
+    (it) => it.query === query && it.fetched_at >= before
+  );
+
+  const analysis =
+    newItems.length > 0 ? await analyzeExternalBatch(query, newItems) : "";
+
+  return { items, analysis, newCount: newItems.length, workerTriggered };
 }
 
 /** 列出待审（pending）的外部信号，最新在前。 */

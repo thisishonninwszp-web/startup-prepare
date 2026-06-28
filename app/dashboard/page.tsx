@@ -1,8 +1,21 @@
 import Link from "next/link";
+import { RotateCcw, ScanSearch } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { daysSince, daysUntilLock } from "../ideas/types";
+import { listRealityCases } from "../reality/queries";
+import {
+  getReflectionSettings,
+  listDueRetroPredictions,
+  listRetroPeriods,
+  todayInTimezone,
+} from "../retrospectives/queries";
+import {
+  getMonthlyPeriod,
+  getMonthlyReviewDate,
+  getWeeklyPeriod,
+} from "../retrospectives/types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +31,43 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const userId = user!.id;
+  const [realityCases, reflectionSettings, retroPeriods, dueRetroPredictions] =
+    await Promise.all([
+      listRealityCases(userId),
+      getReflectionSettings(userId),
+      listRetroPeriods(userId),
+      listDueRetroPredictions(userId),
+    ]);
+  const dueRealityCases = realityCases.filter(
+    (item) =>
+      item.review_due_at &&
+      new Date(item.review_due_at).getTime() <= Date.now()
+  );
+  const retroToday = todayInTimezone(reflectionSettings.timezone);
+  const weeklyRange = getWeeklyPeriod(
+    retroToday,
+    reflectionSettings.review_weekday
+  );
+  const monthlyRange = getMonthlyPeriod(retroToday);
+  const weeklyDone = retroPeriods.some(
+    (period) =>
+      period.period_type === "weekly" &&
+      period.period_start === weeklyRange.start &&
+      period.period_end === weeklyRange.end &&
+      period.status === "completed"
+  );
+  const monthlyDone = retroPeriods.some(
+    (period) =>
+      period.period_type === "monthly" &&
+      period.period_start === monthlyRange.start &&
+      period.period_end === monthlyRange.end &&
+      period.status === "completed"
+  );
+  const weeklyDue = retroToday === weeklyRange.end && !weeklyDone;
+  const monthlyDue =
+    retroToday ===
+      getMonthlyReviewDate(retroToday, reflectionSettings.review_weekday) &&
+    !monthlyDone;
 
   // 正在"验证中"的想法，越久没动越靠前——强制出口的主动推动。
   const { data: validating } = await supabaseAdmin
@@ -45,9 +95,62 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-8 sm:px-6">
+        {(weeklyDue || monthlyDue || dueRetroPredictions.length > 0) && (
+          <section className="mb-8">
+            <div className="flex items-center gap-2">
+              <RotateCcw className="size-4 text-orange-600" />
+              <h2 className="text-sm font-medium">复盘反馈到期</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              恢复当时判断，再看现实。不要让结果替你重写记忆。
+            </p>
+            <Link
+              href="/retrospectives"
+              className="mt-3 flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950 transition-colors hover:bg-orange-100"
+            >
+              <span className="min-w-0 flex-1">
+                {[
+                  weeklyDue ? "周复盘" : null,
+                  monthlyDue ? "月复盘" : null,
+                  dueRetroPredictions.length
+                    ? `${dueRetroPredictions.length} 条预测待对账`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              <span className="shrink-0 text-xs">去复盘 →</span>
+            </Link>
+          </section>
+        )}
+
+        {dueRealityCases.length > 0 && (
+          <section className="mb-8">
+            <div className="flex items-center gap-2">
+              <ScanSearch className="size-4 text-orange-600" />
+              <h2 className="text-sm font-medium">现状需要复查</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              当时选择的路径已经到复查日。先记录现实发生了什么，再更新地图。
+            </p>
+            <ul className="mt-3 space-y-2">
+              {dueRealityCases.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    href={`/reality/${item.id}`}
+                    className="flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950 transition-colors hover:bg-orange-100"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                    <span className="shrink-0 text-xs">更新现状 →</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {due.length > 0 && (
           <section className="mb-8">
             <h2 className="text-sm font-medium">该对账了</h2>
@@ -122,7 +225,7 @@ export default async function DashboardPage() {
           ))}
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
 

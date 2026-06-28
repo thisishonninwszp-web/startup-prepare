@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { IdeaDetail } from "./idea-detail";
 import {
   AI_ROLES,
@@ -12,6 +12,11 @@ import {
   type Prediction,
   type Validation,
 } from "../types";
+import {
+  getBayesianBeliefsForIdea,
+  getFermiEstimatesForIdea,
+  getReframingSessionsForIdea,
+} from "@/app/reasoning/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +71,14 @@ export default async function IdeaDetailPage({
     .eq("idea_id", params.id)
     .order("made_at", { ascending: false });
 
+  // 关联推理工具
+  const [reasoningBeliefs, reasoningEstimates, reasoningSessions] =
+    await Promise.all([
+      getBayesianBeliefsForIdea(params.id, userId),
+      getFermiEstimatesForIdea(params.id, userId),
+      getReframingSessionsForIdea(params.id, userId),
+    ]);
+
   const ideaCore: Idea = {
     id: idea.id,
     title: idea.title,
@@ -76,8 +89,7 @@ export default async function IdeaDetailPage({
   };
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <IdeaDetail
           idea={ideaCore}
@@ -85,8 +97,11 @@ export default async function IdeaDetailPage({
           initialChats={initialChats}
           initialValidations={(validations ?? []) as Validation[]}
           initialPredictions={(predictions ?? []) as Prediction[]}
+          initialBeliefs={reasoningBeliefs}
+          initialEstimates={reasoningEstimates}
+          initialReframings={reasoningSessions}
         />
       </main>
-    </div>
+    </AppShell>
   );
 }

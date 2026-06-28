@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { CaptureClient, type ObservationCard } from "./capture-client";
 import { RecurringSignals } from "./recurring-signals";
 
@@ -77,12 +77,11 @@ export default async function CapturePage({
   }));
 
   return (
-    <div className="min-h-screen">
-      <AppNav />
+    <AppShell>
       <main className="animate-fade-up px-4 py-6 sm:px-6 sm:py-8">
         <CaptureClient initial={initial} initialText={sharedText} />
         <RecurringSignals />
       </main>
-    </div>
+    </AppShell>
   );
 }

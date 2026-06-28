@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
 import type { RawSignal } from "./types.js";
+import { createHash } from "node:crypto";
 
 /**
  * 服务端 admin client：照搬主应用 lib/supabase.ts 的 service-role 模式。
@@ -18,6 +19,120 @@ if (!supabaseUrl || !serviceRoleKey) {
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+export type DueCustomerTopic = {
+  id: string;
+  userId: string;
+  caseId: string;
+  query: string;
+  translatedQueries: { en?: string; zh?: string; ja?: string };
+  markets: ("cn" | "jp" | "en")[];
+  cadence: "daily" | "weekly";
+};
+
+function redactPublicPii(text: string): string {
+  return text
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[已遮蔽邮箱]")
+    .replace(
+      /(?<!\d)(?:\+?\d{1,3}[-\s]?)?(?:0\d{1,3}[-\s]?\d{3,4}[-\s]?\d{4}|1[3-9]\d{9})(?!\d)/g,
+      "[已遮蔽电话]"
+    )
+    .slice(0, 20_000);
+}
+
+function materialDedupeKey(signal: RawSignal): string {
+  return createHash("sha256")
+    .update(`${signal.source}\0${signal.sourceId}\0${signal.rawText.trim()}`)
+    .digest("hex");
+}
+
+export async function listDueCustomerTopics(
+  onlyId?: string
+): Promise<DueCustomerTopic[]> {
+  let query = supabase
+    .from("customer_research_topics")
+    .select(
+      "id, user_id, case_id, query, translated_queries, markets, cadence"
+    )
+    .eq("enabled", true);
+  if (onlyId) query = query.eq("id", onlyId);
+  else query = query.lte("next_run_at", new Date().toISOString());
+  const { data, error } = await query.limit(30);
+  if (error) throw new Error(`读取顾客研究主题失败：${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    userId: row.user_id as string,
+    caseId: row.case_id as string,
+    query: row.query as string,
+    translatedQueries:
+      (row.translated_queries as DueCustomerTopic["translatedQueries"]) ?? {},
+    markets: (row.markets ?? []) as DueCustomerTopic["markets"],
+    cadence: row.cadence as DueCustomerTopic["cadence"],
+  }));
+}
+
+export async function upsertCustomerSignals(
+  topic: DueCustomerTopic,
+  signals: RawSignal[],
+  market: "cn" | "jp" | "en"
+): Promise<number> {
+  let inserted = 0;
+  for (const signal of signals) {
+    const sanitizedText = redactPublicPii(signal.rawText);
+    if (!sanitizedText.trim()) continue;
+    const { data: material, error } = await supabase
+      .from("customer_materials")
+      .upsert(
+        {
+          user_id: topic.userId,
+          origin: "web",
+          source: signal.source,
+          source_id: signal.sourceId,
+          source_url: signal.url ?? null,
+          title: signal.title ?? null,
+          sanitized_text: sanitizedText,
+          dedupe_key: materialDedupeKey(signal),
+          language: market === "cn" ? "zh" : market === "jp" ? "ja" : "en",
+          market,
+        },
+        { onConflict: "user_id,dedupe_key" }
+      )
+      .select("id")
+      .single();
+    if (error) throw new Error(`写入顾客材料失败：${error.message}`);
+    const { error: linkError } = await supabase
+      .from("customer_case_materials")
+      .upsert(
+        {
+          case_id: topic.caseId,
+          material_id: material.id,
+          status: "candidate",
+        },
+        { onConflict: "case_id,material_id", ignoreDuplicates: true }
+      );
+    if (linkError) throw new Error(`关联顾客课题失败：${linkError.message}`);
+    inserted++;
+  }
+  return inserted;
+}
+
+export async function finishCustomerTopic(
+  topic: DueCustomerTopic,
+  errorMessage: string | null
+) {
+  const next = new Date();
+  next.setUTCDate(next.getUTCDate() + (topic.cadence === "daily" ? 1 : 7));
+  const { error } = await supabase
+    .from("customer_research_topics")
+    .update({
+      last_run_at: new Date().toISOString(),
+      next_run_at: next.toISOString(),
+      last_error: errorMessage,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", topic.id);
+  if (error) throw new Error(`更新顾客研究主题失败：${error.message}`);
+}
 
 /**
  * 批量写入 external_signals（staging）。
