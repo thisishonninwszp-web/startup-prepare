@@ -273,7 +273,7 @@ export async function listReframingSessions(
 ): Promise<ReframingSession[]> {
   const { data, error } = await supabaseAdmin
     .from("reframing_sessions")
-    .select("id, topic_text, context_note, idea_id, created_at")
+    .select("id, topic_text, context_note, idea_id, central_question_candidates, selected_question_type, selected_question, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) {
@@ -285,6 +285,9 @@ export async function listReframingSessions(
     topic_text: s.topic_text,
     context_note: s.context_note,
     idea_id: s.idea_id ?? null,
+    central_question_candidates: s.central_question_candidates?.candidates ?? null,
+    selected_question_type: s.selected_question_type ?? null,
+    selected_question: s.selected_question ?? null,
     created_at: s.created_at,
   }));
 }
@@ -295,7 +298,7 @@ export async function getReframingSession(
 ): Promise<ReframingSessionWithFrames | null> {
   const { data: session, error } = await supabaseAdmin
     .from("reframing_sessions")
-    .select("id, topic_text, context_note, idea_id, created_at, user_id")
+    .select("id, topic_text, context_note, idea_id, central_question_candidates, selected_question_type, selected_question, created_at, user_id")
     .eq("id", sessionId)
     .maybeSingle();
   if (error) {
@@ -329,6 +332,10 @@ export async function getReframingSession(
     topic_text: session.topic_text,
     context_note: session.context_note,
     idea_id: session.idea_id ?? null,
+    central_question_candidates:
+      session.central_question_candidates?.candidates ?? null,
+    selected_question_type: session.selected_question_type ?? null,
+    selected_question: session.selected_question ?? null,
     created_at: session.created_at,
     frames,
   };
@@ -340,7 +347,7 @@ export async function getReframingSessionsForIdea(
 ): Promise<ReframingSession[]> {
   const { data, error } = await supabaseAdmin
     .from("reframing_sessions")
-    .select("id, topic_text, context_note, idea_id, created_at")
+    .select("id, topic_text, context_note, idea_id, central_question_candidates, selected_question_type, selected_question, created_at")
     .eq("user_id", userId)
     .eq("idea_id", ideaId)
     .order("created_at", { ascending: false });
@@ -353,6 +360,9 @@ export async function getReframingSessionsForIdea(
     topic_text: s.topic_text,
     context_note: s.context_note,
     idea_id: s.idea_id ?? null,
+    central_question_candidates: s.central_question_candidates?.candidates ?? null,
+    selected_question_type: s.selected_question_type ?? null,
+    selected_question: s.selected_question ?? null,
     created_at: s.created_at,
   }));
 }

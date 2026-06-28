@@ -57,7 +57,7 @@ export default async function ReasoningPage() {
         <div className="rounded-md bg-muted/50 px-3 py-2.5">
           <p className="font-medium mb-0.5">重构——何时用？</p>
           <p className="text-muted-foreground leading-relaxed">
-            当你对某个课题一时不知道怎么办，或者感觉陷入了同一个思路绕不出去时。18 种视角强制你从不同角度看同一件事。
+            当你对某个课题一时不知道怎么办，或者感觉陷入了同一个思路绕不出去时。26 种视角强制你从不同角度看同一件事。
           </p>
         </div>
       </div>
@@ -157,7 +157,7 @@ export default async function ReasoningPage() {
           <div>
             <h2 className="font-semibold">认知重构</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              18 种视角帮你看清一时不知道怎么办的课题。打破思维定势。
+              26 种视角帮你看清一时不知道怎么办的课题。打破思维定势。
             </p>
           </div>
           <div className="flex-1">

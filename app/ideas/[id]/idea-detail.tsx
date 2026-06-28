@@ -68,6 +68,7 @@ export function IdeaDetail({
   initialBeliefs = [],
   initialEstimates = [],
   initialReframings = [],
+  conceptSummary = null,
 }: {
   idea: Idea;
   hypothesis: Hypothesis;
@@ -77,6 +78,14 @@ export function IdeaDetail({
   initialBeliefs?: (BayesianBelief & { current_posterior: number })[];
   initialEstimates?: FermiEstimate[];
   initialReframings?: ReframingSession[];
+  conceptSummary?: {
+    id: string;
+    version_no: number;
+    status: "provisional" | "confirmed";
+    one_line: string;
+    created_at: string;
+    has_confirmed: boolean;
+  } | null;
 }) {
   const [fields, setFields] = useState<Fields>(initFields(hypothesis));
   const [riskiest, setRiskiest] = useState(hypothesis.riskiest_assumption ?? "");
@@ -139,6 +148,45 @@ export function IdeaDetail({
         </div>
         <h1 className="text-xl font-semibold">{idea.title?.trim() || "（无标题）"}</h1>
       </div>
+
+      <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-xl">
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+              价值设计图
+            </p>
+            <h2 className="mt-2 text-sm font-medium">
+              {conceptSummary
+                ? `v${conceptSummary.version_no} · ${
+                    conceptSummary.status === "confirmed"
+                      ? "已确认"
+                      : "临时"
+                  }`
+                : "尚未建立产品概念"}
+            </h2>
+            {conceptSummary ? (
+              <p className="mt-2 text-sm leading-6 text-zinc-700">
+                {conceptSummary.one_line}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs leading-5 text-zinc-500">
+                引用顾客证据、梦想版本、Central Question 与公司事实，形成可用于MVP取舍的一行概念。
+              </p>
+            )}
+            {status === "MVP候选" &&
+            !conceptSummary?.has_confirmed ? (
+              <p className="mt-3 text-xs text-amber-700">
+                MVP候选尚缺已确认的产品概念。当前仅提醒，不会锁定状态。
+              </p>
+            ) : null}
+          </div>
+          <Button asChild variant="outline">
+            <Link href={`/ideas/${idea.id}/concept`}>
+              {conceptSummary ? "打开价值设计图" : "开始价值设计"}
+            </Link>
+          </Button>
+        </div>
+      </section>
 
       {/* 假设句式 */}
       <section className="space-y-4">
@@ -673,7 +721,7 @@ function ReasoningSection({
             },
             {
               label: "认知重构",
-              desc: "对这个想法卡住了？18 种视角帮你打破思维定势",
+              desc: "对这个想法卡住了？26种视角发散，再收敛成一个Central Question",
               href: `/reasoning/reframing/new?idea_id=${ideaId}`,
               cta: "换个视角看",
             },

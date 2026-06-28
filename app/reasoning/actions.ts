@@ -8,8 +8,14 @@ import {
   analyzeBayesUpdate,
   decomposeFermiQuestion,
   computeFermiSensitivity,
+  generateCentralQuestions,
   generateReframes,
 } from "@/lib/ai";
+import {
+  parseCentralQuestions,
+  selectCentralQuestion,
+  type CentralQuestionType,
+} from "@/app/concepts/types";
 import {
   normalizeCreateBayesianBelief,
   normalizeCreateFermiEstimate,
@@ -392,6 +398,82 @@ export async function markReframingFrame(
     console.error("标记重构视角失败", error.message);
     throw new Error("标记失败，请重试");
   }
+}
+
+export async function generateCentralQuestionsForReframing(
+  sessionId: string
+) {
+  const userId = await requireUserId();
+  const { data: session, error: sessionError } = await supabaseAdmin
+    .from("reframing_sessions")
+    .select("id, user_id, topic_text, context_note")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!session || session.user_id !== userId) {
+    throw new Error("无权访问该重构会话");
+  }
+  const { data: frames, error: frameError } = await supabaseAdmin
+    .from("reframing_frames")
+    .select("title, description")
+    .eq("session_id", sessionId)
+    .eq("is_marked", true);
+  if (frameError) throw new Error(frameError.message);
+  if (!frames?.length) throw new Error("请先标记至少一个有用视角");
+  const result = await generateCentralQuestions({
+    topic: session.topic_text,
+    markedFrames: frames,
+  });
+  const { error } = await supabaseAdmin
+    .from("reframing_sessions")
+    .update({
+      central_question_candidates: result,
+      selected_question_type: null,
+      selected_question: null,
+      selected_question_at: null,
+    })
+    .eq("id", sessionId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/reasoning/reframing/${sessionId}`);
+  return result;
+}
+
+export async function selectReframingCentralQuestion(
+  sessionId: string,
+  type: CentralQuestionType,
+  rewrittenQuestion: string
+) {
+  const userId = await requireUserId();
+  const { data: session, error } = await supabaseAdmin
+    .from("reframing_sessions")
+    .select("id, user_id, central_question_candidates")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!session || session.user_id !== userId) {
+    throw new Error("无权访问该重构会话");
+  }
+  const candidates = parseCentralQuestions(
+    session.central_question_candidates
+  ).candidates;
+  const selected = selectCentralQuestion(
+    candidates,
+    type,
+    rewrittenQuestion
+  );
+  const { error: updateError } = await supabaseAdmin
+    .from("reframing_sessions")
+    .update({
+      selected_question_type: selected.type,
+      selected_question: selected.question,
+      selected_question_at: new Date().toISOString(),
+    })
+    .eq("id", sessionId)
+    .eq("user_id", userId);
+  if (updateError) throw new Error(updateError.message);
+  revalidatePath(`/reasoning/reframing/${sessionId}`);
+  return selected;
 }
 
 export async function promoteFrameToObservation(frameId: string): Promise<void> {

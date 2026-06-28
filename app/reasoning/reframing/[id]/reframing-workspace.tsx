@@ -2,10 +2,20 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { markReframingFrame, promoteFrameToObservation } from "@/app/reasoning/actions";
+import {
+  generateCentralQuestionsForReframing,
+  markReframingFrame,
+  promoteFrameToObservation,
+  selectReframingCentralQuestion,
+} from "@/app/reasoning/actions";
 import { frameGroup, FRAME_TYPES } from "@/app/reasoning/types";
 import type { ReframingFrame, ReframingSessionWithFrames } from "@/app/reasoning/types";
+import type {
+  CentralQuestionCandidate,
+  CentralQuestionType,
+} from "@/app/concepts/types";
 
 const GROUP_COLORS: Record<string, string> = {
   "时间维度": "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300",
@@ -63,8 +73,9 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
       try {
         await markReframingFrame(frame.id, !marked);
         setMarked((v) => !v);
-      } catch {
-        // silently ignore
+      } catch (caught) {
+        console.error("标记重构视角失败", caught);
+        setError(caught instanceof Error ? caught.message : "标记失败");
       }
     });
   }
@@ -150,6 +161,18 @@ export function ReframingWorkspace({
 }: {
   session: ReframingSessionWithFrames;
 }) {
+  const router = useRouter();
+  const [questions, setQuestions] = useState<CentralQuestionCandidate[]>(
+    session.central_question_candidates ?? []
+  );
+  const [selectedType, setSelectedType] = useState<CentralQuestionType | null>(
+    (session.selected_question_type as CentralQuestionType | null) ?? null
+  );
+  const [selectedQuestion, setSelectedQuestion] = useState(
+    session.selected_question ?? ""
+  );
+  const [questionBusy, setQuestionBusy] = useState(false);
+  const [questionError, setQuestionError] = useState<string | null>(null);
   // Sort frames by FRAME_TYPES order
   const orderedFrames = [...session.frames].sort(
     (a, b) =>
@@ -183,6 +206,140 @@ export function ReframingWorkspace({
           <FrameCard key={frame.id} frame={frame} />
         ))}
       </div>
+
+      <section className="mt-10 rounded-xl border bg-card p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Central Question
+            </p>
+            <h2 className="mt-2 text-lg font-medium">
+              从26个视角，收敛成一个值得回答的问题
+            </h2>
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
+              8种问法不评分。它们只说明打开什么空间，以及会改变什么决定。
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={questionBusy}
+            onClick={async () => {
+              setQuestionBusy(true);
+              setQuestionError(null);
+              try {
+                const result =
+                  await generateCentralQuestionsForReframing(session.id);
+                setQuestions(result.candidates);
+                setSelectedType(null);
+                setSelectedQuestion("");
+                router.refresh();
+              } catch (caught) {
+                console.error("生成Central Question失败", caught);
+                setQuestionError(
+                  caught instanceof Error ? caught.message : "生成失败"
+                );
+              } finally {
+                setQuestionBusy(false);
+              }
+            }}
+          >
+            {questionBusy ? "正在收敛…" : "生成8种问法"}
+          </Button>
+        </div>
+
+        {questions.length > 0 && (
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
+            {questions.map((candidate) => (
+              <button
+                key={candidate.type}
+                type="button"
+                onClick={() => {
+                  setSelectedType(candidate.type);
+                  setSelectedQuestion(candidate.question);
+                }}
+                className={
+                  "rounded-lg border p-4 text-left transition-colors " +
+                  (selectedType === candidate.type
+                    ? "border-foreground bg-foreground text-background"
+                    : "hover:border-foreground/40")
+                }
+              >
+                <div className="font-mono text-[9px] uppercase opacity-50">
+                  {QUESTION_TYPE_LABEL[candidate.type]}
+                </div>
+                <p className="mt-2 text-sm font-medium leading-6">
+                  {candidate.question}
+                </p>
+                <dl className="mt-3 space-y-2 text-xs leading-5 opacity-70">
+                  <div>
+                    <dt className="font-medium">打开空间</dt>
+                    <dd>{candidate.opens_space}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium">改变决定</dt>
+                    <dd>{candidate.decision_impact}</dd>
+                  </div>
+                </dl>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selectedType && (
+          <div className="mt-5 border-t pt-5">
+            <label className="text-xs text-muted-foreground">
+              当前唯一问题（可以改写）
+              <textarea
+                value={selectedQuestion}
+                onChange={(event) => setSelectedQuestion(event.target.value)}
+                className="mt-2 min-h-24 w-full rounded-md border bg-background p-3 text-sm leading-6 text-foreground"
+              />
+            </label>
+            <Button
+              type="button"
+              className="mt-3"
+              disabled={questionBusy || !selectedQuestion.trim()}
+              onClick={async () => {
+                setQuestionBusy(true);
+                setQuestionError(null);
+                try {
+                  await selectReframingCentralQuestion(
+                    session.id,
+                    selectedType,
+                    selectedQuestion
+                  );
+                  router.refresh();
+                } catch (caught) {
+                  console.error("保存Central Question失败", caught);
+                  setQuestionError(
+                    caught instanceof Error ? caught.message : "保存失败"
+                  );
+                } finally {
+                  setQuestionBusy(false);
+                }
+              }}
+            >
+              保存为当前Central Question
+            </Button>
+          </div>
+        )}
+
+        {questionError && (
+          <p className="mt-3 text-sm text-destructive">{questionError}</p>
+        )}
+      </section>
     </div>
   );
 }
+
+const QUESTION_TYPE_LABEL: Record<CentralQuestionType, string> = {
+  whole: "全体の問",
+  subjective: "主観の問",
+  ideal: "理想の問",
+  verb: "動詞の問",
+  destruction: "破壊の問",
+  purpose: "目的の問",
+  altruistic: "利他の問",
+  freedom: "自由の問",
+};

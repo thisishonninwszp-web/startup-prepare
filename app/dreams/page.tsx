@@ -1,16 +1,107 @@
-import { SystemPreview } from "@/components/system-preview";
+import Link from "next/link";
+import { ArrowRight, CloudMoon, Plus } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { AppShell } from "@/components/app-shell";
+import { listDreamCases } from "./queries";
 
-export default function DreamsPage() {
+export const dynamic = "force-dynamic";
+
+const CONTEXT_LABEL = {
+  personal: "人生",
+  business: "事业",
+  cross: "人生／事业交叉",
+} as const;
+const SCALE_LABEL = {
+  small: "小梦 · 1年内",
+  big: "大梦 · 3–5年",
+  grand: "宏大梦 · 10年以上",
+} as const;
+
+export default async function DreamsPage() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const cases = await listDreamCases(user!.id);
   return (
-    <SystemPreview
-      eyebrow="Dream system"
-      title="先允许未来变得具体，再检查它靠什么成立。"
-      statement="梦想系统将帮助你形成小的、长期的和宏大的未来画面。第一阶段以引导想象和文字场景为核心，不生成愿景图片。"
-      principles={[
-        { label: "画面", text: "把抽象愿望写成某一天真实发生的具体场景。" },
-        { label: "尺度", text: "同时容纳近期愿望、长期方向和宏大但未被证明的想象。" },
-        { label: "现实", text: "识别前提与代价，但不把梦想强行缩成商业假设。" },
-      ]}
-    />
+    <AppShell>
+      <main className="min-h-screen bg-[#f4f1ea] text-stone-950">
+        <section className="relative overflow-hidden border-b border-stone-300/70 px-4 py-12 sm:px-8 lg:px-12">
+          <div className="absolute -right-24 -top-24 size-80 rounded-full border border-stone-300/60" />
+          <div className="absolute -right-8 -top-8 size-48 rounded-full border border-stone-300/60" />
+          <div className="relative mx-auto flex max-w-6xl flex-col gap-8 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.24em] text-stone-500">
+                <CloudMoon className="size-4" />
+                Future archive
+              </div>
+              <h1 className="mt-5 max-w-3xl font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">
+                先允许未来变得具体，
+                <br />
+                再看它靠什么成立。
+              </h1>
+              <p className="mt-5 max-w-2xl text-sm leading-7 text-stone-600">
+                不把梦想压成任务。先看见某一天的光线、人物、动作和内心，再折叠查看代价与前提。
+              </p>
+            </div>
+            <Link
+              href="/dreams/new"
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm text-stone-50"
+            >
+              <Plus className="size-4" />
+              开始做一个梦
+            </Link>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-4 py-10 sm:px-8 lg:px-12">
+          {cases.length === 0 ? (
+            <div className="rounded-[2rem] border border-dashed border-stone-400/70 p-12 text-center">
+              <p className="font-serif text-xl">这里还没有未来画面。</p>
+              <p className="mt-3 text-sm text-stone-600">
+                不必先证明现实可行，只要从“我想看见怎样的一天”开始。
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2">
+              {cases.map((item, index) => (
+                <Link
+                  key={item.id}
+                  href={`/dreams/${item.id}`}
+                  className={
+                    "group relative min-h-64 overflow-hidden rounded-[2rem] border border-stone-300 bg-stone-50 p-6 transition-transform hover:-translate-y-1 " +
+                    (index % 3 === 0 ? "md:col-span-2 md:min-h-72" : "")
+                  }
+                >
+                  <div className="absolute right-5 top-3 font-serif text-7xl text-stone-200/70">
+                    {String(index + 1).padStart(2, "0")}
+                  </div>
+                  <div className="relative flex h-full flex-col">
+                    <div className="flex flex-wrap gap-2 text-[10px] text-stone-500">
+                      <span className="rounded-full border border-stone-300 px-2 py-1">
+                        {CONTEXT_LABEL[item.context]}
+                      </span>
+                      <span className="rounded-full border border-stone-300 px-2 py-1">
+                        {SCALE_LABEL[item.scale]}
+                      </span>
+                    </div>
+                    <h2 className="mt-8 max-w-2xl font-serif text-2xl leading-snug">
+                      {item.title}
+                    </h2>
+                    <p className="mt-3 max-w-2xl line-clamp-2 text-sm leading-6 text-stone-600">
+                      {item.initial_desire}
+                    </p>
+                    <div className="mt-auto flex items-center justify-between pt-8 text-xs text-stone-500">
+                      <span>{item.version_count} 个愿景版本</span>
+                      <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </AppShell>
   );
 }
