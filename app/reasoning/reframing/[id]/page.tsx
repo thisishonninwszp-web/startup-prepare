@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 import { getReframingSession } from "@/app/reasoning/queries";
 import { getConceptSchemaStatus } from "@/app/concepts/queries";
 import { ReframingWorkspace } from "./reframing-workspace";

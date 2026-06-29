@@ -1,6 +1,8 @@
 import { BayesianForm } from "./bayesian-form";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 import { loadOwnedRealityReasoningSnapshot } from "../../reality-source";
 
 export default async function NewBayesianBeliefPage({

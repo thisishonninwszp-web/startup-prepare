@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 import { getBayesianBelief } from "@/app/reasoning/queries";
 import { BayesianWorkspace } from "./bayesian-workspace";
 import { getReasoningSource } from "../../reality-source";

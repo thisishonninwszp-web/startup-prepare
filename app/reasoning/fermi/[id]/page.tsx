@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 import { getFermiEstimate } from "@/app/reasoning/queries";
 import { FermiWorkspace } from "./fermi-workspace";
 import { getReasoningSource } from "../../reality-source";
