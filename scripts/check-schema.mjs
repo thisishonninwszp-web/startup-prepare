@@ -43,6 +43,8 @@ const coreProbes = [
     "reasoning_sources",
     "id,user_id,reality_version_id,bayesian_belief_id,fermi_estimate_id,reframing_session_id,source_snapshot",
   ],
+  ["reality_closures", "id,user_id,case_id,source_version_id,status,due_on"],
+  ["reality_closure_events", "id,closure_id,user_id,event_type"],
 ];
 
 const optionalConceptProbes = [

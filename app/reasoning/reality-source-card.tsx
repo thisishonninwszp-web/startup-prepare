@@ -34,10 +34,13 @@ export function RealitySourceCard({
 
   return showLink ? (
     <Link
-      href={`/reality/${snapshot.realityCase.id}/versions/${snapshot.version.id}`}
+      href={`/reality/${snapshot.realityCase.id}#current-next-move`}
       className="block rounded-lg border bg-muted/30 p-4 transition-colors hover:bg-muted/60"
     >
       {content}
+      <p className="mt-3 border-t pt-3 text-xs font-medium">
+        分析完成，回到原课题收束 →
+      </p>
     </Link>
   ) : (
     <section className="rounded-lg border bg-muted/30 p-4">{content}</section>

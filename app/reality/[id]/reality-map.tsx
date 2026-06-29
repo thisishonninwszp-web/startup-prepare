@@ -113,7 +113,7 @@ export function RealityMapView({
         </div>
       </MapSection>
 
-      <MapSection icon={ArrowRight} number="08" title="下一步路径">
+      <MapSection icon={ArrowRight} number="08" title="初步方向">
         <div className="grid gap-3 lg:grid-cols-3">
           {map.paths.map((path, index) => {
             const chosen = selectedPath?.type === path.type;
@@ -144,7 +144,7 @@ export function RealityMapView({
                     onClick={() => onSelectPath(index)}
                     className="mt-5 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-muted hover:text-foreground"
                   >
-                    选择这条路径
+                    选择为初步方向
                   </button>
                 )}
               </div>
@@ -173,7 +173,7 @@ export function RealityMapView({
       </MapSection>
 
       {selectedPath && versionId && reasoningBridgeAvailable && (
-        <MapSection icon={Lightbulb} number="09" title="继续深化">
+        <MapSection icon={Lightbulb} number="09" title="还缺信息时再分析">
           <ReasoningBridge
             pathType={selectedPath.type}
             realityVersionId={versionId}

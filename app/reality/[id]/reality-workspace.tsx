@@ -24,7 +24,9 @@ import {
   type RealityMessage,
 } from "../types";
 import type { RealityCaseDetail } from "../queries";
+import type { RealityClosure } from "../closure";
 import { RealityMapView } from "./reality-map";
+import { RealityClosurePanel } from "./closure-panel";
 
 const CONTEXT_LABEL = {
   personal: "人生",
@@ -35,9 +37,13 @@ const CONTEXT_LABEL = {
 export function RealityWorkspace({
   initialCase,
   reasoningBridgeAvailable,
+  closureAvailable,
+  closures,
 }: {
   initialCase: RealityCaseDetail;
   reasoningBridgeAvailable: boolean;
+  closureAvailable: boolean;
+  closures: RealityClosure[];
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<RealityMessage[]>(
@@ -217,6 +223,14 @@ export function RealityWorkspace({
 
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:px-12">
         <div className="min-w-0 space-y-12">
+          {closureAvailable && initialCase.versions[0] && (
+            <RealityClosurePanel
+              caseId={initialCase.id}
+              latestVersion={initialCase.versions[0]}
+              closures={closures}
+            />
+          )}
+
           <section>
             <div className="mb-4 flex items-center justify-between">
               <div>
@@ -389,9 +403,9 @@ export function RealityWorkspace({
 
           {pathIndex !== null && selectedVersion && (
             <section className="rounded-lg border-2 border-foreground bg-card p-5">
-              <h2 className="text-sm font-medium">确认你的下一步</h2>
+              <h2 className="text-sm font-medium">确认初步方向</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                AI只提供路径。行动和理由必须由你确认。
+                这还不是最终行动。完成必要分析后，再在页面顶部收束成唯一下一步。
               </p>
               <div className="mt-5 space-y-4">
                 <label className="block">
@@ -427,7 +441,7 @@ export function RealityWorkspace({
                     onClick={savePath}
                     disabled={savingPath}
                   >
-                    {savingPath ? "保存中…" : "确认路径"}
+                    {savingPath ? "保存中…" : "确认初步方向"}
                   </Button>
                   <button
                     type="button"

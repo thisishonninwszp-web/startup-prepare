@@ -3,6 +3,9 @@ import { ArrowRight, CalendarClock, Plus, ScanSearch } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { listRealityCases } from "./queries";
+import { listActiveRealityClosureDueDates } from "./closure-queries";
+import { isClosureDue } from "./closure";
+import { todayInTimezone } from "@/app/retrospectives/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +20,29 @@ export default async function RealityPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const cases = await listRealityCases(user!.id);
-  const now = Date.now();
-  const due = cases.filter(
-    (item) =>
-      item.review_due_at && new Date(item.review_due_at).getTime() <= now
+  const [cases, closureDueDates] = await Promise.all([
+    listRealityCases(user!.id),
+    listActiveRealityClosureDueDates(user!.id),
+  ]);
+  const closureDueByCase = new Map(
+    closureDueDates.map((item) => [item.case_id, item.due_on])
   );
+  const now = Date.now();
+  const today = todayInTimezone("Asia/Tokyo");
+  const due = cases
+    .map((item) => ({
+      ...item,
+      closure_due_on: closureDueByCase.get(item.id) ?? null,
+    }))
+    .filter((item) => {
+      if (item.closure_due_on) {
+        return isClosureDue(item.closure_due_on, today);
+      }
+      return (
+        item.review_due_at &&
+        new Date(item.review_due_at).getTime() <= now
+      );
+    });
 
   return (
     <AppShell>
@@ -69,10 +89,10 @@ export default async function RealityPage() {
                       <div>
                         <div className="text-sm font-medium">{item.title}</div>
                         <p className="mt-1 text-xs text-orange-800">
-                          复查日：
-                          {new Date(item.review_due_at!).toLocaleDateString(
-                            "zh-CN"
-                          )}
+                          {item.closure_due_on ? "下一步到期：" : "复查日："}
+                          {new Date(
+                            item.closure_due_on ?? item.review_due_at!
+                          ).toLocaleDateString("zh-CN")}
                         </p>
                       </div>
                       <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />

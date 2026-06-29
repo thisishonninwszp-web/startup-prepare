@@ -4,6 +4,10 @@ import { AppShell } from "@/components/app-shell";
 import { getRealityCase } from "../queries";
 import { RealityWorkspace } from "./reality-workspace";
 import { getReasoningSourceSchemaStatus } from "@/app/reasoning/reality-source";
+import {
+  getRealityClosureSchemaStatus,
+  listRealityClosures,
+} from "../closure-queries";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +20,17 @@ export default async function RealityCasePage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const [realityCase, reasoningBridgeAvailable] = await Promise.all([
-    getRealityCase(params.id, user!.id),
+  if (!user) notFound();
+  const [realityCase, reasoningBridgeAvailable, closureAvailable] =
+    await Promise.all([
+    getRealityCase(params.id, user.id),
     getReasoningSourceSchemaStatus(),
+    getRealityClosureSchemaStatus(),
   ]);
   if (!realityCase) notFound();
+  const closures = closureAvailable
+    ? await listRealityClosures(realityCase.id, user.id)
+    : [];
 
   return (
     <AppShell>
@@ -28,6 +38,8 @@ export default async function RealityCasePage({
         <RealityWorkspace
           initialCase={realityCase}
           reasoningBridgeAvailable={reasoningBridgeAvailable}
+          closureAvailable={closureAvailable}
+          closures={closures}
         />
       </main>
     </AppShell>
