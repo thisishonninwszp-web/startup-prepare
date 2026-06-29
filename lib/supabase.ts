@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Server-only admin client backed by the service role key.
@@ -7,19 +7,35 @@ import { createClient } from "@supabase/supabase-js";
  * product is single-user (RLS is effectively bypassed for now). NEVER import
  * this module from a Client Component — the service role key must never reach
  * the browser.
+ *
+ * Lazily initialized so that importing this module at build time (during
+ * Next.js page-data collection) does not throw when env vars are absent.
+ * The error is deferred until the first actual DB call at runtime.
  */
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let _client: SupabaseClient | null = null;
 
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error(
-    "Missing Supabase env vars. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local."
-  );
+function getAdmin(): SupabaseClient {
+  if (!_client) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
+      throw new Error(
+        "Missing Supabase env vars. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local."
+      );
+    }
+    _client = createClient(url, key, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+  return _client;
 }
 
-export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_, prop: string | symbol) {
+    const client = getAdmin();
+    const val = (client as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof val === "function"
+      ? (val as (...args: unknown[]) => unknown).bind(client)
+      : val;
   },
 });
