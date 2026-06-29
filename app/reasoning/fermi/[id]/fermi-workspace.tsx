@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import { updateFermiComponent, computeSensitivity } from "@/app/reasoning/actions";
 import { RealitySourceCard } from "@/app/reasoning/reality-source-card";
 import type { RealityReasoningSnapshot } from "@/app/reasoning/reality-source";
@@ -196,11 +197,7 @@ export function FermiWorkspace({
         </Button>
       </div>
 
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
-      )}
+      <AiErrorNotice error={error} />
 
       {initialEstimate.ai_teaching && (
         <aside className="rounded-md bg-muted/50 px-4 py-3 text-xs leading-relaxed text-muted-foreground border">

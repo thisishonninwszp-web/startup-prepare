@@ -3,6 +3,7 @@ import { gzipSync, gunzipSync } from "zlib";
 import { GoogleGenAI } from "@google/genai";
 import { supabaseAdmin } from "./supabase";
 import { extractJson } from "./ai-json";
+import { formatAiErrorMessage } from "./ai-error";
 
 export const AI_MODEL = process.env.AI_MODEL ?? "gemini-2.5-flash";
 
@@ -62,14 +63,26 @@ export class AiGatewayError extends Error {
     inputSaved?: boolean;
     cause?: unknown;
   }) {
-    super(input.message ?? humanAiErrorMessage(input.code), {
+    const message = input.message ?? humanAiErrorMessage(input.code);
+    const retryable = input.retryable ?? isRetryableAiError(input.code);
+    const inputSaved = input.inputSaved ?? true;
+    super(
+      formatAiErrorMessage({
+        code: input.code,
+        requestId: input.requestId,
+        retryable,
+        inputSaved,
+        message,
+      }),
+      {
       cause: input.cause,
-    });
+      }
+    );
     this.name = "AiGatewayError";
     this.code = input.code;
     this.requestId = input.requestId;
-    this.retryable = input.retryable ?? isRetryableAiError(input.code);
-    this.inputSaved = input.inputSaved ?? true;
+    this.retryable = retryable;
+    this.inputSaved = inputSaved;
   }
 }
 

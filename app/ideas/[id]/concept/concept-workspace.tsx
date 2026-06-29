@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   addCompanyFact,
   archiveCompanyFact,
@@ -513,11 +514,7 @@ export function ConceptWorkspace({
           {message}
         </p>
       ) : null}
-      {error ? (
-        <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
+      <AiErrorNotice error={error} />
     </div>
   );
 }

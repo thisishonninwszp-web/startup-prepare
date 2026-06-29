@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   acceptDreamBranchSuggestion,
   answerDreamTurn,
@@ -394,18 +395,13 @@ export function DreamWorkspace({
             </Button>
           </section>
 
-          {(error || notice) && (
-            <p
-              className={
-                "rounded-2xl border p-3 text-xs leading-5 " +
-                (error
-                  ? "border-red-300 bg-red-50 text-red-700"
-                  : "border-emerald-300 bg-emerald-50 text-emerald-700")
-              }
-            >
-              {error ?? notice}
+          {error ? (
+            <AiErrorNotice error={error} className="rounded-2xl text-xs leading-5" />
+          ) : notice ? (
+            <p className="rounded-2xl border border-emerald-300 bg-emerald-50 p-3 text-xs leading-5 text-emerald-700">
+              {notice}
             </p>
-          )}
+          ) : null}
         </section>
 
         <section className="min-w-0 space-y-5">

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Split } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import { compareDreamCaseBranches } from "../../actions";
 import type { DreamCaseDetail } from "../../queries";
 import type { DreamBranchComparison as Comparison } from "../../types";
@@ -170,7 +171,7 @@ export function DreamBranchComparison({
             </div>
           </section>
         ) : null}
-        {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
+        <AiErrorNotice error={error} className="mt-4" />
       </div>
     </main>
   );

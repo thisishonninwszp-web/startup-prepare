@@ -10,6 +10,7 @@ import {
   Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   prepareRealityClosure,
   reconfirmRealityClosure,
@@ -538,11 +539,7 @@ export function RealityClosurePanel({
         </div>
       )}
 
-      {error && (
-        <p className="mt-4 text-sm text-destructive" role="alert">
-          {error}
-        </p>
-      )}
+      <AiErrorNotice error={error} className="mt-4" />
 
       {history.length > 0 && (
         <details className="mt-6 border-t pt-4">

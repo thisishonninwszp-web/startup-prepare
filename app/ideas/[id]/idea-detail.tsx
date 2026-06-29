@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   AI_LOCK_MESSAGE,
   AI_ROLES,
@@ -507,7 +508,7 @@ function RoleChallenge({
         ))}
 
         {sending && <p className="text-xs text-muted-foreground">对方正在追问…</p>}
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        <AiErrorNotice error={error} className="text-xs" />
       </div>
 
       {/* 输入 */}
@@ -897,7 +898,7 @@ function RealityCheckSection({
         </Button>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      <AiErrorNotice error={error} />
 
       {result && (
         <div className="space-y-3 rounded-md border p-3 text-sm">
@@ -947,8 +948,12 @@ function PreMortemSection({
     setError(null);
     try {
       setModes(await runPreMortem(ideaId));
-    } catch {
-      setError("预演失败，请重试（先保存假设再试）");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "预演失败，请重试（先保存假设再试）"
+      );
     } finally {
       setLoading(false);
     }
@@ -968,7 +973,7 @@ function PreMortemSection({
         </Button>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      <AiErrorNotice error={error} />
 
       {modes && modes.length === 0 && !loading && (
         <p className="text-sm text-muted-foreground">

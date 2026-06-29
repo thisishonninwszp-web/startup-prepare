@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   archiveRealityCase,
   askRealityQuestion,
@@ -506,11 +507,7 @@ export function RealityWorkspace({
             </section>
           )}
 
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
+          <AiErrorNotice error={error} />
         </div>
 
         <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   completeMonthlyPeriod,
   generateRetroDraft,
@@ -211,11 +212,11 @@ export function MonthlyRetrospectiveWorkspace({
               先确认纳入哪些周复盘。
             </div>
           )}
-          {(error || notice) && (
-            <p className={error ? "text-sm text-red-700" : "text-sm text-emerald-700"}>
-              {error ?? notice}
-            </p>
-          )}
+          {error ? (
+            <AiErrorNotice error={error} />
+          ) : notice ? (
+            <p className="text-sm text-emerald-700">{notice}</p>
+          ) : null}
         </section>
       </div>
     </main>

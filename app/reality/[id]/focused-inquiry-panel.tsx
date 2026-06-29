@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, MessageCircleQuestion, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   answerRealityFocus,
   createRealityFocusSession,
@@ -345,9 +346,7 @@ export function FocusedInquiryPanel({
         </div>
       )}
 
-      {error && (
-        <p className="border-t p-3 text-xs text-destructive">{error}</p>
-      )}
+      <AiErrorNotice error={error} className="m-3 text-xs" />
     </div>
   ) : (
     <div className="rounded-lg border bg-card p-4">
@@ -381,7 +380,7 @@ export function FocusedInquiryPanel({
           </div>
         </div>
       )}
-      {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
+      <AiErrorNotice error={error} className="mt-3 text-xs" />
     </div>
   );
 

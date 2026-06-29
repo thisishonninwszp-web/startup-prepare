@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   addCustomerMaterial,
   createCustomerProxyVersion,
@@ -394,18 +395,13 @@ export function CustomerWorkspace({
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:px-12">
-        {(error || notice) && (
-          <div
-            className={
-              "mb-6 rounded-md p-3 text-sm " +
-              (error
-                ? "bg-red-50 text-red-700"
-                : "bg-muted text-muted-foreground")
-            }
-          >
-            {error || notice}
+        {error ? (
+          <AiErrorNotice error={error} className="mb-6" />
+        ) : notice ? (
+          <div className="mb-6 rounded-md bg-muted p-3 text-sm text-muted-foreground">
+            {notice}
           </div>
-        )}
+        ) : null}
 
         {tab === "materials" && (
           <div className="space-y-8">

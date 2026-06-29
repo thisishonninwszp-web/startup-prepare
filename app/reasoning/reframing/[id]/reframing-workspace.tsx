@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import {
   generateCentralQuestionsForReframing,
   markReframingFrame,
@@ -150,9 +151,7 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
             {promotePending ? "升格中…" : "升格为观察"}
           </Button>
         )}
-        {error && (
-          <span className="text-xs text-destructive">{error}</span>
-        )}
+        {error && <AiErrorNotice error={error} className="text-xs" />}
       </div>
     </div>
   );
@@ -337,9 +336,7 @@ export function ReframingWorkspace({
           </div>
         )}
 
-        {questionError && (
-          <p className="mt-3 text-sm text-destructive">{questionError}</p>
-        )}
+        <AiErrorNotice error={questionError} className="mt-3" />
       </section>
       )}
     </div>

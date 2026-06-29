@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { AiErrorNotice } from "@/components/ai-error-notice";
 import { recordBayesUpdate } from "@/app/reasoning/actions";
 import { RealitySourceCard } from "@/app/reasoning/reality-source-card";
 import type { RealityReasoningSnapshot } from "@/app/reasoning/reality-source";
@@ -207,9 +208,7 @@ export function BayesianWorkspace({
             </Button>
           </div>
           {error && (
-            <p className="text-xs text-destructive" role="alert">
-              {error}
-            </p>
+            <AiErrorNotice error={error} className="text-xs" />
           )}
         </form>
       </div>
