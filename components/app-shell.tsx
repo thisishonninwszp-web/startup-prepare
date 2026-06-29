@@ -15,6 +15,7 @@ import {
   Radar,
   RotateCcw,
   ScanSearch,
+  Settings,
   Users,
   X,
   type LucideIcon,
@@ -33,6 +34,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/retrospectives": RotateCcw,
   "/dreams": CloudMoon,
   "/reasoning": Brain,
+  "/settings/ai": Settings,
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -151,6 +153,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="border-t p-3">
+          <Link
+            href="/settings/ai"
+            className="mb-1 flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Settings className="size-4" strokeWidth={1.7} />
+            AI 诊断
+          </Link>
           {signOutError && (
             <p className="mb-2 px-2 text-xs text-destructive" role="alert">
               {signOutError}

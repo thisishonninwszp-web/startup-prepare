@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import {
   DEATH_PATTERNS,
   type AiRole,
@@ -32,7 +31,7 @@ import {
   validateClosureAgainstSource,
   type RealityClosureSourceSnapshot,
 } from "@/app/reality/closure-source";
-import { generateValidatedJson } from "@/lib/ai-json";
+import { AI_MODEL, executeAiJson, executeAiText } from "@/lib/ai-gateway";
 import {
   collectProxyCitationIds,
   parseCustomerEvidenceBatch,
@@ -131,17 +130,25 @@ import {
  * 模型名读环境变量 AI_MODEL，便于切换。仅在服务端使用。
  */
 
-const MODEL = process.env.AI_MODEL ?? "gemini-2.5-flash";
+const MODEL = AI_MODEL;
 
-// 惰性初始化：缺 key 时不影响"保存观察"，只在真正调用 AI 时才报错（会被上层捕获降级）。
-let _genai: GoogleGenAI | null = null;
-function getClient(): GoogleGenAI {
-  if (!_genai) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY in .env.local.");
-    _genai = new GoogleGenAI({ apiKey });
-  }
-  return _genai;
+async function generateContent(request: {
+  model?: string;
+  contents: unknown;
+  config?: Record<string, unknown>;
+}): Promise<{ text: string }> {
+  const outputMode =
+    request.config?.responseMimeType === "application/json" ? "json" : "text";
+  const text = await executeAiText(
+    {
+      operation: "legacy_ai_call",
+      module: "unknown",
+      outputMode,
+      timeoutMs: outputMode === "json" ? 60_000 : 30_000,
+    },
+    { ...request, model: request.model ?? MODEL }
+  );
+  return { text };
 }
 
 /** 捕捉阶段固定的第一问——对抗"错误共识效应"。永远是这一句。 */
@@ -166,7 +173,7 @@ const INQUIRER_SYSTEM_PROMPT = `你是一个冷静、克制的追问者，服务
  * 第一个问题恒为 FIRST_INQUIRY_QUESTION（即使模型偏离也会被强制纠正）。
  */
 export async function runInquiry(observationText: string): Promise<string[]> {
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents: `观察：${observationText}`,
     config: {
@@ -243,7 +250,7 @@ ${ROLE_COMMON}
 这是对方目前的假设（可能还不完整）：
 ${hypothesisContext}`;
 
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents,
     config: {
@@ -289,7 +296,7 @@ export async function clusterObservations(
 
   const numbered = items.map((it, i) => `[${i}] ${it.text}`).join("\n");
 
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents: numbered,
     config: {
@@ -362,7 +369,7 @@ export async function themeToDirection(
     .map((t) => `- ${t.trim()}`)
     .join("\n");
 
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents: `反复主题：${theme}\n相关观察：\n${samples}`,
     config: {
@@ -420,7 +427,7 @@ const EXPERIMENT_SYSTEM_PROMPT = `你是一个冷静、对抗性的创业判断�
 
 /** 基于假设上下文，草拟一个本周可做、能证伪最关键假设的最小实验。 */
 export async function draftExperiment(hypothesisContext: string): Promise<string> {
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents: hypothesisContext,
     config: {
@@ -451,7 +458,7 @@ ${DEATH_PATTERNS.map((d) => `- ${d}`).join("\n")}
 
 /** 拿假设去撞最常见死法，返回最相关的 2-3 种。 */
 export async function preMortem(hypothesisContext: string): Promise<DeathMode[]> {
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents: hypothesisContext,
     config: {
@@ -510,7 +517,7 @@ export async function digestExternal(
     .map((s, i) => `[${i}] ${s.title}\n${s.content}`)
     .join("\n\n");
 
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents: `主题：${topic}\n\n检索资料：\n${numbered}`,
     config: {
@@ -564,7 +571,7 @@ export async function realityCheck(
     .map((s, i) => `[${i}] ${s.title}\n${s.content}`)
     .join("\n\n");
 
-  const response = await getClient().models.generateContent({
+  const response = await generateContent({
     model: MODEL,
     contents: `方向假设：\n${hypothesisContext}\n\n联网资料：\n${numbered}`,
     config: {
@@ -615,7 +622,7 @@ export async function translateQuery(query: string): Promise<QueryTranslations> 
   if (!q) return fallback;
 
   try {
-    const response = await getClient().models.generateContent({
+    const response = await generateContent({
       model: MODEL,
       contents: `关键词：${q}`,
       config: {
@@ -672,7 +679,7 @@ export async function analyzeExternalBatch(
     )
     .join("\n\n");
   try {
-    const response = await getClient().models.generateContent({
+    const response = await generateContent({
       model: MODEL,
       contents: `关键词：${query}\n共 ${items.length} 条片段：\n\n${snippets}`,
       config: {
@@ -859,9 +866,14 @@ async function generateRealityJson<T>(
   contents: string,
   validate: (value: unknown) => T
 ): Promise<T> {
-  return generateValidatedJson(
-    async (attempt) => {
-      const response = await getClient().models.generateContent({
+  return executeAiJson(
+    {
+      operation: "structured_json",
+      module: "unknown",
+      outputMode: "json",
+      timeoutMs: 60_000,
+    },
+    (attempt) => ({
         model: MODEL,
         contents:
           contents +
@@ -874,9 +886,7 @@ async function generateRealityJson<T>(
           thinkingConfig: { thinkingBudget: 0 },
           maxOutputTokens: attempt === 0 ? 4096 : 8192,
         },
-      });
-      return (response.text ?? "").trim();
-    },
+      }),
     validate
   );
 }
