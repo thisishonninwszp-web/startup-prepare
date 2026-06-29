@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { getRealityCase } from "../../../queries";
 import { RealityMapView } from "../../reality-map";
+import { getReasoningSourceSchemaStatus } from "@/app/reasoning/reality-source";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,10 @@ export default async function RealityVersionPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const realityCase = await getRealityCase(params.id, user!.id);
+  const [realityCase, reasoningBridgeAvailable] = await Promise.all([
+    getRealityCase(params.id, user!.id),
+    getReasoningSourceSchemaStatus(),
+  ]);
   if (!realityCase) notFound();
   const version = realityCase.versions.find(
     (item) => item.id === params.version
@@ -52,6 +56,8 @@ export default async function RealityVersionPage({
           customAction={version.custom_action}
           selectionReason={version.selection_reason}
           reviewDueAt={version.review_due_at}
+          versionId={version.id}
+          reasoningBridgeAvailable={reasoningBridgeAvailable}
         />
       </main>
     </AppShell>

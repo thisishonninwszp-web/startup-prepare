@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { updateFermiComponent, computeSensitivity } from "@/app/reasoning/actions";
+import { RealitySourceCard } from "@/app/reasoning/reality-source-card";
+import type { RealityReasoningSnapshot } from "@/app/reasoning/reality-source";
 import type { FermiComponent, FermiEstimateWithComponents } from "@/app/reasoning/types";
 
 function formatNum(n: number): string {
@@ -97,8 +99,10 @@ function ComponentRow({
 
 export function FermiWorkspace({
   estimate: initialEstimate,
+  realitySource,
 }: {
   estimate: FermiEstimateWithComponents;
+  realitySource: RealityReasoningSnapshot | null;
 }) {
   const [components, setComponents] = useState(initialEstimate.components);
   const [finalLow, setFinalLow] = useState(initialEstimate.final_low ?? 0);
@@ -147,6 +151,11 @@ export function FermiWorkspace({
         <h1 className="text-lg font-semibold leading-snug">
           {initialEstimate.question}
         </h1>
+        {realitySource && (
+          <div className="mt-4">
+            <RealitySourceCard snapshot={realitySource} showLink />
+          </div>
+        )}
         <div className="mt-4 rounded-lg border bg-card p-4 text-center">
           <p className="text-xs text-muted-foreground mb-1">估算范围</p>
           <p className="text-3xl font-bold tabular-nums">

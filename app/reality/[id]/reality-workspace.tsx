@@ -34,8 +34,10 @@ const CONTEXT_LABEL = {
 
 export function RealityWorkspace({
   initialCase,
+  reasoningBridgeAvailable,
 }: {
   initialCase: RealityCaseDetail;
+  reasoningBridgeAvailable: boolean;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<RealityMessage[]>(
@@ -369,6 +371,8 @@ export function RealityWorkspace({
                     customAction={selectedVersion.custom_action}
                     selectionReason={selectedVersion.selection_reason}
                     reviewDueAt={selectedVersion.review_due_at}
+                    versionId={selectedVersion.id}
+                    reasoningBridgeAvailable={reasoningBridgeAvailable}
                     onSelectPath={
                       selectedVersion.id === latestVersionId
                         ? (index) => {

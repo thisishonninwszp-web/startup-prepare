@@ -8,6 +8,7 @@ import {
   analyzeBayesUpdate,
   decomposeFermiQuestion,
   computeFermiSensitivity,
+  draftReasoningFromReality,
   generateCentralQuestions,
   generateReframes,
 } from "@/lib/ai";
@@ -23,6 +24,12 @@ import {
   assertFermiComponentValues,
   assertLinkedIdeaOwner,
 } from "./validation";
+import {
+  loadOwnedRealityReasoningSnapshot,
+  saveReasoningSource,
+  type RealityReasoningSnapshot,
+  type ReasoningTool,
+} from "./reality-source";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -48,6 +55,60 @@ async function requireOwnedOptionalIdea(
   if (!data) throw new Error("无权关联该想法");
 }
 
+async function requireOptionalRealitySource(
+  versionId: string | null,
+  userId: string
+): Promise<RealityReasoningSnapshot | null> {
+  if (!versionId) return null;
+  const snapshot = await loadOwnedRealityReasoningSnapshot(versionId, userId);
+  if (!snapshot) throw new Error("现状版本不存在或无权访问");
+  return snapshot;
+}
+
+async function persistRealitySourceOrCleanup(input: {
+  userId: string;
+  tool: ReasoningTool;
+  targetId: string;
+  snapshot: RealityReasoningSnapshot | null;
+  parentTable:
+    | "bayesian_beliefs"
+    | "fermi_estimates"
+    | "reframing_sessions";
+}): Promise<void> {
+  if (!input.snapshot) return;
+  try {
+    await saveReasoningSource({
+      userId: input.userId,
+      tool: input.tool,
+      targetId: input.targetId,
+      snapshot: input.snapshot,
+    });
+  } catch (error) {
+    const { error: cleanupError } = await supabaseAdmin
+      .from(input.parentTable)
+      .delete()
+      .eq("id", input.targetId)
+      .eq("user_id", input.userId);
+    if (cleanupError) {
+      console.error("清理缺少来源的推理记录失败", cleanupError.message);
+    }
+    throw error;
+  }
+}
+
+export async function prepareReasoningFromReality(
+  tool: ReasoningTool,
+  realityVersionId: string
+) {
+  const userId = await requireUserId();
+  const snapshot = await loadOwnedRealityReasoningSnapshot(
+    realityVersionId,
+    userId
+  );
+  if (!snapshot) throw new Error("现状版本不存在或无权访问");
+  return draftReasoningFromReality(tool, snapshot);
+}
+
 // ── Bayesian ──────────────────────────────────────────────────────────────────
 
 export async function createBayesianBelief(formData: FormData): Promise<{ id: string }> {
@@ -56,8 +117,13 @@ export async function createBayesianBelief(formData: FormData): Promise<{ id: st
     question: formData.get("question"),
     prior: formData.get("prior"),
     idea_id: formData.get("idea_id"),
+    reality_version_id: formData.get("reality_version_id"),
   });
   await requireOwnedOptionalIdea(input.idea_id, userId);
+  const realitySource = await requireOptionalRealitySource(
+    input.reality_version_id,
+    userId
+  );
 
   const suggestion = await suggestBayesPrior(input.question);
   const prior = input.prior ?? suggestion.suggested_prior;
@@ -77,6 +143,13 @@ export async function createBayesianBelief(formData: FormData): Promise<{ id: st
     console.error("创建贝叶斯信念失败", error.message);
     throw new Error("创建失败，请重试");
   }
+  await persistRealitySourceOrCleanup({
+    userId,
+    tool: "bayesian",
+    targetId: data.id,
+    snapshot: realitySource,
+    parentTable: "bayesian_beliefs",
+  });
   revalidatePath("/reasoning");
   return { id: data.id };
 }
@@ -175,8 +248,13 @@ export async function createFermiEstimate(formData: FormData): Promise<{ id: str
     question: formData.get("question"),
     category: formData.get("category"),
     idea_id: formData.get("idea_id"),
+    reality_version_id: formData.get("reality_version_id"),
   });
   await requireOwnedOptionalIdea(input.idea_id, userId);
+  const realitySource = await requireOptionalRealitySource(
+    input.reality_version_id,
+    userId
+  );
 
   const decomposition = await decomposeFermiQuestion(input.question, input.category);
 
@@ -231,6 +309,13 @@ export async function createFermiEstimate(formData: FormData): Promise<{ id: str
     }
     throw new Error("创建失败，请重试");
   }
+  await persistRealitySourceOrCleanup({
+    userId,
+    tool: "fermi",
+    targetId: estimate.id,
+    snapshot: realitySource,
+    parentTable: "fermi_estimates",
+  });
 
   revalidatePath("/reasoning");
   return { id: estimate.id };
@@ -357,8 +442,13 @@ export async function createReframingSession(formData: FormData): Promise<{ id: 
     topic_text: formData.get("topic_text"),
     context_note: formData.get("context_note"),
     idea_id: formData.get("idea_id"),
+    reality_version_id: formData.get("reality_version_id"),
   });
   await requireOwnedOptionalIdea(input.idea_id, userId);
+  const realitySource = await requireOptionalRealitySource(
+    input.reality_version_id,
+    userId
+  );
 
   const output = await generateReframes(
     input.topic_text,
@@ -402,6 +492,13 @@ export async function createReframingSession(formData: FormData): Promise<{ id: 
     }
     throw new Error("创建失败，请重试");
   }
+  await persistRealitySourceOrCleanup({
+    userId,
+    tool: "reframing",
+    targetId: session.id,
+    snapshot: realitySource,
+    parentTable: "reframing_sessions",
+  });
 
   revalidatePath("/reasoning");
   return { id: session.id };

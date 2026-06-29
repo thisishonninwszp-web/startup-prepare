@@ -4,6 +4,7 @@ import {
   parseRealityDelta,
   parseRealityInterviewResult,
   parseRealityMap,
+  reasoningBridgeHref,
 } from "./types";
 
 describe("parseRealityInterviewResult", () => {
@@ -29,6 +30,17 @@ describe("parseRealityInterviewResult", () => {
         ready_to_synthesize: false,
       })
     ).toThrow("questions");
+  });
+});
+
+describe("reasoning bridge", () => {
+  it("carries the immutable reality version into the selected tool", () => {
+    expect(reasoningBridgeHref("bayesian", "version-1")).toBe(
+      "/reasoning/bayesian/new?reality_version_id=version-1"
+    );
+    expect(reasoningBridgeHref("fermi", "version 2")).toBe(
+      "/reasoning/fermi/new?reality_version_id=version+2"
+    );
   });
 });
 

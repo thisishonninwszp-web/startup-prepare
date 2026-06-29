@@ -211,7 +211,15 @@ export async function getReasoningSource(
     .eq("user_id", userId)
     .eq(reasoningTargetColumn(tool), targetId)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (
+      error.code === "PGRST205" &&
+      error.message.includes("reasoning_sources")
+    ) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
   return data ? parseRealityReasoningSnapshot(data.source_snapshot) : null;
 }
 

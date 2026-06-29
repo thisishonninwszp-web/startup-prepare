@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getFermiEstimate } from "@/app/reasoning/queries";
 import { FermiWorkspace } from "./fermi-workspace";
+import { getReasoningSource } from "../../reality-source";
 
 export default async function FermiEstimatePage({
   params,
@@ -15,8 +16,11 @@ export default async function FermiEstimatePage({
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const estimate = await getFermiEstimate(id, user.id);
+  const [estimate, realitySource] = await Promise.all([
+    getFermiEstimate(id, user.id),
+    getReasoningSource("fermi", id, user.id),
+  ]);
   if (!estimate) notFound();
 
-  return <FermiWorkspace estimate={estimate} />;
+  return <FermiWorkspace estimate={estimate} realitySource={realitySource} />;
 }

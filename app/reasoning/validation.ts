@@ -2,19 +2,26 @@ export type CreateBayesianBeliefInput = {
   question: string;
   prior: number | null;
   idea_id: string | null;
+  reality_version_id: string | null;
 };
 
 export type CreateFermiEstimateInput = {
   question: string;
   category: string;
   idea_id: string | null;
+  reality_version_id: string | null;
 };
 
 export type CreateReframingSessionInput = {
   topic_text: string;
   context_note: string;
   idea_id: string | null;
+  reality_version_id: string | null;
 };
+
+function optionalId(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
 export function normalizeCreateBayesianBelief(
   raw: unknown
@@ -37,11 +44,9 @@ export function normalizeCreateBayesianBelief(
     }
     prior = Math.round(p * 10000) / 10000;
   }
-  const idea_id =
-    typeof input.idea_id === "string" && input.idea_id.trim()
-      ? input.idea_id.trim()
-      : null;
-  return { question, prior, idea_id };
+  const idea_id = optionalId(input.idea_id);
+  const reality_version_id = optionalId(input.reality_version_id);
+  return { question, prior, idea_id, reality_version_id };
 }
 
 export function normalizeCreateFermiEstimate(
@@ -57,11 +62,9 @@ export function normalizeCreateFermiEstimate(
     typeof input.category === "string" && input.category.trim()
       ? input.category.trim()
       : "market";
-  const idea_id =
-    typeof input.idea_id === "string" && input.idea_id.trim()
-      ? input.idea_id.trim()
-      : null;
-  return { question, category, idea_id };
+  const idea_id = optionalId(input.idea_id);
+  const reality_version_id = optionalId(input.reality_version_id);
+  return { question, category, idea_id, reality_version_id };
 }
 
 export function normalizeCreateReframingSession(
@@ -75,11 +78,9 @@ export function normalizeCreateReframingSession(
   if (topic_text.length > 1000) throw new Error("课题描述不能超过 1000 字");
   const context_note =
     typeof input.context_note === "string" ? input.context_note.trim() : "";
-  const idea_id =
-    typeof input.idea_id === "string" && input.idea_id.trim()
-      ? input.idea_id.trim()
-      : null;
-  return { topic_text, context_note, idea_id };
+  const idea_id = optionalId(input.idea_id);
+  const reality_version_id = optionalId(input.reality_version_id);
+  return { topic_text, context_note, idea_id, reality_version_id };
 }
 
 export function assertFermiComponentValues(low: number, high: number): void {

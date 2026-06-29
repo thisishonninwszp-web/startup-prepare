@@ -9,7 +9,12 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import Link from "next/link";
-import type { RealityDelta, RealityMap, RealityPath } from "../types";
+import {
+  reasoningBridgeHref,
+  type RealityDelta,
+  type RealityMap,
+  type RealityPath,
+} from "../types";
 
 const PATH_LABEL = {
   investigate: "补充信息",
@@ -24,6 +29,8 @@ export function RealityMapView({
   customAction,
   selectionReason,
   reviewDueAt,
+  versionId,
+  reasoningBridgeAvailable = false,
   onSelectPath,
 }: {
   map: RealityMap;
@@ -32,6 +39,8 @@ export function RealityMapView({
   customAction?: string | null;
   selectionReason?: string | null;
   reviewDueAt?: string | null;
+  versionId?: string;
+  reasoningBridgeAvailable?: boolean;
   onSelectPath?: (index: number) => void;
 }) {
   return (
@@ -163,9 +172,12 @@ export function RealityMapView({
         )}
       </MapSection>
 
-      {selectedPath && (
+      {selectedPath && versionId && reasoningBridgeAvailable && (
         <MapSection icon={Lightbulb} number="09" title="继续深化">
-          <ReasoningBridge pathType={selectedPath.type} />
+          <ReasoningBridge
+            pathType={selectedPath.type}
+            realityVersionId={versionId}
+          />
         </MapSection>
       )}
     </div>
@@ -174,23 +186,28 @@ export function RealityMapView({
 
 const REASONING_BRIDGE: Record<
   "investigate" | "act" | "wait",
-  { tool: string; href: string; reason: string; cta: string }
+  {
+    tool: string;
+    toolKey: "bayesian" | "fermi" | "reframing";
+    reason: string;
+    cta: string;
+  }
 > = {
   investigate: {
     tool: "贝叶斯信念追踪",
-    href: "/reasoning/bayesian/new",
+    toolKey: "bayesian",
     reason: "调查前先写下你相信什么，调查后更新——防止你只记住支持自己的证据。",
     cta: "建立信念追踪",
   },
   act: {
     tool: "费米估算",
-    href: "/reasoning/fermi/new",
+    toolKey: "fermi",
     reason: "行动前估算关键数字（成本/时间/规模），把大问题拆解为可乘的组成部分，防止直觉失准。",
     cta: "开始估算",
   },
   wait: {
     tool: "认知重构",
-    href: "/reasoning/reframing/new",
+    toolKey: "reframing",
     reason: "等待期间用 26 种视角重新审视这个课题，也许有你没想到的角度能改变决策。",
     cta: "换个视角看",
   },
@@ -198,22 +215,24 @@ const REASONING_BRIDGE: Record<
 
 const REFRAMING_SECONDARY = {
   tool: "认知重构",
-  href: "/reasoning/reframing/new",
+  toolKey: "reframing" as const,
   reason: "对任何路径都适用——26 种维度打破思维定势，看清还没想到的可能性。",
   cta: "换个视角看",
 };
 
 const BAYESIAN_SECONDARY = {
   tool: "贝叶斯信念追踪",
-  href: "/reasoning/bayesian/new",
+  toolKey: "bayesian" as const,
   reason: "等待期间也可以先声明你现在相信什么，之后有了新信息再更新——防止事后诸葛亮。",
   cta: "建立信念追踪",
 };
 
 function ReasoningBridge({
   pathType,
+  realityVersionId,
 }: {
   pathType: "investigate" | "act" | "wait";
+  realityVersionId: string;
 }) {
   const primary = REASONING_BRIDGE[pathType];
   // "wait" 的 primary 已经是重构，避免重复；改用 Bayesian 作为次要推荐
@@ -225,8 +244,8 @@ function ReasoningBridge({
     <div className="grid gap-3 sm:grid-cols-2">
       {cards.map((card) => (
         <Link
-          key={card.href}
-          href={card.href}
+          key={card.toolKey}
+          href={reasoningBridgeHref(card.toolKey, realityVersionId)}
           className="group flex flex-col gap-2 rounded-lg border bg-card p-4 hover:border-foreground/40 hover:bg-muted/30 transition-colors"
         >
           <div className="flex items-center justify-between">

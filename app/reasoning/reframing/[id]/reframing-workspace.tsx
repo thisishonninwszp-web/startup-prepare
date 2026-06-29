@@ -10,6 +10,8 @@ import {
   promoteFrameToObservation,
   selectReframingCentralQuestion,
 } from "@/app/reasoning/actions";
+import { RealitySourceCard } from "@/app/reasoning/reality-source-card";
+import type { RealityReasoningSnapshot } from "@/app/reasoning/reality-source";
 import { frameGroup, FRAME_TYPES } from "@/app/reasoning/types";
 import type { ReframingFrame, ReframingSessionWithFrames } from "@/app/reasoning/types";
 import type {
@@ -159,9 +161,11 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
 export function ReframingWorkspace({
   session,
   centralQuestionAvailable,
+  realitySource,
 }: {
   session: ReframingSessionWithFrames;
   centralQuestionAvailable: boolean;
+  realitySource: RealityReasoningSnapshot | null;
 }) {
   const router = useRouter();
   const [questions, setQuestions] = useState<CentralQuestionCandidate[]>(
@@ -201,6 +205,11 @@ export function ReframingWorkspace({
         <p className="mt-2 text-xs text-muted-foreground">
           {orderedFrames.length} 种视角 · {markedCount > 0 ? `已标记 ${markedCount} 种` : "勾选有用的视角，可升格为观察"}
         </p>
+        {realitySource && (
+          <div className="mt-4">
+            <RealitySourceCard snapshot={realitySource} showLink />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

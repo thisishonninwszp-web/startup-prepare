@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { createFermiEstimate } from "@/app/reasoning/actions";
+import {
+  createFermiEstimate,
+  prepareReasoningFromReality,
+} from "@/app/reasoning/actions";
+import type { RealityReasoningSnapshot } from "../../reality-source";
+import { RealitySourceCard } from "../../reality-source-card";
 
 const CATEGORIES = [
   { value: "market", label: "市场规模" },
@@ -12,10 +17,47 @@ const CATEGORIES = [
   { value: "custom", label: "自定义" },
 ];
 
-export function FermiForm({ ideaId }: { ideaId: string | null }) {
+export function FermiForm({
+  ideaId,
+  realitySource,
+}: {
+  ideaId: string | null;
+  realitySource: RealityReasoningSnapshot | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [question, setQuestion] = useState("");
+  const [category, setCategory] = useState("market");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const edited = useRef(false);
+
+  const generateDraft = useCallback(async () => {
+    if (!realitySource) return;
+    setDrafting(true);
+    setDraftError(null);
+    try {
+      const draft = await prepareReasoningFromReality(
+        "fermi",
+        realitySource.version.id
+      );
+      if (draft.tool === "fermi" && !edited.current) {
+        setQuestion(draft.question);
+        setCategory(draft.category);
+      }
+    } catch (caught) {
+      setDraftError(
+        caught instanceof Error ? caught.message : "草稿生成失败，请重试"
+      );
+    } finally {
+      setDrafting(false);
+    }
+  }, [realitySource]);
+
+  useEffect(() => {
+    void generateDraft();
+  }, [generateDraft]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,6 +76,32 @@ export function FermiForm({ ideaId }: { ideaId: string | null }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {ideaId && <input type="hidden" name="idea_id" value={ideaId} />}
+      {realitySource && (
+        <>
+          <input
+            type="hidden"
+            name="reality_version_id"
+            value={realitySource.version.id}
+          />
+          <RealitySourceCard snapshot={realitySource} />
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-muted-foreground">
+              {drafting
+                ? "正在根据现状生成草稿…"
+                : draftError ?? "已生成可编辑草稿，请确认后提交。"}
+            </span>
+            {draftError && (
+              <button
+                type="button"
+                onClick={() => void generateDraft()}
+                className="underline underline-offset-4"
+              >
+                重试
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="question">
@@ -42,6 +110,11 @@ export function FermiForm({ ideaId }: { ideaId: string | null }) {
         <textarea
           id="question"
           name="question"
+          value={question}
+          onChange={(event) => {
+            edited.current = true;
+            setQuestion(event.target.value);
+          }}
           rows={2}
           maxLength={500}
           placeholder="例：这个细分市场每年的市场规模是多少美元？"
@@ -62,7 +135,11 @@ export function FermiForm({ ideaId }: { ideaId: string | null }) {
                 type="radio"
                 name="category"
                 value={cat.value}
-                defaultChecked={cat.value === "market"}
+                checked={category === cat.value}
+                onChange={() => {
+                  edited.current = true;
+                  setCategory(cat.value);
+                }}
                 className="sr-only"
               />
               {cat.label}

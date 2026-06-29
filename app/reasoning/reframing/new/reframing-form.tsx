@@ -1,14 +1,56 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { createReframingSession } from "@/app/reasoning/actions";
+import {
+  createReframingSession,
+  prepareReasoningFromReality,
+} from "@/app/reasoning/actions";
+import type { RealityReasoningSnapshot } from "../../reality-source";
+import { RealitySourceCard } from "../../reality-source-card";
 
-export function ReframingForm({ ideaId }: { ideaId: string | null }) {
+export function ReframingForm({
+  ideaId,
+  realitySource,
+}: {
+  ideaId: string | null;
+  realitySource: RealityReasoningSnapshot | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [topic, setTopic] = useState("");
+  const [context, setContext] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const edited = useRef(false);
+
+  const generateDraft = useCallback(async () => {
+    if (!realitySource) return;
+    setDrafting(true);
+    setDraftError(null);
+    try {
+      const draft = await prepareReasoningFromReality(
+        "reframing",
+        realitySource.version.id
+      );
+      if (draft.tool === "reframing" && !edited.current) {
+        setTopic(draft.topic_text);
+        setContext(draft.context_note);
+      }
+    } catch (caught) {
+      setDraftError(
+        caught instanceof Error ? caught.message : "草稿生成失败，请重试"
+      );
+    } finally {
+      setDrafting(false);
+    }
+  }, [realitySource]);
+
+  useEffect(() => {
+    void generateDraft();
+  }, [generateDraft]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -27,6 +69,32 @@ export function ReframingForm({ ideaId }: { ideaId: string | null }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {ideaId && <input type="hidden" name="idea_id" value={ideaId} />}
+      {realitySource && (
+        <>
+          <input
+            type="hidden"
+            name="reality_version_id"
+            value={realitySource.version.id}
+          />
+          <RealitySourceCard snapshot={realitySource} />
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-muted-foreground">
+              {drafting
+                ? "正在根据现状生成草稿…"
+                : draftError ?? "已生成可编辑草稿，请确认后提交。"}
+            </span>
+            {draftError && (
+              <button
+                type="button"
+                onClick={() => void generateDraft()}
+                className="underline underline-offset-4"
+              >
+                重试
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="topic_text">
@@ -35,6 +103,11 @@ export function ReframingForm({ ideaId }: { ideaId: string | null }) {
         <textarea
           id="topic_text"
           name="topic_text"
+          value={topic}
+          onChange={(event) => {
+            edited.current = true;
+            setTopic(event.target.value);
+          }}
           rows={4}
           maxLength={1000}
           placeholder="例：我不知道是否应该放弃现在的产品方向，还是再坚持一段时间"
@@ -53,6 +126,11 @@ export function ReframingForm({ ideaId }: { ideaId: string | null }) {
         <textarea
           id="context_note"
           name="context_note"
+          value={context}
+          onChange={(event) => {
+            edited.current = true;
+            setContext(event.target.value);
+          }}
           rows={2}
           maxLength={500}
           placeholder="例：我已经做了 6 个月，有 20 个用户，但增长停滞"

@@ -1,14 +1,54 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { createBayesianBelief } from "@/app/reasoning/actions";
+import {
+  createBayesianBelief,
+  prepareReasoningFromReality,
+} from "@/app/reasoning/actions";
+import type { RealityReasoningSnapshot } from "../../reality-source";
+import { RealitySourceCard } from "../../reality-source-card";
 
-export function BayesianForm({ ideaId }: { ideaId: string | null }) {
+export function BayesianForm({
+  ideaId,
+  realitySource,
+}: {
+  ideaId: string | null;
+  realitySource: RealityReasoningSnapshot | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [question, setQuestion] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const edited = useRef(false);
+
+  const generateDraft = useCallback(async () => {
+    if (!realitySource) return;
+    setDrafting(true);
+    setDraftError(null);
+    try {
+      const draft = await prepareReasoningFromReality(
+        "bayesian",
+        realitySource.version.id
+      );
+      if (draft.tool === "bayesian" && !edited.current) {
+        setQuestion(draft.question);
+      }
+    } catch (caught) {
+      setDraftError(
+        caught instanceof Error ? caught.message : "草稿生成失败，请重试"
+      );
+    } finally {
+      setDrafting(false);
+    }
+  }, [realitySource]);
+
+  useEffect(() => {
+    void generateDraft();
+  }, [generateDraft]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -27,6 +67,32 @@ export function BayesianForm({ ideaId }: { ideaId: string | null }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {ideaId && <input type="hidden" name="idea_id" value={ideaId} />}
+      {realitySource && (
+        <>
+          <input
+            type="hidden"
+            name="reality_version_id"
+            value={realitySource.version.id}
+          />
+          <RealitySourceCard snapshot={realitySource} />
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-muted-foreground">
+              {drafting
+                ? "正在根据现状生成草稿…"
+                : draftError ?? "已生成可编辑草稿，请确认后提交。"}
+            </span>
+            {draftError && (
+              <button
+                type="button"
+                onClick={() => void generateDraft()}
+                className="underline underline-offset-4"
+              >
+                重试
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="question">
@@ -35,6 +101,11 @@ export function BayesianForm({ ideaId }: { ideaId: string | null }) {
         <textarea
           id="question"
           name="question"
+          value={question}
+          onChange={(event) => {
+            edited.current = true;
+            setQuestion(event.target.value);
+          }}
           rows={3}
           maxLength={500}
           placeholder="例：30% 的独立开发者在做项目管理时有真实痛点"

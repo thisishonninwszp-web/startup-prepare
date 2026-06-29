@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getBayesianBelief } from "@/app/reasoning/queries";
 import { BayesianWorkspace } from "./bayesian-workspace";
+import { getReasoningSource } from "../../reality-source";
 
 export default async function BayesianBeliefPage({
   params,
@@ -15,8 +16,11 @@ export default async function BayesianBeliefPage({
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const belief = await getBayesianBelief(id, user.id);
+  const [belief, realitySource] = await Promise.all([
+    getBayesianBelief(id, user.id),
+    getReasoningSource("bayesian", id, user.id),
+  ]);
   if (!belief) notFound();
 
-  return <BayesianWorkspace belief={belief} />;
+  return <BayesianWorkspace belief={belief} realitySource={realitySource} />;
 }

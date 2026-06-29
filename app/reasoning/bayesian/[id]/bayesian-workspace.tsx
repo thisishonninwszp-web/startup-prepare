@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { recordBayesUpdate } from "@/app/reasoning/actions";
+import { RealitySourceCard } from "@/app/reasoning/reality-source-card";
+import type { RealityReasoningSnapshot } from "@/app/reasoning/reality-source";
 import type { BayesianBeliefWithHistory, BayesianUpdate } from "@/app/reasoning/types";
 
 function pct(n: number): string {
@@ -61,8 +63,10 @@ function UpdateRow({ update }: { update: BayesianUpdate }) {
 
 export function BayesianWorkspace({
   belief,
+  realitySource,
 }: {
   belief: BayesianBeliefWithHistory;
+  realitySource: RealityReasoningSnapshot | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [evidenceText, setEvidenceText] = useState("");
@@ -119,6 +123,11 @@ export function BayesianWorkspace({
 
       <div className="mb-8">
         <h1 className="text-lg font-semibold leading-snug">{belief.question}</h1>
+        {realitySource && (
+          <div className="mt-4">
+            <RealitySourceCard snapshot={realitySource} showLink />
+          </div>
+        )}
 
         <div className="mt-4 space-y-1.5">
           <div className="flex items-end justify-between">

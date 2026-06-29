@@ -48,6 +48,16 @@ export type RealityConstraints = {
 
 export type RealityPathType = "investigate" | "act" | "wait";
 
+export function reasoningBridgeHref(
+  tool: "bayesian" | "fermi" | "reframing",
+  realityVersionId: string
+): string {
+  const params = new URLSearchParams({
+    reality_version_id: realityVersionId,
+  });
+  return `/reasoning/${tool}/new?${params.toString()}`;
+}
+
 export type RealityPath = {
   type: RealityPathType;
   title: string;
