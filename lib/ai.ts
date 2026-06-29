@@ -795,7 +795,7 @@ async function generateRealityJson<T>(
           systemInstruction,
           responseMimeType: "application/json",
           thinkingConfig: { thinkingBudget: 0 },
-          maxOutputTokens: 2048,
+          maxOutputTokens: attempt === 0 ? 4096 : 8192,
         },
       });
       return (response.text ?? "").trim();

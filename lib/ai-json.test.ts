@@ -7,6 +7,20 @@ describe("extractJson", () => {
       ready: true,
     });
   });
+
+  it("repairs a structurally complete object with a missing comma", () => {
+    expect(
+      extractJson('{"items":[{"text":"第一条"}\n{"text":"第二条"}]}')
+    ).toEqual({
+      items: [{ text: "第一条" }, { text: "第二条" }],
+    });
+  });
+
+  it("rejects truncated JSON instead of accepting partial AI output", () => {
+    expect(() =>
+      extractJson('{"items":[{"text":"第一条"},{"text":"第二')
+    ).toThrow("truncated");
+  });
 });
 
 describe("generateValidatedJson", () => {
