@@ -27,6 +27,11 @@ import type { RealityCaseDetail } from "../queries";
 import type { RealityClosure } from "../closure";
 import { RealityMapView } from "./reality-map";
 import { RealityClosurePanel } from "./closure-panel";
+import {
+  FocusedInquiryPanel,
+  type FocusRequest,
+} from "./focused-inquiry-panel";
+import type { RealityFocusSession } from "../focus";
 
 const CONTEXT_LABEL = {
   personal: "人生",
@@ -39,11 +44,15 @@ export function RealityWorkspace({
   reasoningBridgeAvailable,
   closureAvailable,
   closures,
+  focusAvailable,
+  focusSessions,
 }: {
   initialCase: RealityCaseDetail;
   reasoningBridgeAvailable: boolean;
   closureAvailable: boolean;
   closures: RealityClosure[];
+  focusAvailable: boolean;
+  focusSessions: RealityFocusSession[];
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<RealityMessage[]>(
@@ -68,6 +77,7 @@ export function RealityWorkspace({
   const [reviewDueAt, setReviewDueAt] = useState(defaultReviewDate());
   const [savingPath, setSavingPath] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
 
   const selectedVersion =
     initialCase.versions.find((version) => version.id === selectedVersionId) ??
@@ -221,7 +231,7 @@ export function RealityWorkspace({
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:px-12">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:px-12">
         <div className="min-w-0 space-y-12">
           {closureAvailable && initialCase.versions[0] && (
             <RealityClosurePanel
@@ -387,6 +397,15 @@ export function RealityWorkspace({
                     reviewDueAt={selectedVersion.review_due_at}
                     versionId={selectedVersion.id}
                     reasoningBridgeAvailable={reasoningBridgeAvailable}
+                    onExplore={
+                      focusAvailable
+                        ? (locator) =>
+                            setFocusRequest({
+                              versionId: selectedVersion.id,
+                              locator,
+                            })
+                        : undefined
+                    }
                     onSelectPath={
                       selectedVersion.id === latestVersionId
                         ? (index) => {
@@ -495,6 +514,14 @@ export function RealityWorkspace({
         </div>
 
         <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+          {focusAvailable && (
+            <FocusedInquiryPanel
+              caseId={initialCase.id}
+              initialSessions={focusSessions}
+              request={focusRequest}
+              onClose={() => setFocusRequest(null)}
+            />
+          )}
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2">
               <FileText className="size-4" />

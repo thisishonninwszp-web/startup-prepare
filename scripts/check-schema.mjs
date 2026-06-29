@@ -28,7 +28,7 @@ const coreProbes = [
   ["ai_sessions", "id,idea_id,observation_id,role,messages"],
   ["predictions", "id,idea_id,outcome,due_at"],
   ["reality_cases", "id,user_id,messages"],
-  ["reality_versions", "id,case_id,version_no"],
+  ["reality_versions", "id,case_id,version_no,focus_session_ids"],
   ["customer_cases", "id,user_id,markets"],
   ["customer_proxy_versions", "id,case_id,version_no"],
   ["reflection_settings", "user_id,timezone"],
@@ -45,6 +45,14 @@ const coreProbes = [
   ],
   ["reality_closures", "id,user_id,case_id,source_version_id,status,due_on"],
   ["reality_closure_events", "id,closure_id,user_id,event_type"],
+  [
+    "reality_focus_sessions",
+    "id,user_id,case_id,version_id,anchor_type,anchor_index,status,summary,include_in_closure,include_in_next_version",
+  ],
+  [
+    "reality_focus_messages",
+    "id,session_id,user_id,role,turn_no,client_key,content",
+  ],
 ];
 
 const optionalConceptProbes = [

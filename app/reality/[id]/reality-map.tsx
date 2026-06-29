@@ -15,6 +15,10 @@ import {
   type RealityMap,
   type RealityPath,
 } from "../types";
+import type {
+  RealityFocusAnchorType,
+  RealityFocusLocator,
+} from "../focus";
 
 const PATH_LABEL = {
   investigate: "补充信息",
@@ -32,6 +36,7 @@ export function RealityMapView({
   versionId,
   reasoningBridgeAvailable = false,
   onSelectPath,
+  onExplore,
 }: {
   map: RealityMap;
   delta: RealityDelta | null;
@@ -42,20 +47,34 @@ export function RealityMapView({
   versionId?: string;
   reasoningBridgeAvailable?: boolean;
   onSelectPath?: (index: number) => void;
+  onExplore?: (locator: RealityFocusLocator) => void;
 }) {
   return (
     <div className="space-y-8">
       {delta && <DeltaBlock delta={delta} />}
 
       <MapSection icon={Gauge} number="01" title="当前课题">
-        <p className="text-lg font-medium tracking-tight">{map.topic}</p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-lg font-medium tracking-tight">{map.topic}</p>
+          <AskAiButton
+            onClick={onExplore && (() => onExplore({ type: "topic", index: 0 }))}
+          />
+        </div>
       </MapSection>
 
       <MapSection icon={HeartPulse} number="02" title="情绪、触发与判断影响">
         <div className="grid gap-3 md:grid-cols-2">
           {map.emotions.map((emotion, index) => (
             <div key={index} className="rounded-md border bg-card p-4">
-              <div className="text-sm font-medium">{emotion.feeling}</div>
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-sm font-medium">{emotion.feeling}</div>
+                <AskAiButton
+                  onClick={
+                    onExplore &&
+                    (() => onExplore({ type: "emotion", index }))
+                  }
+                />
+              </div>
               <dl className="mt-3 space-y-2 text-xs leading-5">
                 <div>
                   <dt className="text-muted-foreground">触发</dt>
@@ -75,7 +94,14 @@ export function RealityMapView({
         <div className="divide-y rounded-md border bg-card">
           {map.facts.map((fact, index) => (
             <div key={index} className="p-4">
-              <p className="text-sm">{fact.statement}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm">{fact.statement}</p>
+                <AskAiButton
+                  onClick={
+                    onExplore && (() => onExplore({ type: "fact", index }))
+                  }
+                />
+              </div>
               <p className="mt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                 来源 · {fact.source}
               </p>
@@ -86,30 +112,51 @@ export function RealityMapView({
 
       <div className="grid gap-8 lg:grid-cols-2">
         <MapSection icon={Brain} number="04" title="你的解释与假设">
-          <TextList items={map.interpretations} />
+          <TextList
+            items={map.interpretations}
+            anchorType="interpretation"
+            onExplore={onExplore}
+          />
         </MapSection>
         <MapSection icon={CircleHelp} number="05" title="未知与信息缺口">
-          <TextList items={map.unknowns} />
+          <TextList
+            items={map.unknowns}
+            anchorType="unknown"
+            onExplore={onExplore}
+          />
         </MapSection>
       </div>
 
       <MapSection icon={Gauge} number="06" title="约束与可控项">
         <div className="grid gap-3 md:grid-cols-3">
-          <ConstraintColumn title="固定约束" items={map.constraints.fixed} />
+          <ConstraintColumn
+            title="固定约束"
+            items={map.constraints.fixed}
+            anchorType="constraint_fixed"
+            onExplore={onExplore}
+          />
           <ConstraintColumn
             title="可以影响"
             items={map.constraints.influenceable}
+            anchorType="constraint_influenceable"
+            onExplore={onExplore}
           />
           <ConstraintColumn
             title="现在可行动"
             items={map.constraints.actionable_now}
+            anchorType="constraint_actionable"
+            onExplore={onExplore}
           />
         </div>
       </MapSection>
 
       <MapSection icon={AlertTriangle} number="07" title="矛盾与盲区">
         <div className="rounded-md border border-orange-300 bg-orange-50 p-4 text-orange-950">
-          <TextList items={map.contradictions} />
+          <TextList
+            items={map.contradictions}
+            anchorType="contradiction"
+            onExplore={onExplore}
+          />
         </div>
       </MapSection>
 
@@ -127,6 +174,13 @@ export function RealityMapView({
               >
                 <div className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-60">
                   {PATH_LABEL[path.type]}
+                </div>
+                <div className="mt-2 self-end">
+                  <AskAiButton
+                    onClick={
+                      onExplore && (() => onExplore({ type: "path", index }))
+                    }
+                  />
                 </div>
                 <h4 className="mt-3 text-sm font-medium">{path.title}</h4>
                 <p className="mt-3 text-xs leading-5 opacity-75">{path.rationale}</p>
@@ -286,25 +340,67 @@ function MapSection({
   );
 }
 
-function TextList({ items }: { items: string[] }) {
+function AskAiButton({ onClick }: { onClick?: () => void }) {
+  if (!onClick) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="shrink-0 rounded-md border px-2 py-1 text-[10px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+    >
+      问AI
+    </button>
+  );
+}
+
+function TextList({
+  items,
+  anchorType,
+  onExplore,
+}: {
+  items: string[];
+  anchorType?: RealityFocusAnchorType;
+  onExplore?: (locator: RealityFocusLocator) => void;
+}) {
   return (
     <ul className="space-y-2">
       {items.map((item, index) => (
         <li key={index} className="flex gap-2 text-sm leading-6">
           <span className="mt-2 size-1 shrink-0 rounded-full bg-current" />
-          <span>{item}</span>
+          <span className="min-w-0 flex-1">{item}</span>
+          <AskAiButton
+            onClick={
+              onExplore && anchorType
+                ? () => onExplore({ type: anchorType, index })
+                : undefined
+            }
+          />
         </li>
       ))}
     </ul>
   );
 }
 
-function ConstraintColumn({ title, items }: { title: string; items: string[] }) {
+function ConstraintColumn({
+  title,
+  items,
+  anchorType,
+  onExplore,
+}: {
+  title: string;
+  items: string[];
+  anchorType: RealityFocusAnchorType;
+  onExplore?: (locator: RealityFocusLocator) => void;
+}) {
   return (
     <div className="rounded-md border bg-card p-4">
       <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
       <div className="mt-3">
-        <TextList items={items} />
+        <TextList
+          items={items}
+          anchorType={anchorType}
+          onExplore={onExplore}
+        />
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   type RealityClosureEvent,
   type RealityClosureStatus,
 } from "./closure";
+import { listFocusExportsForClosure } from "./focus-queries";
 
 function missingClosureSchema(error: { code?: string; message?: string }): boolean {
   return (
@@ -48,6 +49,11 @@ export async function loadClosureSourceSnapshot(
     .eq("user_id", userId)
     .eq("reality_version_id", versionId);
   if (linksError) throw new Error(linksError.message);
+  const focusedInquiries = await listFocusExportsForClosure(
+    caseId,
+    versionId,
+    userId
+  );
 
   const bayesianIds = (links ?? [])
     .map((item) => item.bayesian_belief_id as string | null)
@@ -178,6 +184,7 @@ export async function loadClosureSourceSnapshot(
       description: item.description as string,
       is_marked: Boolean(item.is_marked),
     })),
+    focusedInquiries,
   });
 }
 

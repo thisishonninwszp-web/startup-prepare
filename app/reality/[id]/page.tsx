@@ -8,6 +8,10 @@ import {
   getRealityClosureSchemaStatus,
   listRealityClosures,
 } from "../closure-queries";
+import {
+  getRealityFocusSchemaStatus,
+  listRealityFocusSessions,
+} from "../focus-queries";
 
 export const dynamic = "force-dynamic";
 
@@ -21,15 +25,23 @@ export default async function RealityCasePage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) notFound();
-  const [realityCase, reasoningBridgeAvailable, closureAvailable] =
-    await Promise.all([
+  const [
+    realityCase,
+    reasoningBridgeAvailable,
+    closureAvailable,
+    focusAvailable,
+  ] = await Promise.all([
     getRealityCase(params.id, user.id),
     getReasoningSourceSchemaStatus(),
     getRealityClosureSchemaStatus(),
+    getRealityFocusSchemaStatus(),
   ]);
   if (!realityCase) notFound();
   const closures = closureAvailable
     ? await listRealityClosures(realityCase.id, user.id)
+    : [];
+  const focusSessions = focusAvailable
+    ? await listRealityFocusSessions(realityCase.id, user.id)
     : [];
 
   return (
@@ -40,6 +52,8 @@ export default async function RealityCasePage({
           reasoningBridgeAvailable={reasoningBridgeAvailable}
           closureAvailable={closureAvailable}
           closures={closures}
+          focusAvailable={focusAvailable}
+          focusSessions={focusSessions}
         />
       </main>
     </AppShell>

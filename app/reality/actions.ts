@@ -26,6 +26,7 @@ import {
   type CreateRealityInput,
   type PathSelectionInput,
 } from "./validation";
+import { listUnconsumedFocusExports } from "./focus-queries";
 
 export type RealitySourceRef = { type: RealitySourceType; id: string };
 
@@ -353,6 +354,18 @@ export async function generateRealityVersion(
     updateContext
   );
   const sources = await loadAiSources(caseId);
+  const focusExports = await listUnconsumedFocusExports(caseId, userId);
+  const focusSources: RealityAiSource[] = focusExports.map((item) => ({
+    type: "focus",
+    label: `聚焦探索 · ${item.anchor.label} · ${item.anchor.text}`,
+    content: JSON.stringify({
+      user_grounded: item.summary.user_grounded,
+      updated_understanding: item.summary.updated_understanding,
+      remaining_unknown: item.summary.remaining_unknown,
+      ai_inferences: item.summary.ai_inferences,
+      candidate_action: item.summary.candidate_action,
+    }),
+  }));
 
   // 现实更新先保存。即使后续 AI 失败，用户输入也不会丢失；重试时不会重复追加。
   if (messages !== existingMessages) {
@@ -365,7 +378,7 @@ export async function generateRealityVersion(
 
   // AI 阶段全部成功后才写 DB，避免空版本和半成品版本。
   const map = await synthesizeRealityMap(
-    toAiContext(realityCase, messages, sources)
+    toAiContext(realityCase, messages, [...sources, ...focusSources])
   );
   const { data: previous, error: previousError } = await supabaseAdmin
     .from("reality_versions")
@@ -383,18 +396,40 @@ export async function generateRealityVersion(
         updateContext.trim()
       )
     : null;
-  const { data: version, error } = await supabaseAdmin
-    .from("reality_versions")
-    .insert({
-      case_id: caseId,
-      previous_version_id: previous?.id ?? null,
-      version_no: (previous?.version_no ?? 0) + 1,
-      map,
-      delta,
-    })
-    .select("id")
-    .single();
+  let { data: versionId, error } = await supabaseAdmin.rpc(
+    "insert_reality_version_with_focus",
+    {
+      p_user_id: userId,
+      p_case_id: caseId,
+      p_previous_version_id: previous?.id ?? null,
+      p_map: map,
+      p_delta: delta,
+      p_focus_session_ids: focusExports.map((item) => item.id),
+    }
+  );
+  if (
+    error &&
+    focusExports.length === 0 &&
+    (error.code === "PGRST202" ||
+      error.code === "42883" ||
+      error.message.includes("insert_reality_version_with_focus"))
+  ) {
+    const fallback = await supabaseAdmin
+      .from("reality_versions")
+      .insert({
+        case_id: caseId,
+        previous_version_id: previous?.id ?? null,
+        version_no: (previous?.version_no ?? 0) + 1,
+        map,
+        delta,
+      })
+      .select("id")
+      .single();
+    versionId = fallback.data?.id ?? null;
+    error = fallback.error;
+  }
   if (error) throw new Error(error.message);
+  if (!versionId) throw new Error("现状地图版本写入失败");
 
   const { error: touchError } = await supabaseAdmin
     .from("reality_cases")
@@ -408,7 +443,7 @@ export async function generateRealityVersion(
   }
   revalidatePath("/reality");
   revalidatePath(`/reality/${caseId}`);
-  return version.id as string;
+  return versionId as string;
 }
 
 export async function selectRealityPath(

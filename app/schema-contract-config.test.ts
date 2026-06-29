@@ -54,4 +54,42 @@ describe("production schema contract", () => {
       '["reality_closure_events", "id,closure_id,user_id,event_type"]'
     );
   });
+
+  it("defines bounded focused inquiry sessions and idempotent turns", () => {
+    const migration = readFileSync(
+      "supabase/migrations/014_reality_focused_inquiry.sql",
+      "utf8"
+    );
+    expect(migration).toContain(
+      "create table if not exists reality_focus_sessions"
+    );
+    expect(migration).toContain(
+      "create table if not exists reality_focus_messages"
+    );
+    expect(migration).toContain(
+      "check (turn_no between 1 and 3)"
+    );
+    expect(migration).toContain(
+      "create or replace function reserve_reality_focus_turn"
+    );
+    expect(migration).toContain(
+      "create or replace function complete_reality_focus_turn"
+    );
+    expect(migration).toContain(
+      "create or replace function insert_reality_version_with_focus"
+    );
+    expect(migration).toContain(
+      "add column if not exists focus_session_ids uuid[]"
+    );
+    const checker = readFileSync("scripts/check-schema.mjs", "utf8");
+    expect(checker).toContain(
+      '"reality_focus_sessions"'
+    );
+    expect(checker).toContain(
+      '"reality_focus_messages"'
+    );
+    expect(checker).toContain(
+      '"id,case_id,version_no,focus_session_ids"'
+    );
+  });
 });

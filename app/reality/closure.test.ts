@@ -227,6 +227,23 @@ describe("closure source references", () => {
     expect(allowedClosureBasisRefs(source)).toContain("reframing:session-1");
   });
 
+  it("allows only focused inquiries included in the closure snapshot", () => {
+    const withFocus = {
+      ...source,
+      focused_inquiries: [
+        {
+          id: "focus-1",
+          anchor: { text: "极限感" },
+          summary: { updated_understanding: "疲惫可能影响判断" },
+        },
+      ],
+    } as unknown as RealityClosureSourceSnapshot;
+    expect(allowedClosureBasisRefs(withFocus)).toContain("focus:focus-1");
+    expect(
+      allowedClosureBasisRefs({ ...withFocus, focused_inquiries: [] })
+    ).not.toContain("focus:focus-1");
+  });
+
   it("rejects a citation that is not in the closure source", () => {
     expect(() =>
       validateClosureBasisRefs(

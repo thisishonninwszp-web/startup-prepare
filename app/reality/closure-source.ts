@@ -5,6 +5,10 @@ import {
   pathTypeToClosureMode,
   type RealityClosureDraft,
 } from "./closure";
+import type {
+  RealityFocusAnchor,
+  RealityFocusSummary,
+} from "./focus";
 
 export type ClosureBayesianSource = {
   id: string;
@@ -54,6 +58,11 @@ export type RealityClosureSourceSnapshot = {
     fermi: ClosureFermiSource[];
     reframing: ClosureReframingSource[];
   };
+  focused_inquiries: Array<{
+    id: string;
+    anchor: RealityFocusAnchor;
+    summary: RealityFocusSummary;
+  }>;
 };
 
 type ClosureSourceRows = {
@@ -100,6 +109,7 @@ type ClosureSourceRows = {
     description: string;
     is_marked: boolean;
   }>;
+  focusedInquiries?: RealityClosureSourceSnapshot["focused_inquiries"];
 };
 
 function canonicalJson(value: unknown): string {
@@ -149,6 +159,7 @@ export function allowedClosureBasisRefs(
     ...source.reasoning.bayesian.map((item) => `bayesian:${item.id}`),
     ...source.reasoning.fermi.map((item) => `fermi:${item.id}`),
     ...source.reasoning.reframing.map((item) => `reframing:${item.id}`),
+    ...(source.focused_inquiries ?? []).map((item) => `focus:${item.id}`),
   ];
 }
 
@@ -267,5 +278,6 @@ export function assembleClosureSource(
   return {
     reality: rows.reality,
     reasoning: { bayesian, fermi, reframing },
+    focused_inquiries: rows.focusedInquiries ?? [],
   };
 }
