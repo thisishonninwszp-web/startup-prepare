@@ -317,6 +317,105 @@ export type ReframingOutput = {
   }>;
 };
 
+export const REASONING_REALITY_SECTIONS = [
+  "topic",
+  "emotions",
+  "facts",
+  "interpretations",
+  "unknowns",
+  "constraints",
+  "contradictions",
+  "selected_path",
+] as const;
+
+export type ReasoningRealitySection =
+  (typeof REASONING_REALITY_SECTIONS)[number];
+
+export type ReasoningRealityDraft =
+  | {
+      tool: "bayesian";
+      question: string;
+      used_sections: ReasoningRealitySection[];
+    }
+  | {
+      tool: "fermi";
+      question: string;
+      category: "market" | "time" | "cost" | "custom";
+      used_sections: ReasoningRealitySection[];
+    }
+  | {
+      tool: "reframing";
+      topic_text: string;
+      context_note: string;
+      used_sections: ReasoningRealitySection[];
+    };
+
+export function parseReasoningRealityDraft(
+  value: unknown
+): ReasoningRealityDraft {
+  const input = object(value, "reasoning reality draft");
+  for (const forbidden of [
+    "score",
+    "rating",
+    "probability",
+    "success_rate",
+    "evidence",
+  ]) {
+    if (forbidden in input) {
+      throw new Error(`${forbidden} is forbidden`);
+    }
+  }
+  if (!Array.isArray(input.used_sections) || input.used_sections.length === 0) {
+    throw new Error("used_sections must be a non-empty array");
+  }
+  const allowedSections = new Set<string>(REASONING_REALITY_SECTIONS);
+  const used_sections = input.used_sections.map((section, index) => {
+    const parsed = str(section, `used_sections[${index}]`);
+    if (!allowedSections.has(parsed)) {
+      throw new Error(`used_sections[${index}] is invalid`);
+    }
+    return parsed as ReasoningRealitySection;
+  });
+  const rejectPrediction = (text: string) => {
+    if (/(成功率|胜率|评分|得分)/.test(text)) {
+      throw new Error("draft must not predict success or score the idea");
+    }
+    return text;
+  };
+  if (input.tool === "bayesian") {
+    return {
+      tool: "bayesian",
+      question: rejectPrediction(str(input.question, "question")),
+      used_sections,
+    };
+  }
+  if (input.tool === "fermi") {
+    if (
+      input.category !== "market" &&
+      input.category !== "time" &&
+      input.category !== "cost" &&
+      input.category !== "custom"
+    ) {
+      throw new Error("category is invalid");
+    }
+    return {
+      tool: "fermi",
+      question: rejectPrediction(str(input.question, "question")),
+      category: input.category,
+      used_sections,
+    };
+  }
+  if (input.tool === "reframing") {
+    return {
+      tool: "reframing",
+      topic_text: rejectPrediction(str(input.topic_text, "topic_text")),
+      context_note: str(input.context_note, "context_note"),
+      used_sections,
+    };
+  }
+  throw new Error("tool is invalid");
+}
+
 export function parseReframingOutput(value: unknown): ReframingOutput {
   const input = object(value, "reframing output");
   if (!Array.isArray(input.frames)) {

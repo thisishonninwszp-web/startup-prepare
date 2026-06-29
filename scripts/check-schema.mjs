@@ -39,6 +39,10 @@ const coreProbes = [
   ["dream_cases", "id,user_id,context,scale"],
   ["dream_branches", "id,case_id,user_id,is_focused"],
   ["dream_branch_canvases", "branch_id,user_id,revision"],
+  [
+    "reasoning_sources",
+    "id,user_id,reality_version_id,bayesian_belief_id,fermi_estimate_id,reframing_session_id,source_snapshot",
+  ],
 ];
 
 const optionalConceptProbes = [

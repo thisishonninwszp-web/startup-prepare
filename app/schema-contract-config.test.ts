@@ -9,4 +9,17 @@ describe("production schema contract", () => {
     expect(pkg.scripts?.["db:check"]).toBe("node scripts/check-schema.mjs");
     expect(existsSync("scripts/check-schema.mjs")).toBe(true);
   });
+
+  it("defines one exclusive reasoning target per reality source", () => {
+    const migration = readFileSync(
+      "supabase/migrations/012_reality_reasoning_bridge.sql",
+      "utf8"
+    );
+    expect(migration).toContain(
+      "create table if not exists reasoning_sources"
+    );
+    expect(migration).toContain(
+      "num_nonnulls(bayesian_belief_id, fermi_estimate_id, reframing_session_id) = 1"
+    );
+  });
 });
