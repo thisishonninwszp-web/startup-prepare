@@ -6,6 +6,10 @@ import type {
   FermiComponent,
   FermiEstimate,
   FermiEstimateWithComponents,
+  FirstPrinciplesNode,
+  FirstPrinciplesSession,
+  FirstPrinciplesSessionWithNodes,
+  NodeBasisType,
   ReframingFrame,
   ReframingSession,
   ReframingSessionWithFrames,
@@ -381,4 +385,89 @@ export async function getMarkedFramePatterns(
   return Array.from(counts.entries())
     .map(([frame_type, count]) => ({ frame_type, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+// ── First Principles ──────────────────────────────────────────────────────────
+
+export async function listFirstPrinciplesSessions(
+  userId: string
+): Promise<FirstPrinciplesSession[]> {
+  const { data, error } = await supabaseAdmin
+    .from("first_principles_sessions")
+    .select(
+      "id, user_id, idea_id, original_claim, context_note, restated_belief, bedrock_summary, weakest_links, created_at"
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("列出第一性原理会话失败", error.message);
+    throw new Error("读取数据失败，请重试");
+  }
+  return (data ?? []).map((s) => ({
+    id: s.id,
+    user_id: s.user_id,
+    idea_id: s.idea_id ?? null,
+    original_claim: s.original_claim,
+    context_note: s.context_note,
+    restated_belief: s.restated_belief,
+    bedrock_summary: s.bedrock_summary,
+    weakest_links: Array.isArray(s.weakest_links) ? (s.weakest_links as string[]) : [],
+    created_at: s.created_at,
+  }));
+}
+
+export async function getFirstPrinciplesSession(
+  sessionId: string,
+  userId: string
+): Promise<FirstPrinciplesSessionWithNodes | null> {
+  const { data: session, error } = await supabaseAdmin
+    .from("first_principles_sessions")
+    .select(
+      "id, user_id, idea_id, original_claim, context_note, restated_belief, bedrock_summary, weakest_links, created_at"
+    )
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) {
+    console.error("读取第一性原理会话失败", error.message);
+    throw new Error("读取数据失败，请重试");
+  }
+  if (!session || session.user_id !== userId) return null;
+
+  const { data: nodesData, error: nodesError } = await supabaseAdmin
+    .from("first_principles_nodes")
+    .select("id, session_id, claim, basis_type, basis_note, challenge, depth, is_verified, created_at")
+    .eq("session_id", sessionId)
+    .order("depth", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (nodesError) {
+    console.error("读取命题节点失败", nodesError.message);
+    throw new Error("读取数据失败，请重试");
+  }
+
+  const nodes: FirstPrinciplesNode[] = (nodesData ?? []).map((n) => ({
+    id: n.id,
+    session_id: n.session_id,
+    claim: n.claim,
+    basis_type: n.basis_type as NodeBasisType,
+    basis_note: n.basis_note,
+    challenge: n.challenge,
+    depth: n.depth as 1 | 2 | 3,
+    is_verified: n.is_verified,
+    created_at: n.created_at,
+  }));
+
+  return {
+    id: session.id,
+    user_id: session.user_id,
+    idea_id: session.idea_id ?? null,
+    original_claim: session.original_claim,
+    context_note: session.context_note,
+    restated_belief: session.restated_belief,
+    bedrock_summary: session.bedrock_summary,
+    weakest_links: Array.isArray(session.weakest_links)
+      ? (session.weakest_links as string[])
+      : [],
+    created_at: session.created_at,
+    nodes,
+  };
 }

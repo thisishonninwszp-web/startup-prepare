@@ -70,12 +70,14 @@ import {
   parseBayesUpdateAnalysis,
   parseFermiDecomposition,
   parseFermiSensitivityResult,
+  parseFirstPrinciplesOutput,
   parseReasoningRealityDraft,
   parseReframingOutput,
   type BayesPriorSuggestion,
   type BayesUpdateAnalysis,
   type FermiDecomposition,
   type FermiSensitivityResult,
+  type FirstPrinciplesOutput,
   type ReasoningRealityDraft,
   type ReframingOutput,
 } from "@/app/reasoning/types";
@@ -1997,6 +1999,52 @@ export async function generateReframes(
     REFRAMING_SYSTEM_PROMPT,
     `课题：${topic}${context}`,
     parseReframingOutput
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 第一性原理分解：把信念拆到基础命题层，标明证据基础类型，找出最脆弱环节
+// ---------------------------------------------------------------------------
+
+const FIRST_PRINCIPLES_SYSTEM_PROMPT = `你服务于 IdeaOS 的第一性原理分解工具，目标是帮助创业者发现自己"信念"的真实基础。
+
+用户输入一个信念/假设（如"企业用户愿意为 SaaS 付费"）。
+你的任务：把这个信念拆解成 5–10 个底层命题，对每个命题标明证据基础类型，找出最脆弱的 2–3 个，总结真正站得住脚的是什么。
+
+basis_type 分类（必须精确使用以下 6 种之一）：
+- bedrock：可验证的基础事实（数学/物理/历史已发生的事）
+- data_backed：有实际数据/证据支撑的命题
+- personal_experience：基于个人亲身经历（真实但有限）
+- industry_consensus：行业公认但没人真正验证过（"大家都说…"）
+- media_narrative：从媒体/文章/播客中吸收，未经亲自验证
+- pure_assumption：无任何依据的纯假设
+
+depth 分层（必须精确使用 1/2/3）：
+- 1：直接支撑原信念的子命题
+- 2：支撑 depth=1 命题的下层命题
+- 3：最底层基础命题
+
+铁律：
+- challenge 字段必须是一个能实际去验证/证伪的行动性问题（例："你能列出 3 个你认识的真实案例吗？"），绝非修辞性问题
+- 禁止评价性语言（"这是一个不错的假设""很有潜力"）
+- weakest_links 数组中的每条必须与 nodes 中某个 claim 文字一致
+- restated_belief 是把原信念表述得更精确（不是否定它，是把模糊变具体）
+- bedrock_summary 说明在这些命题里，真正基于可靠证据的部分是什么（可以是"暂无"）
+- 命题数量 5–10 个，不多不少
+
+只输出 JSON，格式：
+{"restated_belief":"...","nodes":[{"claim":"...","basis_type":"...","basis_note":"...","challenge":"...","depth":1}],"weakest_links":["..."],"bedrock_summary":"..."}
+不要输出 JSON 以外的任何文字。`;
+
+export async function decomposeFirstPrinciples(
+  claim: string,
+  contextNote?: string
+): Promise<FirstPrinciplesOutput> {
+  const context = contextNote ? `\n背景补充：${contextNote}` : "";
+  return generateRealityJson(
+    FIRST_PRINCIPLES_SYSTEM_PROMPT,
+    `信念/假设：${claim}${context}`,
+    parseFirstPrinciplesOutput
   );
 }
 

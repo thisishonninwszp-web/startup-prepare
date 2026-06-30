@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 import {
   listBayesianBeliefs,
   listFermiEstimates,
+  listFirstPrinciplesSessions,
   listReframingSessions,
   getMarkedFramePatterns,
 } from "./queries";
@@ -49,10 +50,11 @@ export default async function ReasoningPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [beliefs, estimates, sessions] = await Promise.all([
+  const [beliefs, estimates, sessions, fpSessions] = await Promise.all([
     listBayesianBeliefs(user.id),
     listFermiEstimates(user.id),
     listReframingSessions(user.id),
+    listFirstPrinciplesSessions(user.id),
   ]);
 
   const sessionIds = sessions.map((s) => s.id);
@@ -126,28 +128,34 @@ export default async function ReasoningPage() {
         在做现状分析、收集验证、或想法陷入僵局时最有用。
       </p>
 
-      <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
+      <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 text-xs">
         <div className="rounded-md bg-muted/50 px-3 py-2.5">
           <p className="font-medium mb-0.5">贝叶斯——何时用？</p>
           <p className="text-muted-foreground leading-relaxed">
-            当你有一个关键假设（比如 X% 的用户有这个痛），并且开始收集验证证据时。用它强制声明看到证据前你有多相信，防止事后诸葛亮和确认偏误。
+            当你有一个关键假设，并且开始收集验证证据时。强制声明先验，防止事后诸葛亮。
           </p>
         </div>
         <div className="rounded-md bg-muted/50 px-3 py-2.5">
           <p className="font-medium mb-0.5">费米——何时用？</p>
           <p className="text-muted-foreground leading-relaxed">
-            当你需要估算一个大数字——市场规模、开发周期、成本——但没有现成数据时。把问题拆成几个小问题相乘，比直接猜总数可靠得多。
+            当你需要估算大数字（市场规模、开发周期、成本）但没有现成数据时。拆解比猜总数可靠。
           </p>
         </div>
         <div className="rounded-md bg-muted/50 px-3 py-2.5">
           <p className="font-medium mb-0.5">重构——何时用？</p>
           <p className="text-muted-foreground leading-relaxed">
-            当你对某个课题一时不知道怎么办，或者感觉陷入了同一个思路绕不出去时。26 种视角强制你从不同角度看同一件事。
+            当你对某个课题一时不知道怎么办，感觉绕不出去时。26 种视角打破思维定势。
+          </p>
+        </div>
+        <div className="rounded-md bg-muted/50 px-3 py-2.5">
+          <p className="font-medium mb-0.5">第一性原理——何时用？</p>
+          <p className="text-muted-foreground leading-relaxed">
+            当你有一个核心信念，想看清它究竟建立在什么基础上时。找出哪些是实心的，哪些是沙滩。
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {/* Bayesian */}
         <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
           <div>
@@ -275,6 +283,50 @@ export default async function ReasoningPage() {
             className="inline-flex h-8 items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90"
           >
             新建重构
+          </Link>
+        </div>
+
+        {/* First Principles */}
+        <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
+          <div>
+            <h2 className="font-semibold">第一性原理分解</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              把信念拆到最底层，标明每条命题的证据基础，找出最脆弱的环节。
+            </p>
+          </div>
+          <div className="flex-1">
+            {fpSessions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">还没有分解记录</p>
+            ) : (
+              <ul className="space-y-2">
+                {fpSessions.slice(0, 3).map((s) => (
+                  <li key={s.id}>
+                    <Link
+                      href={`/reasoning/first-principles/${s.id}`}
+                      className="group block rounded-md px-2 py-1.5 hover:bg-muted"
+                    >
+                      <p className="text-xs font-medium line-clamp-2 group-hover:underline">
+                        {s.original_claim}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {s.weakest_links.length} 个脆弱环节
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+                {fpSessions.length > 3 && (
+                  <li className="text-[10px] text-muted-foreground px-2">
+                    还有 {fpSessions.length - 3} 条…
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+          <Link
+            href="/reasoning/first-principles/new"
+            className="inline-flex h-8 items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90"
+          >
+            新建分解
           </Link>
         </div>
       </div>

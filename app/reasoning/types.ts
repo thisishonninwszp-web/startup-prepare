@@ -446,3 +446,103 @@ export function parseReframingOutput(value: unknown): ReframingOutput {
   }
   return { frames };
 }
+
+// ── First Principles ──────────────────────────────────────────────────────────
+
+export const NODE_BASIS_TYPES = [
+  "bedrock",
+  "data_backed",
+  "personal_experience",
+  "industry_consensus",
+  "media_narrative",
+  "pure_assumption",
+] as const;
+
+export type NodeBasisType = (typeof NODE_BASIS_TYPES)[number];
+
+export type FirstPrinciplesSession = {
+  id: string;
+  user_id: string;
+  idea_id: string | null;
+  original_claim: string;
+  context_note: string;
+  restated_belief: string;
+  bedrock_summary: string;
+  weakest_links: string[];
+  created_at: string;
+};
+
+export type FirstPrinciplesNode = {
+  id: string;
+  session_id: string;
+  claim: string;
+  basis_type: NodeBasisType;
+  basis_note: string;
+  challenge: string;
+  depth: 1 | 2 | 3;
+  is_verified: boolean;
+  created_at: string;
+};
+
+export type FirstPrinciplesSessionWithNodes = FirstPrinciplesSession & {
+  nodes: FirstPrinciplesNode[];
+};
+
+export type FirstPrinciplesOutput = {
+  restated_belief: string;
+  nodes: Array<{
+    claim: string;
+    basis_type: NodeBasisType;
+    basis_note: string;
+    challenge: string;
+    depth: 1 | 2 | 3;
+  }>;
+  weakest_links: string[];
+  bedrock_summary: string;
+};
+
+export function parseFirstPrinciplesOutput(value: unknown): FirstPrinciplesOutput {
+  const input = object(value, "first principles output");
+  const restated_belief = str(input.restated_belief, "restated_belief");
+  const bedrock_summary = str(input.bedrock_summary, "bedrock_summary");
+
+  if (!Array.isArray(input.nodes) || input.nodes.length < 3) {
+    throw new Error("nodes must have at least 3 items");
+  }
+  if (input.nodes.length > 12) {
+    throw new Error("nodes must have at most 12 items");
+  }
+
+  const validBasisTypes = new Set<string>(NODE_BASIS_TYPES);
+  const claimSet = new Set<string>();
+
+  const nodes = input.nodes.map((n: unknown, i: number) => {
+    const row = object(n, `nodes[${i}]`);
+    const claim = str(row.claim, `nodes[${i}].claim`);
+    const basis_type = str(row.basis_type, `nodes[${i}].basis_type`);
+    if (!validBasisTypes.has(basis_type)) {
+      throw new Error(`nodes[${i}].basis_type "${basis_type}" is invalid`);
+    }
+    const depth = num(row.depth, `nodes[${i}].depth`);
+    if (depth < 1 || depth > 3) {
+      throw new Error(`nodes[${i}].depth must be 1, 2, or 3`);
+    }
+    claimSet.add(claim);
+    return {
+      claim,
+      basis_type: basis_type as NodeBasisType,
+      basis_note: str(row.basis_note, `nodes[${i}].basis_note`),
+      challenge: str(row.challenge, `nodes[${i}].challenge`),
+      depth: depth as 1 | 2 | 3,
+    };
+  });
+
+  if (!Array.isArray(input.weakest_links) || input.weakest_links.length === 0) {
+    throw new Error("weakest_links must be a non-empty array");
+  }
+  const weakest_links = input.weakest_links.map((w: unknown, i: number) =>
+    str(w, `weakest_links[${i}]`)
+  );
+
+  return { restated_belief, nodes, weakest_links, bedrock_summary };
+}

@@ -8,6 +8,7 @@ import {
   analyzeBayesUpdate,
   decomposeFermiQuestion,
   computeFermiSensitivity,
+  decomposeFirstPrinciples,
   draftReasoningFromReality,
   generateCentralQuestions,
   generateReframes,
@@ -648,4 +649,107 @@ export async function promoteFrameToObservation(frameId: string): Promise<void> 
   }
 
   revalidatePath("/review");
+}
+
+// ── First Principles ──────────────────────────────────────────────────────────
+
+export async function createFirstPrinciplesSession(formData: FormData): Promise<{ id: string }> {
+  const userId = await requireUserId();
+  const original_claim =
+    typeof formData.get("original_claim") === "string"
+      ? (formData.get("original_claim") as string).trim()
+      : "";
+  if (!original_claim) throw new Error("信念/假设不能为空");
+  if (original_claim.length > 500) throw new Error("信念不能超过 500 字");
+
+  const context_note =
+    typeof formData.get("context_note") === "string"
+      ? (formData.get("context_note") as string).trim()
+      : "";
+
+  const idea_id_raw = formData.get("idea_id");
+  const idea_id =
+    typeof idea_id_raw === "string" && idea_id_raw.trim() ? idea_id_raw.trim() : null;
+
+  await requireOwnedOptionalIdea(idea_id, userId);
+
+  const output = await decomposeFirstPrinciples(
+    original_claim,
+    context_note || undefined
+  );
+
+  const { data: sess, error: sessError } = await supabaseAdmin
+    .from("first_principles_sessions")
+    .insert({
+      user_id: userId,
+      idea_id,
+      original_claim,
+      context_note,
+      restated_belief: output.restated_belief,
+      bedrock_summary: output.bedrock_summary,
+      weakest_links: output.weakest_links,
+    })
+    .select("id")
+    .single();
+  if (sessError) {
+    console.error("创建第一性原理会话失败", sessError.message);
+    throw new Error("创建失败，请重试");
+  }
+
+  const nodeRows = output.nodes.map((n) => ({
+    session_id: sess.id,
+    claim: n.claim,
+    basis_type: n.basis_type,
+    basis_note: n.basis_note,
+    challenge: n.challenge,
+    depth: n.depth,
+  }));
+
+  const { error: nodesError } = await supabaseAdmin
+    .from("first_principles_nodes")
+    .insert(nodeRows);
+  if (nodesError) {
+    console.error("插入命题节点失败", nodesError.message);
+    await supabaseAdmin
+      .from("first_principles_sessions")
+      .delete()
+      .eq("id", sess.id)
+      .eq("user_id", userId);
+    throw new Error("创建失败，请重试");
+  }
+
+  revalidatePath("/reasoning");
+  return { id: sess.id };
+}
+
+export async function markNodeVerified(
+  nodeId: string,
+  verified: boolean
+): Promise<void> {
+  const userId = await requireUserId();
+
+  // Verify ownership via session
+  const { data: node, error: nodeError } = await supabaseAdmin
+    .from("first_principles_nodes")
+    .select("id, session_id")
+    .eq("id", nodeId)
+    .maybeSingle();
+  if (nodeError || !node) throw new Error("命题不存在");
+
+  const { data: sess, error: sessError } = await supabaseAdmin
+    .from("first_principles_sessions")
+    .select("user_id")
+    .eq("id", node.session_id)
+    .maybeSingle();
+  if (sessError || !sess || sess.user_id !== userId) {
+    throw new Error("无权修改此命题");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("first_principles_nodes")
+    .update({ is_verified: verified })
+    .eq("id", nodeId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/reasoning/first-principles/${node.session_id}`);
 }
