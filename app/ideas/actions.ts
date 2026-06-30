@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { challenge, draftExperiment, preMortem, realityCheck } from "@/lib/ai";
+import { challenge, draftExperiment, preMortem, realityCheck, suggestKnowledgeCards } from "@/lib/ai";
+import { getRelevantKnowledgeCards } from "@/app/knowledge/queries";
 import { tavilySearch } from "@/lib/external";
 import {
   AI_ROLES,
@@ -240,7 +241,7 @@ export async function sendRoleMessage(
 
   const { data: idea, error: ideaErr } = await supabaseAdmin
     .from("ideas")
-    .select("user_id, hypothesis, status, last_activity_at")
+    .select("user_id, hypothesis, status, last_activity_at, tags")
     .eq("id", ideaId)
     .single();
   if (ideaErr) throw new Error(ideaErr.message);
@@ -267,7 +268,20 @@ export async function sendRoleMessage(
   const trimmed = (userMessage ?? "").trim();
   if (trimmed) turns.push({ role: "user", content: trimmed });
 
-  const context = renderHypothesis((idea.hypothesis ?? {}) as Hypothesis);
+  const hypothesis = (idea.hypothesis ?? {}) as Hypothesis;
+  const ideaTags = (idea.tags as string[] | null) ?? [];
+  const hypothesisText = Object.values(hypothesis).filter(Boolean).join(" ");
+  const keywords = [
+    ...ideaTags,
+    ...hypothesisText.split(/[\s,，、。；：！？]+/).filter((w) => w.length > 1),
+  ];
+  const knowledgeCards = await getRelevantKnowledgeCards(userId, keywords, 4);
+  const knowledgeContext =
+    knowledgeCards.length > 0
+      ? `\n\n=== 用户积累的上下文知识 ===\n${knowledgeCards.map((c) => `[${c.card_type === "market" ? "市场事实" : c.card_type === "customer" ? "顾客规律" : c.card_type === "judgment" ? "判断历史" : "领域知识"}] ${c.content}`).join("\n")}`
+      : "";
+
+  const context = renderHypothesis(hypothesis) + knowledgeContext;
   const reply = await challenge(role, context, turns);
   turns.push({ role: "assistant", content: reply });
 
@@ -323,6 +337,18 @@ export async function addValidation(
   if (updErr) throw new Error(updErr.message);
 
   return data as Validation;
+}
+
+/**
+ * 验证记录提交后，AI 从备注中提炼知识卡片建议（最多 2 条）。
+ * 客户端可在 addValidation 成功后异步调用此函数以不阻塞主流程。
+ */
+export async function suggestKnowledgeCardsFromValidation(
+  note: string
+): Promise<import("@/lib/ai").KnowledgeCardSuggestion[]> {
+  if (!note.trim()) return [];
+  await requireUserId();
+  return suggestKnowledgeCards(note);
 }
 
 /** Go/Pivot/Kill/Hold 对应的状态变更（Pivot/Hold 不改状态）。 */

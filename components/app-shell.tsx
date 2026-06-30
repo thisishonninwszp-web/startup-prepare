@@ -5,7 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Archive,
+  BookOpen,
   Brain,
+  Building2,
   CloudMoon,
   Home,
   Inbox,
@@ -34,6 +36,8 @@ const ICONS: Record<string, LucideIcon> = {
   "/retrospectives": RotateCcw,
   "/dreams": CloudMoon,
   "/reasoning": Brain,
+  "/knowledge": BookOpen,
+  "/companies": Building2,
   "/settings/ai": Settings,
 };
 

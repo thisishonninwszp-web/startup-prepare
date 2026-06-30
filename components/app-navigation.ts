@@ -30,6 +30,13 @@ export const NAV_GROUPS: AppNavGroup[] = [
       { href: "/reasoning", label: "推理工具", shortLabel: "推理" },
     ],
   },
+  {
+    label: "知识积累",
+    items: [
+      { href: "/knowledge", label: "知识库", shortLabel: "知识" },
+      { href: "/companies", label: "公司档案", shortLabel: "公司" },
+    ],
+  },
 ];
 
 export function isActiveRoute(pathname: string, href: string): boolean {
