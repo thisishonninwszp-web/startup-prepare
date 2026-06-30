@@ -12,6 +12,7 @@ import {
   updateCompany,
 } from "@/app/knowledge/actions";
 import type { CompanyDetail, CompanyType } from "@/app/knowledge/types";
+import { JobOutreachPanel } from "./job-outreach-panel";
 
 type Props = {
   company: CompanyDetail;
@@ -373,6 +374,19 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
           </div>
         )}
       </section>
+
+      {/* 求职触达策略（仅求职目标或两者皆是） */}
+      {(company.company_type === "prospect" || company.company_type === "both") && (
+        <section className="mb-8">
+          <h2 className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            求职触达策略
+          </h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            正确时机 × 正确地点 × 正确对象 × 正确信息——AI 综合公司档案与你的知识生成可执行计划。
+          </p>
+          <JobOutreachPanel companyId={company.id} />
+        </section>
+      )}
     </div>
   );
 }

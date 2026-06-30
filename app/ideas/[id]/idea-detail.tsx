@@ -43,6 +43,7 @@ import type {
   FermiEstimate,
   ReframingSession,
 } from "@/app/reasoning/types";
+import { OutreachPanel } from "./outreach-panel";
 
 const STATUS_COLOR: Record<IdeaStatus, string> = {
   观察: "text-muted-foreground",
@@ -353,6 +354,17 @@ export function IdeaDetail({
         initialChats={initialChats}
         locked={aiLocked}
       />
+
+      {/* 触达策略 */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-medium">触达策略</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            正确时机 × 正确地点 × 正确对象 × 正确信息——AI 综合你的假设和知识生成可直接执行的计划。
+          </p>
+        </div>
+        <OutreachPanel ideaId={idea.id} />
+      </section>
 
       {/* 做决策 */}
       <DecisionSection ideaId={idea.id} onDecided={setStatus} />

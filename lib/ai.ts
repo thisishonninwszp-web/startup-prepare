@@ -2060,3 +2060,133 @@ export async function suggestKnowledgeCards(
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// 触达策略：合并假设/客户代理/知识卡片，生成可操作的 Go-to-Market 计划
+// ---------------------------------------------------------------------------
+
+export type OutreachStrategy = {
+  right_person: {
+    profile: string;
+    signals: string[];
+  };
+  right_place: {
+    channel: string;
+    specific: string;
+  }[];
+  right_time: {
+    trigger: string;
+    notes: string;
+  };
+  right_message: {
+    draft: string;
+    hook_explanation: string;
+  };
+};
+
+export type OutreachInput = {
+  use_case: "idea_validation" | "job_search";
+  hypothesis_or_goal: string;
+  target_description: string;
+  knowledge_context: string;
+  ai_critique_summary?: string;
+};
+
+const OUTREACH_SYSTEM = `你是一个冷静、务实的触达策略顾问，服务于一个反认知偏误的决策系统。
+
+你的任务：根据用户提供的假设/目标、目标对象描述、积累的知识，生成一个可以直接执行的触达策略。
+
+绝对禁止：
+- 泛泛而论（"去 LinkedIn 找人"这种废话不允许）
+- 评价性语言（"很有潜力""不错的想法"）
+- 推销腔（draft 消息不是广告）
+- 超过 3 个渠道建议（宁可少而精）
+
+right_person.signals 必须是可以在公开信息中识别的具体标志（发布了某类内容、在某类岗位、经历了某个事件……）。
+
+right_message.draft 规则：
+- 第一视角、第一人称
+- 开场描述对方可能正在经历的痛苦/困境，不夸奖，不说"我在做一个XXX"
+- 结尾提出最低承诺的下一步（"方便 15 分钟聊一下吗？"而不是"希望合作"）
+- 100–180 字，日语/中文均可根据场景
+
+只输出 JSON（不要 markdown 代码块）：
+{
+  "right_person": {
+    "profile": "一段话描述理想联系人，含角色/行业/公司规模/痛苦程度",
+    "signals": ["识别信号1","识别信号2","识别信号3"]
+  },
+  "right_place": [
+    {"channel": "渠道名称","specific": "具体到哪个群组/话题/场合/搜索条件"},
+    {"channel": "渠道名称","specific": "..."}
+  ],
+  "right_time": {
+    "trigger": "最佳接触时机的触发条件（具体事件或行为信号）",
+    "notes": "补充说明，包括应避免的时机"
+  },
+  "right_message": {
+    "draft": "可直接使用的第一封消息，100-180字",
+    "hook_explanation": "为什么这个开场有效（解释逻辑，不是评价）"
+  }
+}`;
+
+function parseOutreachStrategy(raw: unknown): OutreachStrategy {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("outreach strategy must be an object");
+  }
+  const r = raw as Record<string, unknown>;
+
+  const rp = r.right_person as Record<string, unknown> | undefined;
+  const rl = r.right_place as unknown[] | undefined;
+  const rt = r.right_time as Record<string, unknown> | undefined;
+  const rm = r.right_message as Record<string, unknown> | undefined;
+
+  if (!rp || !rl || !rt || !rm) {
+    throw new Error("outreach strategy missing required sections");
+  }
+
+  return {
+    right_person: {
+      profile: String(rp.profile ?? ""),
+      signals: Array.isArray(rp.signals) ? rp.signals.map(String) : [],
+    },
+    right_place: (Array.isArray(rl) ? rl : []).map((p) => {
+      const place = p as Record<string, unknown>;
+      return { channel: String(place.channel ?? ""), specific: String(place.specific ?? "") };
+    }),
+    right_time: {
+      trigger: String(rt.trigger ?? ""),
+      notes: String(rt.notes ?? ""),
+    },
+    right_message: {
+      draft: String(rm.draft ?? ""),
+      hook_explanation: String(rm.hook_explanation ?? ""),
+    },
+  };
+}
+
+export async function generateOutreachStrategy(
+  input: OutreachInput
+): Promise<OutreachStrategy> {
+  const lines = [
+    `使用场景：${input.use_case === "idea_validation" ? "创业想法验证（找第一批目标客户）" : "求职自我推销（找目标公司的对的人）"}`,
+    ``,
+    `假设/目标：${input.hypothesis_or_goal}`,
+    ``,
+    `目标对象描述：${input.target_description}`,
+  ];
+
+  if (input.knowledge_context) {
+    lines.push(``, `积累的背景知识：`, input.knowledge_context);
+  }
+
+  if (input.ai_critique_summary) {
+    lines.push(
+      ``,
+      `AI 质疑摘要（对方可能会提的反对意见，可用于预判并在消息中预先解除）：`,
+      input.ai_critique_summary
+    );
+  }
+
+  return generateRealityJson(OUTREACH_SYSTEM, lines.join("\n"), parseOutreachStrategy);
+}
