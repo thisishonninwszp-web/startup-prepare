@@ -29,6 +29,7 @@ export const NAV_GROUPS: AppNavGroup[] = [
       { href: "/dreams", label: "梦想系统", shortLabel: "梦想" },
       { href: "/reasoning", label: "推理工具", shortLabel: "推理" },
       { href: "/patterns", label: "认知镜", shortLabel: "认知" },
+      { href: "/life", label: "生活罗盘", shortLabel: "生活" },
     ],
   },
   {
