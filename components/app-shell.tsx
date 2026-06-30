@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
   Archive,
   BookOpen,
   Brain,
@@ -37,6 +38,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/retrospectives": RotateCcw,
   "/dreams": CloudMoon,
   "/reasoning": Brain,
+  "/patterns": Activity,
   "/knowledge": BookOpen,
   "/companies": Building2,
   "/outreach": Target,
