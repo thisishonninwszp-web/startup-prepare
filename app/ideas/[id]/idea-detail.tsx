@@ -146,8 +146,17 @@ export function IdeaDetail({
     <div className="space-y-8">
       {/* 标题 + 状态 */}
       <div>
-        <div className="mb-1 text-xs text-muted-foreground">
-          状态：<span className={STATUS_COLOR[status]}>{status}</span>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            状态：<span className={STATUS_COLOR[status]}>{status}</span>
+          </span>
+          <Link
+            href={`/ideas/${idea.id}/report`}
+            target="_blank"
+            className="text-xs text-muted-foreground hover:underline"
+          >
+            生成报告 ↗
+          </Link>
         </div>
         <h1 className="text-xl font-semibold">{idea.title?.trim() || "（无标题）"}</h1>
       </div>
