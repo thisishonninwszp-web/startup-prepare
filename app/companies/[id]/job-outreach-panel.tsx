@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { generateJobOutreachStrategy } from "@/app/outreach/actions";
 import type { OutreachStrategy } from "@/lib/ai";
@@ -42,18 +43,26 @@ export function JobOutreachPanel({ companyId }: { companyId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           综合公司档案与你的领域知识，生成针对这家公司的求职触达计划。
         </p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={generate}
-          disabled={loading}
-        >
-          {loading ? "生成中…" : strategy ? "重新生成" : "AI 生成求职策略"}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href={`/outreach/new?use_case=job&source_id=${companyId}&source_type=company`}
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+          >
+            深入规划 →
+          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={generate}
+            disabled={loading}
+          >
+            {loading ? "生成中…" : strategy ? "重新生成" : "AI 生成"}
+          </Button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

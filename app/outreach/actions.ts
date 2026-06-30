@@ -2,7 +2,13 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { generateOutreachStrategy, type OutreachStrategy } from "@/lib/ai";
+import {
+  generateOutreachStrategy,
+  challengeOutreachDimension,
+  polishOutreachDraft,
+  type OutreachStrategy,
+} from "@/lib/ai";
+import type { UseCase, Dim, AiChallenge } from "@/app/outreach/types";
 import { getRelevantKnowledgeCards } from "@/app/knowledge/queries";
 import { parseCustomerProxy } from "@/app/customer-view/types";
 import type { Hypothesis } from "@/app/ideas/types";
@@ -295,4 +301,137 @@ export async function getCompanyOutreachStrategy(
     .limit(1)
     .maybeSingle();
   return data?.strategy as OutreachStrategy | null;
+}
+
+// ── 触达画布 Canvas CRUD ──────────────────────────────────────────────────────
+
+export async function createCanvas(params: {
+  title: string;
+  use_case: UseCase;
+  scenario: string;
+  source_id?: string;
+  source_type?: "idea" | "company";
+}): Promise<string> {
+  const userId = await requireUserId();
+  const { data, error } = await supabaseAdmin
+    .from("outreach_canvases")
+    .insert({
+      user_id: userId,
+      title: params.title,
+      use_case: params.use_case,
+      scenario: params.scenario,
+      source_id: params.source_id ?? null,
+      source_type: params.source_type ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
+}
+
+export async function saveCanvasDimension(
+  canvasId: string,
+  dim: Dim,
+  value: string
+): Promise<void> {
+  const userId = await requireUserId();
+  const field =
+    dim === "person"
+      ? "person_notes"
+      : dim === "place"
+        ? "place_notes"
+        : dim === "time"
+          ? "time_notes"
+          : "message_draft";
+  const { error } = await supabaseAdmin
+    .from("outreach_canvases")
+    .update({ [field]: value, updated_at: new Date().toISOString() })
+    .eq("id", canvasId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+export async function saveCanvasScenario(
+  canvasId: string,
+  scenario: string
+): Promise<void> {
+  const userId = await requireUserId();
+  const { error } = await supabaseAdmin
+    .from("outreach_canvases")
+    .update({ scenario, updated_at: new Date().toISOString() })
+    .eq("id", canvasId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+export async function challengeDimension(
+  canvasId: string,
+  dim: Dim,
+  userNotes: string
+): Promise<string> {
+  const userId = await requireUserId();
+
+  const { data: canvas } = await supabaseAdmin
+    .from("outreach_canvases")
+    .select("use_case, scenario, ai_challenges")
+    .eq("id", canvasId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!canvas) throw new Error("画布不存在或无权访问");
+
+  const feedback = await challengeOutreachDimension({
+    dim,
+    use_case: canvas.use_case as string,
+    scenario: canvas.scenario as string,
+    user_notes: userNotes,
+  });
+
+  const newChallenge: AiChallenge = {
+    dim,
+    user_snapshot: userNotes,
+    feedback,
+    created_at: new Date().toISOString(),
+  };
+
+  const existing = Array.isArray(canvas.ai_challenges) ? canvas.ai_challenges : [];
+  const updated = [
+    ...existing.filter((c: AiChallenge) => c.dim !== dim),
+    newChallenge,
+  ];
+
+  await supabaseAdmin
+    .from("outreach_canvases")
+    .update({ ai_challenges: updated, updated_at: new Date().toISOString() })
+    .eq("id", canvasId)
+    .eq("user_id", userId);
+
+  return feedback;
+}
+
+export async function polishDraft(canvasId: string): Promise<string> {
+  const userId = await requireUserId();
+
+  const { data: canvas } = await supabaseAdmin
+    .from("outreach_canvases")
+    .select("scenario, person_notes, place_notes, time_notes, message_draft")
+    .eq("id", canvasId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!canvas) throw new Error("画布不存在或无权访问");
+
+  const draft = await polishOutreachDraft({
+    scenario: canvas.scenario as string,
+    person_notes: canvas.person_notes as string,
+    place_notes: canvas.place_notes as string,
+    time_notes: canvas.time_notes as string,
+    user_draft: (canvas.message_draft as string) || undefined,
+  });
+
+  await supabaseAdmin
+    .from("outreach_canvases")
+    .update({ message_draft: draft, updated_at: new Date().toISOString() })
+    .eq("id", canvasId)
+    .eq("user_id", userId);
+
+  return draft;
 }

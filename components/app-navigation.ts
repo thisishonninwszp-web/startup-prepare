@@ -35,6 +35,7 @@ export const NAV_GROUPS: AppNavGroup[] = [
     items: [
       { href: "/knowledge", label: "知识库", shortLabel: "知识" },
       { href: "/companies", label: "公司档案", shortLabel: "公司" },
+      { href: "/outreach", label: "触达规划", shortLabel: "触达" },
     ],
   },
 ];

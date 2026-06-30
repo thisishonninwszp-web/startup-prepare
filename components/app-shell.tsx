@@ -18,6 +18,7 @@ import {
   RotateCcw,
   ScanSearch,
   Settings,
+  Target,
   Users,
   X,
   type LucideIcon,
@@ -38,6 +39,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/reasoning": Brain,
   "/knowledge": BookOpen,
   "/companies": Building2,
+  "/outreach": Target,
   "/settings/ai": Settings,
 };
 
