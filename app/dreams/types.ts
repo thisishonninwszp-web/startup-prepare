@@ -286,7 +286,15 @@ export function parseDreamCanvas(value: unknown): DreamCanvas {
     !Number.isSafeInteger(revision) ||
     revision < 0
   ) {
-    throw new Error("梦想画布revision无效");
+    const receivedValue =
+      input.revision === null
+        ? "null"
+        : typeof input.revision === "object"
+          ? "<non-scalar>"
+          : String(input.revision);
+    throw new Error(
+      `梦想画布revision无效（type=${typeof input.revision}, value=${receivedValue}）`
+    );
   }
   const rawContent = object(input.content, "梦想画布content");
   const content = Object.fromEntries(

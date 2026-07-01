@@ -262,6 +262,15 @@ describe("confirmed canvas projection", () => {
     expect(canvas.revision).toBe(0);
   });
 
+  it("reports the received revision shape when stored data is invalid", () => {
+    expect(() =>
+      parseDreamCanvas({
+        revision: null,
+        content: emptyDreamCanvas().content,
+      })
+    ).toThrow("type=object, value=null");
+  });
+
   it("requires the current revision when accepting an inference", () => {
     const canvas = emptyDreamCanvas();
     canvas.content.inner_state.push({
