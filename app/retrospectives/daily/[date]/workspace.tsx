@@ -331,7 +331,12 @@ export function DailyReflectionWorkspace({
                 placeholder="例如：我说顾客接触最重要，但今天没有留出实际联系时间。"
                 className="mt-4 min-h-24 w-full rounded-md border bg-background p-3 text-sm"
               />
-              <Button type="button" onClick={confirm} disabled={busy === "confirm"} className="mt-3">
+              <Button
+                type="button"
+                onClick={confirm}
+                disabled={busy === "confirm" || !observation.trim()}
+                className="mt-3"
+              >
                 <Check className="mr-2 size-4" />
                 {busy === "confirm" ? "确认中…" : "确认这一天"}
               </Button>

@@ -156,7 +156,8 @@ export function parseDailyTimeline(value: unknown): DailyTimeline {
   }
   return {
     blocks,
-    ambiguities: strings(input.ambiguities, "ambiguities"),
+    ambiguities:
+      input.ambiguities == null ? [] : strings(input.ambiguities, "ambiguities"),
   };
 }
 
