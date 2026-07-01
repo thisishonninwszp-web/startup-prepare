@@ -3,6 +3,7 @@ import { ArrowRight, CloudMoon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { listDreamCases } from "./queries";
+import { DreamDeleteButton } from "./dream-delete-button";
 
 export const dynamic = "force-dynamic";
 
@@ -65,18 +66,22 @@ export default async function DreamsPage() {
           ) : (
             <div className="grid gap-5 md:grid-cols-2">
               {cases.map((item, index) => (
-                <Link
+                <div
                   key={item.id}
-                  href={`/dreams/${item.id}`}
                   className={
-                    "group relative min-h-64 overflow-hidden rounded-[2rem] border border-stone-300 bg-stone-50 p-6 transition-transform hover:-translate-y-1 " +
+                    "group relative min-h-64 overflow-hidden rounded-[2rem] border border-stone-300 bg-stone-50 transition-transform hover:-translate-y-1 " +
                     (index % 3 === 0 ? "md:col-span-2 md:min-h-72" : "")
                   }
                 >
+                  <DreamDeleteButton caseId={item.id} />
                   <div className="absolute right-5 top-3 font-serif text-7xl text-stone-200/70">
                     {String(index + 1).padStart(2, "0")}
                   </div>
-                  <div className="relative flex h-full flex-col">
+                <Link
+                  href={`/dreams/${item.id}`}
+                  className="relative block h-full p-6"
+                >
+                  <div className="flex h-full flex-col">
                     <div className="flex flex-wrap gap-2 text-[10px] text-stone-500">
                       <span className="rounded-full border border-stone-300 px-2 py-1">
                         {CONTEXT_LABEL[item.context]}
@@ -99,6 +104,7 @@ export default async function DreamsPage() {
                     </div>
                   </div>
                 </Link>
+                </div>
               ))}
             </div>
           )}

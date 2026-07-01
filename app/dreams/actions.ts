@@ -731,3 +731,15 @@ export async function createDreamVersion(
   revalidatePath(`/dreams/${caseId}`);
   return data as string;
 }
+
+export async function archiveDreamCase(caseId: string) {
+  const userId = await requireUserId();
+  await requireDreamCase(caseId, userId);
+  const { error } = await supabaseAdmin
+    .from("dream_cases")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", caseId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dreams");
+}
