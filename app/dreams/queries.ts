@@ -64,9 +64,9 @@ export async function getDreamCase(caseId: string, userId: string) {
   if (branchError) throw new Error(branchError.message);
   const branchIds = (branches ?? []).map((branch) => branch.id as string);
   const [
+    canvasSuggestionResult,
     messageResult,
     canvasResult,
-    canvasSuggestionResult,
     suggestionResult,
     versionResult,
     sourceResult,
