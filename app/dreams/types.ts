@@ -277,10 +277,14 @@ export function emptyDreamCanvas(): DreamCanvas {
 
 export function parseDreamCanvas(value: unknown): DreamCanvas {
   const input = object(value, "梦想画布");
+  const revision =
+    typeof input.revision === "string" && /^(0|[1-9]\d*)$/.test(input.revision)
+      ? Number(input.revision)
+      : input.revision;
   if (
-    typeof input.revision !== "number" ||
-    !Number.isInteger(input.revision) ||
-    input.revision < 0
+    typeof revision !== "number" ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0
   ) {
     throw new Error("梦想画布revision无效");
   }
@@ -323,7 +327,7 @@ export function parseDreamCanvas(value: unknown): DreamCanvas {
       ];
     })
   ) as Record<DreamCanvasDimension, DreamCanvasItem[]>;
-  return { revision: input.revision, content };
+  return { revision, content };
 }
 
 export function validateExplicitDreamPatches(

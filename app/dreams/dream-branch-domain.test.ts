@@ -253,6 +253,15 @@ describe("confirmed canvas projection", () => {
     ).toThrow("location");
   });
 
+  it("accepts a non-negative integer revision returned as database text", () => {
+    const canvas = parseDreamCanvas({
+      revision: "0",
+      content: emptyDreamCanvas().content,
+    });
+
+    expect(canvas.revision).toBe(0);
+  });
+
   it("requires the current revision when accepting an inference", () => {
     const canvas = emptyDreamCanvas();
     canvas.content.inner_state.push({
