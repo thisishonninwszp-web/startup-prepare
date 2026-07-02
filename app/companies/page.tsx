@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Building2 } from "lucide-react";
+import { Plus, Building2, LockKeyhole } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { listCompanies } from "@/app/knowledge/queries";
 import { COMPANY_TYPES, type CompanyType } from "@/app/knowledge/types";
@@ -45,6 +45,24 @@ export default async function CompaniesPage({
           添加
         </Link>
       </div>
+
+      <Link
+        href="/companies/my"
+        className="mb-6 block rounded-xl border border-zinc-300 bg-zinc-950 p-5 text-zinc-50 transition-colors hover:bg-zinc-900"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <LockKeyhole className="h-4 w-4" />
+              <p className="font-medium">我的公司 · 内部档案</p>
+            </div>
+            <p className="mt-2 text-sm text-zinc-300">
+              在浏览器本地读取并脱敏经营计划，与下方外部公司档案分开保存。
+            </p>
+          </div>
+          <span className="shrink-0 text-sm text-zinc-400">进入 →</span>
+        </div>
+      </Link>
 
       {/* 类型筛选 */}
       <div className="mb-6 flex flex-wrap gap-2">

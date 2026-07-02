@@ -31,10 +31,20 @@ Authentication → Users 里建好账号。
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service_role key（**仅服务端**） | 否 |
 | `GEMINI_API_KEY` | Google Gemini API key | 否 |
 | `AI_MODEL` | 模型名，默认 `gemini-2.5-flash` | 否 |
+| `BUSINESS_PLAN_HMAC_KEY` | 经营计划供应商别名 HMAC 密钥，base64 编码的 32 字节随机值 | 否 |
 | `TAVILY_API_KEY` | 外部雷达联网检索（可选；不填则该功能置灰） | 否 |
 
-三个非 `NEXT_PUBLIC_` 的变量只在服务端使用，**不要**加 `NEXT_PUBLIC_` 前缀，否则会泄露到浏览器。
+非 `NEXT_PUBLIC_` 的变量只在服务端使用，**不要**加 `NEXT_PUBLIC_` 前缀，否则会泄露到浏览器。
 为 Production / Preview / Development 三个环境都填上。
+
+生成经营计划 HMAC 密钥：
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+密钥只用于把供应商名称转换为不可逆标识，不用于解密数据。轮换后历史脱敏数据仍可读取，
+但同一供应商跨新旧版本的稳定别名关联会中断。
 
 ## 4. 部署 & 验证
 
