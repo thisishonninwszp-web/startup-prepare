@@ -47,6 +47,8 @@ import type {
   FermiEstimate,
   ReframingSession,
 } from "@/app/reasoning/types";
+import type { IdeaEvidenceSnapshot } from "@/app/concepts/queries";
+import { addCompanyFact, archiveCompanyFact } from "@/app/concepts/actions";
 import { OutreachPanel } from "./outreach-panel";
 
 const STATUS_COLOR: Record<IdeaStatus, string> = {
@@ -77,6 +79,7 @@ export function IdeaDetail({
   initialReframings = [],
   conceptSummary = null,
   conceptAvailable = false,
+  evidenceSnapshot = null,
 }: {
   idea: Idea;
   hypothesis: Hypothesis;
@@ -84,6 +87,7 @@ export function IdeaDetail({
   initialValidations: Validation[];
   initialPredictions: Prediction[];
   initialExitCriteria?: ExitCriterion[];
+  evidenceSnapshot?: IdeaEvidenceSnapshot | null;
   initialBeliefs?: (BayesianBelief & { current_posterior: number })[];
   initialEstimates?: FermiEstimate[];
   initialReframings?: ReframingSession[];
@@ -211,6 +215,10 @@ export function IdeaDetail({
           </Button>
         </div>
       </section>
+      )}
+
+      {evidenceSnapshot && (
+        <EvidenceSnapshotSection ideaId={idea.id} snapshot={evidenceSnapshot} />
       )}
 
       {/* 假设句式 */}
@@ -1027,24 +1035,32 @@ function PreMortemSection({
       )}
 
       {modes && modes.length > 0 && (
-        <ul className="space-y-2">
-          {modes.map((m, i) => (
-            <li key={i} className="rounded-md border p-3 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <span className="font-medium">{m.pattern}</span>
-                <button
-                  type="button"
-                  onClick={() => onUseAsRiskiest(`${m.pattern}：${m.why}`)}
-                  className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
-                >
-                  设为最关键假设
-                </button>
-              </div>
-              {m.why && <p className="mt-1 text-muted-foreground">{m.why}</p>}
-              {m.question && <p className="mt-2">{m.question}</p>}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-2">
+            {modes.map((m, i) => (
+              <li key={i} className="rounded-md border p-3 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-medium">{m.pattern}</span>
+                  <button
+                    type="button"
+                    onClick={() => onUseAsRiskiest(`${m.pattern}：${m.why}`)}
+                    className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
+                  >
+                    设为最关键假设
+                  </button>
+                </div>
+                {m.why && <p className="mt-1 text-muted-foreground">{m.why}</p>}
+                {m.question && <p className="mt-2">{m.question}</p>}
+              </li>
+            ))}
+          </ul>
+          <Link
+            href={`/reasoning/outside-view/new?idea_id=${ideaId}`}
+            className="inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+          >
+            这几种死法都只是猜的——想看同类想法实际都是怎么死的，去外部视角深挖 →
+          </Link>
+        </>
       )}
     </section>
   );
@@ -1437,6 +1453,140 @@ function ExitCriteriaSection({
           验证已开始：可以补充新条件，但已写下的不能删除——这正是预先承诺的意义。
         </p>
       )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </section>
+  );
+}
+
+function EvidenceSnapshotSection({
+  ideaId,
+  snapshot,
+}: {
+  ideaId: string;
+  snapshot: IdeaEvidenceSnapshot;
+}) {
+  const [facts, setFacts] = useState(snapshot.company_facts);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAdd() {
+    const value = text.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await addCompanyFact(ideaId, value);
+      setFacts((prev) => [{ id, fact: value, created_at: new Date().toISOString() }, ...prev]);
+      setText("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "添加失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleArchive(factId: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await archiveCompanyFact(ideaId, factId);
+      setFacts((prev) => prev.filter((f) => f.id !== factId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "删除失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-sm font-medium">证据快照</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          价值设计图确认时至少需要：3份独立顾客材料、1条顾客研究结论、1条公司事实。这里看
+          当前手头有多少可用的证据——公司事实是这个想法专属的，顾客研究和梦想版本是账户里
+          的公共资产，按需去对应模块补充。
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border bg-card p-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            公司事实（本想法专属）
+          </p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">{facts.length}</p>
+        </div>
+        <Link
+          href="/customer-view"
+          className="rounded-lg border bg-card p-3 transition-colors hover:bg-muted"
+        >
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            顾客研究结论
+            {snapshot.customer_conclusion_scope === "account" && "（账户，未关联本想法）"}
+          </p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">
+            {snapshot.customer_conclusion_count}
+          </p>
+        </Link>
+        <Link
+          href="/dreams"
+          className="rounded-lg border bg-card p-3 transition-colors hover:bg-muted"
+        >
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            梦想版本（账户）
+          </p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">
+            {snapshot.dream_version_count}
+          </p>
+        </Link>
+      </div>
+
+      {facts.length > 0 && (
+        <ul className="space-y-2">
+          {facts.map((f) => (
+            <li
+              key={f.id}
+              className="flex items-center gap-2 rounded-lg border p-3 text-sm"
+            >
+              <span className="min-w-0 flex-1 leading-relaxed">{f.fact}</span>
+              <button
+                type="button"
+                onClick={() => void handleArchive(f.id)}
+                disabled={busy}
+                className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
+              >
+                删除
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void handleAdd();
+            }
+          }}
+          maxLength={1000}
+          placeholder="例：我们已经有 200 个稳定的企业客户，天然能触达同一批人"
+          className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void handleAdd()}
+          disabled={busy || !text.trim()}
+        >
+          记下事实
+        </Button>
+      </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </section>
   );

@@ -337,3 +337,71 @@ export async function getIdeaConceptSummary(
       }
     : null;
 }
+
+export type IdeaEvidenceSnapshot = {
+  company_facts: { id: string; fact: string; created_at: string }[];
+  customer_conclusion_count: number;
+  customer_conclusion_scope: "idea" | "account";
+  dream_version_count: number;
+};
+
+/**
+ * 证据完整度快照：这个想法目前手头有多少可用于价值设计图的证据。
+ * 公司事实是想法专属的。顾客研究通过 customer_cases.idea_id 可选关联到想法——
+ * 有关联案例就按这个想法过滤，否则退回账户总量（不假装它已经"属于"这个想法）。
+ * 梦想版本是纯账户级资产（一个梦想可以服务多个想法，或独立于任何想法存在），不做想法过滤。
+ */
+export async function getIdeaEvidenceSnapshot(
+  ideaId: string,
+  userId: string
+): Promise<IdeaEvidenceSnapshot> {
+  const [factsResult, linkedCasesResult, dreamVersionsResult] = await Promise.all([
+    supabaseAdmin
+      .from("idea_company_facts")
+      .select("id, fact, created_at")
+      .eq("idea_id", ideaId)
+      .eq("user_id", userId)
+      .is("archived_at", null)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("customer_cases")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("idea_id", ideaId)
+      .is("archived_at", null),
+    supabaseAdmin
+      .from("dream_versions")
+      .select("id, dream_cases!inner(user_id)", { count: "exact", head: true })
+      .eq("dream_cases.user_id", userId),
+  ]);
+  if (factsResult.error) throw new Error(factsResult.error.message);
+  if (linkedCasesResult.error) throw new Error(linkedCasesResult.error.message);
+  if (dreamVersionsResult.error) throw new Error(dreamVersionsResult.error.message);
+
+  const linkedCaseIds = (linkedCasesResult.data ?? []).map((c) => c.id as string);
+  const scope: "idea" | "account" = linkedCaseIds.length > 0 ? "idea" : "account";
+
+  const conclusionsQuery = supabaseAdmin
+    .from("customer_conclusions")
+    .select("id, customer_proxy_versions!inner(case_id, customer_cases!inner(user_id))", {
+      count: "exact",
+      head: true,
+    })
+    .eq("customer_proxy_versions.customer_cases.user_id", userId);
+  const { count: conclusionCount, error: conclusionsError } =
+    scope === "idea"
+      ? await conclusionsQuery.in("customer_proxy_versions.case_id", linkedCaseIds)
+      : await conclusionsQuery;
+  if (conclusionsError) throw new Error(conclusionsError.message);
+
+  return {
+    company_facts: (factsResult.data ?? []).map((f) => ({
+      id: f.id as string,
+      fact: f.fact as string,
+      created_at: f.created_at as string,
+    })),
+    customer_conclusion_count: conclusionCount ?? 0,
+    customer_conclusion_scope: scope,
+    dream_version_count: dreamVersionsResult.count ?? 0,
+  };
+}

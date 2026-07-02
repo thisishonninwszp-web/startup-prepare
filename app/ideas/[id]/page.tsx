@@ -22,6 +22,8 @@ import {
 import {
   getConceptSchemaStatus,
   getIdeaConceptSummary,
+  getIdeaEvidenceSnapshot,
+  type IdeaEvidenceSnapshot,
 } from "@/app/concepts/queries";
 
 export const dynamic = "force-dynamic";
@@ -106,6 +108,10 @@ export default async function IdeaDetailPage({
       getConceptSchemaStatus(),
     ]);
 
+  const evidenceSnapshot: IdeaEvidenceSnapshot | null = conceptAvailable
+    ? await getIdeaEvidenceSnapshot(params.id, userId)
+    : null;
+
   const ideaCore: Idea = {
     id: idea.id,
     title: idea.title,
@@ -130,6 +136,7 @@ export default async function IdeaDetailPage({
           initialReframings={reasoningSessions}
           conceptSummary={conceptSummary}
           conceptAvailable={conceptAvailable}
+          evidenceSnapshot={evidenceSnapshot}
         />
       </main>
     </AppShell>
