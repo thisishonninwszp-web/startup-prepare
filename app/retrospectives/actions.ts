@@ -405,8 +405,8 @@ async function gatherMonthlySources(
   end: string
 ): Promise<SourceRow[]> {
   const { data, error } = await supabaseAdmin
-      .from("retro_periods")
-    .select("id, period_start, period_end, final, retro_predictions(text, due_at, outcome, note), retro_commitments(text, due_at, completed_at, note)")
+    .from("retro_periods")
+    .select("id, period_start, period_end, final, retro_commitments(text, due_at, completed_at, note)")
     .eq("user_id", userId)
     .eq("period_type", "weekly")
     .eq("status", "completed")
@@ -414,13 +414,30 @@ async function gatherMonthlySources(
     .lte("period_end", end)
     .order("period_start");
   if (error) throw new Error(error.message);
+
+  const periodIds = (data ?? []).map((row) => row.id);
+  const { data: predictionRows, error: predictionsError } = periodIds.length
+    ? await supabaseAdmin
+        .from("predictions")
+        .select("period_id, text, due_at, outcome, note")
+        .eq("source_type", "retro")
+        .in("period_id", periodIds)
+    : { data: [], error: null };
+  if (predictionsError) throw new Error(predictionsError.message);
+  const predictionsByPeriod = new Map<string, unknown[]>();
+  for (const p of predictionRows ?? []) {
+    const list = predictionsByPeriod.get(p.period_id) ?? [];
+    list.push(p);
+    predictionsByPeriod.set(p.period_id, list);
+  }
+
   return (data ?? []).map((row) => ({
     type: "weekly",
     id: row.id,
     label: `周复盘 · ${row.period_start}—${row.period_end}`,
     snapshot: {
       final: row.final,
-      predictions: row.retro_predictions,
+      predictions: predictionsByPeriod.get(row.id) ?? [],
       commitments: row.retro_commitments,
     },
   }));
@@ -726,15 +743,17 @@ export async function resolveRetroPrediction(
   const userId = await requireUserId();
   if (outcome !== "hit" && outcome !== "miss") throw new Error("预测结果无效");
   const { data, error } = await supabaseAdmin
-    .from("retro_predictions")
-    .select("id, user_id, outcome")
+    .from("predictions")
+    .select("id, user_id, outcome, source_type")
     .eq("id", predictionId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data || data.user_id !== userId) throw new Error("无权对账该预测");
+  if (!data || data.user_id !== userId || data.source_type !== "retro") {
+    throw new Error("无权对账该预测");
+  }
   if (data.outcome !== "pending") throw new Error("该预测已经对账");
   const { error: updateError } = await supabaseAdmin
-    .from("retro_predictions")
+    .from("predictions")
     .update({
       outcome,
       note: note.trim().slice(0, 2000) || null,

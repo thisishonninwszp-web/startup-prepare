@@ -455,7 +455,13 @@ export async function createPrediction(
 
   const { data, error } = await supabaseAdmin
     .from("predictions")
-    .insert({ idea_id: ideaId, text: t, due_at: due.toISOString() })
+    .insert({
+      idea_id: ideaId,
+      user_id: userId,
+      source_type: "idea",
+      text: t,
+      due_at: due.toISOString(),
+    })
     .select("id, text, due_at, made_at, outcome, resolved_at, note")
     .single();
   if (error) throw new Error(error.message);

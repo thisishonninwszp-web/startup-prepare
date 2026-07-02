@@ -133,9 +133,10 @@ export async function listJudgmentRules(userId: string) {
 
 export async function listDueRetroPredictions(userId: string) {
   const { data, error } = await supabaseAdmin
-    .from("retro_predictions")
+    .from("predictions")
     .select("id, period_id, text, due_at, outcome")
     .eq("user_id", userId)
+    .eq("source_type", "retro")
     .eq("outcome", "pending")
     .lte("due_at", new Date().toISOString())
     .order("due_at", { ascending: true });
@@ -159,12 +160,20 @@ export async function getRetroPeriod(periodId: string, userId: string) {
   const { data, error } = await supabaseAdmin
     .from("retro_periods")
     .select(
-      "id, user_id, period_type, period_start, period_end, status, draft, messages, final, completed_at, retro_sources(id, source_type, source_id, label, snapshot, included), retro_commitments(id, text, due_at, completed_at), retro_predictions(id, text, due_at, outcome, note)"
+      "id, user_id, period_type, period_start, period_end, status, draft, messages, final, completed_at, retro_sources(id, source_type, source_id, label, snapshot, included), retro_commitments(id, text, due_at, completed_at)"
     )
     .eq("id", periodId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data || data.user_id !== userId) return null;
+
+  const { data: predictionRows, error: predictionsError } = await supabaseAdmin
+    .from("predictions")
+    .select("id, text, due_at, outcome, note")
+    .eq("period_id", periodId)
+    .eq("source_type", "retro");
+  if (predictionsError) throw new Error(predictionsError.message);
+
   return {
     id: data.id as string,
     period_type: data.period_type as "weekly" | "monthly",
@@ -188,9 +197,7 @@ export async function getRetroPeriod(periodId: string, userId: string) {
     commitments: Array.isArray(data.retro_commitments)
       ? data.retro_commitments
       : [],
-    predictions: Array.isArray(data.retro_predictions)
-      ? data.retro_predictions
-      : [],
+    predictions: predictionRows ?? [],
     completed_at: data.completed_at as string | null,
   };
 }
