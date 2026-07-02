@@ -581,3 +581,44 @@ export async function getOutsideViewSession(
 
   return { ...mapOutsideViewSession(session), examples, checks };
 }
+
+/** 未完成的外部视角检验行动（跨会话，供统一现实接触收件箱使用）。 */
+export async function listOpenOutsideViewChecks(userId: string): Promise<
+  Array<{
+    id: string;
+    session_id: string;
+    check_text: string;
+    plan_text: string;
+  }>
+> {
+  const { data: sessions, error: sessionError } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .select("id, plan_text")
+    .eq("user_id", userId)
+    .is("archived_at", null);
+  if (sessionError) {
+    console.error("列出外部视角会话失败", sessionError.message);
+    throw new Error("读取数据失败，请重试");
+  }
+  const sessionMap = new Map(
+    (sessions ?? []).map((s) => [s.id as string, s.plan_text as string])
+  );
+  if (sessionMap.size === 0) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from("outside_view_checks")
+    .select("id, session_id, check_text")
+    .in("session_id", Array.from(sessionMap.keys()))
+    .eq("is_done", false)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("列出未完成检验行动失败", error.message);
+    throw new Error("读取数据失败，请重试");
+  }
+  return (data ?? []).map((c) => ({
+    id: c.id as string,
+    session_id: c.session_id as string,
+    check_text: c.check_text as string,
+    plan_text: sessionMap.get(c.session_id as string) ?? "",
+  }));
+}

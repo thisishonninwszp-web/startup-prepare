@@ -1,13 +1,15 @@
 import Link from "next/link";
-import { RotateCcw, ScanSearch } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
 import { daysSince, daysUntilLock } from "../ideas/types";
 import { listRealityCases } from "../reality/queries";
+import { listOpenOutsideViewChecks } from "../reasoning/queries";
 import {
   getReflectionSettings,
   listDueRetroPredictions,
+  listOpenRetroCommitments,
   listRetroPeriods,
   todayInTimezone,
 } from "../retrospectives/queries";
@@ -31,12 +33,23 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const userId = user!.id;
-  const [realityCases, reflectionSettings, retroPeriods, dueRetroPredictions, beliefCountResult, customerCountResult] =
+  const [
+    realityCases,
+    reflectionSettings,
+    retroPeriods,
+    dueRetroPredictions,
+    openCommitments,
+    openChecks,
+    beliefCountResult,
+    customerCountResult,
+  ] =
     await Promise.all([
       listRealityCases(userId),
       getReflectionSettings(userId),
       listRetroPeriods(userId),
       listDueRetroPredictions(userId),
+      listOpenRetroCommitments(userId),
+      listOpenOutsideViewChecks(userId),
       supabaseAdmin
         .from("bayesian_beliefs")
         .select("id", { count: "exact", head: true })
@@ -130,78 +143,74 @@ export default async function DashboardPage() {
     ideaId: p.idea_id as string,
   }));
 
+  // 统一现实接触收件箱：所有思考工具的出口汇入同一条"去做"的队列。
+  type InboxRow = { key: string; kind: string; text: string; href: string };
+  const inbox: InboxRow[] = [
+    ...(weeklyDue
+      ? [{ key: "retro-weekly", kind: "复盘", text: "本周复盘到期", href: "/retrospectives" }]
+      : []),
+    ...(monthlyDue
+      ? [{ key: "retro-monthly", kind: "复盘", text: "本月复盘到期", href: "/retrospectives" }]
+      : []),
+    ...dueRetroPredictions.map((p) => ({
+      key: `retro-pred-${p.id}`,
+      kind: "预测对账",
+      text: p.text as string,
+      href: "/retrospectives",
+    })),
+    ...due.map((p) => ({
+      key: `idea-pred-${p.id}`,
+      kind: "预测对账",
+      text: p.text,
+      href: `/ideas/${p.ideaId}`,
+    })),
+    ...dueRealityCases.map((c) => ({
+      key: `reality-${c.id}`,
+      kind: "现状复查",
+      text: c.title as string,
+      href: `/reality/${c.id}`,
+    })),
+    ...openCommitments.map((c) => ({
+      key: `commit-${c.id}`,
+      kind: "复盘行动",
+      text: c.text as string,
+      href: "/retrospectives",
+    })),
+    ...openChecks.map((c) => ({
+      key: `check-${c.id}`,
+      kind: "检验行动",
+      text: c.check_text,
+      href: `/reasoning/outside-view/${c.session_id}`,
+    })),
+  ];
+
   return (
     <AppShell>
       <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
-        {(weeklyDue || monthlyDue || dueRetroPredictions.length > 0) && (
+        {inbox.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center gap-2">
-              <RotateCcw className="size-4 text-orange-600" />
-              <h2 className="text-sm font-medium">复盘反馈到期</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              恢复当时判断，再看现实。不要让结果替你重写记忆。
-            </p>
-            <Link
-              href="/retrospectives"
-              className="mt-3 flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950 transition-colors hover:bg-orange-100"
-            >
-              <span className="min-w-0 flex-1">
-                {[
-                  weeklyDue ? "周复盘" : null,
-                  monthlyDue ? "月复盘" : null,
-                  dueRetroPredictions.length
-                    ? `${dueRetroPredictions.length} 条预测待对账`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+              <Inbox className="size-4 text-orange-600" />
+              <h2 className="text-sm font-medium">现实接触收件箱</h2>
+              <span className="rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 font-mono text-[10px] text-orange-700">
+                {inbox.length}
               </span>
-              <span className="shrink-0 text-xs">去复盘 →</span>
-            </Link>
-          </section>
-        )}
-
-        {dueRealityCases.length > 0 && (
-          <section className="mb-8">
-            <div className="flex items-center gap-2">
-              <ScanSearch className="size-4 text-orange-600" />
-              <h2 className="text-sm font-medium">现状需要复查</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              当时选择的路径已经到复查日。先记录现实发生了什么，再更新地图。
+              所有思考工具的出口都汇进这一条队列。清空它的唯一方式是去现实里做点什么。
             </p>
             <ul className="mt-3 space-y-2">
-              {dueRealityCases.map((item) => (
-                <li key={item.id}>
+              {inbox.map((row) => (
+                <li key={row.key}>
                   <Link
-                    href={`/reality/${item.id}`}
+                    href={row.href}
                     className="flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950 transition-colors hover:bg-orange-100"
                   >
-                    <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                    <span className="shrink-0 text-xs">更新现状 →</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {due.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-sm font-medium">该对账了</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              这些预测到期了。去标记命中还是没命中——别让大脑事后篡改记忆。
-            </p>
-            <ul className="mt-3 space-y-2">
-              {due.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/ideas/${p.ideaId}`}
-                    className="flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900 transition-colors hover:bg-orange-100"
-                  >
-                    <span className="min-w-0 flex-1">{p.text}</span>
-                    <span className="shrink-0 text-xs">去对账 →</span>
+                    <span className="shrink-0 rounded-full border border-orange-300 px-2 py-0.5 text-[10px]">
+                      {row.kind}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{row.text}</span>
+                    <span className="shrink-0 text-xs">去处理 →</span>
                   </Link>
                 </li>
               ))}
