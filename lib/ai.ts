@@ -72,6 +72,8 @@ import {
   parseFermiDecomposition,
   parseFermiSensitivityResult,
   parseFirstPrinciplesOutput,
+  parseOutsideViewOutput,
+  parseOutsideViewPushback,
   parseReasoningRealityDraft,
   parseReframingOutput,
   type BayesPriorSuggestion,
@@ -79,6 +81,8 @@ import {
   type FermiDecomposition,
   type FermiSensitivityResult,
   type FirstPrinciplesOutput,
+  type OutsideViewOutput,
+  type OutsideViewPushback,
   type ReasoningRealityDraft,
   type ReframingOutput,
 } from "@/app/reasoning/types";
@@ -86,6 +90,10 @@ import type {
   RealityReasoningSnapshot,
   ReasoningTool,
 } from "@/app/reasoning/reality-source";
+import {
+  parseCouncilTurnOutput,
+  type CouncilTurnOutput,
+} from "@/app/council/types";
 import {
   parseDreamDelta,
   parseDreamBranchComparison,
@@ -2051,6 +2059,146 @@ export async function decomposeFirstPrinciples(
     FIRST_PRINCIPLES_SYSTEM_PROMPT,
     `信念/假设：${claim}${context}`,
     parseFirstPrinciplesOutput
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 外部视角/基础比率：找参照类别，说清楚最常见结局和机制，逼用户说明例外理由
+// ---------------------------------------------------------------------------
+
+const OUTSIDE_VIEW_SYSTEM_PROMPT = `你服务于 IdeaOS 的外部视角/基础比率工具。这是 Kahneman 提出的"外部视角"去偏技术：
+不从计划的内部细节推理（"我们团队很强""我们的产品有独特优势"），而是先找到一类相似的历史案例，
+说清楚这类案例最常见的结局和结局背后的机制，再逼用户说明自己这次可能不一样在哪，最后给出可以实际验证的检验行动。
+
+铁律：
+- 绝不输出任何数字化的概率、百分比、评分、成功率（如"73%""7分""高概率"）。prevalence_bucket 只能是
+  most/many/some/few 四选一，用于表达"这类案例里，这种结局有多常见"，不是精确统计。
+- dominant_pattern 必须是描述性语言（"大多数独立开发者做的这类工具最终因为获客成本超过预期而放弃"），
+  不能是"大概率失败"这种空话。
+- dominant_cause 必须指出具体机制/原因，不能只重复结局本身。
+- examples 数组必须 3-6 条：
+  - 至少 1 条标注 is_well_known=false，代表你基于常见模式归纳的典型案例（不是编造的具体公司名），
+    这条的 label 必须写成泛化描述（如"某类内容付费转化工具"），不能虚构具体公司/产品名。
+  - 标注 is_well_known=true 的案例，只能引用公开可查证的真实知名案例（如已停止运营的知名产品、
+    公开报道过的创业失败案例），不得编造细节或杜撰不存在的案例。
+  - outcome_note 描述这个案例的实际结局，同样不许用数字评分。
+- checks 数组必须 1-3 条，每条必须是用户在真实世界里可以立刻去做的、有明确答案的检验行动
+  （例："去问 5 个目标用户现在用什么方法解决这个问题，如果没人在用任何方法，说明这不是真实痛点"），
+  绝不能是修辞性问题（如"你觉得你的产品有什么不同？"）。
+- 绝不使用评价性/鼓励性语言（"有潜力""不错的想法""值得一试"）。
+- reference_class_label 要精确到用户这个计划所属的具体类别，不要泛化成"创业"这种空洞标签。
+
+只输出 JSON，格式：
+{"reference_class_label":"...","dominant_pattern":"...","dominant_cause":"...","prevalence_bucket":"most|many|some|few",
+"examples":[{"label":"...","outcome_note":"...","is_well_known":true}],
+"checks":[{"check_text":"..."}]}
+不要输出 JSON 以外的任何文字。`;
+
+export async function generateOutsideView(
+  planText: string,
+  contextNote?: string
+): Promise<OutsideViewOutput> {
+  const context = contextNote ? `\n背景补充：${contextNote}` : "";
+  return generateRealityJson(
+    OUTSIDE_VIEW_SYSTEM_PROMPT,
+    `用户的计划/想法：${planText}${context}`,
+    parseOutsideViewOutput
+  );
+}
+
+const OUTSIDE_VIEW_PUSHBACK_PROMPT = `你服务于 IdeaOS 的外部视角/基础比率工具。用户已经看到一个参照类别的最常见结局和机制，
+现在提交了一段"我这次可能不一样"的理由。你的任务是对这个理由做外部视角式的质疑，而不是附和。
+
+铁律：
+- 绝不说"你说得对，这次确实不一样""这个理由很有说服力"这类附和/评价性语言。
+- 必须具体指出：用户提到的这个"不一样"的地方，参照类别里那些最终失败/未达预期的案例是否也曾经这样以为。
+- 如果用户的理由里包含可以验证的事实主张，指出应该怎么验证，而不是替用户下结论说这个理由成立与否。
+- 绝不输出任何数字化的概率、百分比、评分。
+- pushback 只输出一段文字（2-4句），不需要 JSON 以外的结构。
+
+只输出 JSON：{"pushback":"..."}
+不要输出 JSON 以外的任何文字。`;
+
+export async function challengeOutsideViewDistinction(
+  referenceClassLabel: string,
+  dominantPattern: string,
+  dominantCause: string,
+  distinctionText: string
+): Promise<OutsideViewPushback> {
+  return generateRealityJson(
+    OUTSIDE_VIEW_PUSHBACK_PROMPT,
+    `参照类别：${referenceClassLabel}\n最常见结局：${dominantPattern}\n结局背后的机制：${dominantCause}\n用户提交的"这次不一样"的理由：${distinctionText}`,
+    parseOutsideViewPushback
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 顾问团：多个真实历史人物基于各自公开可考的方法论，开放式群聊质疑用户的想法
+// ---------------------------------------------------------------------------
+
+type CouncilPersonaForPrompt = {
+  key: string;
+  display_name: string;
+  grounding_note: string;
+  turns_since_last_spoke: number;
+};
+
+function personaSystemPrompt(
+  persona: { display_name: string; grounding_note: string },
+  allPersonaKeys: string[]
+): string {
+  return `你在扮演"${persona.display_name}"这个角色，在一个创业顾问团群聊里发言，服务于一个对抗认知偏误的决策系统。
+
+你的立场和方法论严格限定于以下已知依据，不允许超出：
+${persona.grounding_note}
+
+共同铁律（所有顾问角色必须遵守）：
+- 绝不说迎合性/鼓励性的话（"很有潜力""不错的想法""加油""你可以的""这个方向很好"）。
+- 绝不输出任何评分、百分比、成功概率。
+- 绝不虚构这个人物没有说过/没有主张过的具体名言、立场、数据或经历。只能基于上面给出的"已知依据"和
+  该人物公开、被广泛记录的核心方法论来发言，遇到依据之外的问题就用方法论去推演，而不是编造这个人物
+  会怎么说的细节。
+- 你不是啦啦队。每次发言必须运用你的方法论视角，指出用户还没看到的风险、矛盾或被忽略的假设——
+  即使你的方法论天然是"建设性"的，也要用它去发现问题而不是单纯肯定用户。
+- grounded_reference 字段必须写清楚这次发言具体用了你方法论里的哪一条（如"知己知彼"、
+  "Jobs-to-be-Done"、"反过来想"），不能空泛地写"我的经验"。
+- 如果你要提问，sharpest_question 必须是一个具体的、有明确答案的、能被证伪的问题，不能是修辞性反问。
+- 只在真正有话可说、你的方法论视角确实能提供新东西时才发言；不必每次都开口。
+- 已选定顾问名单（persona_key 只能从中选择）：${allPersonaKeys.join(", ")}`;
+}
+
+const COUNCIL_SELECT_AND_REPLY_PROMPT_HEADER = `你服务于 IdeaOS 的顾问团功能。这是一个群聊：多位历史人物顾问基于各自的已知方法论，
+对用户的创业想法发表意见。你需要同时完成两件事：
+1. 判断在这条最新消息里，选定的顾问中有哪 1-3 位最适合、最有实质内容可说（不必人人都答，避免刷屏和重复）。
+   优先考虑：距上次发言轮数较大（太久没发言）的顾问，以及方法论与本次话题最相关的顾问。
+2. 为每位被选中的顾问，严格以其方法论视角生成一条发言。
+
+绝不允许一个顾问纯粹附和另一个顾问的话或重复别人已经说过的角度。`;
+
+export async function nextCouncilTurn(input: {
+  personas: CouncilPersonaForPrompt[];
+  history: Array<{ role: "user" | "persona"; persona_key: string | null; content: string }>;
+  latestMessage: string;
+}): Promise<CouncilTurnOutput> {
+  const allowedKeys = input.personas.map((p) => p.key);
+  const personaBlocks = input.personas
+    .map(
+      (p) =>
+        `[${p.key}] ${p.display_name}（距上次发言：${p.turns_since_last_spoke} 轮）\n已知依据：${p.grounding_note}`
+    )
+    .join("\n\n");
+  const historyText = input.history
+    .slice(-30)
+    .map((m) => `${m.role === "user" ? "用户" : m.persona_key}：${m.content}`)
+    .join("\n");
+  const personaPrompts = allowedKeys
+    .map((k) => personaSystemPrompt(input.personas.find((p) => p.key === k)!, allowedKeys))
+    .join("\n\n---\n\n");
+
+  return generateRealityJson(
+    `${COUNCIL_SELECT_AND_REPLY_PROMPT_HEADER}\n\n${personaPrompts}`,
+    `顾问名单：\n${personaBlocks}\n\n最近对话：\n${historyText}\n\n用户最新发言：${input.latestMessage}\n\n只输出 JSON：{"replies":[{"persona_key":"...","grounded_reference":"...","content":"...","sharpest_question":"..."}]}`,
+    (value) => parseCouncilTurnOutput(value, allowedKeys)
   );
 }
 

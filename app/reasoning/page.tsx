@@ -7,6 +7,7 @@ import {
   listBayesianBeliefs,
   listFermiEstimates,
   listFirstPrinciplesSessions,
+  listOutsideViewSessions,
   listReframingSessions,
   getMarkedFramePatterns,
 } from "./queries";
@@ -50,11 +51,12 @@ export default async function ReasoningPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [beliefs, estimates, sessions, fpSessions] = await Promise.all([
+  const [beliefs, estimates, sessions, fpSessions, ovSessions] = await Promise.all([
     listBayesianBeliefs(user.id),
     listFermiEstimates(user.id),
     listReframingSessions(user.id),
     listFirstPrinciplesSessions(user.id),
+    listOutsideViewSessions(user.id),
   ]);
 
   const sessionIds = sessions.map((s) => s.id);
@@ -327,6 +329,50 @@ export default async function ReasoningPage() {
             className="inline-flex h-8 items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90"
           >
             新建分解
+          </Link>
+        </div>
+
+        {/* Outside View */}
+        <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
+          <div>
+            <h2 className="font-semibold">外部视角/基础比率</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              先看和你处境类似的一类案例最常见的结局和原因，再说明这次为什么可能不一样。
+            </p>
+          </div>
+          <div className="flex-1">
+            {ovSessions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">还没有分析记录</p>
+            ) : (
+              <ul className="space-y-2">
+                {ovSessions.slice(0, 3).map((s) => (
+                  <li key={s.id}>
+                    <Link
+                      href={`/reasoning/outside-view/${s.id}`}
+                      className="group block rounded-md px-2 py-1.5 hover:bg-muted"
+                    >
+                      <p className="text-xs font-medium line-clamp-2 group-hover:underline">
+                        {s.plan_text}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground line-clamp-1">
+                        {s.reference_class_label || "尚未生成参照类别"}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+                {ovSessions.length > 3 && (
+                  <li className="text-[10px] text-muted-foreground px-2">
+                    还有 {ovSessions.length - 3} 条…
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+          <Link
+            href="/reasoning/outside-view/new"
+            className="inline-flex h-8 items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90"
+          >
+            新建分析
           </Link>
         </div>
       </div>

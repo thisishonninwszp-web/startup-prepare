@@ -9,8 +9,10 @@ import {
   decomposeFermiQuestion,
   computeFermiSensitivity,
   decomposeFirstPrinciples,
+  challengeOutsideViewDistinction,
   draftReasoningFromReality,
   generateCentralQuestions,
+  generateOutsideView,
   generateReframes,
 } from "@/lib/ai";
 import {
@@ -710,11 +712,14 @@ export async function createFirstPrinciplesSession(formData: FormData): Promise<
     .insert(nodeRows);
   if (nodesError) {
     console.error("插入命题节点失败", nodesError.message);
-    await supabaseAdmin
+    const { error: cleanupError } = await supabaseAdmin
       .from("first_principles_sessions")
       .delete()
       .eq("id", sess.id)
       .eq("user_id", userId);
+    if (cleanupError) {
+      console.error("清理第一性原理会话失败", cleanupError.message);
+    }
     throw new Error("创建失败，请重试");
   }
 
@@ -752,4 +757,178 @@ export async function markNodeVerified(
   if (error) throw new Error(error.message);
 
   revalidatePath(`/reasoning/first-principles/${node.session_id}`);
+}
+
+// ── Outside View ──────────────────────────────────────────────────────────────
+
+export async function createOutsideViewSession(formData: FormData): Promise<{ id: string }> {
+  const userId = await requireUserId();
+  const plan_text =
+    typeof formData.get("plan_text") === "string"
+      ? (formData.get("plan_text") as string).trim()
+      : "";
+  if (!plan_text) throw new Error("计划/想法描述不能为空");
+  if (plan_text.length > 500) throw new Error("计划描述不能超过 500 字");
+
+  const context_note =
+    typeof formData.get("context_note") === "string"
+      ? (formData.get("context_note") as string).trim()
+      : "";
+
+  const idea_id_raw = formData.get("idea_id");
+  const idea_id =
+    typeof idea_id_raw === "string" && idea_id_raw.trim() ? idea_id_raw.trim() : null;
+
+  await requireOwnedOptionalIdea(idea_id, userId);
+
+  const output = await generateOutsideView(plan_text, context_note || undefined);
+
+  const { data: sess, error: sessError } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .insert({
+      user_id: userId,
+      idea_id,
+      plan_text,
+      context_note,
+      reference_class_label: output.reference_class_label,
+      dominant_pattern: output.dominant_pattern,
+      dominant_cause: output.dominant_cause,
+      prevalence_bucket: output.prevalence_bucket,
+    })
+    .select("id")
+    .single();
+  if (sessError) {
+    console.error("创建外部视角会话失败", sessError.message);
+    throw new Error("创建失败，请重试");
+  }
+
+  const exampleRows = output.examples.map((e, i) => ({
+    session_id: sess.id,
+    label: e.label,
+    outcome_note: e.outcome_note,
+    is_well_known: e.is_well_known,
+    ordinal: i,
+  }));
+  const { error: examplesError } = await supabaseAdmin
+    .from("outside_view_examples")
+    .insert(exampleRows);
+  if (examplesError) {
+    console.error("插入外部视角案例失败", examplesError.message);
+    const { error: cleanupError } = await supabaseAdmin
+      .from("outside_view_sessions")
+      .delete()
+      .eq("id", sess.id)
+      .eq("user_id", userId);
+    if (cleanupError) {
+      console.error("清理外部视角会话失败", cleanupError.message);
+    }
+    throw new Error("创建失败，请重试");
+  }
+
+  const checkRows = output.checks.map((c) => ({
+    session_id: sess.id,
+    check_text: c.check_text,
+  }));
+  const { error: checksError } = await supabaseAdmin
+    .from("outside_view_checks")
+    .insert(checkRows);
+  if (checksError) {
+    console.error("插入外部视角检验行动失败", checksError.message);
+    const { error: cleanupError } = await supabaseAdmin
+      .from("outside_view_sessions")
+      .delete()
+      .eq("id", sess.id)
+      .eq("user_id", userId);
+    if (cleanupError) {
+      console.error("清理外部视角会话失败", cleanupError.message);
+    }
+    throw new Error("创建失败，请重试");
+  }
+
+  revalidatePath("/reasoning");
+  return { id: sess.id };
+}
+
+export async function submitOutsideViewDistinction(
+  sessionId: string,
+  distinctionText: string
+): Promise<{ pushback: string }> {
+  const userId = await requireUserId();
+  const text = distinctionText.trim();
+  if (!text) throw new Error("请先写下你觉得这次可能不一样的理由");
+  if (text.length > 500) throw new Error("理由不能超过 500 字");
+
+  const { data: session, error } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .select("id, user_id, reference_class_label, dominant_pattern, dominant_cause")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!session || session.user_id !== userId) throw new Error("无权访问该会话");
+
+  const result = await challengeOutsideViewDistinction(
+    session.reference_class_label,
+    session.dominant_pattern,
+    session.dominant_cause,
+    text
+  );
+
+  const { error: updateError } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .update({
+      user_distinctions: text,
+      pushback_note: result.pushback,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sessionId)
+    .eq("user_id", userId);
+  if (updateError) throw new Error(updateError.message);
+
+  revalidatePath(`/reasoning/outside-view/${sessionId}`);
+  return { pushback: result.pushback };
+}
+
+export async function markOutsideViewCheckDone(
+  checkId: string,
+  done: boolean
+): Promise<void> {
+  const userId = await requireUserId();
+
+  const { data: check, error: checkError } = await supabaseAdmin
+    .from("outside_view_checks")
+    .select("id, session_id")
+    .eq("id", checkId)
+    .maybeSingle();
+  if (checkError || !check) throw new Error("检验行动不存在");
+
+  const { data: sess, error: sessError } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .select("user_id")
+    .eq("id", check.session_id)
+    .maybeSingle();
+  if (sessError || !sess || sess.user_id !== userId) {
+    throw new Error("无权修改此检验行动");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("outside_view_checks")
+    .update({ is_done: done })
+    .eq("id", checkId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/reasoning/outside-view/${check.session_id}`);
+}
+
+export async function archiveOutsideViewSession(sessionId: string): Promise<void> {
+  const userId = await requireUserId();
+  const { error } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", sessionId)
+    .eq("user_id", userId);
+  if (error) {
+    console.error("归档外部视角会话失败", error.message);
+    throw new Error("归档失败，请重试");
+  }
+  revalidatePath("/reasoning");
 }

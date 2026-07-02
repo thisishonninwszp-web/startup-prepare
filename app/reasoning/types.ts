@@ -501,6 +501,148 @@ export type FirstPrinciplesOutput = {
   bedrock_summary: string;
 };
 
+// ── Outside View ──────────────────────────────────────────────────────────────
+
+export const PREVALENCE_BUCKETS = ["most", "many", "some", "few"] as const;
+export type PrevalenceBucket = (typeof PREVALENCE_BUCKETS)[number];
+
+export type OutsideViewSession = {
+  id: string;
+  user_id: string;
+  idea_id: string | null;
+  plan_text: string;
+  context_note: string;
+  reference_class_label: string;
+  dominant_pattern: string;
+  dominant_cause: string;
+  prevalence_bucket: PrevalenceBucket;
+  user_distinctions: string;
+  pushback_note: string;
+  created_at: string;
+};
+
+export type OutsideViewExample = {
+  id: string;
+  session_id: string;
+  label: string;
+  outcome_note: string;
+  is_well_known: boolean;
+  ordinal: number;
+};
+
+export type OutsideViewCheck = {
+  id: string;
+  session_id: string;
+  check_text: string;
+  is_done: boolean;
+};
+
+export type OutsideViewSessionWithItems = OutsideViewSession & {
+  examples: OutsideViewExample[];
+  checks: OutsideViewCheck[];
+};
+
+export type OutsideViewOutput = {
+  reference_class_label: string;
+  dominant_pattern: string;
+  dominant_cause: string;
+  prevalence_bucket: PrevalenceBucket;
+  examples: Array<{
+    label: string;
+    outcome_note: string;
+    is_well_known: boolean;
+  }>;
+  checks: Array<{ check_text: string }>;
+};
+
+export type OutsideViewPushback = {
+  pushback: string;
+};
+
+const FORBIDDEN_SCORE_PATTERN =
+  /\d+(\.\d+)?\s*%|百分之|概率|成功率|胜率|得分|评分|打分/;
+
+function rejectScoreLanguage(text: string, label: string): string {
+  if (FORBIDDEN_SCORE_PATTERN.test(text)) {
+    throw new Error(`${label} 不得包含数字化的概率/评分表达`);
+  }
+  return text;
+}
+
+export function parseOutsideViewOutput(value: unknown): OutsideViewOutput {
+  const input = object(value, "outside view output");
+
+  const reference_class_label = rejectScoreLanguage(
+    str(input.reference_class_label, "reference_class_label"),
+    "reference_class_label"
+  );
+  const dominant_pattern = rejectScoreLanguage(
+    str(input.dominant_pattern, "dominant_pattern"),
+    "dominant_pattern"
+  );
+  const dominant_cause = rejectScoreLanguage(
+    str(input.dominant_cause, "dominant_cause"),
+    "dominant_cause"
+  );
+
+  const prevalence_bucket = str(input.prevalence_bucket, "prevalence_bucket");
+  if (!PREVALENCE_BUCKETS.includes(prevalence_bucket as PrevalenceBucket)) {
+    throw new Error("prevalence_bucket 无效");
+  }
+
+  if (!Array.isArray(input.examples) || input.examples.length < 3) {
+    throw new Error("examples must have at least 3 items");
+  }
+  if (input.examples.length > 6) {
+    throw new Error("examples must have at most 6 items");
+  }
+  const examples = input.examples.map((e: unknown, i: number) => {
+    const row = object(e, `examples[${i}]`);
+    const outcome_note = rejectScoreLanguage(
+      str(row.outcome_note, `examples[${i}].outcome_note`),
+      `examples[${i}].outcome_note`
+    );
+    return {
+      label: str(row.label, `examples[${i}].label`),
+      outcome_note,
+      is_well_known: Boolean(row.is_well_known),
+    };
+  });
+  if (!examples.some((e) => !e.is_well_known)) {
+    throw new Error(
+      "examples 中必须至少有一条标注为非知名典型案例（is_well_known=false）"
+    );
+  }
+
+  if (!Array.isArray(input.checks) || input.checks.length < 1) {
+    throw new Error("checks must have at least 1 item");
+  }
+  if (input.checks.length > 3) {
+    throw new Error("checks must have at most 3 items");
+  }
+  const checks = input.checks.map((c: unknown, i: number) => {
+    const check_text = str(object(c, `checks[${i}]`).check_text, `checks[${i}].check_text`);
+    if (!/[找问做联系测试统计发]/.test(check_text)) {
+      throw new Error(`checks[${i}] 必须是具体可执行的检验行动，不能是修辞性问题`);
+    }
+    return { check_text };
+  });
+
+  return {
+    reference_class_label,
+    dominant_pattern,
+    dominant_cause,
+    prevalence_bucket: prevalence_bucket as PrevalenceBucket,
+    examples,
+    checks,
+  };
+}
+
+export function parseOutsideViewPushback(value: unknown): OutsideViewPushback {
+  const input = object(value, "outside view pushback");
+  return { pushback: rejectScoreLanguage(str(input.pushback, "pushback"), "pushback") };
+}
+
 export function parseFirstPrinciplesOutput(value: unknown): FirstPrinciplesOutput {
   const input = object(value, "first principles output");
   const restated_belief = str(input.restated_belief, "restated_belief");

@@ -10,6 +10,11 @@ import type {
   FirstPrinciplesSession,
   FirstPrinciplesSessionWithNodes,
   NodeBasisType,
+  OutsideViewCheck,
+  OutsideViewExample,
+  OutsideViewSession,
+  OutsideViewSessionWithItems,
+  PrevalenceBucket,
   ReframingFrame,
   ReframingSession,
   ReframingSessionWithFrames,
@@ -470,4 +475,109 @@ export async function getFirstPrinciplesSession(
     created_at: session.created_at,
     nodes,
   };
+}
+
+// ── Outside View ──────────────────────────────────────────────────────────────
+
+const OUTSIDE_VIEW_SESSION_COLUMNS =
+  "id, user_id, idea_id, plan_text, context_note, reference_class_label, dominant_pattern, dominant_cause, prevalence_bucket, user_distinctions, pushback_note, created_at";
+
+function mapOutsideViewSession(s: {
+  id: string;
+  user_id: string;
+  idea_id: string | null;
+  plan_text: string;
+  context_note: string;
+  reference_class_label: string;
+  dominant_pattern: string;
+  dominant_cause: string;
+  prevalence_bucket: string;
+  user_distinctions: string;
+  pushback_note: string;
+  created_at: string;
+}): OutsideViewSession {
+  return {
+    id: s.id,
+    user_id: s.user_id,
+    idea_id: s.idea_id ?? null,
+    plan_text: s.plan_text,
+    context_note: s.context_note,
+    reference_class_label: s.reference_class_label,
+    dominant_pattern: s.dominant_pattern,
+    dominant_cause: s.dominant_cause,
+    prevalence_bucket: s.prevalence_bucket as PrevalenceBucket,
+    user_distinctions: s.user_distinctions,
+    pushback_note: s.pushback_note,
+    created_at: s.created_at,
+  };
+}
+
+export async function listOutsideViewSessions(
+  userId: string
+): Promise<OutsideViewSession[]> {
+  const { data, error } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .select(OUTSIDE_VIEW_SESSION_COLUMNS)
+    .eq("user_id", userId)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("列出外部视角会话失败", error.message);
+    throw new Error("读取数据失败，请重试");
+  }
+  return (data ?? []).map(mapOutsideViewSession);
+}
+
+export async function getOutsideViewSession(
+  sessionId: string,
+  userId: string
+): Promise<OutsideViewSessionWithItems | null> {
+  const { data: session, error } = await supabaseAdmin
+    .from("outside_view_sessions")
+    .select(OUTSIDE_VIEW_SESSION_COLUMNS)
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) {
+    console.error("读取外部视角会话失败", error.message);
+    throw new Error("读取数据失败，请重试");
+  }
+  if (!session || session.user_id !== userId) return null;
+
+  const { data: examplesData, error: examplesError } = await supabaseAdmin
+    .from("outside_view_examples")
+    .select("id, session_id, label, outcome_note, is_well_known, ordinal")
+    .eq("session_id", sessionId)
+    .order("ordinal", { ascending: true });
+  if (examplesError) {
+    console.error("读取外部视角案例失败", examplesError.message);
+    throw new Error("读取数据失败，请重试");
+  }
+
+  const { data: checksData, error: checksError } = await supabaseAdmin
+    .from("outside_view_checks")
+    .select("id, session_id, check_text, is_done")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true });
+  if (checksError) {
+    console.error("读取外部视角检验行动失败", checksError.message);
+    throw new Error("读取数据失败，请重试");
+  }
+
+  const examples: OutsideViewExample[] = (examplesData ?? []).map((e) => ({
+    id: e.id,
+    session_id: e.session_id,
+    label: e.label,
+    outcome_note: e.outcome_note,
+    is_well_known: e.is_well_known,
+    ordinal: e.ordinal,
+  }));
+
+  const checks: OutsideViewCheck[] = (checksData ?? []).map((c) => ({
+    id: c.id,
+    session_id: c.session_id,
+    check_text: c.check_text,
+    is_done: c.is_done,
+  }));
+
+  return { ...mapOutsideViewSession(session), examples, checks };
 }
