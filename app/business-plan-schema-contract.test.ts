@@ -23,6 +23,10 @@ describe("internal business plan migration", () => {
     expect(sql).toContain("'internal-business-plans'");
     expect(sql).toContain("public = false");
     expect(sql).toContain("business_plan_snapshot_id");
+    expect(sql).toContain(
+      "compressed_size integer not null check (compressed_size between 1 and 2097152)"
+    );
+    expect(sql).toContain("to_regclass('public.reality_case_sources')");
     expect(sql).not.toMatch(
       /on business_plan_(?:imports|chunks|supplier_aliases|extractions|snapshots|questions) for all/
     );

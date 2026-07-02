@@ -64,7 +64,7 @@ const coreProbes = [
   ],
   [
     "business_plan_chunks",
-    "id,user_id,import_id,storage_path,extraction_status",
+    "id,user_id,import_id,storage_path,compressed_size,extraction_status",
   ],
   [
     "business_plan_supplier_aliases",

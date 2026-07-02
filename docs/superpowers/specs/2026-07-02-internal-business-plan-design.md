@@ -64,6 +64,7 @@
 确认后的脱敏工作簿转换为规范化 JSON，不上传 Excel 二进制。系统按“工作表＋连续表格区域”切分，每块：
 
 - 不超过 500 行。
+- gzip 后不超过 1.8 MB，为 Storage 的 2 MB 硬限制保留余量。
 - 重复必要表头。
 - 包含工作表名、单元格范围、单位、公式结果和内容哈希。
 - 使用稳定顺序，保证同一内容可去重。
@@ -111,6 +112,7 @@
 - `ordinal`
 - `storage_path`
 - `content_hash`
+- `compressed_size`
 - `row_count`
 - `column_count`
 - `created_at`

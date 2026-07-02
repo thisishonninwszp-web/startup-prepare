@@ -1,6 +1,15 @@
 -- Internal business plan imports.
 -- Raw workbooks never enter Storage; only user-confirmed, redacted JSON chunks do.
 
+do $$
+begin
+  if to_regclass('public.reality_case_sources') is null then
+    raise exception
+      '022_internal_business_plan requires 005_reality_system first';
+  end if;
+end
+$$;
+
 create table if not exists own_company_profiles (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null unique references auth.users (id) on delete cascade,
@@ -47,6 +56,7 @@ create table if not exists business_plan_chunks (
   content_hash      text not null,
   row_count         integer not null check (row_count > 0),
   column_count      integer not null check (column_count > 0),
+  compressed_size integer not null check (compressed_size between 1 and 2097152),
   extraction_status text not null default 'pending' check (
     extraction_status in ('pending', 'processing', 'completed', 'failed')
   ),
@@ -54,6 +64,27 @@ create table if not exists business_plan_chunks (
   created_at        timestamptz not null default now(),
   unique (import_id, ordinal)
 );
+
+-- Keep the migration safe to rerun if an earlier draft created the table.
+alter table business_plan_chunks
+  add column if not exists compressed_size integer not null default 1;
+alter table business_plan_chunks
+  alter column compressed_size drop default;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.business_plan_chunks'::regclass
+      and conname = 'business_plan_chunks_compressed_size_check'
+  ) then
+    alter table business_plan_chunks
+      add constraint business_plan_chunks_compressed_size_check
+      check (compressed_size between 1 and 2097152);
+  end if;
+end
+$$;
 
 create table if not exists business_plan_supplier_aliases (
   id         uuid primary key default gen_random_uuid(),

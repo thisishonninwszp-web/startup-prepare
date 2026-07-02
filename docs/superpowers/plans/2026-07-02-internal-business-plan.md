@@ -118,6 +118,8 @@ create table if not exists business_plan_chunks (
   ordinal integer not null check (ordinal >= 0),
   storage_path text not null unique,
   content_hash text not null,
+  compressed_size integer not null
+    check (compressed_size between 1 and 2097152),
   row_count integer not null check (row_count > 0),
   column_count integer not null check (column_count > 0),
   extraction_status text not null default 'pending'
@@ -327,6 +329,14 @@ it("chunks by contiguous range and repeats headers", () => {
   expect(chunks).toHaveLength(2);
   expect(chunks[1].rows[0]).toEqual(chunks[0].rows[0]);
 });
+
+it("splits again when compressed JSON approaches the Storage hard limit", async () => {
+  const chunks = await chunkSheetBySize(makeLargeRows(), {
+    maxRows: 500,
+    maxCompressedBytes: 1887436,
+  });
+  expect(chunks.every((chunk) => chunk.compressedSize <= 1887436)).toBe(true);
+});
 ```
 
 Also test rejection of `.xlsm`, external-link ZIP entries, encrypted/non-ZIP input, more than 10 MB, no visible sheets, formulas without cached results, and unconfirmed sensitive candidates.
@@ -351,10 +361,14 @@ export function redactCells(
   aliases: Map<string, string>
 ): NormalizedCell[];
 export function chunkSheet(sheet: NormalizedSheet, maxRows?: number): WorkbookChunk[];
+export async function chunkSheetBySize(
+  sheet: NormalizedSheet,
+  limits: { maxRows: number; maxCompressedBytes: number }
+): Promise<WorkbookChunk[]>;
 export async function sha256Hex(value: ArrayBuffer | string): Promise<string>;
 ```
 
-`NormalizedCell` must preserve address, row, column, type, display value, optional formula, and cached result. `WorkbookChunk` must contain sheet name, range, headers, rows, units, ordinal, and content hash. Never include hidden sheet data in returned objects.
+`NormalizedCell` must preserve address, row, column, type, display value, optional formula, and cached result. `WorkbookChunk` must contain sheet name, range, headers, rows, units, ordinal, content hash, and compressed byte size. Never include hidden sheet data in returned objects.
 
 - [ ] **Step 4: Implement the worker**
 
@@ -400,6 +414,7 @@ The contract test must assert:
 - Supplier plaintext is passed only to the HMAC function and never inserted.
 - Storage paths start with `${userId}/${importId}/`.
 - Only confirmed redacted chunks receive signed upload tokens.
+- Every manifest records a compressed size at or below 2 MB, while the browser targets 1.8 MB.
 - Duplicate workbook hashes return the existing import instead of creating a new version.
 
 - [ ] **Step 2: Implement Server Actions**
