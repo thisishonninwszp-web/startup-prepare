@@ -19,6 +19,10 @@ import type {
   RealityFocusAnchorType,
   RealityFocusLocator,
 } from "../focus";
+import {
+  REALITY_DELTA_PRESENTATION,
+  getRealityDeltaClasses,
+} from "../delta-presentation";
 
 const PATH_LABEL = {
   investigate: "补充信息",
@@ -408,11 +412,14 @@ function ConstraintColumn({
 
 function DeltaBlock({ delta }: { delta: RealityDelta }) {
   const groups = [
-    ["新增事实", delta.added_facts],
-    ["修正解释", delta.revised_interpretations],
-    ["解决的未知", delta.resolved_unknowns],
-    ["新增未知", delta.new_unknowns],
-    ["情绪变化", delta.emotion_changes],
+    { key: "added_facts", items: delta.added_facts },
+    {
+      key: "revised_interpretations",
+      items: delta.revised_interpretations,
+    },
+    { key: "resolved_unknowns", items: delta.resolved_unknowns },
+    { key: "new_unknowns", items: delta.new_unknowns },
+    { key: "emotion_changes", items: delta.emotion_changes },
   ] as const;
   return (
     <section className="rounded-lg border bg-card p-5">
@@ -420,19 +427,38 @@ function DeltaBlock({ delta }: { delta: RealityDelta }) {
         Since previous version
       </p>
       <h3 className="mt-2 text-sm font-medium">这次认识发生了什么变化</h3>
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        {groups.map(([title, items]) => (
-          <div key={title}>
-            <div className="text-xs text-muted-foreground">{title}</div>
-            <div className="mt-1">
-              {items.length > 0 ? (
-                <TextList items={items} />
-              ) : (
-                <span className="text-xs text-muted-foreground">没有明确变化</span>
-              )}
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {groups.map(({ key, items }) => {
+          const presentation = REALITY_DELTA_PRESENTATION[key];
+          const classes = getRealityDeltaClasses(key, items.length > 0);
+          return (
+            <div
+              key={key}
+              className={`rounded-md border p-3 ${classes.card}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className={`text-xs font-medium ${classes.label}`}>
+                  {presentation.title}
+                </div>
+                <span
+                  className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${classes.badge}`}
+                  aria-label={`${presentation.title} ${items.length} 条`}
+                >
+                  {items.length}
+                </span>
+              </div>
+              <div className="mt-2">
+                {items.length > 0 ? (
+                  <TextList items={items} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    没有明确变化
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {(delta.previous_path_result || delta.change_reason) && (
         <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-2">
