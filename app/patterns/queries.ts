@@ -22,6 +22,12 @@ export type PatternsInput = {
     by_verdict: Record<string, number>;
     kill_learned_sample: string[];
   };
+  kills: {
+    total: number;
+    armchair_kills: number;
+    no_pain_kills: number;
+    no_pay_kills: number;
+  };
   predictions: {
     total: number;
     hit: number;
@@ -95,8 +101,8 @@ export async function getPatternsSnapshot(userId: string): Promise<PatternsSnaps
     by_status[idea.status] = (by_status[idea.status] ?? 0) + 1;
   }
 
-  // avg days in validation: ideas currently in "validating" status
-  const validatingIdeas = ideas.filter((i) => i.status === "validating");
+  // avg days in validation: ideas currently in "验证中" status
+  const validatingIdeas = ideas.filter((i) => i.status === "验证中");
   let avg_days_in_validation: number | null = null;
   if (validatingIdeas.length > 0) {
     const now = Date.now();
@@ -111,10 +117,24 @@ export async function getPatternsSnapshot(userId: string): Promise<PatternsSnaps
   const killedIdeaIds = decisions
     .filter((d) => d.verdict === "Kill")
     .map((d) => d.idea_id as string);
-  const validatedIdeaIdSet = new Set(validations.map((v) => v.idea_id as string));
+  const validationsByIdea = new Map<string, { has_pain: string; will_pay: string }[]>();
+  for (const v of validations) {
+    const id = v.idea_id as string;
+    const arr = validationsByIdea.get(id) ?? [];
+    arr.push({ has_pain: v.has_pain as string, will_pay: v.will_pay as string });
+    validationsByIdea.set(id, arr);
+  }
   let armchair_kills = 0;
+  let no_pain_kills = 0;
+  let no_pay_kills = 0;
   for (const id of killedIdeaIds) {
-    if (!validatedIdeaIdSet.has(id)) armchair_kills++;
+    const arr = validationsByIdea.get(id);
+    if (!arr || arr.length === 0) {
+      armchair_kills++;
+      continue;
+    }
+    if (arr.some((v) => v.has_pain === "no")) no_pain_kills++;
+    if (arr.some((v) => v.will_pay === "no")) no_pay_kills++;
   }
 
   // Validations stats
@@ -174,6 +194,7 @@ export async function getPatternsSnapshot(userId: string): Promise<PatternsSnaps
     ideas: ideasSnap,
     validations: { total: validations.length, has_pain_yes, has_pain_no, has_pain_unsure, will_pay_yes, will_pay_no, will_pay_unsure },
     decisions: { total: decisions.length, by_verdict, kill_learned_sample },
+    kills: { total: killedIdeaIds.length, armchair_kills, no_pain_kills, no_pay_kills },
     predictions: { total: predictions.length, hit, miss, pending },
     beliefs: { total: beliefTotal, avg_prior, avg_current_posterior, low_confidence_count },
     reframing: { top_marked_frames: top_marked_frames.slice(0, 5), sessions_total: reframingSessions.length },

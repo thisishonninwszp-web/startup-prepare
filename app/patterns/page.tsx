@@ -5,14 +5,6 @@ import { PatternReport } from "./pattern-report";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_LABELS: Record<string, string> = {
-  observation: "观察",
-  hypothesis: "假设",
-  validating: "验证中",
-  mvp: "MVP候选",
-  archived: "归档",
-};
-
 function StatCard({
   label,
   value,
@@ -51,7 +43,7 @@ export default async function PatternsPage() {
 
   const statusItems = Object.entries(snap.ideas.by_status)
     .filter(([, count]) => count > 0)
-    .map(([status, count]) => `${STATUS_LABELS[status] ?? status} ${count}`)
+    .map(([status, count]) => `${status} ${count}`)
     .join(" · ");
 
   return (
@@ -95,10 +87,36 @@ export default async function PatternsPage() {
           />
           <StatCard
             label="空想 Kill"
-            value={snap.ideas.armchair_kills}
+            value={snap.kills.armchair_kills}
             sub="未验证就否决的想法数"
           />
         </div>
+
+        {/* Kill 死因 */}
+        {snap.kills.total > 0 && (
+          <div className="rounded-lg border bg-card px-4 py-3 space-y-2">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Kill 想法的死因（共 {snap.kills.total} 个）
+            </p>
+            <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
+              <span className="text-muted-foreground">
+                空想 Kill · <span className="font-mono tabular-nums text-foreground">{snap.kills.armchair_kills}</span>
+              </span>
+              <span className="text-muted-foreground">
+                没人真的痛 · <span className="font-mono tabular-nums text-foreground">{snap.kills.no_pain_kills}</span>
+              </span>
+              <span className="text-muted-foreground">
+                没人愿意付钱 · <span className="font-mono tabular-nums text-foreground">{snap.kills.no_pay_kills}</span>
+              </span>
+            </div>
+            <a
+              href="/learnings"
+              className="inline-block text-xs text-foreground underline-offset-4 hover:underline"
+            >
+              查看每个 Kill 想法的完整学习记录 →
+            </a>
+          </div>
+        )}
 
         {/* 验证信号分布 */}
         {snap.validations.total > 0 && (

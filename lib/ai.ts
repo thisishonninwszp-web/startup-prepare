@@ -2604,6 +2604,9 @@ export async function generateCognitivePatterns(
 
   lines.push(
     "",
+    "=== Kill 想法的死因 ===",
+    `共 Kill ${data.kills.total} 个 | 空想 Kill（未接触真人）=${data.kills.armchair_kills} | 死因含"没人真的痛"=${data.kills.no_pain_kills} | 死因含"没人愿付钱"=${data.kills.no_pay_kills}`,
+    "",
     "=== 预测记录 ===",
     `总计：${data.predictions.total} 条 | 命中=${data.predictions.hit} | 未中=${data.predictions.miss} | 待定=${data.predictions.pending}`,
     "",

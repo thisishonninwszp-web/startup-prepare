@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
+import { getPatternsSnapshot } from "../patterns/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -17,50 +18,6 @@ function parseReason(reason: string | null): ReasonParts {
   } catch {
     return {};
   }
-}
-
-type Insights = {
-  killedCount: number;
-  noPainIdeas: number;
-  noPayIdeas: number;
-  armchairKills: number;
-};
-
-/** 跨被 Kill 的想法聚合验证信号，得出绝对计数（不打分、不用百分比）。 */
-async function computeInsights(killedIdeaIds: string[]): Promise<Insights> {
-  const killedCount = killedIdeaIds.length;
-  if (killedCount === 0) {
-    return { killedCount: 0, noPainIdeas: 0, noPayIdeas: 0, armchairKills: 0 };
-  }
-
-  const { data: vals, error } = await supabaseAdmin
-    .from("validations")
-    .select("idea_id, has_pain, will_pay")
-    .in("idea_id", killedIdeaIds);
-  if (error) throw new Error(error.message);
-
-  const byIdea = new Map<string, { has_pain: string; will_pay: string }[]>();
-  for (const v of vals ?? []) {
-    const id = v.idea_id as string;
-    const arr = byIdea.get(id) ?? [];
-    arr.push({ has_pain: v.has_pain as string, will_pay: v.will_pay as string });
-    byIdea.set(id, arr);
-  }
-
-  let noPainIdeas = 0;
-  let noPayIdeas = 0;
-  let armchairKills = 0;
-  for (const id of killedIdeaIds) {
-    const arr = byIdea.get(id);
-    if (!arr || arr.length === 0) {
-      armchairKills++; // 没接触任何真人就否决了
-      continue;
-    }
-    if (arr.some((v) => v.has_pain === "no")) noPainIdeas++;
-    if (arr.some((v) => v.will_pay === "no")) noPayIdeas++;
-  }
-
-  return { killedCount, noPainIdeas, noPayIdeas, armchairKills };
 }
 
 export default async function LearningsPage() {
@@ -91,29 +48,30 @@ export default async function LearningsPage() {
     };
   });
 
-  // 判断模式：跨所有 Kill 的想法 + 验证记录，用绝对计数 + 定性句揭示反复偏误。
+  // 判断模式和预测校准的绝对计数来自认知镜的统一快照，避免两处各自重算一遍。
   // 宪法第 1 条：绝不打分、绝不用百分比。
-  const killedIdeaIds = Array.from(
-    new Set((rows ?? []).map((r) => r.idea_id as string))
-  );
-  const insights = await computeInsights(killedIdeaIds);
-
-  // 校准：跨所有想法，已对账的预测命中/没命中计数（不打分、不用百分比）。
-  const { data: resolvedPreds, error: resolvedPredsError } = await supabaseAdmin
-    .from("predictions")
-    .select("outcome, ideas!inner(user_id)")
-    .eq("ideas.user_id", userId)
-    .in("outcome", ["hit", "miss"]);
-  if (resolvedPredsError) throw new Error(resolvedPredsError.message);
-  const hits = (resolvedPreds ?? []).filter((p) => p.outcome === "hit").length;
-  const misses = (resolvedPreds ?? []).filter((p) => p.outcome === "miss").length;
+  const snap = await getPatternsSnapshot(userId);
+  const insights = {
+    killedCount: snap.kills.total,
+    noPainIdeas: snap.kills.no_pain_kills,
+    noPayIdeas: snap.kills.no_pay_kills,
+    armchairKills: snap.kills.armchair_kills,
+  };
+  const hits = snap.predictions.hit;
+  const misses = snap.predictions.miss;
 
   return (
     <AppShell>
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        <p className="mb-6 text-sm text-muted-foreground">
+        <p className="mb-2 text-sm text-muted-foreground">
           归档过的想法和你从中学到的判断力。回看它们，是为了下次更早识别同类机会。
         </p>
+        <a
+          href="/patterns"
+          className="mb-6 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+        >
+          查看跨全部想法的判断模式（认知镜）→
+        </a>
 
         {hits + misses > 0 && <CalibrationBlock hits={hits} misses={misses} />}
 
@@ -186,6 +144,13 @@ function CalibrationBlock({ hits, misses }: { hits: number; misses: number }) {
     </section>
   );
 }
+
+type Insights = {
+  killedCount: number;
+  noPainIdeas: number;
+  noPayIdeas: number;
+  armchairKills: number;
+};
 
 function InsightsBlock({ insights }: { insights: Insights }) {
   const { killedCount, noPainIdeas, noPayIdeas, armchairKills } = insights;
