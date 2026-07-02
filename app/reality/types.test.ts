@@ -115,6 +115,28 @@ describe("parseRealityDelta", () => {
     };
     expect(parseRealityDelta(delta)).toEqual(delta);
   });
+
+  it("treats blank change placeholders as no recorded change", () => {
+    expect(
+      parseRealityDelta({
+        added_facts: [""],
+        revised_interpretations: ["  ", "旧解释已被现实证据修正"],
+        resolved_unknowns: [],
+        new_unknowns: [],
+        emotion_changes: [""],
+        previous_path_result: "",
+        change_reason: "",
+      })
+    ).toEqual({
+      added_facts: [],
+      revised_interpretations: ["旧解释已被现实证据修正"],
+      resolved_unknowns: [],
+      new_unknowns: [],
+      emotion_changes: [],
+      previous_path_result: "",
+      change_reason: "",
+    });
+  });
 });
 
 it("uses a six-turn soft interview limit", () => {

@@ -128,6 +128,18 @@ function strings(value: unknown, label: string): string[] {
   return value.map((item, index) => string(item, `${label}[${index}]`));
 }
 
+function changeStrings(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  return value
+    .map((item, index) => {
+      if (typeof item !== "string") {
+        throw new Error(`${label}[${index}] must be a string`);
+      }
+      return item.trim();
+    })
+    .filter(Boolean);
+}
+
 export function parseRealityInterviewResult(
   value: unknown
 ): RealityInterviewResult {
@@ -232,14 +244,17 @@ export function parseRealityMap(value: unknown): RealityMap {
 export function parseRealityDelta(value: unknown): RealityDelta {
   const input = object(value, "reality delta");
   return {
-    added_facts: strings(input.added_facts, "added_facts"),
-    revised_interpretations: strings(
+    added_facts: changeStrings(input.added_facts, "added_facts"),
+    revised_interpretations: changeStrings(
       input.revised_interpretations,
       "revised_interpretations"
     ),
-    resolved_unknowns: strings(input.resolved_unknowns, "resolved_unknowns"),
-    new_unknowns: strings(input.new_unknowns, "new_unknowns"),
-    emotion_changes: strings(input.emotion_changes, "emotion_changes"),
+    resolved_unknowns: changeStrings(
+      input.resolved_unknowns,
+      "resolved_unknowns"
+    ),
+    new_unknowns: changeStrings(input.new_unknowns, "new_unknowns"),
+    emotion_changes: changeStrings(input.emotion_changes, "emotion_changes"),
     previous_path_result:
       typeof input.previous_path_result === "string"
         ? input.previous_path_result.trim()
