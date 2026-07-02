@@ -29,6 +29,10 @@ const coreProbes = [
   ["predictions", "id,idea_id,outcome,due_at"],
   ["reality_cases", "id,user_id,messages"],
   ["reality_versions", "id,case_id,version_no,focus_session_ids"],
+  [
+    "reality_case_sources",
+    "id,case_id,business_plan_snapshot_id,source_snapshot",
+  ],
   ["customer_cases", "id,user_id,markets"],
   ["customer_proxy_versions", "id,case_id,version_no"],
   ["reflection_settings", "user_id,timezone"],
@@ -52,6 +56,31 @@ const coreProbes = [
   [
     "reality_focus_messages",
     "id,session_id,user_id,role,turn_no,client_key,content",
+  ],
+  ["own_company_profiles", "id,user_id,display_name"],
+  [
+    "business_plan_imports",
+    "id,user_id,profile_id,version_no,status,workbook_hash",
+  ],
+  [
+    "business_plan_chunks",
+    "id,user_id,import_id,storage_path,extraction_status",
+  ],
+  [
+    "business_plan_supplier_aliases",
+    "id,user_id,name_hmac,alias",
+  ],
+  [
+    "business_plan_extractions",
+    "id,user_id,import_id,chunk_id,source_refs",
+  ],
+  [
+    "business_plan_snapshots",
+    "id,user_id,import_id,summary,source_refs,delta",
+  ],
+  [
+    "business_plan_questions",
+    "id,user_id,import_id,question,answer,source_refs",
   ],
 ];
 

@@ -4,7 +4,9 @@ import {
   decryptAiPayloadForTest,
   encryptAiPayloadForTest,
   sanitizeAiPayload,
+  selectAiValidationErrors,
   shouldAttemptJsonRepair,
+  shouldStoreAiPayload,
 } from "./ai-gateway";
 
 describe("AI gateway error policy", () => {
@@ -34,6 +36,25 @@ describe("AI gateway error policy", () => {
 });
 
 describe("AI gateway diagnostics payload", () => {
+  it("stores no payload for metadata-only calls", () => {
+    expect(shouldStoreAiPayload("metadata_only")).toBe(false);
+  });
+
+  it("keeps encrypted payload diagnostics as the default", () => {
+    expect(shouldStoreAiPayload(undefined)).toBe(true);
+    expect(shouldStoreAiPayload("encrypted")).toBe(true);
+  });
+
+  it("stores only the error code for metadata-only calls", () => {
+    expect(
+      selectAiValidationErrors(
+        "metadata_only",
+        ["secret workbook content"],
+        "schema_violation"
+      )
+    ).toEqual(["schema_violation"]);
+  });
+
   it("redacts secrets before diagnostics are encrypted", () => {
     const sanitized = sanitizeAiPayload({
       headers: {

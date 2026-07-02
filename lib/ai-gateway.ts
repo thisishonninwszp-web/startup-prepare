@@ -30,7 +30,10 @@ export type AiModule =
   | "dreams"
   | "reasoning"
   | "concepts"
+  | "business_plans"
   | "unknown";
+
+export type AiPayloadLogging = "encrypted" | "metadata_only";
 
 export type AiCallContext = {
   userId?: string | null;
@@ -41,6 +44,7 @@ export type AiCallContext = {
   promptVersion?: string;
   timeoutMs?: number;
   outputMode?: "text" | "json";
+  payloadLogging?: AiPayloadLogging;
 };
 
 export type AiGenerateContentRequest = {
@@ -141,6 +145,8 @@ export async function executeAiText(
       status: text ? "success" : "failed",
       rawText: text,
       validationErrors: text ? null : ["empty_output"],
+      errorCode: text ? null : "empty_output",
+      payloadLogging: resolvedContext.payloadLogging,
     });
 
     if (!text) {
@@ -239,6 +245,8 @@ export async function executeAiJson<T>(
           status: "success",
           rawText,
           validationErrors: null,
+          errorCode: null,
+          payloadLogging: resolvedContext.payloadLogging,
         });
         await safeFinishAiCall({
           callId,
@@ -257,6 +265,8 @@ export async function executeAiJson<T>(
           status: "failed",
           rawText,
           validationErrors: [errorMessage(error).slice(0, 1000)],
+          errorCode: code,
+          payloadLogging: resolvedContext.payloadLogging,
         });
         if (!shouldAttemptJsonRepair(code, attempt + 1)) {
           throw new AiGatewayError({ code, requestId, cause: error });
@@ -300,6 +310,21 @@ export function shouldAttemptJsonRepair(
       code === "citation_violation" ||
       code === "truncated_json")
   );
+}
+
+export function shouldStoreAiPayload(
+  mode: AiPayloadLogging | undefined
+): boolean {
+  return mode !== "metadata_only";
+}
+
+export function selectAiValidationErrors(
+  mode: AiPayloadLogging | undefined,
+  validationErrors: string[] | null,
+  errorCode: AiErrorCode | null
+): string[] | null {
+  if (mode !== "metadata_only") return validationErrors;
+  return errorCode ? [errorCode] : null;
 }
 
 export function classifyAiError(error: unknown): AiErrorCode {
@@ -481,10 +506,13 @@ async function safeCreateAiCall(input: {
   timeoutMs: number;
 }): Promise<string | null> {
   try {
-    const encrypted = maybeEncrypt({
-      request: input.request,
-      context: input.context,
-    });
+    const encrypted: { encrypted?: string; metadataOnly: boolean } =
+      shouldStoreAiPayload(input.context.payloadLogging)
+        ? maybeEncrypt({
+            request: input.request,
+            context: input.context,
+          })
+        : { metadataOnly: true };
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabaseAdmin
       .from("ai_calls")
@@ -521,13 +549,23 @@ async function safeCreateAiAttempt(input: {
   status: "success" | "failed";
   rawText: string;
   validationErrors: string[] | null;
+  errorCode: AiErrorCode | null;
+  payloadLogging?: AiPayloadLogging;
 }) {
   if (!input.callId) return;
   try {
-    const encrypted = maybeEncrypt({
-      rawText: input.rawText,
-      validationErrors: input.validationErrors,
-    });
+    const validationErrors = selectAiValidationErrors(
+      input.payloadLogging,
+      input.validationErrors,
+      input.errorCode
+    );
+    const encrypted: { encrypted?: string; metadataOnly: boolean } =
+      shouldStoreAiPayload(input.payloadLogging)
+        ? maybeEncrypt({
+            rawText: input.rawText,
+            validationErrors,
+          })
+        : { metadataOnly: true };
     await supabaseAdmin.from("ai_call_attempts").insert({
       ai_call_id: input.callId,
       attempt_no: input.attemptNo,
@@ -536,7 +574,7 @@ async function safeCreateAiAttempt(input: {
       duration_ms: input.durationMs,
       encrypted_response_payload: encrypted.encrypted ?? null,
       response_metadata_only: encrypted.metadataOnly,
-      validation_errors: input.validationErrors,
+      validation_errors: validationErrors,
     });
   } catch {
     // Diagnostic logging must not affect the user-facing AI operation.
