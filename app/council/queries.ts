@@ -10,10 +10,10 @@ import type {
 export async function listCouncilPersonas(userId: string): Promise<CouncilPersona[]> {
   const { data, error } = await supabaseAdmin
     .from("council_personas")
-    .select("key, display_name, is_builtin, grounding_note, owner_user_id")
+    .select("key, display_name, is_builtin, category, grounding_note, owner_user_id")
     .or(`is_builtin.eq.true,owner_user_id.eq.${userId}`)
     .order("is_builtin", { ascending: false })
-    .order("display_name", { ascending: true });
+    .order("created_at", { ascending: true });
   if (error) {
     console.error("列出顾问人物失败", error.message);
     throw new Error("读取数据失败，请重试");
@@ -22,6 +22,7 @@ export async function listCouncilPersonas(userId: string): Promise<CouncilPerson
     key: p.key,
     display_name: p.display_name,
     is_builtin: p.is_builtin,
+    category: p.category ?? "自定义",
     grounding_note: p.grounding_note,
     owner_user_id: p.owner_user_id ?? null,
   }));

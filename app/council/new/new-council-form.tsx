@@ -49,6 +49,7 @@ export function NewCouncilForm({
             key: result.key,
             display_name: customName.trim(),
             is_builtin: false,
+            category: "自定义",
             grounding_note: customGrounding.trim(),
             owner_user_id: null,
           },
@@ -100,34 +101,45 @@ export function NewCouncilForm({
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-4">
         <p className="text-sm font-medium">邀请顾问</p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {personaList.map((persona) => (
-            <label
-              key={persona.key}
-              className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm transition-colors ${
-                selected.has(persona.key) ? "border-foreground bg-muted/50" : ""
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(persona.key)}
-                onChange={() => toggle(persona.key)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">{persona.display_name}</span>
-                {!persona.is_builtin && (
-                  <span className="ml-1 text-[10px] text-muted-foreground">自定义</span>
-                )}
-                <span className="mt-0.5 block text-xs text-muted-foreground line-clamp-2">
-                  {persona.grounding_note}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
+        {Array.from(
+          personaList.reduce((groups, persona) => {
+            const list = groups.get(persona.category) ?? [];
+            list.push(persona);
+            groups.set(persona.category, list);
+            return groups;
+          }, new Map<string, CouncilPersona[]>())
+        ).map(([category, group]) => (
+          <div key={category} className="space-y-2">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              {category}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {group.map((persona) => (
+                <label
+                  key={persona.key}
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm transition-colors ${
+                    selected.has(persona.key) ? "border-foreground bg-muted/50" : ""
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(persona.key)}
+                    onChange={() => toggle(persona.key)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">{persona.display_name}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground line-clamp-2">
+                      {persona.grounding_note}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       {showCustomForm ? (

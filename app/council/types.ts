@@ -15,6 +15,7 @@ export type CouncilPersona = {
   key: string;
   display_name: string;
   is_builtin: boolean;
+  category: string;
   grounding_note: string;
   owner_user_id: string | null;
 };
