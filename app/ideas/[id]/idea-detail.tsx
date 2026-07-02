@@ -15,6 +15,7 @@ import {
   isPredictionDue,
   type AiRole,
   type ChatTurn,
+  type ExitCriterion,
   type Hypothesis,
   type HypothesisField,
   type Idea,
@@ -28,11 +29,14 @@ import {
   type Verdict,
 } from "../types";
 import {
+  addExitCriterion,
   addValidation,
   createPrediction,
   decide,
+  deleteExitCriterion,
   draftSmallestTest,
   resolvePrediction,
+  reviewExitCriterion,
   runPreMortem,
   runRealityCheck,
   sendRoleMessage,
@@ -67,6 +71,7 @@ export function IdeaDetail({
   initialChats,
   initialValidations,
   initialPredictions,
+  initialExitCriteria = [],
   initialBeliefs = [],
   initialEstimates = [],
   initialReframings = [],
@@ -78,6 +83,7 @@ export function IdeaDetail({
   initialChats: Record<AiRole, ChatTurn[]>;
   initialValidations: Validation[];
   initialPredictions: Prediction[];
+  initialExitCriteria?: ExitCriterion[];
   initialBeliefs?: (BayesianBelief & { current_posterior: number })[];
   initialEstimates?: FermiEstimate[];
   initialReframings?: ReframingSession[];
@@ -103,6 +109,10 @@ export function IdeaDetail({
 
   // 状态会被决策改变（Go→MVP候选 / Kill→归档），用 state 承载。
   const [status, setStatus] = useState<IdeaStatus>(idea.status);
+
+  // 退出条件预承诺：进入"验证中"前写下，Go/Kill 前逐条对照。
+  const [exitCriteria, setExitCriteria] =
+    useState<ExitCriterion[]>(initialExitCriteria);
 
   // 强制出口机制：last_activity_at 由"记录真实接触"刷新，决定 AI 是否被锁。
   const [lastActivityAt, setLastActivityAt] = useState(idea.last_activity_at);
@@ -366,8 +376,22 @@ export function IdeaDetail({
         <OutreachPanel ideaId={idea.id} />
       </section>
 
+      {/* 退出条件（预先承诺） */}
+      <ExitCriteriaSection
+        ideaId={idea.id}
+        status={status}
+        criteria={exitCriteria}
+        onChange={setExitCriteria}
+      />
+
       {/* 做决策 */}
-      <DecisionSection ideaId={idea.id} onDecided={setStatus} />
+      <DecisionSection
+        ideaId={idea.id}
+        onDecided={setStatus}
+        unreviewedCount={
+          exitCriteria.filter((c) => c.triggered === "unreviewed").length
+        }
+      />
     </div>
   );
 }
@@ -1257,6 +1281,167 @@ function TriState({
   );
 }
 
+function ExitCriteriaSection({
+  ideaId,
+  status,
+  criteria,
+  onChange,
+}: {
+  ideaId: string;
+  status: IdeaStatus;
+  criteria: ExitCriterion[];
+  onChange: (next: ExitCriterion[]) => void;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const locked = status === "验证中";
+
+  async function handleAdd() {
+    const value = text.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await addExitCriterion(ideaId, value);
+      onChange([...criteria, created]);
+      setText("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "添加失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteExitCriterion(id);
+      onChange(criteria.filter((c) => c.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "删除失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReview(id: string, triggered: "yes" | "no") {
+    const previous = criteria;
+    onChange(
+      criteria.map((c) =>
+        c.id === id
+          ? { ...c, triggered, reviewed_at: new Date().toISOString() }
+          : c
+      )
+    );
+    try {
+      await reviewExitCriterion(id, triggered);
+    } catch (e) {
+      onChange(previous);
+      setError(e instanceof Error ? e.message : "标记失败");
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-sm font-medium">退出条件（预先承诺）</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          在开始验证之前写下：出现什么情况你就杀掉这个想法。决策时逐条对照——
+          让过去的你监督现在的你，而不是让现在的你替过去找理由。
+        </p>
+      </div>
+
+      {criteria.length === 0 ? (
+        <p className="rounded-lg border border-dashed p-4 text-xs text-muted-foreground">
+          还没有退出条件。至少写下一条才能进入“验证中”。
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {criteria.map((c) => (
+            <li
+              key={c.id}
+              className="flex flex-wrap items-center gap-2 rounded-lg border p-3"
+            >
+              <span className="min-w-0 flex-1 text-sm leading-relaxed">
+                {c.criterion}
+              </span>
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void handleReview(c.id, "yes")}
+                  className={
+                    "rounded-full border px-2.5 py-1 text-xs transition-colors " +
+                    (c.triggered === "yes"
+                      ? "border-red-300 bg-red-50 text-red-700"
+                      : "text-muted-foreground hover:bg-muted")
+                  }
+                >
+                  触发了
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleReview(c.id, "no")}
+                  className={
+                    "rounded-full border px-2.5 py-1 text-xs transition-colors " +
+                    (c.triggered === "no"
+                      ? "border-green-300 bg-green-50 text-green-700"
+                      : "text-muted-foreground hover:bg-muted")
+                  }
+                >
+                  没触发
+                </button>
+                {!locked && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(c.id)}
+                    disabled={busy}
+                    className="ml-1 text-xs text-muted-foreground underline-offset-4 hover:underline"
+                  >
+                    删除
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void handleAdd();
+            }
+          }}
+          maxLength={200}
+          placeholder="例：接触 10 个目标用户后仍然没有人愿意预付"
+          className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void handleAdd()}
+          disabled={busy || !text.trim()}
+        >
+          写下
+        </Button>
+      </div>
+      {locked && (
+        <p className="text-xs text-muted-foreground">
+          验证已开始：可以补充新条件，但已写下的不能删除——这正是预先承诺的意义。
+        </p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </section>
+  );
+}
+
 const EMPTY_LEARNING: LearningLog = {
   original_judgment: "",
   validation_action: "",
@@ -1275,9 +1460,11 @@ const LEARNING_FIELDS: { key: keyof LearningLog; label: string; hint: string }[]
 function DecisionSection({
   ideaId,
   onDecided,
+  unreviewedCount = 0,
 }: {
   ideaId: string;
   onDecided: (status: IdeaStatus) => void;
+  unreviewedCount?: number;
 }) {
   const [deciding, setDeciding] = useState(false);
   const [done, setDone] = useState<Verdict | null>(null);
@@ -1307,26 +1494,37 @@ function DecisionSection({
     <section className="space-y-4">
       <h2 className="text-sm font-medium">做决策</h2>
 
+      {unreviewedCount > 0 && (
+        <p className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+          还有 {unreviewedCount} 条退出条件未对照。先在上方逐条标记“触发了 /
+          没触发”，才能做 Go / Kill 决策。
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        {VERDICTS.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            disabled={deciding}
-            onClick={() => {
-              setError(null);
-              if (v.key === "Kill") {
-                setKillOpen(true);
-              } else {
-                void run(v.key, null);
-              }
-            }}
-            className="flex flex-col items-start rounded-lg border px-4 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
-          >
-            <span className="text-sm font-medium">{v.label}</span>
-            <span className="text-xs text-muted-foreground">{v.hint}</span>
-          </button>
-        ))}
+        {VERDICTS.map((v) => {
+          const gated =
+            unreviewedCount > 0 && (v.key === "Go" || v.key === "Kill");
+          return (
+            <button
+              key={v.key}
+              type="button"
+              disabled={deciding || gated}
+              onClick={() => {
+                setError(null);
+                if (v.key === "Kill") {
+                  setKillOpen(true);
+                } else {
+                  void run(v.key, null);
+                }
+              }}
+              className="flex flex-col items-start rounded-lg border px-4 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              <span className="text-sm font-medium">{v.label}</span>
+              <span className="text-xs text-muted-foreground">{v.hint}</span>
+            </button>
+          );
+        })}
       </div>
 
       {done === "Pivot" && (

@@ -183,6 +183,21 @@ export function isPredictionDue(p: Prediction): boolean {
   return p.outcome === "pending" && new Date(p.due_at).getTime() <= Date.now();
 }
 
+/**
+ * 退出条件预承诺：进入"验证中"之前写下"出现什么情况就杀掉"，
+ * Go/Kill 时逐条对照，对抗事后合理化。标记二元：触发了 / 没触发（不打分）。
+ */
+export const EXIT_CRITERION_STATES = ["unreviewed", "yes", "no"] as const;
+export type ExitCriterionState = (typeof EXIT_CRITERION_STATES)[number];
+
+export type ExitCriterion = {
+  id: string;
+  criterion: string;
+  triggered: ExitCriterionState;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
 /** 强制出口机制的天数阈值（宪法第 5 条）。 */
 export const AI_LOCK_DAYS = 3;
 

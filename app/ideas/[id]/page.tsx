@@ -7,6 +7,7 @@ import {
   AI_ROLES,
   type AiRole,
   type ChatTurn,
+  type ExitCriterion,
   type Hypothesis,
   type Idea,
   type Prediction,
@@ -80,6 +81,15 @@ export default async function IdeaDetailPage({
     .order("made_at", { ascending: false });
   if (predictionsError) throw new Error(predictionsError.message);
 
+  // 退出条件（预先承诺，顺序按写下的时间）
+  const { data: exitCriteria, error: exitCriteriaError } = await supabaseAdmin
+    .from("idea_exit_criteria")
+    .select("id, criterion, triggered, reviewed_at, created_at")
+    .eq("idea_id", params.id)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+  if (exitCriteriaError) throw new Error(exitCriteriaError.message);
+
   // 关联推理工具
   const [
     reasoningBeliefs,
@@ -114,6 +124,7 @@ export default async function IdeaDetailPage({
           initialChats={initialChats}
           initialValidations={(validations ?? []) as Validation[]}
           initialPredictions={(predictions ?? []) as Prediction[]}
+          initialExitCriteria={(exitCriteria ?? []) as ExitCriterion[]}
           initialBeliefs={reasoningBeliefs}
           initialEstimates={reasoningEstimates}
           initialReframings={reasoningSessions}

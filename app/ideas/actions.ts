@@ -15,6 +15,7 @@ import {
   isHypothesisComplete,
   type AiRole,
   type ChatTurn,
+  type ExitCriterion,
   type Hypothesis,
   type Idea,
   type IdeaStatus,
@@ -74,6 +75,18 @@ export async function updateIdeaStatus(
     if (hErr) throw new Error(hErr.message);
     if (!isHypothesisComplete(row?.hypothesis as Hypothesis)) {
       throw new Error("假设句式未填满，无法进入“验证中”。");
+    }
+    // 门禁：没有预先写下退出条件，不能进入"验证中"（反事后合理化）。
+    const { count, error: critErr } = await supabaseAdmin
+      .from("idea_exit_criteria")
+      .select("id", { count: "exact", head: true })
+      .eq("idea_id", ideaId)
+      .eq("user_id", userId);
+    if (critErr) throw new Error(critErr.message);
+    if ((count ?? 0) === 0) {
+      throw new Error(
+        "进入“验证中”之前，先写下至少一条退出条件：出现什么情况你就杀掉这个想法。"
+      );
     }
     patch.last_activity_at = new Date().toISOString();
   }
@@ -371,6 +384,22 @@ export async function decide(
   const userId = await requireUserId();
   await assertOwnsIdea(ideaId, userId);
 
+  // Go/Kill 之前必须逐条对照当初写下的退出条件（反事后合理化）。
+  if (verdict === "Go" || verdict === "Kill") {
+    const { count, error: critErr } = await supabaseAdmin
+      .from("idea_exit_criteria")
+      .select("id", { count: "exact", head: true })
+      .eq("idea_id", ideaId)
+      .eq("user_id", userId)
+      .eq("triggered", "unreviewed");
+    if (critErr) throw new Error(critErr.message);
+    if ((count ?? 0) > 0) {
+      throw new Error(
+        "决策前先对照退出条件：把每一条标记为“触发了”或“没触发”。"
+      );
+    }
+  }
+
   // 前三项打包进 reason，"学到什么"单独进 learned。
   let reason: string | null = null;
   let learned: string | null = null;
@@ -515,4 +544,89 @@ export async function runRealityCheck(
       .slice(0, 200) || "创业方向";
   const sources = await tavilySearch(query);
   return realityCheck(renderHypothesis(h), sources);
+}
+
+// ── 退出条件预承诺 ────────────────────────────────────────────────────────────
+
+/**
+ * 添加一条退出条件："出现什么情况我就杀掉这个想法"。
+ * 任何阶段都可以补充，但进入"验证中"至少要有一条。
+ */
+export async function addExitCriterion(
+  ideaId: string,
+  text: string
+): Promise<ExitCriterion> {
+  const userId = await requireUserId();
+  await assertOwnsIdea(ideaId, userId);
+
+  const criterion = text.trim();
+  if (!criterion) throw new Error("退出条件不能为空");
+  if (criterion.length > 200) throw new Error("退出条件不能超过 200 字");
+
+  const { data, error } = await supabaseAdmin
+    .from("idea_exit_criteria")
+    .insert({ idea_id: ideaId, user_id: userId, criterion })
+    .select("id, criterion, triggered, reviewed_at, created_at")
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ExitCriterion;
+}
+
+/**
+ * 删除一条退出条件。只允许在进入"验证中"之前删除——
+ * 一旦开始验证，预先承诺就锁定，防止中途悄悄放宽标准。
+ */
+export async function deleteExitCriterion(criterionId: string): Promise<void> {
+  const userId = await requireUserId();
+
+  const { data: row, error: rowErr } = await supabaseAdmin
+    .from("idea_exit_criteria")
+    .select("id, idea_id, user_id")
+    .eq("id", criterionId)
+    .maybeSingle();
+  if (rowErr) throw new Error(rowErr.message);
+  if (!row || row.user_id !== userId) throw new Error("无权删除该退出条件");
+
+  const { data: idea, error: ideaErr } = await supabaseAdmin
+    .from("ideas")
+    .select("status")
+    .eq("id", row.idea_id)
+    .single();
+  if (ideaErr) throw new Error(ideaErr.message);
+  if (idea.status === "验证中") {
+    throw new Error("验证已经开始，退出条件不能再删除——这正是预先承诺的意义。");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("idea_exit_criteria")
+    .delete()
+    .eq("id", criterionId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * 决策前对照：把一条退出条件标记为"触发了 / 没触发"。二元，不打分。
+ */
+export async function reviewExitCriterion(
+  criterionId: string,
+  triggered: "yes" | "no"
+): Promise<void> {
+  if (triggered !== "yes" && triggered !== "no") throw new Error("非法标记");
+  const userId = await requireUserId();
+
+  const { data: row, error: rowErr } = await supabaseAdmin
+    .from("idea_exit_criteria")
+    .select("id, user_id")
+    .eq("id", criterionId)
+    .maybeSingle();
+  if (rowErr) throw new Error(rowErr.message);
+  if (!row || row.user_id !== userId) throw new Error("无权标记该退出条件");
+
+  const { error } = await supabaseAdmin
+    .from("idea_exit_criteria")
+    .update({ triggered, reviewed_at: new Date().toISOString() })
+    .eq("id", criterionId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
 }
