@@ -2184,9 +2184,9 @@ export async function nextCouncilTurn(input: {
   const personaBlocks = input.personas
     .map(
       (p) =>
-        `[${p.key}] ${p.display_name}（距上次发言：${p.turns_since_last_spoke} 轮）\n已知依据：${p.grounding_note}`
+        `[${p.key}] ${p.display_name}（距上次发言：${p.turns_since_last_spoke} 轮）`
     )
-    .join("\n\n");
+    .join("\n");
   const historyText = input.history
     .slice(-30)
     .map((m) => `${m.role === "user" ? "用户" : m.persona_key}：${m.content}`)
