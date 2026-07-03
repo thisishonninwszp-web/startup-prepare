@@ -165,13 +165,22 @@ export function IdeaDetail({
           <span className="text-xs text-muted-foreground">
             状态：<span className={STATUS_COLOR[status]}>{status}</span>
           </span>
-          <Link
-            href={`/ideas/${idea.id}/report`}
-            target="_blank"
-            className="text-xs text-muted-foreground hover:underline"
-          >
-            生成报告 ↗
-          </Link>
+          <span className="flex items-center gap-3">
+            <Link
+              href={`/ideas/${idea.id}/timeline`}
+              target="_blank"
+              className="text-xs text-muted-foreground hover:underline"
+            >
+              查看时间线 ↗
+            </Link>
+            <Link
+              href={`/ideas/${idea.id}/report`}
+              target="_blank"
+              className="text-xs text-muted-foreground hover:underline"
+            >
+              生成报告 ↗
+            </Link>
+          </span>
         </div>
         <h1 className="text-xl font-semibold">{idea.title?.trim() || "（无标题）"}</h1>
       </div>
