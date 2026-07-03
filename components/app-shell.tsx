@@ -11,6 +11,7 @@ import {
   Building2,
   CloudMoon,
   Compass,
+  Download,
   Home,
   Inbox,
   Library,
@@ -173,6 +174,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Settings className="size-4" strokeWidth={1.7} />
             AI 诊断
+          </Link>
+          <Link
+            href="/settings/export"
+            className="mb-1 flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Download className="size-4" strokeWidth={1.7} />
+            数据导出
           </Link>
           {signOutError && (
             <p className="mb-2 px-2 text-xs text-destructive" role="alert">
