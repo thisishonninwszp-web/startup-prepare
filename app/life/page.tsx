@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PersonalLayerNav } from "@/components/personal-layer-nav";
-import { getLifeCompassData } from "./queries";
+import { getAttentionAllocation, getLifeCompassData } from "./queries";
 import { AlignmentReport } from "./alignment-report";
+import { AttentionTreemap } from "./attention-treemap";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,10 @@ export default async function LifePage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const data = await getLifeCompassData(user.id);
+  const [data, timeByCategory] = await Promise.all([
+    getLifeCompassData(user.id),
+    getAttentionAllocation(user.id),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -169,6 +173,14 @@ export default async function LifePage() {
             </p>
           </div>
         </div>
+      </section>
+
+      {/* 注意力去向可视化 */}
+      <section className="mb-10">
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          注意力去向
+        </h2>
+        <AttentionTreemap timeByCategory={timeByCategory} domains={data.domains} />
       </section>
 
       {/* AI 对齐审视 */}

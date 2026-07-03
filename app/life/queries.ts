@@ -1,4 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import {
+  getReflectionSettings,
+  listDailyReflections,
+  todayInTimezone,
+} from "@/app/retrospectives/queries";
 
 export type DreamAnchor = {
   id: string;
@@ -153,4 +158,50 @@ export async function getLifeCompassData(userId: string): Promise<LifeCompassDat
   const has_enough_data = ideas.length >= 3 || dreams.length > 0;
 
   return { dreams, domains, activity, has_enough_data };
+}
+
+// ── 注意力去向可视化 ──────────────────────────────────────────────────────────
+
+export type AttentionCategoryMinutes = {
+  key: string;
+  label: string;
+  color: string;
+  minutes: number;
+};
+
+/** 过去30天，实际时间花在哪个分类上（复用复盘的确认时间块，只算已确认的天）。 */
+export async function getAttentionAllocation(
+  userId: string
+): Promise<AttentionCategoryMinutes[]> {
+  const settings = await getReflectionSettings(userId);
+  const today = todayInTimezone(settings.timezone);
+  const thirtyDaysAgo = new Date(
+    new Date(`${today}T00:00:00.000Z`).getTime() - 30 * 24 * 60 * 60 * 1000
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  const days = await listDailyReflections(userId, thirtyDaysAgo, today);
+
+  const minutesByCategory = new Map<string, number>();
+  for (const day of days) {
+    if (day.status !== "confirmed") continue;
+    for (const block of day.daily_time_blocks ?? []) {
+      const minutes = (block.end_slot - block.start_slot) * 30;
+      minutesByCategory.set(
+        block.category_key,
+        (minutesByCategory.get(block.category_key) ?? 0) + minutes
+      );
+    }
+  }
+
+  return settings.categories
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      color: c.color,
+      minutes: minutesByCategory.get(c.key) ?? 0,
+    }))
+    .filter((c) => c.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes);
 }
