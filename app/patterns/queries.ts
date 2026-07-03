@@ -201,3 +201,115 @@ export async function getPatternsSnapshot(userId: string): Promise<PatternsSnaps
     has_enough_data,
   };
 }
+
+// ── Survival Calendar ────────────────────────────────────────────────────────
+
+export type SurvivalDay = {
+  date: string; // YYYY-MM-DD in user's timezone
+  realContactCount: number;
+  armchairCount: number;
+};
+
+export type SurvivalCalendar = {
+  days: SurvivalDay[];
+  lateNightDayCount: number; // 过去30天里，有观察记录落在凌晨0-4点的天数
+};
+
+function dateKeyInTimezone(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+function hourInTimezone(iso: string, timezone: string): number {
+  const hourStr = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+  return parseInt(hourStr, 10) % 24;
+}
+
+/** 存活日历 + 深夜自查：最近365天真实接触vs空想的分布，以及最近30天的凌晨记录天数。 */
+export async function getSurvivalCalendar(
+  userId: string,
+  timezone: string
+): Promise<SurvivalCalendar> {
+  const since365 = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: ideaRows, error: ideaError } = await supabaseAdmin
+    .from("ideas")
+    .select("id")
+    .eq("user_id", userId);
+  if (ideaError) throw new Error(ideaError.message);
+  const ideaIds = (ideaRows ?? []).map((i) => i.id as string);
+
+  const [
+    validationsResult,
+    conclusionsResult,
+    observationsResult,
+    aiSessionsResult,
+  ] = await Promise.all([
+    ideaIds.length
+      ? supabaseAdmin
+          .from("validations")
+          .select("contacted_at")
+          .in("idea_id", ideaIds)
+          .gte("contacted_at", since365)
+      : Promise.resolve({ data: [], error: null }),
+    supabaseAdmin
+      .from("customer_conclusions")
+      .select("id, created_at, customer_proxy_versions!inner(customer_cases!inner(user_id))")
+      .eq("customer_proxy_versions.customer_cases.user_id", userId)
+      .gte("created_at", since365),
+    supabaseAdmin
+      .from("observations")
+      .select("created_at")
+      .eq("user_id", userId)
+      .gte("created_at", since365),
+    ideaIds.length
+      ? supabaseAdmin
+          .from("ai_sessions")
+          .select("created_at")
+          .in("idea_id", ideaIds)
+          .gte("created_at", since365)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (validationsResult.error) throw new Error(validationsResult.error.message);
+  if (conclusionsResult.error) throw new Error(conclusionsResult.error.message);
+  if (observationsResult.error) throw new Error(observationsResult.error.message);
+  if (aiSessionsResult.error) throw new Error(aiSessionsResult.error.message);
+
+  const dayMap = new Map<string, SurvivalDay>();
+  function bump(iso: string, real: boolean) {
+    const key = dateKeyInTimezone(iso, timezone);
+    const day = dayMap.get(key) ?? { date: key, realContactCount: 0, armchairCount: 0 };
+    if (real) day.realContactCount += 1;
+    else day.armchairCount += 1;
+    dayMap.set(key, day);
+  }
+
+  for (const v of validationsResult.data ?? []) bump(v.contacted_at as string, true);
+  for (const c of conclusionsResult.data ?? []) bump(c.created_at as string, true);
+  for (const o of observationsResult.data ?? []) bump(o.created_at as string, false);
+  for (const s of aiSessionsResult.data ?? []) bump(s.created_at as string, false);
+
+  const lateNightDays = new Set<string>();
+  for (const o of observationsResult.data ?? []) {
+    const iso = o.created_at as string;
+    if (iso < since30) continue;
+    const hour = hourInTimezone(iso, timezone);
+    if (hour >= 0 && hour < 4) {
+      lateNightDays.add(dateKeyInTimezone(iso, timezone));
+    }
+  }
+
+  return {
+    days: Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+    lateNightDayCount: lateNightDays.size,
+  };
+}

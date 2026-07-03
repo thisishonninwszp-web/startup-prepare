@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PersonalLayerNav } from "@/components/personal-layer-nav";
-import { getPatternsSnapshot } from "./queries";
+import { getReflectionSettings } from "@/app/retrospectives/queries";
+import { getPatternsSnapshot, getSurvivalCalendar } from "./queries";
 import { PatternReport } from "./pattern-report";
+import { SurvivalCalendar } from "./survival-calendar";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +35,14 @@ export default async function PatternsPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const snap = await getPatternsSnapshot(user.id);
+  const [snap, reflectionSettings] = await Promise.all([
+    getPatternsSnapshot(user.id),
+    getReflectionSettings(user.id),
+  ]);
+  const survivalCalendar = await getSurvivalCalendar(
+    user.id,
+    reflectionSettings.timezone
+  );
 
   const predTotal = snap.predictions.total;
   const predResolved = snap.predictions.hit + snap.predictions.miss;
@@ -177,6 +186,11 @@ export default async function PatternsPage() {
             </div>
           </div>
         )}
+
+        {/* 存活日历 */}
+        <div className="rounded-lg border bg-card px-4 py-3">
+          <SurvivalCalendar calendar={survivalCalendar} />
+        </div>
       </div>
 
       {/* AI 认知分析 */}
