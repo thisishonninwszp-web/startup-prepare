@@ -3,6 +3,7 @@ import { Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
+import { RecommendationWidget } from "./recommendation-widget";
 import { daysSince, daysUntilLock } from "../ideas/types";
 import { listRealityCases } from "../reality/queries";
 import { listOpenOutsideViewChecks } from "../reasoning/queries";
@@ -187,6 +188,8 @@ export default async function DashboardPage() {
   return (
     <AppShell>
       <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
+        <RecommendationWidget />
+
         {inbox.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center gap-2">

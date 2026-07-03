@@ -92,6 +92,7 @@ import type {
 } from "@/app/reasoning/reality-source";
 import {
   parseCouncilTurnOutput,
+  rejectFlatteringLanguage,
   type CouncilTurnOutput,
 } from "@/app/council/types";
 import {
@@ -448,6 +449,44 @@ export async function draftExperiment(hypothesisContext: string): Promise<string
     },
   });
   return (response.text ?? "").trim() || "（未能草拟，请重试）";
+}
+
+// ---------------------------------------------------------------------------
+// 今日建议：工具太多时，从现有待办信号里挑一件具体的事，说清楚为什么是这件
+// ---------------------------------------------------------------------------
+
+const RECOMMEND_NEXT_ACTION_PROMPT = `你服务于 IdeaOS，一个对抗认知偏误的决策系统。这个系统模块很多（想法库、现状认识、顾客视点、
+复盘系统、梦想系统、推理工具、顾问团等），用户已经反馈"工具太多，不知道该用哪个"。
+
+你的任务：给定下面这段用户当前的待办信号（到期预测、未完成的验证中想法、待复查的现状、未完成的
+复盘行动、未完成的检验行动等），从中选**恰好一件**最值得现在去做的事，用2-3句话说清楚是哪一件、
+为什么是它（不是泛泛而谈，要点名具体的想法标题/具体的模块）。
+
+铁律：
+- 只给一件事，不要清单——清单本身就是在逃避做选择。
+- 必须点名具体对象（哪个想法、哪条预测、哪个模块），不能说"去看看你的想法库"这种空话。
+- 如果给的信号里什么都没有（都是空的），就诚实地说没有紧急待办，建议去捕捉一条新观察或推进一个想法。
+- 绝不评价好坏、不安慰、不夸奖、不用"加油""你可以的"这类语言。
+- 只输出这2-3句话本身，不要前后缀、不要"建议："这种标签。`;
+
+/** 从当前待办信号里挑一件具体的事，对抗"工具太多不知道做哪个"的选择瘫痪。 */
+export async function recommendNextAction(contextText: string): Promise<string> {
+  const response = await generateContent({
+    model: MODEL,
+    contents: contextText,
+    config: {
+      systemInstruction: RECOMMEND_NEXT_ACTION_PROMPT,
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 300,
+    },
+  });
+  const text = (response.text ?? "").trim();
+  if (!text) return "暂时没能给出建议，请重试。";
+  try {
+    return rejectFlatteringLanguage(text, "建议");
+  } catch {
+    return "暂时没能给出建议，请重试。";
+  }
 }
 
 // ---------------------------------------------------------------------------
