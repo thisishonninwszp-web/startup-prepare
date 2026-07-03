@@ -285,6 +285,68 @@ export async function sendCouncilMessage(input: {
   };
 }
 
+/**
+ * 创建一场会话，并直接插入一条顾问开场发言——绕开 sendCouncilMessage 必须先有用户消息的限制。
+ * 用于"顾问团随机空降"：用户打开一个停滞想法时，仿佛一位顾问已经先开口了。
+ */
+export async function createCouncilSessionWithOpener(input: {
+  ideaId: string;
+  personaKey: string;
+  openerReference: string;
+  openerContent: string;
+  openerQuestion: string | null;
+}): Promise<{ id: string }> {
+  const userId = await requireUserId();
+  await requireOwnedOptionalIdea(input.ideaId, userId);
+
+  const { data: persona, error: personaError } = await supabaseAdmin
+    .from("council_personas")
+    .select("key, is_builtin, owner_user_id")
+    .eq("key", input.personaKey)
+    .maybeSingle();
+  if (personaError) throw new Error(personaError.message);
+  if (!persona || (!persona.is_builtin && persona.owner_user_id !== userId)) {
+    throw new Error(`无权邀请顾问 "${input.personaKey}"`);
+  }
+
+  const { data: sess, error: sessError } = await supabaseAdmin
+    .from("council_sessions")
+    .insert({ user_id: userId, idea_id: input.ideaId, title: "" })
+    .select("id")
+    .single();
+  if (sessError) {
+    console.error("创建顾问团会话失败", sessError.message);
+    throw new Error("创建失败，请重试");
+  }
+
+  const { error: joinError } = await supabaseAdmin
+    .from("council_session_personas")
+    .insert({ session_id: sess.id, persona_key: input.personaKey, turns_since_last_spoke: 0 });
+  if (joinError) {
+    console.error("邀请顾问入场失败", joinError.message);
+    await supabaseAdmin.from("council_sessions").delete().eq("id", sess.id).eq("user_id", userId);
+    throw new Error("创建失败，请重试");
+  }
+
+  const { error: messageError } = await supabaseAdmin.from("council_messages").insert({
+    session_id: sess.id,
+    user_id: userId,
+    role: "persona",
+    persona_key: input.personaKey,
+    grounded_reference: input.openerReference,
+    content: input.openerContent,
+    sharpest_question: input.openerQuestion,
+  });
+  if (messageError) {
+    console.error("插入顾问开场发言失败", messageError.message);
+    await supabaseAdmin.from("council_sessions").delete().eq("id", sess.id).eq("user_id", userId);
+    throw new Error("创建失败，请重试");
+  }
+
+  revalidatePath("/council");
+  return { id: sess.id };
+}
+
 export async function archiveCouncilSession(sessionId: string): Promise<void> {
   const userId = await requireUserId();
   const { error } = await supabaseAdmin

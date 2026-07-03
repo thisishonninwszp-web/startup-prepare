@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AiErrorNotice } from "@/components/ai-error-notice";
+import { createCouncilSessionWithOpener } from "@/app/council/actions";
 import {
   AI_LOCK_MESSAGE,
   AI_ROLES,
@@ -24,6 +26,7 @@ import {
   type LearningLog,
   type Prediction,
   type RealityCheckResult,
+  type SelfEchoResult,
   type SignalValue,
   type Validation,
   type Verdict,
@@ -37,10 +40,14 @@ import {
   draftSmallestTest,
   resolvePrediction,
   reviewExitCriterion,
+  runCompetitorAttack,
+  runPersonaDropIn,
   runPreMortem,
   runRealityCheck,
+  runSelfEchoCheck,
   sendRoleMessage,
   updateHypothesis,
+  type DropInQuestion,
 } from "../actions";
 import type {
   BayesianBelief,
@@ -110,6 +117,7 @@ export function IdeaDetail({
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [selfEcho, setSelfEcho] = useState<SelfEchoResult | null>(null);
 
   // 状态会被决策改变（Go→MVP候选 / Kill→归档），用 state 承载。
   const [status, setStatus] = useState<IdeaStatus>(idea.status);
@@ -137,6 +145,12 @@ export function IdeaDetail({
         smallest_test: smallestTest,
       });
       setSaveMsg("已保存");
+      try {
+        const echo = await runSelfEchoCheck(idea.id);
+        setSelfEcho(echo.matched ? echo : null);
+      } catch {
+        // 呼应检测是附加提示，失败不影响保存本身。
+      }
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "保存失败");
     } finally {
@@ -159,6 +173,9 @@ export function IdeaDetail({
 
   return (
     <div className="space-y-8">
+      {/* 顾问团随机空降：想法停滞时才出现 */}
+      {aiLocked && <PersonaDropInCard ideaId={idea.id} />}
+
       {/* 标题 + 状态 */}
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
@@ -344,10 +361,24 @@ export function IdeaDetail({
           {saveMsg && <span className="text-xs text-green-600">{saveMsg}</span>}
           {saveErr && <span className="text-xs text-destructive">{saveErr}</span>}
         </div>
+
+        {selfEcho?.matched && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/20">
+            <p className="text-amber-900 dark:text-amber-200">
+              你在《{selfEcho.echoedTitle}》里说过类似的话，当时学到的是：
+            </p>
+            <p className="mt-1 text-amber-800 dark:text-amber-300">
+              {selfEcho.echoedLearned}
+            </p>
+          </div>
+        )}
       </section>
 
       {/* 预演死亡 */}
       <PreMortemSection ideaId={idea.id} onUseAsRiskiest={setRiskiest} />
+
+      {/* 如果我是竞争对手 */}
+      <CompetitorSection ideaId={idea.id} />
 
       {/* 现实检验（联网） */}
       <RealityCheckSection ideaId={idea.id} onUseAsRiskiest={setRiskiest} />
@@ -1070,6 +1101,145 @@ function PreMortemSection({
             这几种死法都只是猜的——想看同类想法实际都是怎么死的，去外部视角深挖 →
           </Link>
         </>
+      )}
+    </section>
+  );
+}
+
+function PersonaDropInCard({ ideaId }: { ideaId: string }) {
+  const router = useRouter();
+  const [dismissed, setDismissed] = useState(false);
+  const [question, setQuestion] = useState<DropInQuestion | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function listen() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setQuestion(await runPersonaDropIn(ideaId));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "生成失败，请重试");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function continueInCouncil() {
+    if (!question || creating) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const { id } = await createCouncilSessionWithOpener({
+        ideaId,
+        personaKey: question.personaKey,
+        openerReference: question.groundedReference,
+        openerContent: question.content,
+        openerQuestion: question.sharpestQuestion,
+      });
+      router.push(`/council/${id}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "创建会话失败，请重试");
+      setCreating(false);
+    }
+  }
+
+  if (dismissed) return null;
+
+  return (
+    <section className="rounded-xl border border-dashed border-muted-foreground/40 bg-muted/20 p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">
+            {question
+              ? `${question.displayName} 路过，看到这个想法卡住了`
+              : "这个想法已经停滞几天了——不是真的推送，是你打开这一刻触发的"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+        >
+          关闭
+        </button>
+      </div>
+
+      {!question && (
+        <Button variant="outline" size="sm" onClick={listen} disabled={loading}>
+          {loading ? "想着…" : "听听看"}
+        </Button>
+      )}
+
+      {question && (
+        <div className="space-y-2">
+          <div className="rounded-md border bg-card p-3 text-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold">{question.displayName}</span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                {question.groundedReference}
+              </span>
+            </div>
+            <p className="mt-1.5 leading-relaxed">{question.content}</p>
+            {question.sharpestQuestion && (
+              <p className="mt-2 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs font-medium leading-relaxed">
+                {question.sharpestQuestion}
+              </p>
+            )}
+          </div>
+          <Button size="sm" onClick={continueInCouncil} disabled={creating}>
+            {creating ? "跳转中…" : "去顾问团继续聊"}
+          </Button>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </section>
+  );
+}
+
+function CompetitorSection({ ideaId }: { ideaId: string }) {
+  const [attack, setAttack] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setAttack(await runCompetitorAttack(ideaId));
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "生成失败，请重试（先保存假设再试）"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium">如果我是竞争对手</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            换一个立场：一个真实存在、了解这个方向的竞争者会怎么看你。
+          </p>
+        </div>
+        <Button variant="outline" onClick={run} disabled={loading}>
+          {loading ? "思考中…" : attack ? "换一个角度" : "听听竞争者怎么说"}
+        </Button>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {attack && (
+        <div className="rounded-md border p-3 text-sm leading-relaxed">{attack}</div>
       )}
     </section>
   );

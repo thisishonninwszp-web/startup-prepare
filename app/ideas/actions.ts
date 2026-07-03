@@ -2,7 +2,18 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { challenge, draftExperiment, preMortem, realityCheck, suggestKnowledgeCards } from "@/lib/ai";
+import {
+  challenge,
+  checkSelfEcho,
+  collideIdeas,
+  competitorAttack,
+  draftExperiment,
+  personaDropInQuestion,
+  preMortem,
+  realityCheck,
+  suggestKnowledgeCards,
+} from "@/lib/ai";
+import { listCouncilPersonas } from "@/app/council/queries";
 import { getRelevantKnowledgeCards } from "@/app/knowledge/queries";
 import { tavilySearch } from "@/lib/external";
 import {
@@ -17,6 +28,8 @@ import {
   type ChatTurn,
   type ExitCriterion,
   type Hypothesis,
+  type IdeaCollisionResult,
+  type SelfEchoResult,
   type Idea,
   type IdeaStatus,
   type DeathMode,
@@ -526,6 +539,121 @@ export async function runPreMortem(ideaId: string): Promise<DeathMode[]> {
   if (error) throw new Error(error.message);
   if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
   return preMortem(renderHypothesis((idea.hypothesis ?? {}) as Hypothesis));
+}
+
+/** 假想竞争者视角：二选一，怎么打败你或为什么不屑竞争。 */
+export async function runCompetitorAttack(ideaId: string): Promise<string> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+  return competitorAttack(renderHypothesis((idea.hypothesis ?? {}) as Hypothesis));
+}
+
+/** AI用你自己的话怼你：这个想法的假设是否呼应了过去某次 Kill 的判断模式。 */
+export async function runSelfEchoCheck(ideaId: string): Promise<SelfEchoResult> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+
+  const { data: kills, error: killsError } = await supabaseAdmin
+    .from("decisions")
+    .select("learned, decided_at, ideas!inner(id, title, user_id)")
+    .eq("verdict", "Kill")
+    .eq("ideas.user_id", userId)
+    .not("learned", "is", null)
+    .neq("idea_id", ideaId)
+    .order("decided_at", { ascending: false })
+    .limit(20);
+  if (killsError) throw new Error(killsError.message);
+
+  const pastKills = (kills ?? [])
+    .map((k) => {
+      const ideaRel = k.ideas as unknown;
+      const relatedIdea = Array.isArray(ideaRel) ? ideaRel[0] : ideaRel;
+      return {
+        title: (relatedIdea?.title as string | null)?.trim() || "（无标题）",
+        learned: (k.learned as string | null)?.trim() || "",
+      };
+    })
+    .filter((k) => k.learned);
+
+  return checkSelfEcho(
+    renderHypothesis((idea.hypothesis ?? {}) as Hypothesis),
+    pastKills
+  );
+}
+
+/** 想法对撞机：找出两个想法之间隐藏的联系，不评价哪个更好。 */
+export async function runIdeaCollision(
+  ideaIdA: string,
+  ideaIdB: string
+): Promise<IdeaCollisionResult> {
+  if (ideaIdA === ideaIdB) throw new Error("请选择两个不同的想法");
+  const userId = await requireUserId();
+  const { data: ideas, error } = await supabaseAdmin
+    .from("ideas")
+    .select("id, user_id, hypothesis")
+    .in("id", [ideaIdA, ideaIdB]);
+  if (error) throw new Error(error.message);
+  const ideaA = ideas?.find((i) => i.id === ideaIdA);
+  const ideaB = ideas?.find((i) => i.id === ideaIdB);
+  if (!ideaA || !ideaB || ideaA.user_id !== userId || ideaB.user_id !== userId) {
+    throw new Error("无权访问其中一个想法");
+  }
+  return collideIdeas(
+    renderHypothesis((ideaA.hypothesis ?? {}) as Hypothesis),
+    renderHypothesis((ideaB.hypothesis ?? {}) as Hypothesis)
+  );
+}
+
+export type DropInQuestion = {
+  personaKey: string;
+  displayName: string;
+  groundedReference: string;
+  content: string;
+  sharpestQuestion: string | null;
+};
+
+/**
+ * 顾问团随机空降：不是真的后台推送，是用户打开一个停滞想法这个动作触发的效果——
+ * 从可用顾问里随机选一位，让他就这个想法说一句话。
+ */
+export async function runPersonaDropIn(ideaId: string): Promise<DropInQuestion> {
+  const userId = await requireUserId();
+  const { data: idea, error } = await supabaseAdmin
+    .from("ideas")
+    .select("user_id, hypothesis")
+    .eq("id", ideaId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (!idea || idea.user_id !== userId) throw new Error("无权访问该想法");
+
+  const personas = await listCouncilPersonas(userId);
+  if (personas.length === 0) throw new Error("顾问团暂时没有可用的顾问");
+  const persona = personas[Math.floor(Math.random() * personas.length)];
+
+  const reply = await personaDropInQuestion(
+    { key: persona.key, display_name: persona.display_name, grounding_note: persona.grounding_note },
+    renderHypothesis((idea.hypothesis ?? {}) as Hypothesis)
+  );
+
+  return {
+    personaKey: persona.key,
+    displayName: persona.display_name,
+    groundedReference: reply.grounded_reference,
+    content: reply.content,
+    sharpestQuestion: reply.sharpest_question,
+  };
 }
 
 /** 方向现实检验：联网搜该方向 → 对抗性简报 + 来源。 */

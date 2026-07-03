@@ -1,11 +1,15 @@
 import {
   DEATH_PATTERNS,
+  parseIdeaCollisionResult,
+  parseSelfEchoResult,
   type AiRole,
   type ChatTurn,
   type DeathMode,
   type DirectionDraft,
   type ExternalSignal,
+  type IdeaCollisionResult,
   type RealityCheckResult,
+  type SelfEchoResult,
   type TavilyResult,
 } from "@/app/ideas/types";
 import {
@@ -94,6 +98,7 @@ import {
   parseCouncilTurnOutput,
   rejectFlatteringLanguage,
   type CouncilTurnOutput,
+  type CouncilTurnReply,
 } from "@/app/council/types";
 import {
   parseDreamDelta,
@@ -539,6 +544,110 @@ export async function preMortem(hypothesisContext: string): Promise<DeathMode[]>
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// 如果我是竞争对手：从假想竞争者视角，要么说清楚怎么打败你，要么说清楚为什么不屑
+// ---------------------------------------------------------------------------
+
+const COMPETITOR_ATTACK_SYSTEM_PROMPT = `你现在扮演一个了解这个方向的假想竞争者，正在评估要不要跟这个想法竞争。
+
+铁律：
+- 必须选定一个立场，二选一，不能两头各打一点：
+  1）详细说明你会怎么打败这个想法——具体的打法（更快、更便宜、更专注某个细分、抢占某个渠道等），
+     要点名这个想法假设里的具体弱点；
+  2）或者说清楚你为什么根本不屑于跟它竞争——市场太小、护城河太浅不值得抢、或者这个方向自己就会
+     因为某个具体原因死掉，你不需要出手。
+- 必须扎根于用户给出的假设具体内容，不能是"我会做得更好"这种空话。
+- 不许评价这个想法本身"好不好"，只从竞争者的实际利益角度说话。
+- 语气可以刻薄、可以轻蔑，不需要礼貌，但不能是无意义的嘲讽——每句话都要有具体信息量。
+- 绝不安慰、不夸奖、不给这个想法的创始人任何建议或安慰。
+- 只输出这段话本身（3-5句话），不要前后缀、不要"作为竞争对手："这类标签。`;
+
+/** 从假想竞争者视角，二选一：详细说明怎么打败你，或说清楚为什么不屑竞争。 */
+export async function competitorAttack(hypothesisContext: string): Promise<string> {
+  const response = await generateContent({
+    model: MODEL,
+    contents: hypothesisContext,
+    config: {
+      systemInstruction: COMPETITOR_ATTACK_SYSTEM_PROMPT,
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 500,
+    },
+  });
+  const text = (response.text ?? "").trim();
+  if (!text) return "（未能生成，请重试）";
+  try {
+    return rejectFlatteringLanguage(text, "竞争对手视角");
+  } catch {
+    return "（未能生成，请重试）";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI用你自己的话怼你：新假设是否呼应了过去某次 Kill 的判断模式
+// ---------------------------------------------------------------------------
+
+const SELF_ECHO_SYSTEM_PROMPT = `你服务于 IdeaOS，一个对抗认知偏误的决策系统。用户正在写一个新想法的假设，
+你需要判断这段新文字是否呼应了他过去某次 Kill 掉的想法的判断模式——不是简单的关键词重合，而是同一种
+思维模式的重复（比如同样跳过验证就假设有人需要、同样低估分发难度、同样的目标用户模糊描述等）。
+
+铁律：
+- 只有真的呼应了过去某次 Kill 的判断模式才算 matched=true，不要牵强附会——宁可漏判，不要乱贴标签。
+- matched=true 时必须原样引用给定列表里的某一条 title 和 learned 文本，不能编造或改写。
+- 不许评价当前这个新想法本身的好坏，只负责如实指出"这个模式你以前见过"。
+- 如果给的过去 Kill 列表是空的，直接返回 matched=false。
+
+只输出 JSON：{"matched":true|false,"echoedTitle":"（如果matched，原样引用title）","echoedLearned":"（如果matched，原样引用learned）"}
+不要输出 JSON 以外的任何文字。`;
+
+/** 判断新想法的假设是否呼应了过去某次 Kill 的判断模式，命中就原样引用当时的学到了什么。 */
+export async function checkSelfEcho(
+  newHypothesisText: string,
+  pastKills: { title: string; learned: string }[]
+): Promise<SelfEchoResult> {
+  if (pastKills.length === 0) {
+    return { matched: false, echoedTitle: "", echoedLearned: "" };
+  }
+  const pastKillsText = pastKills
+    .map((k, i) => `[${i}] title: ${k.title}\nlearned: ${k.learned}`)
+    .join("\n\n");
+  return generateRealityJson(
+    SELF_ECHO_SYSTEM_PROMPT,
+    `新想法的假设：\n${newHypothesisText}\n\n过去 Kill 掉的想法列表：\n${pastKillsText}`,
+    parseSelfEchoResult
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 想法对撞机：两个想法之间有没有隐藏的联系，不评价哪个更好
+// ---------------------------------------------------------------------------
+
+const IDEA_COLLIDER_SYSTEM_PROMPT = `你服务于 IdeaOS，一个对抗认知偏误的决策系统。用户给了你两个想法的假设，
+你需要找出它们之间藏着的关系——不是评价哪个更好，而是发现用户自己可能没意识到的联系。
+
+铁律：
+- 绝不比较"哪个想法更好/更有前景"，不输出评分、排名、推荐。
+- shared_assumptions：两个想法依赖的共同假设（如果真的存在的话），可以是空数组，不要硬凑。
+- resource_conflict：如果两个想法在抢占用户同一段时间/精力/资金，说清楚具体怎么冲突；没有就是 null，不要硬找。
+- contradictory_theories：如果两个想法对同一类顾客/同一个市场的判断互相矛盾，指出具体矛盾在哪；没有就是 null。
+- unexplored_connection：必须给出一条，是这两个想法之间用户大概率没想过的联系（可以是互补、可以是同一个更大问题的两个侧面），
+  必须具体、扎根于给出的假设内容，不能是"都是创业想法"这种空话。
+
+只输出 JSON：
+{"shared_assumptions":["..."],"resource_conflict":null,"contradictory_theories":null,"unexplored_connection":"..."}
+不要输出 JSON 以外的任何文字。`;
+
+/** 找出两个想法之间隐藏的联系：共享假设、资源冲突、矛盾理论、未曾想过的联系。不评价哪个更好。 */
+export async function collideIdeas(
+  hypothesisA: string,
+  hypothesisB: string
+): Promise<IdeaCollisionResult> {
+  return generateRealityJson(
+    IDEA_COLLIDER_SYSTEM_PROMPT,
+    `想法 A 的假设：\n${hypothesisA}\n\n想法 B 的假设：\n${hypothesisB}`,
+    parseIdeaCollisionResult
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2239,6 +2348,23 @@ export async function nextCouncilTurn(input: {
     `顾问名单：\n${personaBlocks}\n\n最近对话：\n${historyText}\n\n用户最新发言：${input.latestMessage}\n\n只输出 JSON：{"replies":[{"persona_key":"...","grounded_reference":"...","content":"...","sharpest_question":"..."}]}`,
     (value) => parseCouncilTurnOutput(value, allowedKeys)
   );
+}
+
+const PERSONA_DROP_IN_PROMPT_HEADER = `你服务于 IdeaOS 的顾问团功能。用户打开了一个已经停滞好几天、迟迟没有新的真实接触的想法。
+你要扮演下面这位顾问，路过看到这个想法卡住了，主动说一句话——用你的方法论视角，指出这个想法目前最值得
+被追问的一点，而不是泛泛的鼓励。`;
+
+/** 单个顾问路过一个停滞想法，主动说一句话。不涉及"选谁接话"的逻辑，只有一位顾问、一次生成。 */
+export async function personaDropInQuestion(
+  persona: { key: string; display_name: string; grounding_note: string },
+  hypothesisContext: string
+): Promise<CouncilTurnReply> {
+  const result = await generateRealityJson(
+    `${PERSONA_DROP_IN_PROMPT_HEADER}\n\n${personaSystemPrompt(persona, [persona.key])}`,
+    `想法的假设：\n${hypothesisContext}\n\n只输出 JSON：{"replies":[{"persona_key":"${persona.key}","grounded_reference":"...","content":"...","sharpest_question":"..."}]}`,
+    (value) => parseCouncilTurnOutput(value, [persona.key])
+  );
+  return result.replies[0];
 }
 
 // ---------------------------------------------------------------------------

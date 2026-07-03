@@ -255,3 +255,92 @@ export type LearningLog = {
   /** 学到什么：以后如何判断类似机会 */
   learned: string;
 };
+
+/**
+ * AI用你自己的话怼你：新想法的假设是否呼应了过去某次 Kill 的判断模式。
+ * matched=false 时其余字段应为空——不牵强附会。
+ */
+export type SelfEchoResult = {
+  matched: boolean;
+  echoedTitle: string;
+  echoedLearned: string;
+};
+
+function selfEchoObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+export function parseSelfEchoResult(value: unknown): SelfEchoResult {
+  const input = selfEchoObject(value, "self echo result");
+  if (typeof input.matched !== "boolean") {
+    throw new Error("matched must be a boolean");
+  }
+  if (!input.matched) {
+    return { matched: false, echoedTitle: "", echoedLearned: "" };
+  }
+  const echoedTitle =
+    typeof input.echoedTitle === "string" ? input.echoedTitle.trim() : "";
+  const echoedLearned =
+    typeof input.echoedLearned === "string" ? input.echoedLearned.trim() : "";
+  if (!echoedTitle || !echoedLearned) {
+    throw new Error("matched=true 时 echoedTitle 和 echoedLearned 不能为空");
+  }
+  return { matched: true, echoedTitle, echoedLearned };
+}
+
+/** 想法对撞机：两个想法之间是否存在隐藏的联系。不评价哪个想法更好。 */
+export type IdeaCollisionResult = {
+  shared_assumptions: string[];
+  resource_conflict: string | null;
+  contradictory_theories: string | null;
+  unexplored_connection: string;
+};
+
+function collisionObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function collisionStrings(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  return value.map((item, i) => {
+    if (typeof item !== "string" || !item.trim()) {
+      throw new Error(`${label}[${i}] must be a non-empty string`);
+    }
+    return item.trim();
+  });
+}
+
+export function parseIdeaCollisionResult(value: unknown): IdeaCollisionResult {
+  const input = collisionObject(value, "idea collision result");
+  for (const forbidden of ["score", "rating", "winner", "recommendation", "better"]) {
+    if (forbidden in input) throw new Error(`${forbidden} is forbidden`);
+  }
+  const shared_assumptions = collisionStrings(
+    input.shared_assumptions,
+    "shared_assumptions"
+  );
+  const resource_conflict =
+    typeof input.resource_conflict === "string" && input.resource_conflict.trim()
+      ? input.resource_conflict.trim()
+      : null;
+  const contradictory_theories =
+    typeof input.contradictory_theories === "string" &&
+    input.contradictory_theories.trim()
+      ? input.contradictory_theories.trim()
+      : null;
+  if (typeof input.unexplored_connection !== "string" || !input.unexplored_connection.trim()) {
+    throw new Error("unexplored_connection must be a non-empty string");
+  }
+  return {
+    shared_assumptions,
+    resource_conflict,
+    contradictory_theories,
+    unexplored_connection: input.unexplored_connection.trim(),
+  };
+}
