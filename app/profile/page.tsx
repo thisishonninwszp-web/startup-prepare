@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { PersonalLayerNav } from "@/components/personal-layer-nav";
 import { getProfileData } from "./queries";
 import { ProfileReport } from "./profile-report";
 
@@ -25,6 +26,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <PersonalLayerNav current="/profile" />
       <div className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">创业者档案</h1>
         <p className="mt-1 text-sm text-muted-foreground">

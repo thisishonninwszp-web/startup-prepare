@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { PersonalLayerNav } from "@/components/personal-layer-nav";
 import { getLifeCompassData } from "./queries";
 import { AlignmentReport } from "./alignment-report";
 
@@ -35,6 +36,7 @@ export default async function LifePage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <PersonalLayerNav current="/life" />
       <div className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">生活罗盘</h1>
         <p className="mt-1 text-sm text-muted-foreground">

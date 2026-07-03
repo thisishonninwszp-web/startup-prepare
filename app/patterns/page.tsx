@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { PersonalLayerNav } from "@/components/personal-layer-nav";
 import { getPatternsSnapshot } from "./queries";
 import { PatternReport } from "./pattern-report";
 
@@ -48,6 +49,7 @@ export default async function PatternsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <PersonalLayerNav current="/patterns" />
       <div className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">认知镜</h1>
         <p className="mt-1 text-sm text-muted-foreground">
