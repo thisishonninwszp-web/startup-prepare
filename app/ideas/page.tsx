@@ -29,6 +29,14 @@ export default async function IdeasPage() {
   return (
     <AppShell>
       <main className="animate-fade-up px-4 py-6 sm:px-6">
+        <div className="mb-4 flex justify-end">
+          <Link
+            href="/ideas/collide"
+            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+          >
+            想法对撞机 →
+          </Link>
+        </div>
         {initial.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             还没有想法。去{" "}
