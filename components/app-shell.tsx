@@ -18,6 +18,7 @@ import {
   LogOut,
   Menu,
   MessagesSquare,
+  NotebookText,
   Radar,
   RotateCcw,
   ScanSearch,
@@ -48,6 +49,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/profile": UserCircle,
   "/knowledge": BookOpen,
   "/companies": Building2,
+  "/company-kb": NotebookText,
   "/outreach": Target,
   "/settings/ai": Settings,
 };
