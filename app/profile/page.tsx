@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PersonalLayerNav } from "@/components/personal-layer-nav";
+import { PrintButton } from "@/components/print-button";
 import { getProfileData } from "./queries";
 import { ProfileReport } from "./profile-report";
 
@@ -26,12 +27,23 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <style>{`
+        @media print {
+          aside, header, nav, button, .no-print { display: none !important; }
+          [class*="pl-64"] { padding-left: 0 !important; }
+          body { font-size: 12px; }
+        }
+        @page { margin: 1.5cm; }
+      `}</style>
       <PersonalLayerNav current="/profile" />
-      <div className="mb-8">
-        <h1 className="text-xl font-semibold tracking-tight">创业者档案</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          AI 从你在 IdeaOS 中留下的全部痕迹，推断你是什么样的人。
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">创业者档案</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            AI 从你在 IdeaOS 中留下的全部痕迹，推断你是什么样的人。
+          </p>
+        </div>
+        <PrintButton />
       </div>
 
       {/* 数据来源概览 */}

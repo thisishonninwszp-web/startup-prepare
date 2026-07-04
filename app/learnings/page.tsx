@@ -66,12 +66,20 @@ export default async function LearningsPage() {
         <p className="mb-2 text-sm text-muted-foreground">
           归档过的想法和你从中学到的判断力。回看它们，是为了下次更早识别同类机会。
         </p>
-        <a
-          href="/patterns"
-          className="mb-6 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
-        >
-          查看跨全部想法的判断模式（认知镜）→
-        </a>
+        <div className="mb-6 flex flex-wrap gap-x-6 gap-y-1">
+          <a
+            href="/patterns"
+            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+          >
+            查看跨全部想法的判断模式（认知镜）→
+          </a>
+          <a
+            href="/learnings/handbook"
+            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+          >
+            打印“学到了什么”合集手册 →
+          </a>
+        </div>
 
         {hits + misses > 0 && <CalibrationBlock hits={hits} misses={misses} />}
 
@@ -82,36 +90,45 @@ export default async function LearningsPage() {
             还没有归档的想法。这里会汇总你 Kill 掉的想法和“学到了什么”。
           </p>
         ) : (
-          <ul className="space-y-4">
+          <ul className="grid gap-5 sm:grid-cols-2">
             {learnings.map((l) => (
-              <li key={l.id} className="rounded-lg border p-4">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="text-sm font-medium">{l.title}</h2>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {new Date(l.decided_at).toLocaleDateString()}
-                  </span>
-                </div>
+              <li
+                key={l.id}
+                className="rounded-t-3xl rounded-b-lg border bg-card px-5 pb-4 pt-7"
+              >
+                <h2 className="text-center font-serif text-base tracking-tight">
+                  {l.title}
+                </h2>
+                <p className="mt-1 text-center text-xs text-muted-foreground">
+                  {new Date(l.decided_at).toLocaleDateString()}
+                </p>
 
                 {l.learned && (
-                  <div className="mt-3 rounded-md bg-muted/40 p-3">
-                    <div className="text-xs font-medium text-muted-foreground">
-                      学到什么
-                    </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm">{l.learned}</p>
-                  </div>
+                  <p className="mt-4 text-center font-serif text-sm italic leading-relaxed">
+                    “{l.learned}”
+                  </p>
                 )}
 
-                <dl className="mt-3 space-y-2 text-sm">
-                  {l.reason.original_judgment && (
-                    <Row label="原始判断" value={l.reason.original_judgment} />
-                  )}
-                  {l.reason.validation_action && (
-                    <Row label="验证动作" value={l.reason.validation_action} />
-                  )}
-                  {l.reason.real_result && (
-                    <Row label="真实结果" value={l.reason.real_result} />
-                  )}
-                </dl>
+                {(l.reason.original_judgment ||
+                  l.reason.validation_action ||
+                  l.reason.real_result) && (
+                  <details className="mt-4 border-t pt-3">
+                    <summary className="cursor-pointer text-center text-xs text-muted-foreground hover:text-foreground">
+                      查看当时的判断
+                    </summary>
+                    <dl className="mt-3 space-y-2 text-sm">
+                      {l.reason.original_judgment && (
+                        <Row label="原始判断" value={l.reason.original_judgment} />
+                      )}
+                      {l.reason.validation_action && (
+                        <Row label="验证动作" value={l.reason.validation_action} />
+                      )}
+                      {l.reason.real_result && (
+                        <Row label="真实结果" value={l.reason.real_result} />
+                      )}
+                    </dl>
+                  </details>
+                )}
               </li>
             ))}
           </ul>

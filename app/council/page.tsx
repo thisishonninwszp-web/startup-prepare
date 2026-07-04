@@ -28,6 +28,12 @@ export default async function CouncilPage() {
             <p className="mt-2 max-w-xl text-sm text-muted-foreground">
               每场对话按需邀请几位顾问，AI 只运用他们公开可考的方法论来发言——不是啦啦队，也不代表本人真实观点。
             </p>
+            <Link
+              href="/council/questions"
+              className="mt-2 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              犀利提问墙 →
+            </Link>
           </div>
           <Link
             href="/council/new"
