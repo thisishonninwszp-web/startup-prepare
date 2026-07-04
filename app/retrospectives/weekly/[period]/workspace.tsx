@@ -150,9 +150,20 @@ export function WeeklyRetrospectiveWorkspace({
           <p className="mt-6 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
             Weekly evidence audit
           </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">
-            {initialPeriod.period_start}—{initialPeriod.period_end}
-          </h1>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-semibold tracking-[-0.04em]">
+              {initialPeriod.period_start}—{initialPeriod.period_end}
+            </h1>
+            {completed && (
+              <Link
+                href={`/retrospectives/weekly/${initialPeriod.id}/report`}
+                target="_blank"
+                className="text-xs text-muted-foreground hover:underline"
+              >
+                生成报告 ↗
+              </Link>
+            )}
+          </div>
           <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
             恢复当时判断，再看现实。不要让结果替你重写记忆。
           </p>
