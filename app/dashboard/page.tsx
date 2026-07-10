@@ -8,6 +8,10 @@ import { daysSince, daysUntilLock } from "../ideas/types";
 import { listRealityCases } from "../reality/queries";
 import { listOpenOutsideViewChecks } from "../reasoning/queries";
 import {
+  getDecisionClosureSchemaStatus,
+  listOpenDecisionClosures,
+} from "../decision-closures/queries";
+import {
   getReflectionSettings,
   listDueRetroPredictions,
   listOpenRetroCommitments,
@@ -41,6 +45,7 @@ export default async function DashboardPage() {
     dueRetroPredictions,
     openCommitments,
     openChecks,
+    decisionClosureAvailable,
     beliefCountResult,
     customerCountResult,
   ] =
@@ -51,6 +56,7 @@ export default async function DashboardPage() {
       listDueRetroPredictions(userId),
       listOpenRetroCommitments(userId),
       listOpenOutsideViewChecks(userId),
+      getDecisionClosureSchemaStatus(),
       supabaseAdmin
         .from("bayesian_beliefs")
         .select("id", { count: "exact", head: true })
@@ -66,6 +72,9 @@ export default async function DashboardPage() {
   if (customerCountResult.error) {
     throw new Error(customerCountResult.error.message);
   }
+  const openDecisionClosures = decisionClosureAvailable
+    ? await listOpenDecisionClosures(userId)
+    : [];
   const beliefCount = beliefCountResult.count ?? 0;
   const customerCount = customerCountResult.count ?? 0;
   const dueRealityCases = realityCases.filter(
@@ -170,6 +179,15 @@ export default async function DashboardPage() {
       kind: "现状复查",
       text: c.title as string,
       href: `/reality/${c.id}`,
+    })),
+    ...openDecisionClosures.map((c) => ({
+      key: `decision-closure-${c.id}`,
+      kind: c.due_on <= retroToday ? "统一收束对账" : "当前下一步",
+      text: c.selected_next_step,
+      href:
+        c.object_type === "reality_case"
+          ? `/reality/${c.object_id}`
+          : "/dashboard",
     })),
     ...openCommitments.map((c) => ({
       key: `commit-${c.id}`,

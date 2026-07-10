@@ -92,4 +92,39 @@ describe("production schema contract", () => {
       '"id,case_id,version_no,focus_session_ids"'
     );
   });
+
+  it("defines generic decision closures for future object workspaces", () => {
+    const migration = readFileSync(
+      "supabase/migrations/027_decision_closures.sql",
+      "utf8"
+    );
+    expect(migration).toContain(
+      "create table if not exists decision_closures"
+    );
+    expect(migration).toContain(
+      "create table if not exists decision_closure_sources"
+    );
+    expect(migration).toContain(
+      "create table if not exists decision_closure_events"
+    );
+    expect(migration).toMatch(/object_type\s+text\s+not null/);
+    expect(migration).toContain("check (cardinality(basis_refs) >= 1)");
+    expect(migration).toContain("where status = 'active'");
+    expect(migration).toContain(
+      "create or replace function save_decision_closure"
+    );
+    expect(migration).toContain(
+      "create or replace function resolve_decision_closure"
+    );
+    expect(migration).toContain("auth.role() <> 'service_role'");
+    expect(migration).toContain("set search_path = pg_catalog, public, pg_temp");
+    expect(migration).toContain("revoke all on table public.decision_closures");
+    expect(migration).toMatch(/critical_unknowns\s+jsonb\s+not null,/);
+    expect(migration).toMatch(/options\s+jsonb\s+not null,/);
+    expect(migration).toMatch(/basis_refs\s+text\[\]\s+not null,/);
+    const checker = readFileSync("scripts/check-schema.mjs", "utf8");
+    expect(checker).toContain('"decision_closures"');
+    expect(checker).toContain('"decision_closure_sources"');
+    expect(checker).toContain('"decision_closure_events"');
+  });
 });

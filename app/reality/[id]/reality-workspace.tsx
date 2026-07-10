@@ -33,6 +33,8 @@ import {
   type FocusRequest,
 } from "./focused-inquiry-panel";
 import type { RealityFocusSession } from "../focus";
+import { RealityDecisionClosurePanel } from "@/app/decision-closures/decision-closure-panel";
+import type { DecisionClosure } from "@/app/decision-closures/domain";
 
 const CONTEXT_LABEL = {
   personal: "人生",
@@ -47,6 +49,8 @@ export function RealityWorkspace({
   closures,
   focusAvailable,
   focusSessions,
+  decisionClosureAvailable,
+  decisionClosures,
 }: {
   initialCase: RealityCaseDetail;
   reasoningBridgeAvailable: boolean;
@@ -54,6 +58,8 @@ export function RealityWorkspace({
   closures: RealityClosure[];
   focusAvailable: boolean;
   focusSessions: RealityFocusSession[];
+  decisionClosureAvailable: boolean;
+  decisionClosures: DecisionClosure[];
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<RealityMessage[]>(
@@ -234,6 +240,14 @@ export function RealityWorkspace({
 
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:px-12">
         <div className="min-w-0 space-y-12">
+          {decisionClosureAvailable && initialCase.versions[0] && (
+            <RealityDecisionClosurePanel
+              caseId={initialCase.id}
+              versionId={initialCase.versions[0].id}
+              closures={decisionClosures}
+            />
+          )}
+
           {closureAvailable && initialCase.versions[0] && (
             <RealityClosurePanel
               caseId={initialCase.id}

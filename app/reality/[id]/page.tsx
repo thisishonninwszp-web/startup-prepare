@@ -12,6 +12,10 @@ import {
   getRealityFocusSchemaStatus,
   listRealityFocusSessions,
 } from "../focus-queries";
+import {
+  getDecisionClosureSchemaStatus,
+  listDecisionClosuresForObject,
+} from "@/app/decision-closures/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +34,13 @@ export default async function RealityCasePage({
     reasoningBridgeAvailable,
     closureAvailable,
     focusAvailable,
+    decisionClosureAvailable,
   ] = await Promise.all([
     getRealityCase(params.id, user.id),
     getReasoningSourceSchemaStatus(),
     getRealityClosureSchemaStatus(),
     getRealityFocusSchemaStatus(),
+    getDecisionClosureSchemaStatus(),
   ]);
   if (!realityCase) notFound();
   const closures = closureAvailable
@@ -42,6 +48,13 @@ export default async function RealityCasePage({
     : [];
   const focusSessions = focusAvailable
     ? await listRealityFocusSessions(realityCase.id, user.id)
+    : [];
+  const decisionClosures = decisionClosureAvailable
+    ? await listDecisionClosuresForObject(
+        user.id,
+        "reality_case",
+        realityCase.id
+      )
     : [];
 
   return (
@@ -54,6 +67,8 @@ export default async function RealityCasePage({
           closures={closures}
           focusAvailable={focusAvailable}
           focusSessions={focusSessions}
+          decisionClosureAvailable={decisionClosureAvailable}
+          decisionClosures={decisionClosures}
         />
       </main>
     </AppShell>

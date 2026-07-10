@@ -82,6 +82,18 @@ const coreProbes = [
     "business_plan_questions",
     "id,user_id,import_id,question,answer,source_refs",
   ],
+  [
+    "decision_closures",
+    "id,user_id,object_type,object_id,status,due_on",
+  ],
+  [
+    "decision_closure_sources",
+    "id,closure_id,user_id,source_type,source_id,snapshot",
+  ],
+  [
+    "decision_closure_events",
+    "id,closure_id,user_id,event_type,note",
+  ],
 ];
 
 const optionalConceptProbes = [
