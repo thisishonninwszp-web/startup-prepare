@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { CustomerNav } from "../customer-nav";
@@ -29,6 +30,14 @@ export default async function CustomerCasePage({
     <AppShell>
       <CustomerNav />
       <main className="min-h-screen">
+        <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
+          <Link
+            href={`/workbench/customer_case/${customerCase.id}`}
+            className="inline-flex rounded-md border px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            在决策工作台打开
+          </Link>
+        </div>
         <CustomerWorkspace initialCase={customerCase} ideas={ideas} />
       </main>
     </AppShell>

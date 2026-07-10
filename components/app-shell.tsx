@@ -12,6 +12,7 @@ import {
   CloudMoon,
   Compass,
   Download,
+  FolderKanban,
   Home,
   Inbox,
   Library,
@@ -34,6 +35,7 @@ import { NAV_GROUPS, isActiveRoute } from "./app-navigation";
 
 const ICONS: Record<string, LucideIcon> = {
   "/dashboard": Home,
+  "/workbench": FolderKanban,
   "/capture": Inbox,
   "/review": Radar,
   "/ideas": Library,

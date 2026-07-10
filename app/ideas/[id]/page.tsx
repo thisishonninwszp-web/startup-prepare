@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
@@ -124,6 +125,12 @@ export default async function IdeaDetailPage({
   return (
     <AppShell>
       <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        <Link
+          href={`/workbench/idea/${ideaCore.id}`}
+          className="mb-4 inline-flex rounded-md border px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          在决策工作台打开
+        </Link>
         <IdeaDetail
           idea={ideaCore}
           hypothesis={(idea.hypothesis ?? {}) as Hypothesis}
