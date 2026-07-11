@@ -8,6 +8,7 @@ import {
   normalizeReplacementReason,
   parseRealityClosureDraft,
   pathTypeToClosureMode,
+  type RealityClosureDraft,
 } from "./closure";
 import { fingerprintClosureSource } from "./closure-source";
 import {
@@ -18,7 +19,7 @@ import {
   type RealityClosureSourceSnapshot,
 } from "./closure-source";
 
-const validDraft = {
+const validDraft: RealityClosureDraft = {
   mode: "verify",
   decision: "先验证顾客是否仍在主动寻找替代方案",
   critical_unknown: "顾客是否愿意为解决这个问题改变现有做法",

@@ -29,7 +29,13 @@ describe("buildRealityDecisionClosureSource", () => {
       focused_inquiries: [
         {
           id: "focus-1",
-          anchor: { text: "极限感" },
+          anchor: {
+            type: "topic" as const,
+            index: 0,
+            label: "主题",
+            text: "极限感",
+            snapshot: null,
+          },
           summary: {
             updated_understanding: "可能是资源边界问题",
             remaining_unknown: "不知道来源",

@@ -4,6 +4,7 @@ import {
   isMissingWorkbenchSchemaError,
   sortWorkbenchObjects,
 } from "./queries";
+import type { WorkbenchObject } from "./domain";
 
 describe("workbench queries", () => {
   it("treats missing workbench schema as a soft-migration state", () => {
@@ -16,7 +17,7 @@ describe("workbench queries", () => {
   });
 
   it("attaches only the matching active closure to a decision object", () => {
-    const objects = [
+    const objects: WorkbenchObject[] = [
       {
         object_type: "reality_case" as const,
         object_id: "case-1",
