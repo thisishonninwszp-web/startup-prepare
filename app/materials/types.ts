@@ -17,6 +17,7 @@ export const MATERIAL_STATUSES = [
   "parked",
   "rejected",
   "summary_only",
+  "deleted",
   "failed",
 ] as const;
 export type MaterialStatus = (typeof MATERIAL_STATUSES)[number];

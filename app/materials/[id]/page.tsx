@@ -6,8 +6,15 @@ import {
   retryRealityMaterialAi,
   setRealityMaterialDecision,
 } from "../actions";
-import { departmentLabel, routeTargetLabel } from "../domain";
 import { getRealityMaterial } from "../queries";
+import {
+  DEPARTMENT_LABELS,
+  ROUTE_LABELS,
+  SOURCE_LABELS,
+  STATUS_LABELS,
+  routeHref,
+} from "../material-labels";
+import { MATERIAL_ROUTE_TARGETS, type MaterialRouteTarget } from "../types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,247 +28,274 @@ export default async function MaterialDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) notFound();
+
   const material = await getRealityMaterial(user.id, params.id);
   if (!material) notFound();
-
-  const canRoute = ["confirmed", "summary_only"].includes(material.status);
+  const reviewBlocksRouting = material.latest_review?.should_not_route === true;
+  const canRoute =
+    ["confirmed", "summary_only"].includes(material.status) && !reviewBlocksRouting;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link
             href="/materials"
             className="text-xs text-muted-foreground hover:text-foreground"
           >
-            ← 现实材料箱
+            ← 返回现实材料箱
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">
             {material.title}
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            状态：{material.status} · 来源：{material.source_type}
+          <p className="mt-1 text-sm text-muted-foreground">
+            {SOURCE_LABELS[material.source_type]} ·{" "}
+            {STATUS_LABELS[material.status]}
           </p>
         </div>
-        <form action={retryRealityMaterialAi}>
-          <input type="hidden" name="material_id" value={material.id} />
-          <button className="rounded-md border px-3 py-2 text-xs hover:bg-muted">
-            重跑三省审阅
-          </button>
-        </form>
+        {material.status === "failed" ? (
+          <form action={retryRealityMaterialAi}>
+            <input type="hidden" name="material_id" value={material.id} />
+            <button className="rounded-md border px-3 py-2 text-sm hover:bg-muted">
+              重试 AI 审阅
+            </button>
+          </form>
+        ) : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-6">
-          <Section title="1. 原始材料">
-            {material.source_url && (
-              <p className="mb-3 text-xs text-muted-foreground">
-                URL：
-                <a
-                  href={material.source_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
-                >
-                  {material.source_url}
-                </a>
-              </p>
-            )}
-            {material.file_name && (
-              <p className="mb-3 text-xs text-muted-foreground">
-                文件：{material.file_name} · {material.file_size ?? 0} bytes
-              </p>
-            )}
-            {material.redactions.length > 0 && (
-              <p className="mb-3 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
-                已遮蔽：{material.redactions.join(" / ")}
-              </p>
-            )}
-            <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-4 text-sm leading-6">
-              {material.sanitized_text || "没有可显示文本。"}
-            </pre>
-            {material.extraction?.unreadable.length ? (
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                {material.extraction.unreadable.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            ) : null}
-          </Section>
+      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+        <div className="space-y-4">
+          <Panel title="1. 原始材料">
+            <div className="space-y-3">
+              {material.source_url ? (
+                <p className="text-sm">
+                  来源 URL：
+                  <a
+                    href={material.source_url}
+                    className="underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {material.source_url}
+                  </a>
+                </p>
+              ) : null}
+              {material.file_name ? (
+                <p className="text-sm text-muted-foreground">
+                  文件：{material.file_name}{" "}
+                  {material.file_size ? `(${material.file_size} bytes)` : ""}
+                </p>
+              ) : null}
+              {material.redactions.length > 0 ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  已自动遮蔽：{material.redactions.join("、")}
+                </p>
+              ) : null}
+              <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl bg-muted p-4 text-sm leading-6">
+                {material.sanitized_text || "暂无脱敏文本"}
+              </pre>
+              {material.extraction?.unreadable.length ? (
+                <div className="rounded-md border p-3 text-xs text-muted-foreground">
+                  不可读取 / 截断提示：
+                  <ul className="mt-1 list-disc pl-5">
+                    {material.extraction.unreadable.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </Panel>
 
-          <Section title="2. 中书省起草">
+          <Panel title="2. 中书省起草">
             {material.latest_draft ? (
-              <div className="space-y-4">
-                <Block label="摘要" items={[material.latest_draft.summary]} />
-                <Block
+              <div className="space-y-4 text-sm">
+                <Field label="摘要" items={[material.latest_draft.summary]} />
+                <Field
                   label="原文片段"
                   items={material.latest_draft.original_fragments}
                 />
-                <Block
+                <Field
                   label="已确认事实"
                   items={material.latest_draft.confirmed_facts}
                 />
-                <Block
+                <Field
                   label="AI 推断"
                   items={material.latest_draft.possible_inferences}
                 />
-                <Block label="未知" items={material.latest_draft.unknowns} />
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {material.departments.map((department) => (
-                    <span key={department} className="rounded-full border px-2 py-1">
-                      {departmentLabel(department)}
-                    </span>
-                  ))}
+                <Field label="未知" items={material.latest_draft.unknowns} />
+                <div className="flex flex-wrap gap-1.5">
+                  {material.latest_draft.suggested_departments.map(
+                    (department) => (
+                      <span
+                        key={department}
+                        className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                      >
+                        {DEPARTMENT_LABELS[department]}
+                      </span>
+                    )
+                  )}
                 </div>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                还没有中书草稿。可重跑三省审阅。
+                尚未生成中书省草稿。AI 失败时不会丢失原始材料。
               </p>
             )}
-          </Section>
+          </Panel>
 
-          <Section title="3. 门下省驳议">
+          <Panel title="3. 门下省驳议">
             {material.latest_review ? (
-              <div className="space-y-4">
-                <Block
+              <div className="space-y-4 text-sm">
+                <Field
                   label="事实 / 推断边界"
                   items={material.latest_review.fact_inference_checks}
                 />
-                <Block
-                  label="证据缺口"
+                <Field
+                  label="证据不足"
                   items={material.latest_review.insufficient_evidence}
                 />
-                <Block
-                  label="误导风险"
+                <Field
+                  label="可能误导当前判断"
                   items={material.latest_review.misleading_risks}
                 />
-                <Block
+                <Field
                   label="禁止自动写入"
                   items={material.latest_review.blocked_auto_writes}
                 />
-                {material.latest_review.sensitive_items.length > 0 && (
+                {material.latest_review.sensitive_items.length ? (
                   <div>
-                    <h3 className="mb-2 text-xs font-medium text-muted-foreground">
-                      敏感信息
-                    </h3>
-                    <ul className="space-y-2">
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">
+                      敏感信息风险
+                    </p>
+                    <ul className="space-y-1">
                       {material.latest_review.sensitive_items.map((item) => (
-                        <li key={`${item.label}:${item.reason}`} className="rounded-md border p-3 text-sm">
-                          {item.label} · {item.handling}
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {item.reason}
-                          </p>
+                        <li key={`${item.label}-${item.reason}`}>
+                          {item.label}：{item.handling} · {item.reason}
                         </li>
                       ))}
                     </ul>
                   </div>
-                )}
-                <p className="rounded-md bg-muted p-3 text-sm">
+                ) : null}
+                <p className="rounded-md bg-muted p-3">
                   {material.latest_review.review_summary}
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                还没有门下驳议。可重跑三省审阅。
-              </p>
+              <p className="text-sm text-muted-foreground">尚未生成门下省驳议。</p>
             )}
-          </Section>
+          </Panel>
         </div>
 
-        <aside className="space-y-6">
-          <Section title="用户朱批">
-            <div className="grid grid-cols-2 gap-2">
+        <aside className="space-y-4">
+          <Panel title="用户朱批">
+            <div className="grid gap-2">
               {[
                 ["confirmed", "确认"],
                 ["parked", "暂存"],
                 ["rejected", "驳回"],
                 ["summary_only", "仅保存脱敏摘要"],
-              ].map(([decision, label]) => (
-                <form key={decision} action={setRealityMaterialDecision}>
+                ["deleted", "删除原始材料"],
+              ].map(([value, label]) => (
+                <form action={setRealityMaterialDecision} key={value}>
                   <input type="hidden" name="material_id" value={material.id} />
-                  <input type="hidden" name="decision" value={decision} />
-                  <button className="w-full rounded-md border px-3 py-2 text-xs hover:bg-muted">
+                  <input type="hidden" name="decision" value={value} />
+                  <button className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted">
                     {label}
                   </button>
                 </form>
               ))}
             </div>
-          </Section>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              朱批前不会进入现状、顾客、公司档案、Idea 或收束。
+            </p>
+          </Panel>
 
-          <Section title="4. 尚书省执行">
-            {!canRoute && (
-              <p className="mb-3 rounded-md bg-amber-50 p-2 text-xs text-amber-950">
-                需要先朱批确认，才能分流。AI 草稿不会自动进入其他模块。
+          <Panel title="4. 尚书省执行">
+            {reviewBlocksRouting ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                门下省判断这份材料暂不应分流。可以先暂存、驳回，或补充材料后重跑审阅。
               </p>
-            )}
-            <div className="space-y-2">
-              {(material.latest_draft?.suggested_routes ?? []).map((route) => (
-                <form
-                  key={`${route.target}:${route.reason}`}
-                  action={createRealityMaterialRoute}
-                  className="rounded-lg border p-3"
-                >
-                  <input type="hidden" name="material_id" value={material.id} />
-                  <input type="hidden" name="target" value={route.target} />
-                  <input type="hidden" name="reason" value={route.reason} />
-                  <input
-                    type="hidden"
-                    name="output_expectation"
-                    value={route.payload_hint}
-                  />
-                  <p className="text-sm font-medium">
-                    {routeTargetLabel(route.target)}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {route.reason}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    产出：{route.payload_hint}
-                  </p>
-                  <button
-                    disabled={!canRoute}
-                    className="mt-3 rounded-md bg-foreground px-3 py-1.5 text-xs text-background disabled:cursor-not-allowed disabled:opacity-50"
+            ) : canRoute ? (
+              <form action={createRealityMaterialRoute} className="space-y-3">
+                <input type="hidden" name="material_id" value={material.id} />
+                <label className="block text-sm">
+                  <span className="text-xs text-muted-foreground">分流目标</span>
+                  <select
+                    name="target"
+                    className="mt-1 w-full rounded-md border bg-background px-3 py-2"
+                    defaultValue="reality"
                   >
-                    记录分流
-                  </button>
-                </form>
-              ))}
-              {!material.latest_draft?.suggested_routes.length && (
-                <p className="text-sm text-muted-foreground">
-                  还没有分流候选。
-                </p>
-              )}
-            </div>
-          </Section>
-
-          <Section title="已执行分流">
-            {material.routes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                尚未分流到任何模块。
-              </p>
+                    {MATERIAL_ROUTE_TARGETS.map((target) => (
+                      <option key={target} value={target}>
+                        {ROUTE_LABELS[target]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="text-xs text-muted-foreground">分流理由</span>
+                  <textarea
+                    name="reason"
+                    required
+                    rows={3}
+                    className="mt-1 w-full rounded-md border bg-background px-3 py-2"
+                    placeholder="为什么这条材料应该进入这个模块？"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-xs text-muted-foreground">期待产出</span>
+                  <input
+                    name="output_expectation"
+                    required
+                    className="mt-1 w-full rounded-md border bg-background px-3 py-2"
+                    placeholder="例如：作为下一版现状地图的来源"
+                  />
+                </label>
+                <button className="w-full rounded-md bg-foreground px-3 py-2 text-sm text-background">
+                  记录分流
+                </button>
+              </form>
             ) : (
-              <ul className="space-y-2">
-                {material.routes.map((route) => (
-                  <li key={route.id} className="rounded-md border p-3 text-sm">
-                    <p className="font-medium">
-                      {routeTargetLabel(route.target as never)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {route.reason}
-                    </p>
-                  </li>
-                ))}
-              </ul>
+              <p className="text-sm text-muted-foreground">
+                需要先确认或选择“仅保存脱敏摘要”，才能分流。
+              </p>
             )}
-          </Section>
+
+            {material.routes.length ? (
+              <div className="mt-4 border-t pt-4">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  已分流
+                </p>
+                <div className="space-y-2">
+                  {material.routes.map((route) => {
+                    const target = route.target as MaterialRouteTarget;
+                    return (
+                      <Link
+                        key={route.id}
+                        href={routeHref(target)}
+                        className="block rounded-md border p-3 text-sm hover:bg-muted"
+                      >
+                        <span className="font-medium">
+                          {ROUTE_LABELS[target]}
+                        </span>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {route.reason}
+                        </p>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </Panel>
         </aside>
       </div>
     </div>
   );
 }
 
-function Section({
+function Panel({
   title,
   children,
 }: {
@@ -270,22 +304,20 @@ function Section({
 }) {
   return (
     <section className="rounded-xl border bg-card p-5">
-      <h2 className="mb-4 text-sm font-medium">{title}</h2>
+      <h2 className="mb-4 text-sm font-semibold">{title}</h2>
       {children}
     </section>
   );
 }
 
-function Block({ label, items }: { label: string; items: string[] }) {
+function Field({ label, items }: { label: string; items: string[] }) {
   if (!items.length) return null;
   return (
     <div>
-      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{label}</h3>
-      <ul className="space-y-1.5">
+      <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+      <ul className="list-disc space-y-1 pl-5">
         {items.map((item) => (
-          <li key={item} className="rounded-md border bg-background p-2 text-sm">
-            {item}
-          </li>
+          <li key={item}>{item}</li>
         ))}
       </ul>
     </div>

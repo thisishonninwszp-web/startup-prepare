@@ -60,6 +60,7 @@ export async function listRealityMaterials(
       "id, title, source_type, status, sanitized_text, created_at, updated_at"
     )
     .eq("user_id", userId)
+    .neq("status", "deleted")
     .order("updated_at", { ascending: false })
     .limit(60);
   if (isMissingMaterialsSchema(error)) return [];

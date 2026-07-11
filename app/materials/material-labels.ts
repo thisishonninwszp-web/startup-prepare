@@ -23,6 +23,7 @@ export const STATUS_LABELS: Record<MaterialStatus, string> = {
   parked: "暂存",
   rejected: "已驳回",
   summary_only: "仅存脱敏摘要",
+  deleted: "已删除",
   failed: "AI 审阅失败",
 };
 

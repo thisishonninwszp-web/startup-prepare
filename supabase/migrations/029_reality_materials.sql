@@ -14,7 +14,7 @@ create table if not exists public.reality_materials (
   file_type       text,
   file_size       integer,
   status          text not null default 'captured' check (
-    status in ('captured', 'extracted', 'drafted', 'reviewed', 'confirmed', 'parked', 'rejected', 'summary_only', 'failed')
+    status in ('captured', 'extracted', 'drafted', 'reviewed', 'confirmed', 'parked', 'rejected', 'summary_only', 'deleted', 'failed')
   ),
   redactions      text[] not null default '{}',
   created_at      timestamptz not null default now(),

@@ -7,7 +7,6 @@ import { supabaseAdmin } from "@/lib/supabase";
 import {
   draftRealityMaterial,
   reviewRealityMaterial,
-  routeRealityMaterial,
 } from "@/lib/ai";
 import {
   MATERIAL_ROUTE_TARGETS,
@@ -15,7 +14,6 @@ import {
   departmentLabel,
   parseMaterialDraft,
   parseMaterialReview,
-  parseRealityMaterialRoutePlan,
   type MaterialDepartment,
   type MaterialRouteTarget,
   type MaterialSourceType,
@@ -194,31 +192,10 @@ export async function createUrlMaterial(url: string): Promise<CreateMaterialResu
     throw new Error("只支持 http / https URL");
   }
 
-  let extracted = `URL：${parsed.toString()}`;
-  const unreadable: string[] = [];
-  try {
-    const response = await fetch(parsed, {
-      signal: AbortSignal.timeout(8000),
-      headers: { "user-agent": "IdeaOS RealityMaterials/1.0" },
-    });
-    const contentType = response.headers.get("content-type") ?? "";
-    if (response.ok && contentType.includes("text")) {
-      const html = await response.text();
-      const text = html
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      extracted = summarizeExtractedText(
-        [`URL：${parsed.toString()}`, text].join("\n\n")
-      ).text;
-    } else {
-      unreadable.push(`URL 未抽取正文：HTTP ${response.status}`);
-    }
-  } catch {
-    unreadable.push("URL 正文抽取失败，仅保存链接本身");
-  }
+  const extracted = `URL：${parsed.toString()}`;
+  const unreadable: string[] = [
+    "第一版不会由服务器抓取 URL 正文，避免访问内网、localhost 或云元数据地址。请粘贴需要审阅的正文片段。",
+  ];
 
   return saveExtractedMaterial({
     userId,
@@ -281,8 +258,29 @@ export async function setRealityMaterialDecision(
   const userId = await requireUserId();
   const materialId = formText(formData, "material_id");
   const decision = formText(formData, "decision");
-  const allowed = new Set(["confirmed", "parked", "rejected", "summary_only"]);
+  const allowed = new Set([
+    "confirmed",
+    "parked",
+    "rejected",
+    "summary_only",
+    "deleted",
+  ]);
   if (!allowed.has(decision)) throw new Error("朱批结果无效");
+  if (decision === "deleted") {
+    const { error } = await supabaseAdmin
+      .from("reality_materials")
+      .update({
+        status: "deleted",
+        input_text: null,
+        sanitized_text: "",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", materialId)
+      .eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    revalidatePath("/materials");
+    redirect("/materials");
+  }
   const { error } = await supabaseAdmin
     .from("reality_materials")
     .update({ status: decision, updated_at: new Date().toISOString() })
@@ -385,14 +383,6 @@ async function runMaterialAiPipeline(
     .from("reality_material_reviews")
     .insert({ user_id: userId, material_id: materialId, review: parsedReview });
   if (reviewError) throw new Error(reviewError.message);
-
-  const plan = await routeRealityMaterial({
-    title: material.title,
-    sanitized_text: text,
-    draft: parsedDraft,
-    review: parsedReview,
-  });
-  parseRealityMaterialRoutePlan(plan);
 
   const { error: statusError } = await supabaseAdmin
     .from("reality_materials")
