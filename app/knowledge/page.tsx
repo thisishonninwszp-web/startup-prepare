@@ -45,13 +45,21 @@ export default async function KnowledgePage({
             </p>
           </div>
         </div>
-        <Link
-          href="/knowledge/new"
-          className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background"
-        >
-          <Plus className="h-4 w-4" />
-          添加
-        </Link>
+        <div className="flex flex-col items-end gap-1">
+          <Link
+            href="/knowledge/new"
+            className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background"
+          >
+            <Plus className="h-4 w-4" />
+            添加
+          </Link>
+          <Link
+            href="/materials"
+            className="text-[11px] text-muted-foreground underline-offset-4 hover:underline"
+          >
+            外部材料（网页/文件/原话）走材料箱 →
+          </Link>
+        </div>
       </div>
 
       {/* 类型筛选 */}

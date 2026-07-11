@@ -187,6 +187,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Download className="size-4" strokeWidth={1.7} />
             数据导出
           </Link>
+          <Link
+            href="/settings/audit"
+            className="mb-1 flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Activity className="size-4" strokeWidth={1.7} />
+            模块审计
+          </Link>
           {signOutError && (
             <p className="mb-2 px-2 text-xs text-destructive" role="alert">
               {signOutError}

@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
 import { RecommendationWidget } from "./recommendation-widget";
+import { getWeeklyMirror } from "./queries";
+import { WeeklyDigest } from "./weekly-digest";
 import { daysSince, daysUntilLock } from "../ideas/types";
 import { listRealityCases } from "../reality/queries";
 import { listOpenOutsideViewChecks } from "../reasoning/queries";
@@ -72,9 +74,14 @@ export default async function DashboardPage() {
   if (customerCountResult.error) {
     throw new Error(customerCountResult.error.message);
   }
-  const openDecisionClosures = decisionClosureAvailable
-    ? await listOpenDecisionClosures(userId)
-    : [];
+  const [openDecisionClosures, mirror] = await Promise.all([
+    decisionClosureAvailable
+      ? listOpenDecisionClosures(userId)
+      : Promise.resolve([]),
+    getWeeklyMirror(userId),
+  ]);
+  // 失衡 = 一周内一次真人都没接触，工具内操作却不少。二元判断，不打分。
+  const mirrorImbalanced = mirror.realContacts === 0 && mirror.toolOps >= 20;
   const beliefCount = beliefCountResult.count ?? 0;
   const customerCount = customerCountResult.count ?? 0;
   const dueRealityCases = realityCases.filter(
@@ -206,6 +213,54 @@ export default async function DashboardPage() {
   return (
     <AppShell>
       <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
+        <WeeklyDigest
+          data={{
+            realContacts: mirror.realContacts,
+            toolOps: mirror.toolOps,
+            duePredictions: due.length + dueRetroPredictions.length,
+            staleValidatingIdeas: items.filter(
+              (idea) => daysSince(idea.last_activity_at) > 3
+            ).length,
+            pendingReview: mirror.pendingReview,
+          }}
+        />
+
+        {/* 本周镜子：系统第一行先对准主人，再谈功能。 */}
+        <section className="mb-8">
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-4">
+            <p className="text-sm">
+              本周：真实接触{" "}
+              <span
+                className={
+                  "font-mono text-lg tabular-nums " +
+                  (mirror.realContacts === 0 ? "text-destructive" : "font-semibold")
+                }
+              >
+                {mirror.realContacts}
+              </span>{" "}
+              次 · 工具内操作{" "}
+              <span className="font-mono text-lg tabular-nums">
+                {mirror.toolOps}
+              </span>{" "}
+              次
+            </p>
+            {mirror.pendingReview > 0 && (
+              <Link
+                href="/materials/review"
+                className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+              >
+                待朱批 {mirror.pendingReview} 件 →
+              </Link>
+            )}
+          </div>
+          {mirrorImbalanced && (
+            <p className="mt-3 text-sm font-medium text-destructive">
+              这一周你没有接触过任何真人。下面的一切工具都替代不了那件事。
+            </p>
+          )}
+        </section>
+
+        <div className={mirrorImbalanced ? "saturate-50 opacity-80" : undefined}>
         <RecommendationWidget />
 
         {inbox.length > 0 && (
@@ -341,6 +396,7 @@ export default async function DashboardPage() {
               <div className="mt-1 text-xs text-muted-foreground">{e.desc}</div>
             </Link>
           ))}
+        </div>
         </div>
       </main>
     </AppShell>

@@ -38,13 +38,21 @@ export default async function CompanyKbPage() {
             </p>
           </div>
         </div>
-        <Link
-          href="/company-kb/new"
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-foreground px-3 text-sm font-medium text-background"
-        >
-          <Plus className="h-4 w-4" />
-          新建笔记
-        </Link>
+        <div className="flex flex-col items-end gap-1">
+          <Link
+            href="/company-kb/new"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-foreground px-3 text-sm font-medium text-background"
+          >
+            <Plus className="h-4 w-4" />
+            新建笔记
+          </Link>
+          <Link
+            href="/materials"
+            className="text-[11px] text-muted-foreground underline-offset-4 hover:underline"
+          >
+            外部材料（网页/文件/原话）走材料箱 →
+          </Link>
+        </div>
       </div>
 
       <section className="mb-10">

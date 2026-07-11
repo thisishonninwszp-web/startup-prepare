@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AppShell } from "@/components/app-shell";
@@ -17,8 +18,16 @@ export default async function CapturePage({
   const pick = (v: string | string[] | undefined) =>
     typeof v === "string" ? v : "";
   // Share Target（GET）分享进来的文字 → 预填捕捉框。
+  // URL 例外：网页属于外部世界材料，改道材料箱走抓取+提取管道，不落 observations。
+  const sharedUrl = pick(searchParams.url).trim();
+  const sharedTextRaw = pick(searchParams.text).trim();
+  if (sharedUrl || /^https?:\/\/\S+$/.test(sharedTextRaw)) {
+    redirect(
+      `/materials?url=${encodeURIComponent(sharedUrl || sharedTextRaw)}`
+    );
+  }
   const sharedText =
-    pick(searchParams.text) || pick(searchParams.url) || pick(searchParams.title);
+    pick(searchParams.text) || pick(searchParams.title);
 
   const supabase = createClient();
   const {

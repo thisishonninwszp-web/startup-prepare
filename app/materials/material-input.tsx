@@ -17,11 +17,11 @@ const QUICK_TYPES: Array<{ value: MaterialSourceType; label: string }> = [
   { value: "emotion_fragment", label: "情绪/极限感" },
 ];
 
-export function MaterialInput() {
+export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [sourceType, setSourceType] = useState<MaterialSourceType>("text");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");

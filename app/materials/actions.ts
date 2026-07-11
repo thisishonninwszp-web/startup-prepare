@@ -288,6 +288,7 @@ export async function setRealityMaterialDecision(
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
   revalidatePath("/materials");
+  revalidatePath("/materials/review");
   revalidatePath(`/materials/${materialId}`);
 }
 

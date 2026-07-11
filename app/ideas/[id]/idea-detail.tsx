@@ -184,6 +184,13 @@ export function IdeaDetail({
           </span>
           <span className="flex items-center gap-3">
             <Link
+              href={`/ideas/${idea.id}/pocket-card`}
+              target="_blank"
+              className="text-xs text-muted-foreground hover:underline"
+            >
+              访谈口袋卡 ↗
+            </Link>
+            <Link
               href={`/ideas/${idea.id}/timeline`}
               target="_blank"
               className="text-xs text-muted-foreground hover:underline"
@@ -241,6 +248,36 @@ export function IdeaDetail({
           </Button>
         </div>
       </section>
+      )}
+
+      {/* 出口舱：MVP候选是系统的边界，从这里出去的只能是存在于系统外面的东西。 */}
+      {status === "MVP候选" && (
+        <section className="rounded-xl border-2 border-green-600/40 bg-green-50/50 p-5">
+          <p className="text-xs uppercase tracking-[0.18em] text-green-700">
+            出口舱
+          </p>
+          <h2 className="mt-2 text-sm font-medium">
+            这个想法已经走到系统边界。下一步只能发生在系统外面。
+          </h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            继续在工具里打磨不会产生新信息了。带一样东西出去，回来时带着真实反馈。
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href={`/ideas/${idea.id}/pocket-card`}
+              target="_blank"
+              className="rounded-md border border-green-600/40 bg-background px-4 py-2 text-sm hover:bg-green-50"
+            >
+              打印访谈口袋卡，去见一个真人
+            </Link>
+            <Link
+              href="/outreach"
+              className="rounded-md border border-green-600/40 bg-background px-4 py-2 text-sm hover:bg-green-50"
+            >
+              规划触达：具体找谁、怎么开口
+            </Link>
+          </div>
+        </section>
       )}
 
       {evidenceSnapshot && (

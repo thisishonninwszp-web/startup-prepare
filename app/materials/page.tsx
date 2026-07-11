@@ -20,7 +20,14 @@ function preview(text: string | null): string {
   return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
-export default async function MaterialsPage() {
+export default async function MaterialsPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
+  // Share Target 分享 URL 进来时预填抽取框。
+  const sharedUrl =
+    typeof searchParams.url === "string" ? searchParams.url : "";
   const supabase = createClient();
   const {
     data: { user },
@@ -58,10 +65,25 @@ export default async function MaterialsPage() {
         </div>
       ) : (
         <>
-          <MaterialInput />
+          <MaterialInput initialUrl={sharedUrl} />
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <StatCard label="待朱批" value={pending.length} />
+            {pending.length > 0 ? (
+              <Link
+                href="/materials/review"
+                className="rounded-xl border border-red-300 bg-red-50 p-4 transition-colors hover:bg-red-100"
+              >
+                <p className="text-[10px] font-medium uppercase tracking-wider text-red-700">
+                  待朱批
+                </p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-red-900">
+                  {pending.length}
+                </p>
+                <p className="mt-0.5 text-xs text-red-700">进入批阅模式 →</p>
+              </Link>
+            ) : (
+              <StatCard label="待朱批" value={pending.length} />
+            )}
             <StatCard label="已确认 / 仅摘要" value={routed.length} />
             <StatCard label="全部材料" value={materials.length} />
           </div>
