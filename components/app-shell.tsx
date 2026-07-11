@@ -36,6 +36,7 @@ import { NAV_GROUPS, isActiveRoute } from "./app-navigation";
 const ICONS: Record<string, LucideIcon> = {
   "/dashboard": Home,
   "/workbench": FolderKanban,
+  "/materials": Inbox,
   "/capture": Inbox,
   "/review": Radar,
   "/ideas": Library,

@@ -15,6 +15,7 @@ export const NAV_GROUPS: AppNavGroup[] = [
     items: [
       { href: "/dashboard", label: "今日行动", shortLabel: "行动" },
       { href: "/workbench", label: "决策工作台", shortLabel: "工作台" },
+      { href: "/materials", label: "现实材料箱", shortLabel: "材料" },
       { href: "/capture", label: "捕捉", shortLabel: "捕捉" },
       { href: "/ideas", label: "想法库", shortLabel: "想法" },
       { href: "/learnings", label: "判断复盘", shortLabel: "学习" },
