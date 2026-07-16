@@ -12,6 +12,5 @@ export * from "./council";
 export * from "./knowledge";
 export * from "./outreach";
 export * from "./patterns";
-export * from "./life";
 export * from "./profile";
 export { MODEL } from "./shared";
