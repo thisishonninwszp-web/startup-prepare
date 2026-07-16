@@ -7,7 +7,7 @@
     text-wrap: balance;
   }
 
-  /* 细腻点阵质感（前景色 4%），给"门面"面板加深度，不引入新颜色。 */
+  /* 细腻点阵质感（前景色 4%），像笔记本的点阵纸底，给"门面"面板加深度。 */
   .bg-dotgrid {
     background-image: radial-gradient(
       hsl(var(--foreground) / 0.045) 1px,
@@ -57,79 +57,55 @@
 
 @layer base {
   :root {
-    /* 近单色 zinc 浅色基底 + 墨黑主色（"仪器"调性：冷静、克制、锐利）。
-       off-white 背景 + 纯白卡片，制造轻微层次；不用纯黑纯白。 */
-    --background: 240 6% 99%;
-    --foreground: 240 10% 4%;
+    /* 「田野笔记 Field Notes」：暖纸白底 + 暖墨文字 + 朱砂唯一强调色。
+       隐喻是创业者的野外考察笔记本——有温度、有证据感。
+       页面代码只许用语义 token 类，禁止 palette 类与 hex（宪法 UI 铁律 1）。 */
+    --background: 40 20% 97.5%;
+    --foreground: 30 8% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
+    --card-foreground: 30 8% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-    /* ink：单一墨黑强调色，全站统一 */
-    --primary: 240 6% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 44%;
-    --accent: 240 5% 95.5%;
-    --accent-foreground: 240 6% 10%;
-    --destructive: 0 72% 48%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    /* ink 聚焦环 */
-    --ring: 240 6% 10%;
-    --chart-1: 240 6% 10%;
-    --chart-2: 240 4% 46%;
-    --chart-3: 240 5% 65%;
-    --chart-4: 240 5% 84%;
-    --chart-5: 240 5% 90%;
-    --radius: 0.375rem;
-    --sidebar: 240 6% 99%;
-    --sidebar-foreground: 240 10% 4%;
-    --sidebar-primary: 240 6% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 5% 96%;
-    --sidebar-accent-foreground: 240 6% 10%;
-    --sidebar-border: 240 6% 90%;
-    --sidebar-ring: 240 6% 10%;
-  }
+    --popover-foreground: 30 8% 12%;
+    /* 朱砂 vermilion：唯一品牌强调色（主按钮 / 激活态 / 链接） */
+    --primary: 16 84% 47%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 15% 94%;
+    --secondary-foreground: 30 8% 12%;
+    --muted: 40 12% 93%;
+    --muted-foreground: 30 5% 42%;
+    --accent: 40 15% 94%;
+    --accent-foreground: 30 8% 12%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 10% 87%;
+    --input: 40 10% 87%;
+    --ring: 16 84% 47%;
+    --chart-1: 16 84% 47%;
+    --chart-2: 30 8% 25%;
+    --chart-3: 30 6% 50%;
+    --chart-4: 38 12% 70%;
+    --chart-5: 40 12% 86%;
+    --radius: 0.5rem;
+    --sidebar: 42 24% 96%;
+    --sidebar-foreground: 30 8% 12%;
+    --sidebar-primary: 16 84% 47%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 14% 91%;
+    --sidebar-accent-foreground: 30 8% 12%;
+    --sidebar-border: 40 10% 87%;
+    --sidebar-ring: 16 84% 47%;
 
-  /* 暗色 token 保留（zinc 暗色基底），当前应用锁定浅色未启用。 */
-  .dark {
-    --background: 240 10% 4%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 4%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 4%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 6% 10%;
-    --secondary: 240 4% 16%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62% 45%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
-    --ring: 240 5% 84%;
-    --chart-1: 0 0% 98%;
-    --chart-2: 240 5% 65%;
-    --chart-3: 240 5% 46%;
-    --chart-4: 240 4% 30%;
-    --chart-5: 240 4% 20%;
-    --sidebar: 240 10% 4%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 0 0% 98%;
-    --sidebar-primary-foreground: 240 6% 10%;
-    --sidebar-accent: 240 4% 16%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 240 4% 16%;
-    --sidebar-ring: 240 5% 84%;
+    /* 语义状态色：想法 5 状态 + Go/Kill 判定。
+       全站唯一状态色出处，经 components/ui/status-badge.tsx 消费；
+       禁止页面自建颜色映射表（宪法 UI 铁律 2）。 */
+    --status-observe: 30 5% 45%;
+    --status-hypothesis: 210 70% 42%;
+    --status-validating: 38 92% 40%;
+    --status-mvp: 152 60% 32%;
+    --status-archived: 30 5% 62%;
+    /* Kill 用"学到了"的紫，不用红（损失厌恶 / 宪法原则 7） */
+    --verdict-go: 152 60% 32%;
+    --verdict-learned: 262 40% 50%;
   }
 }
 
@@ -139,5 +115,13 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    /* 中文正文行高（宪法 UI 铁律 6） */
+    line-height: 1.75;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    line-height: 1.4;
   }
 }

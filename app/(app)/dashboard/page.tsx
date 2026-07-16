@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Inbox } from "lucide-react";
+import { PageContainer } from "@/components/ui/page-container";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RecommendationWidget } from "./recommendation-widget";
@@ -211,7 +212,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <PageContainer className="animate-fade-up">
         <WeeklyDigest
           data={{
             realContacts: mirror.realContacts,
@@ -265,9 +266,9 @@ export default async function DashboardPage() {
         {inbox.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center gap-2">
-              <Inbox className="size-4 text-orange-600" />
+              <Inbox className="size-4 text-status-validating" />
               <h2 className="text-sm font-medium">现实接触收件箱</h2>
-              <span className="rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 font-mono text-[10px] text-orange-700">
+              <span className="rounded-full border border-status-validating/30 bg-status-validating/10 px-2 py-0.5 font-mono text-[10px] text-status-validating">
                 {inbox.length}
               </span>
             </div>
@@ -279,9 +280,9 @@ export default async function DashboardPage() {
                 <li key={row.key}>
                   <Link
                     href={row.href}
-                    className="flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950 transition-colors hover:bg-orange-100"
+                    className="flex items-center gap-3 rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-sm transition-colors hover:bg-status-validating/20"
                   >
-                    <span className="shrink-0 rounded-full border border-orange-300 px-2 py-0.5 text-[10px]">
+                    <span className="shrink-0 rounded-full border border-status-validating/30 px-2 py-0.5 text-[10px] text-status-validating">
                       {row.kind}
                     </span>
                     <span className="min-w-0 flex-1 truncate">{row.text}</span>
@@ -315,7 +316,7 @@ export default async function DashboardPage() {
                   : "暂无记录"}
               </p>
               {dueRealityCases.length > 0 && (
-                <p className="mt-0.5 text-[10px] text-orange-600">
+                <p className="mt-0.5 text-[10px] text-status-validating">
                   {dueRealityCases.length} 个待复查
                 </p>
               )}
@@ -397,7 +398,7 @@ export default async function DashboardPage() {
           ))}
         </div>
         </div>
-      </main>
+      </PageContainer>
     </>
   );
 }
@@ -418,12 +419,12 @@ function ContactRow({
   if (left <= 0) {
     badge = {
       text: "已锁定 · 去接触",
-      cls: "border-red-300 bg-red-50 text-red-700",
+      cls: "border-destructive/30 bg-destructive/10 text-destructive",
     };
   } else if (left <= 1) {
     badge = {
       text: `还剩 ${left} 天`,
-      cls: "border-orange-300 bg-orange-50 text-orange-700",
+      cls: "border-status-validating/30 bg-status-validating/10 text-status-validating",
     };
   } else {
     badge = {

@@ -106,7 +106,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside
         className={
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-card transition-transform duration-300 ease-out md:translate-x-0 " +
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-sidebar transition-transform duration-300 ease-out md:translate-x-0 " +
           (open ? "translate-x-0 shadow-2xl" : "-translate-x-full")
         }
       >
@@ -115,7 +115,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             IdeaOS
           </Link>
           <span className="ml-2 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            Reality lab
+            Field notes
           </span>
           <button
             type="button"
@@ -144,8 +144,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       className={
                         "group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors " +
                         (active
-                          ? "bg-foreground text-background"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground")
+                          ? "bg-primary/10 font-medium text-primary"
+                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground")
                       }
                     >
                       <Icon className="size-4 shrink-0" strokeWidth={1.7} />
