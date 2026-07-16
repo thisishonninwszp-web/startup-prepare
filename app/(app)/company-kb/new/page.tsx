@@ -31,7 +31,7 @@ export default function NewCompanyKbNotePage() {
   return (
     <PageContainer width="narrow">
       <div className="mb-8 flex items-center gap-3">
-        <Link href="/company-kb" className="text-muted-foreground hover:text-foreground">
+        <Link href="/companies?tab=kb" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <h1 className="text-xl font-semibold tracking-tight">新建笔记</h1>
@@ -78,7 +78,7 @@ export default function NewCompanyKbNotePage() {
             {isPending ? "保存中…" : "保存笔记"}
           </Button>
           <Link
-            href="/company-kb"
+            href="/companies?tab=kb"
             className="rounded-lg border px-4 py-2 text-sm text-muted-foreground hover:bg-muted"
           >
             取消

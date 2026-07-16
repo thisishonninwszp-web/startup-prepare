@@ -36,7 +36,7 @@ export function NoteEditor({ note }: { note: CompanyKbNote }) {
     startDeleteTransition(async () => {
       try {
         await deleteCompanyKbNote(note.id);
-        router.push("/company-kb");
+        router.push("/companies?tab=kb");
       } catch (e) {
         setError(e instanceof Error ? e.message : "删除失败");
       }
@@ -47,7 +47,7 @@ export function NoteEditor({ note }: { note: CompanyKbNote }) {
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/company-kb" className="text-muted-foreground hover:text-foreground">
+          <Link href="/companies?tab=kb" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <h1 className="text-xl font-semibold tracking-tight">编辑笔记</h1>
