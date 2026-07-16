@@ -5,13 +5,14 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { saveCanvasDimension, saveCanvasScenario, challengeDimension, polishDraft } from "../actions";
 import { DIM_META, USE_CASES, type Dim, type OutreachCanvas, type AiChallenge } from "../types";
+import { Button } from "@/components/ui/button";
 
 const DIMS: Dim[] = ["person", "place", "time", "message"];
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <Button
       type="button"
       onClick={async () => {
         await navigator.clipboard.writeText(text);
@@ -21,7 +22,7 @@ function CopyButton({ text }: { text: string }) {
       className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
     >
       {copied ? "已复制" : "复制"}
-    </button>
+    </Button>
   );
 }
 
@@ -103,14 +104,14 @@ function DimCard({
           {saving && (
             <span className="text-[10px] text-muted-foreground/50">保存中…</span>
           )}
-          <button
+          <Button
             type="button"
             onClick={handleChallenge}
             disabled={challenging || !hasFilled}
             className="text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline"
           >
             {challenging ? "挑战中…" : "AI 挑战"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -139,7 +140,7 @@ function DimCard({
       {/* AI 挑战结果 */}
       {challenge && (
         <div className="space-y-1.5">
-          <button
+          <Button
             type="button"
             onClick={() => setShowChallenge((v) => !v)}
             className="flex items-center gap-1.5 text-xs font-medium text-status-hypothesis"
@@ -154,7 +155,7 @@ function DimCard({
                 minute: "2-digit",
               })}
             </span>
-          </button>
+          </Button>
           {showChallenge && (
             <div className="rounded-md bg-status-hypothesis/10 px-3 py-2 text-sm">
               <p className="whitespace-pre-wrap leading-relaxed">{challenge.feedback}</p>
@@ -274,14 +275,14 @@ export function CanvasWorkspace({ canvas }: { canvas: OutreachCanvas }) {
           </h2>
           <div className="flex items-center gap-2">
             {draft && <CopyButton text={draft} />}
-            <button
+            <Button
               type="button"
               onClick={handlePolish}
               disabled={polishing}
               className="text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
             >
               {polishing ? "润色中…" : draft ? "AI 润色" : "AI 生成草稿"}
-            </button>
+            </Button>
           </div>
         </div>
 

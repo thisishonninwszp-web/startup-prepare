@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createCompany } from "@/app/(app)/knowledge/actions";
 import { COMPANY_TYPES, type CompanyType } from "@/app/(app)/knowledge/types";
+import { Button } from "@/components/ui/button";
 
 export default function NewCompanyPage() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function NewCompanyPage() {
           <label className="mb-1.5 block text-sm font-medium">类型</label>
           <div className="flex flex-wrap gap-2">
             {COMPANY_TYPES.map((t) => (
-              <button
+              <Button
                 key={t.key}
                 type="button"
                 onClick={() => setCompanyType(t.key)}
@@ -69,7 +70,7 @@ export default function NewCompanyPage() {
                 }`}
               >
                 {t.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -91,13 +92,13 @@ export default function NewCompanyPage() {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex gap-3 pt-2">
-          <button
+          <Button
             type="submit"
             disabled={isPending || !name.trim()}
             className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
           >
             {isPending ? "保存中…" : "创建档案"}
-          </button>
+          </Button>
           <Link
             href="/companies"
             className="rounded-lg border px-4 py-2 text-sm text-muted-foreground hover:bg-muted"

@@ -8,6 +8,7 @@ import {
   setCustomerTopicEnabled,
 } from "../actions";
 import type { listCustomerTopics } from "../queries";
+import { Button } from "@/components/ui/button";
 
 type Topic = Awaited<ReturnType<typeof listCustomerTopics>>[number];
 
@@ -93,7 +94,7 @@ export function CustomerTopics({ initial }: { initial: Topic[] }) {
               </div>
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={() => run(topic)}
                 disabled={busy === topic.id}
@@ -101,8 +102,8 @@ export function CustomerTopics({ initial }: { initial: Topic[] }) {
               >
                 <RefreshCcw className="size-3.5" />
                 立即运行
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => toggle(topic)}
                 disabled={busy === topic.id}
@@ -114,7 +115,7 @@ export function CustomerTopics({ initial }: { initial: Topic[] }) {
                   <Play className="size-3.5" />
                 )}
                 {topic.enabled ? "暂停" : "启用"}
-              </button>
+              </Button>
             </div>
           </div>
           {topic.last_error && (

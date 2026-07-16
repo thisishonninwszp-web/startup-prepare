@@ -25,6 +25,7 @@ import {
   prepareWorkbookChunks,
   safeStoredWorkbookName,
 } from "./prepare-import";
+import { Button } from "@/components/ui/button";
 
 const SUPPLIER_BUCKET = "internal-business-plans";
 
@@ -355,7 +356,7 @@ export function ImportWorkspace({
             </span>
           </label>
 
-          <button
+          <Button
             type="button"
             disabled={!reviewed || busy}
             onClick={() => void uploadRedactedWorkbook()}
@@ -371,7 +372,7 @@ export function ImportWorkspace({
               : phase === "uploading"
                 ? `私有上传 ${progress.current}/${progress.total}`
                 : "确认并私有上传"}
-          </button>
+          </Button>
         </section>
       ) : null}
 

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
 import { getRecommendation } from "./actions";
+import { Button } from "@/components/ui/button";
 
 export function RecommendationWidget() {
   const [recommendation, setRecommendation] = useState<string | null>(null);
@@ -27,14 +28,14 @@ export function RecommendationWidget() {
           <Sparkles className="size-4 text-muted-foreground" />
           <h2 className="text-sm font-medium">今日建议</h2>
         </div>
-        <button
+        <Button
           type="button"
           onClick={handleClick}
           disabled={pending}
           className="shrink-0 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
         >
           {pending ? "思考中…" : recommendation ? "换一个角度" : "获取今日建议"}
-        </button>
+        </Button>
       </div>
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
       {recommendation && (

@@ -140,7 +140,7 @@ export function ReflectionSettingsForm({
                 }
                 className="rounded-md border bg-background px-3 py-2 text-sm"
               />
-              <button
+              <Button
                 type="button"
                 disabled={category.key === "unknown"}
                 onClick={() =>
@@ -152,7 +152,7 @@ export function ReflectionSettingsForm({
                 aria-label="删除分类"
               >
                 <Trash2 className="size-3.5" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>

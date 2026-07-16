@@ -338,7 +338,7 @@ export function ConceptWorkspace({
               className="flex items-start justify-between gap-4 rounded-md bg-muted/50 px-3 py-2 text-sm"
             >
               <span>{item.fact}</span>
-              <button
+              <Button
                 className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() =>
                   run(
@@ -348,7 +348,7 @@ export function ConceptWorkspace({
                 }
               >
                 归档
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -425,7 +425,7 @@ export function ConceptWorkspace({
               <h3 className="text-sm font-medium">一行概念候选</h3>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 {draft.candidates.map((candidate, index) => (
-                  <button
+                  <Button
                     key={`${candidate.one_line}-${index}`}
                     onClick={() => {
                       setSelectedIndex(index);
@@ -443,7 +443,7 @@ export function ConceptWorkspace({
                     <p className="mt-2 text-sm font-medium leading-6">
                       {candidate.one_line}
                     </p>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>

@@ -101,7 +101,7 @@ export function NewCustomerCaseForm({
           {CUSTOMER_MARKETS.map((market) => {
             const active = markets.includes(market);
             return (
-              <button
+              <Button
                 key={market}
                 type="button"
                 onClick={() =>
@@ -120,7 +120,7 @@ export function NewCustomerCaseForm({
               >
                 {active && <Check className="size-3" />}
                 {MARKET_LABEL[market]}
-              </button>
+              </Button>
             );
           })}
         </div>

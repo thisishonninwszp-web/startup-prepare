@@ -4,6 +4,7 @@ import { Suspense, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { USE_CASES, type UseCase } from "../types";
 import { createCanvas } from "../actions";
+import { Button } from "@/components/ui/button";
 
 function NewCanvasForm() {
   const router = useRouter();
@@ -43,7 +44,7 @@ function NewCanvasForm() {
         </label>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {USE_CASES.map((uc) => (
-            <button
+            <Button
               key={uc.key}
               type="button"
               onClick={() => setUseCase(uc.key)}
@@ -63,7 +64,7 @@ function NewCanvasForm() {
               >
                 {uc.hint}
               </p>
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -111,20 +112,20 @@ function NewCanvasForm() {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex gap-3">
-        <button
+        <Button
           type="submit"
           disabled={isPending || !title.trim()}
           className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
         >
           {isPending ? "创建中…" : "开始规划"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={() => router.back()}
           className="rounded-lg border px-4 py-2 text-sm text-muted-foreground"
         >
           取消
-        </button>
+        </Button>
       </div>
     </form>
   );

@@ -5,6 +5,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { decryptAiPayload, hasAiLogEncryptionKey } from "@/lib/ai-gateway";
+import { Button } from "@/components/ui/button";
 
 type AiCallRow = {
   id: string;
@@ -141,10 +142,10 @@ export default async function AiSettingsPage() {
           </p>
         </div>
         <form action={deleteAllAiCalls}>
-          <button className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted">
+          <Button className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted">
             <Trash2 className="size-4" />
             删除全部日志
-          </button>
+          </Button>
         </form>
       </div>
 
@@ -207,9 +208,9 @@ export default async function AiSettingsPage() {
                       <span>{row.duration_ms ?? "-"} ms</span>
                       <form action={deleteAiCall}>
                         <input type="hidden" name="id" value={row.id} />
-                        <button className="rounded-md border px-2 py-1 hover:bg-muted">
+                        <Button className="rounded-md border px-2 py-1 hover:bg-muted">
                           删除
-                        </button>
+                        </Button>
                       </form>
                     </div>
                   </div>

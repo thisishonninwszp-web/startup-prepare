@@ -9,7 +9,7 @@ import type { OutreachStrategy } from "@/lib/ai";
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <Button
       type="button"
       onClick={async () => {
         await navigator.clipboard.writeText(text);
@@ -19,7 +19,7 @@ function CopyButton({ text }: { text: string }) {
       className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
     >
       {copied ? "已复制" : "复制"}
-    </button>
+    </Button>
   );
 }
 

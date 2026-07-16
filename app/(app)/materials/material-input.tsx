@@ -9,6 +9,7 @@ import {
   createUrlMaterial,
 } from "./actions";
 import { MATERIAL_SOURCE_TYPES, type MaterialSourceType } from "./types";
+import { Button } from "@/components/ui/button";
 
 const QUICK_TYPES: Array<{ value: MaterialSourceType; label: string }> = [
   { value: "text", label: "普通文本" },
@@ -93,7 +94,7 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
 
       <div className="mt-5 flex flex-wrap gap-2">
         {QUICK_TYPES.map((item) => (
-          <button
+          <Button
             key={item.value}
             type="button"
             onClick={() => setSourceType(item.value)}
@@ -105,7 +106,7 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
             }
           >
             {item.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -120,7 +121,7 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
         <span className="text-xs text-muted-foreground">
           保存后才会进入 AI 审阅；AI 输出只是草稿，不会自动写入其他模块。
         </span>
-        <button
+        <Button
           type="button"
           onClick={submitText}
           disabled={
@@ -129,7 +130,7 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
           className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
         >
           {isPending ? "处理中…" : "进入三省审阅"}
-        </button>
+        </Button>
       </div>
 
       <div className="mt-6 grid gap-3 border-t pt-5 md:grid-cols-2">
@@ -145,14 +146,14 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
               placeholder="https://..."
               className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-foreground/20"
             />
-            <button
+            <Button
               type="button"
               disabled={isPending || !url.trim()}
               onClick={submitUrl}
               className="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"
             >
               抽取
-            </button>
+            </Button>
           </div>
         </div>
 

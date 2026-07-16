@@ -370,14 +370,14 @@ export function IdeaDetail({
             <label className="text-xs font-medium text-muted-foreground">
               测试最关键假设的最小实验（本周做得完的那个）
             </label>
-            <button
+            <Button
               type="button"
               onClick={draftTest}
               disabled={drafting}
               className="shrink-0 rounded-md border px-2 py-1 text-xs transition-colors hover:bg-muted disabled:opacity-50"
             >
               {drafting ? "草拟中…" : "让 AI 草拟"}
-            </button>
+            </Button>
           </div>
           <textarea
             value={smallestTest}
@@ -568,7 +568,7 @@ function RoleChallenge({
       {/* 角色切换 */}
       <div className="flex flex-wrap gap-2">
         {AI_ROLES.map((r) => (
-          <button
+          <Button
             key={r.key}
             type="button"
             disabled={locked}
@@ -585,7 +585,7 @@ function RoleChallenge({
             }
           >
             {r.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -752,7 +752,7 @@ function ValidationSection({
             <Button onClick={handleSave} disabled={saving || !hasPain || !willPay}>
               {saving ? "保存中…" : "保存"}
             </Button>
-            <button
+            <Button
               type="button"
               onClick={() => {
                 reset();
@@ -761,7 +761,7 @@ function ValidationSection({
               className="text-xs text-muted-foreground underline-offset-4 hover:underline"
             >
               取消
-            </button>
+            </Button>
             {error && <span className="text-xs text-destructive">{error}</span>}
           </div>
         </div>
@@ -1048,13 +1048,13 @@ function RealityCheckSection({
               ))}
             </div>
           )}
-          <button
+          <Button
             type="button"
             onClick={() => onUseAsRiskiest(result.text)}
             className="text-xs text-muted-foreground underline-offset-4 hover:underline"
           >
             把这个威胁设为最关键假设
-          </button>
+          </Button>
         </div>
       )}
     </section>
@@ -1118,13 +1118,13 @@ function PreMortemSection({
               <li key={i} className="rounded-md border p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
                   <span className="font-medium">{m.pattern}</span>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => onUseAsRiskiest(`${m.pattern}：${m.why}`)}
                     className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
                   >
                     设为最关键假设
-                  </button>
+                  </Button>
                 </div>
                 {m.why && <p className="mt-1 text-muted-foreground">{m.why}</p>}
                 {m.question && <p className="mt-2">{m.question}</p>}
@@ -1195,13 +1195,13 @@ function PersonaDropInCard({ ideaId }: { ideaId: string }) {
               : "这个想法已经停滞几天了——不是真的推送，是你打开这一刻触发的"}
           </p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={() => setDismissed(true)}
           className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
         >
           关闭
-        </button>
+        </Button>
       </div>
 
       {!question && (
@@ -1357,7 +1357,7 @@ function PredictionsSection({
             <Button onClick={save} disabled={saving || !text.trim()}>
               {saving ? "保存中…" : "保存预测"}
             </Button>
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setOpen(false);
@@ -1367,7 +1367,7 @@ function PredictionsSection({
               className="text-xs text-muted-foreground underline-offset-4 hover:underline"
             >
               取消
-            </button>
+            </Button>
             {error && <span className="text-xs text-destructive">{error}</span>}
           </div>
         </div>
@@ -1494,7 +1494,7 @@ function TriState({
       <label className="text-xs font-medium text-muted-foreground">{label}</label>
       <div className="flex gap-2">
         {SIGNAL_VALUES.map((s) => (
-          <button
+          <Button
             key={s.key}
             type="button"
             onClick={() => onChange(s.key)}
@@ -1506,7 +1506,7 @@ function TriState({
             }
           >
             {s.label}
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -1601,7 +1601,7 @@ function ExitCriteriaSection({
                 {c.criterion}
               </span>
               <span className="flex shrink-0 items-center gap-1">
-                <button
+                <Button
                   type="button"
                   onClick={() => void handleReview(c.id, "yes")}
                   className={
@@ -1612,8 +1612,8 @@ function ExitCriteriaSection({
                   }
                 >
                   触发了
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => void handleReview(c.id, "no")}
                   className={
@@ -1624,16 +1624,16 @@ function ExitCriteriaSection({
                   }
                 >
                   没触发
-                </button>
+                </Button>
                 {!locked && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => void handleDelete(c.id)}
                     disabled={busy}
                     className="ml-1 text-xs text-muted-foreground underline-offset-4 hover:underline"
                   >
                     删除
-                  </button>
+                  </Button>
                 )}
               </span>
             </li>
@@ -1767,14 +1767,14 @@ function EvidenceSnapshotSection({
               className="flex items-center gap-2 rounded-lg border p-3 text-sm"
             >
               <span className="min-w-0 flex-1 leading-relaxed">{f.fact}</span>
-              <button
+              <Button
                 type="button"
                 onClick={() => void handleArchive(f.id)}
                 disabled={busy}
                 className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
               >
                 删除
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -1872,7 +1872,7 @@ function DecisionSection({
           const gated =
             unreviewedCount > 0 && (v.key === "Go" || v.key === "Kill");
           return (
-            <button
+            <Button
               key={v.key}
               type="button"
               disabled={deciding || gated}
@@ -1888,7 +1888,7 @@ function DecisionSection({
             >
               <span className="text-sm font-medium">{v.label}</span>
               <span className="text-xs text-muted-foreground">{v.hint}</span>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -1939,7 +1939,7 @@ function DecisionSection({
             >
               {deciding ? "保存中…" : "保存并归档"}
             </Button>
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setKillOpen(false);
@@ -1949,7 +1949,7 @@ function DecisionSection({
               className="text-xs text-muted-foreground underline-offset-4 hover:underline"
             >
               取消
-            </button>
+            </Button>
             {!killValid && (
               <span className="text-xs text-muted-foreground">四项都填写后可归档</span>
             )}

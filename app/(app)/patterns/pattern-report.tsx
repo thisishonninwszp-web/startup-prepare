@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { runPatternAnalysis } from "./actions";
 import type { CognitivePattern } from "@/lib/ai";
+import { Button } from "@/components/ui/button";
 
 const PATTERN_TYPE_LABELS: Record<string, string> = {
   validation_bias: "验证选择性",
@@ -83,14 +84,14 @@ export function PatternReport({ hasEnoughData }: { hasEnoughData: boolean }) {
         <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           AI 认知分析
         </h2>
-        <button
+        <Button
           type="button"
           onClick={handleGenerate}
           disabled={pending}
           className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50 hover:opacity-90"
         >
           {pending ? "分析中（约 20 秒）…" : patterns ? "重新分析" : "生成认知报告"}
-        </button>
+        </Button>
       </div>
 
       {error && (

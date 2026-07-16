@@ -377,7 +377,7 @@ export function CustomerWorkspace({
             ["proxy", `顾客代理 ${initialCase.versions.length}`],
             ["finish", "理解更新"],
           ].map(([key, label]) => (
-            <button
+            <Button
               key={key}
               type="button"
               onClick={() => setTab(key as typeof tab)}
@@ -389,7 +389,7 @@ export function CustomerWorkspace({
               }
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -406,7 +406,7 @@ export function CustomerWorkspace({
         {tab === "materials" && (
           <div className="space-y-8">
             <section className="grid gap-3 sm:grid-cols-3">
-              <button
+              <Button
                 type="button"
                 onClick={searchWeb}
                 disabled={busy === "search"}
@@ -417,8 +417,8 @@ export function CustomerWorkspace({
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   按所选市场搜索，结果进入候选收件箱。
                 </p>
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setMaterialOpen(true)}
                 className="rounded-lg border bg-card p-5 text-left hover:bg-muted/40"
@@ -428,21 +428,21 @@ export function CustomerWorkspace({
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   粘贴访谈、聊天、评论，先自动遮蔽个人信息。
                 </p>
-              </button>
+              </Button>
               <div className="rounded-lg border bg-card p-5">
                 <Sparkles className="size-4" />
                 <div className="mt-4 text-sm font-medium">区分顾客声音</div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   当前 {kept.length} 份保留材料，3份起取消临时代理。
                 </p>
-                <button
+                <Button
                   type="button"
                   onClick={research}
                   disabled={busy === "research" || kept.length === 0}
                   className="mt-3 text-xs underline underline-offset-4"
                 >
                   开始研究
-                </button>
+                </Button>
               </div>
             </section>
 
@@ -450,9 +450,9 @@ export function CustomerWorkspace({
               <section className="rounded-lg border-2 border-foreground bg-card p-5">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-medium">添加并确认遮蔽材料</h2>
-                  <button type="button" onClick={() => setMaterialOpen(false)}>
+                  <Button type="button" onClick={() => setMaterialOpen(false)}>
                     <X className="size-4" />
-                  </button>
+                  </Button>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <select
@@ -484,13 +484,13 @@ export function CustomerWorkspace({
                       placeholder="https://..."
                       className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm"
                     />
-                    <button
+                    <Button
                       type="button"
                       onClick={previewUrl}
                       className="rounded-md border px-3 text-xs"
                     >
                       抽取并预览
-                    </button>
+                    </Button>
                   </div>
                 )}
                 {materialOrigin !== "url" && (
@@ -502,13 +502,13 @@ export function CustomerWorkspace({
                       placeholder="粘贴原始材料。点击下方按钮后才会显示遮蔽版本。"
                       className="mt-3 w-full resize-y rounded-md border px-3 py-2 text-sm leading-6"
                     />
-                    <button
+                    <Button
                       type="button"
                       onClick={previewPasted}
                       className="mt-2 rounded-md border px-3 py-2 text-xs"
                     >
                       自动遮蔽并预览
-                    </button>
+                    </Button>
                   </>
                 )}
                 {redactedText && (
@@ -595,13 +595,13 @@ export function CustomerWorkspace({
                   选择一种处境与行为，不要把几类人平均成不存在的典型顾客。
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
                 onClick={research}
                 className="text-xs underline underline-offset-4"
               >
                 用当前证据重新研究
-              </button>
+              </Button>
             </div>
             {!latestRun ? (
               <p className="mt-8 text-sm text-muted-foreground">
@@ -862,22 +862,22 @@ function MaterialCard({
       </p>
       {onReview && (
         <div className="mt-4 flex gap-2">
-          <button
+          <Button
             type="button"
             onClick={() => onReview(material.id, false)}
             disabled={busy}
             className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs"
           >
             <X className="size-3" /> 排除
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => onReview(material.id, true)}
             disabled={busy}
             className="inline-flex items-center gap-1 rounded-md bg-foreground px-2.5 py-1.5 text-xs text-background"
           >
             <Check className="size-3" /> 保留
-          </button>
+          </Button>
         </div>
       )}
     </article>

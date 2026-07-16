@@ -82,13 +82,13 @@ export function BayesianForm({
                 : draftError ?? "已生成可编辑草稿，请确认后提交。"}
             </span>
             {draftError && (
-              <button
+              <Button
                 type="button"
                 onClick={() => void generateDraft()}
                 className="underline underline-offset-4"
               >
                 重试
-              </button>
+              </Button>
             )}
           </div>
         </>

@@ -9,6 +9,7 @@ import {
   type IdeaStatus,
 } from "./types";
 import { updateIdeaStatus } from "./actions";
+import { Button } from "@/components/ui/button";
 
 /** 各状态列的配色（宪法：验证中=橙、MVP候选=绿、归档=红、其余中性）。 */
 const STATUS_STYLE: Record<
@@ -88,7 +89,7 @@ export function IdeasBoard({ initial }: { initial: Idea[] }) {
           {allTags.map((tag) => {
             const active = selectedTags.includes(tag);
             return (
-              <button
+              <Button
                 key={tag}
                 type="button"
                 onClick={() => toggleTag(tag)}
@@ -100,17 +101,17 @@ export function IdeasBoard({ initial }: { initial: Idea[] }) {
                 }
               >
                 #{tag}
-              </button>
+              </Button>
             );
           })}
           {selectedTags.length > 0 && (
-            <button
+            <Button
               type="button"
               onClick={() => setSelectedTags([])}
               className="text-xs text-muted-foreground underline-offset-4 hover:underline"
             >
               清除
-            </button>
+            </Button>
           )}
         </div>
       )}

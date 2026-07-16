@@ -133,25 +133,25 @@ export function RecurringSignals() {
                   ) : (
                     <div className="flex shrink-0 items-center gap-2">
                       {!promoted[s.repId] && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => promote(s.repId)}
                           className="text-xs text-muted-foreground underline-offset-4 hover:underline"
                         >
                           直接提升
-                        </button>
+                        </Button>
                       )}
                       {promoted[s.repId] && (
                         <span className="text-xs text-status-mvp">已提升 ✓</span>
                       )}
-                      <button
+                      <Button
                         type="button"
                         onClick={() => draft(s)}
                         disabled={draftingId === s.repId}
                         className="rounded-md border px-2 py-1 text-xs transition-colors hover:bg-muted disabled:opacity-50"
                       >
                         {draftingId === s.repId ? "逼问中…" : d ? "重逼一次" : "逼成方向"}
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>

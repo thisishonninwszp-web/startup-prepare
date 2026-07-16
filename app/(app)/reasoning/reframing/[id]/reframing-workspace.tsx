@@ -110,7 +110,7 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
           </span>
           <p className="text-sm font-medium leading-snug">{frame.title}</p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={handleMark}
           disabled={markPending}
@@ -132,7 +132,7 @@ function FrameCard({ frame }: { frame: ReframingFrame }) {
               />
             </svg>
           )}
-        </button>
+        </Button>
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground break-words">
         {frame.description}
@@ -262,7 +262,7 @@ export function ReframingWorkspace({
         {questions.length > 0 && (
           <div className="mt-6 grid gap-3 md:grid-cols-2">
             {questions.map((candidate) => (
-              <button
+              <Button
                 key={candidate.type}
                 type="button"
                 onClick={() => {
@@ -292,7 +292,7 @@ export function ReframingWorkspace({
                     <dd>{candidate.decision_impact}</dd>
                   </div>
                 </dl>
-              </button>
+              </Button>
             ))}
           </div>
         )}

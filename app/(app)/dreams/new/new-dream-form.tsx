@@ -79,7 +79,7 @@ export function NewDreamForm() {
             <legend className="text-sm">它主要属于哪里？</legend>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               {CONTEXTS.map((item) => (
-                <button
+                <Button
                   key={item.key}
                   type="button"
                   onClick={() => setContext(item.key)}
@@ -94,7 +94,7 @@ export function NewDreamForm() {
                   <span className="mt-2 block text-xs leading-5 opacity-65">
                     {item.desc}
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           </fieldset>
@@ -103,7 +103,7 @@ export function NewDreamForm() {
             <legend className="text-sm">把镜头拉到多远？</legend>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               {SCALES.map((item) => (
-                <button
+                <Button
                   key={item.key}
                   type="button"
                   onClick={() => setScale(item.key)}
@@ -118,7 +118,7 @@ export function NewDreamForm() {
                   <span className="mt-2 block text-xs leading-5 opacity-65">
                     {item.desc}
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           </fieldset>

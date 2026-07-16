@@ -8,6 +8,7 @@ import {
   listRealityMaterials,
 } from "../queries";
 import { DEPARTMENT_LABELS, SOURCE_LABELS } from "../material-labels";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -154,23 +155,23 @@ export default async function MaterialReviewPage() {
           <form action={setRealityMaterialDecision}>
             <input type="hidden" name="material_id" value={material.id} />
             <input type="hidden" name="decision" value="confirmed" />
-            <button className="w-full rounded-lg bg-foreground px-4 py-3 font-serif text-lg text-background transition-transform hover:-translate-y-0.5">
+            <Button className="w-full rounded-lg bg-foreground px-4 py-3 font-serif text-lg text-background transition-transform hover:-translate-y-0.5">
               准
-            </button>
+            </Button>
           </form>
           <form action={setRealityMaterialDecision}>
             <input type="hidden" name="material_id" value={material.id} />
             <input type="hidden" name="decision" value="rejected" />
-            <button className="w-full rounded-lg border border-destructive/40 px-4 py-3 font-serif text-lg text-destructive transition-transform hover:-translate-y-0.5">
+            <Button className="w-full rounded-lg border border-destructive/40 px-4 py-3 font-serif text-lg text-destructive transition-transform hover:-translate-y-0.5">
               驳
-            </button>
+            </Button>
           </form>
           <form action={setRealityMaterialDecision}>
             <input type="hidden" name="material_id" value={material.id} />
             <input type="hidden" name="decision" value="parked" />
-            <button className="w-full rounded-lg border px-4 py-3 font-serif text-lg text-muted-foreground transition-transform hover:-translate-y-0.5">
+            <Button className="w-full rounded-lg border px-4 py-3 font-serif text-lg text-muted-foreground transition-transform hover:-translate-y-0.5">
               留中
-            </button>
+            </Button>
           </form>
         </div>
         <p className="mt-3 text-center text-xs text-muted-foreground">

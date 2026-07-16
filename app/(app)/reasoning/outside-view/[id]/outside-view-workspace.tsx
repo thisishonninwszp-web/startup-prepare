@@ -12,6 +12,7 @@ import type {
   OutsideViewSessionWithItems,
   PrevalenceBucket,
 } from "@/app/(app)/reasoning/types";
+import { Button } from "@/components/ui/button";
 
 const PREVALENCE_LABELS: Record<PrevalenceBucket, string> = {
   most: "多数",
@@ -49,7 +50,7 @@ function CheckItem({ check }: { check: OutsideViewCheck }) {
         done ? "opacity-60" : ""
       }`}
     >
-      <button
+      <Button
         type="button"
         onClick={toggle}
         disabled={pending}
@@ -61,7 +62,7 @@ function CheckItem({ check }: { check: OutsideViewCheck }) {
         } flex items-center justify-center text-[10px]`}
       >
         {done ? "✓" : ""}
-      </button>
+      </Button>
       <p className="text-sm leading-relaxed">{check.check_text}</p>
     </div>
   );
@@ -181,14 +182,14 @@ export function OutsideViewWorkspace({
             {error}
           </p>
         )}
-        <button
+        <Button
           type="button"
           onClick={submitDistinction}
           disabled={pending || !distinction.trim()}
           className="inline-flex h-8 items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background hover:opacity-90 disabled:opacity-50"
         >
           {pending ? "AI 质疑中…" : "提交给 AI 质疑"}
-        </button>
+        </Button>
         {pushback && (
           <div className="rounded-md border border-status-validating/30 bg-status-validating/10 p-3">
             <p className="text-[10px] font-medium uppercase tracking-wider text-status-validating">

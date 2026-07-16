@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { runProfileGeneration } from "./actions";
 import type { PersonalProfileReport, BehavioralTrait, PersonalityInsight } from "@/lib/ai";
+import { Button } from "@/components/ui/button";
 
 const CATEGORY_LABELS: Record<string, string> = {
   interest: "兴趣领域",
@@ -185,14 +186,14 @@ export function ProfileReport({ hasEnoughData }: { hasEnoughData: boolean }) {
             ? "档案基于你截至目前的全量数据生成，随时可重新生成。"
             : "档案从你的想法、梦想、决策、验证记录等内容中推断，生成约需 30 秒。"}
         </p>
-        <button
+        <Button
           type="button"
           onClick={handleGenerate}
           disabled={pending}
           className="shrink-0 rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50 hover:opacity-90"
         >
           {pending ? "生成中（约 30 秒）…" : report ? "重新生成" : "生成我的档案"}
-        </button>
+        </Button>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

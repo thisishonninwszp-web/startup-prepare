@@ -178,7 +178,7 @@ export function FocusedInquiryPanel({
             {active.anchor.text}
           </p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={() => {
             setActiveId(null);
@@ -188,7 +188,7 @@ export function FocusedInquiryPanel({
           aria-label="关闭聚焦探索"
         >
           <X className="size-4" />
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -297,14 +297,14 @@ export function FocusedInquiryPanel({
           {active.messages.length === 0 && (
             <div className="mb-3 flex flex-wrap gap-1.5">
               {QUICK_QUESTIONS.map((item) => (
-                <button
+                <Button
                   key={item}
                   type="button"
                   onClick={() => setQuestion(item)}
                   className="rounded-full border px-2.5 py-1 text-[10px] hover:bg-muted"
                 >
                   {item}
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -368,14 +368,14 @@ export function FocusedInquiryPanel({
           <p className="text-[10px] text-muted-foreground">历史探索</p>
           <div className="mt-2 space-y-1">
             {sessions.slice(0, 6).map((session) => (
-              <button
+              <Button
                 key={session.id}
                 type="button"
                 onClick={() => setActiveId(session.id)}
                 className="block w-full truncate rounded px-2 py-1.5 text-left text-xs hover:bg-muted"
               >
                 {session.anchor.text}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -387,14 +387,15 @@ export function FocusedInquiryPanel({
   return (
     <>
       {active && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
           aria-label="关闭聚焦探索"
           onClick={() => {
             setActiveId(null);
             onClose();
           }}
-          className="fixed inset-0 z-40 bg-foreground/20 lg:hidden"
+          className="fixed inset-0 z-40 h-auto w-auto rounded-none bg-foreground/20 p-0 shadow-none hover:-translate-y-0 hover:bg-foreground/20 hover:shadow-none active:scale-100 lg:hidden"
         />
       )}
       <div

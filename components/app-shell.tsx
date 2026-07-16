@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { NAV_GROUPS, isActiveRoute } from "./app-navigation";
+import { Button } from "@/components/ui/button";
 
 const ICONS: Record<string, LucideIcon> = {
   "/dashboard": Home,
@@ -77,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 flex h-14 items-center border-b bg-background/95 px-4 backdrop-blur md:hidden">
-        <button
+        <Button
           type="button"
           onClick={() => setOpen(true)}
           className="grid size-9 place-items-center rounded-md border bg-card"
@@ -85,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           aria-expanded={open}
         >
           <Menu className="size-4" />
-        </button>
+        </Button>
         <Link href="/dashboard" className="ml-3 text-sm font-semibold tracking-tight">
           IdeaOS
         </Link>
@@ -97,11 +98,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       {open && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
           aria-label="关闭导航"
           onClick={() => setOpen(false)}
-          className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-[2px] md:hidden"
+          className="fixed inset-0 z-40 h-auto w-auto rounded-none bg-foreground/20 p-0 shadow-none backdrop-blur-[2px] hover:-translate-y-0 hover:bg-foreground/20 hover:shadow-none active:scale-100 md:hidden"
         />
       )}
 
@@ -118,14 +120,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="ml-2 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             Field notes
           </span>
-          <button
+          <Button
             type="button"
             onClick={() => setOpen(false)}
             className="ml-auto grid size-8 place-items-center rounded-md hover:bg-muted md:hidden"
             aria-label="关闭导航"
           >
             <X className="size-4" />
-          </button>
+          </Button>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-5">
@@ -200,14 +202,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               {signOutError}
             </p>
           )}
-          <button
+          <Button
             type="button"
             onClick={signOut}
             className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <LogOut className="size-4" strokeWidth={1.7} />
             退出登录
-          </button>
+          </Button>
         </div>
       </aside>
 

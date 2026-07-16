@@ -301,7 +301,7 @@ export function DailyReflectionWorkspace({
                         </option>
                       ))}
                     </select>
-                    <button
+                    <Button
                       type="button"
                       onClick={() =>
                         setBlocks((current) =>
@@ -312,7 +312,7 @@ export function DailyReflectionWorkspace({
                       aria-label="删除事件块"
                     >
                       <Trash2 className="size-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>

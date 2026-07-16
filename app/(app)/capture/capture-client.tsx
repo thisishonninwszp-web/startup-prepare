@@ -147,7 +147,7 @@ export function CaptureClient({
           {TAGS.map((tag) => {
             const active = selectedTags.includes(tag);
             return (
-              <button
+              <Button
                 key={tag}
                 type="button"
                 onClick={() => toggleTag(tag)}
@@ -159,7 +159,7 @@ export function CaptureClient({
                 }
               >
                 #{tag}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -224,14 +224,14 @@ function ObservationItem({ card }: { card: ObservationCard }) {
         {promoted ? (
           <span className="shrink-0 text-xs text-status-mvp">已提升 ✓</span>
         ) : (
-          <button
+          <Button
             type="button"
             onClick={handlePromote}
             disabled={promoting}
             className="shrink-0 rounded-md border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
           >
             {promoting ? "提升中…" : "提升为想法"}
-          </button>
+          </Button>
         )}
       </div>
 

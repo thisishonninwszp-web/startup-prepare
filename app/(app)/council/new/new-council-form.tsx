@@ -201,13 +201,13 @@ export function NewCouncilForm({
           </div>
         </div>
       ) : (
-        <button
+        <Button
           type="button"
           onClick={() => setShowCustomForm(true)}
           className="text-xs text-muted-foreground hover:text-foreground"
         >
           + 添加自定义顾问
-        </button>
+        </Button>
       )}
 
       {error && (

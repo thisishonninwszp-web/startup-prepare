@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createCompanyKbNote } from "../actions";
+import { Button } from "@/components/ui/button";
 
 export default function NewCompanyKbNotePage() {
   const router = useRouter();
@@ -68,13 +69,13 @@ export default function NewCompanyKbNotePage() {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex gap-3 pt-2">
-          <button
+          <Button
             type="submit"
             disabled={isPending || !title.trim()}
             className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
           >
             {isPending ? "保存中…" : "保存笔记"}
-          </button>
+          </Button>
           <Link
             href="/company-kb"
             className="rounded-lg border px-4 py-2 text-sm text-muted-foreground hover:bg-muted"

@@ -129,7 +129,7 @@ export function NewRealityForm({
               text: "从人生或事业整体寻找最需要看清的地方。",
             },
           ].map((item) => (
-            <button
+            <Button
               key={item.value}
               type="button"
               onClick={() => setMode(item.value)}
@@ -151,7 +151,7 @@ export function NewRealityForm({
               >
                 {item.text}
               </p>
-            </button>
+            </Button>
           ))}
         </div>
       </section>
@@ -164,7 +164,7 @@ export function NewRealityForm({
             ["business", "事业"],
             ["cross", "人生 × 事业"],
           ].map(([value, label]) => (
-            <button
+            <Button
               key={value}
               type="button"
               onClick={() => changeContext(value as RealityContext)}
@@ -176,7 +176,7 @@ export function NewRealityForm({
               }
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
       </section>
@@ -209,7 +209,7 @@ export function NewRealityForm({
             {availableDomains.map((domain) => {
               const active = domains.includes(domain);
               return (
-                <button
+                <Button
                   key={domain}
                   type="button"
                   onClick={() =>
@@ -226,13 +226,13 @@ export function NewRealityForm({
                 >
                   {active && <Check className="size-3" />}
                   {domain}
-                </button>
+                </Button>
               );
             })}
             {domains
               .filter((domain) => !availableDomains.includes(domain))
               .map((domain) => (
-                <button
+                <Button
                   key={domain}
                   type="button"
                   onClick={() =>
@@ -242,7 +242,7 @@ export function NewRealityForm({
                 >
                   {domain}
                   <X className="size-3" />
-                </button>
+                </Button>
               ))}
           </div>
           <div className="mt-3 flex max-w-sm gap-2">
@@ -258,14 +258,14 @@ export function NewRealityForm({
               placeholder="添加自己的领域"
               className="min-w-0 flex-1 rounded-md border bg-card px-3 py-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
-            <button
+            <Button
               type="button"
               onClick={addDomain}
               className="grid size-9 place-items-center rounded-md border bg-card hover:bg-muted"
               aria-label="添加领域"
             >
               <Plus className="size-4" />
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -281,7 +281,7 @@ export function NewRealityForm({
         <div className="mt-3 flex flex-wrap gap-2">
           {(Object.keys(SOURCE_LABEL) as (RealitySourceType | "all")[]).map(
             (type) => (
-              <button
+              <Button
                 key={type}
                 type="button"
                 onClick={() => setSourceFilter(type)}
@@ -293,7 +293,7 @@ export function NewRealityForm({
                 }
               >
                 {SOURCE_LABEL[type]}
-              </button>
+              </Button>
             )
           )}
           <span className="ml-auto text-xs text-muted-foreground">
@@ -309,7 +309,7 @@ export function NewRealityForm({
                 (item) => item.type === source.type && item.id === source.id
               );
               return (
-                <button
+                <Button
                   key={`${source.type}:${source.id}`}
                   type="button"
                   onClick={() => toggleSource(source)}
@@ -331,7 +331,7 @@ export function NewRealityForm({
                       {source.detail}
                     </span>
                   </span>
-                </button>
+                </Button>
               );
             })
           )}

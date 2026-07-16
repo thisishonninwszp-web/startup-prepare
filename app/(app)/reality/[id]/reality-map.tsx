@@ -23,6 +23,7 @@ import {
   REALITY_DELTA_PRESENTATION,
   getRealityDeltaClasses,
 } from "../delta-presentation";
+import { Button } from "@/components/ui/button";
 
 const PATH_LABEL = {
   investigate: "补充信息",
@@ -197,13 +198,13 @@ export function RealityMapView({
                   <p className="mt-1">{path.risk}</p>
                 </div>
                 {onSelectPath && !selectedPath && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => onSelectPath(index)}
                     className="mt-5 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-muted hover:text-foreground"
                   >
                     选择为初步方向
-                  </button>
+                  </Button>
                 )}
               </div>
             );
@@ -347,13 +348,13 @@ function MapSection({
 function AskAiButton({ onClick }: { onClick?: () => void }) {
   if (!onClick) return null;
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
       className="shrink-0 rounded-md border px-2 py-1 text-[10px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
     >
       问AI
-    </button>
+    </Button>
   );
 }
 

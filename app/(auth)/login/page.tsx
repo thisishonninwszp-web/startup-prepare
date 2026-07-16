@@ -173,7 +173,7 @@ export default function LoginPage() {
 
           <p className="mt-6 text-sm text-muted-foreground">
             {mode === "signin" ? "还没有账号？" : "已经有账号了？"}{" "}
-            <button
+            <Button
               type="button"
               className="font-medium text-foreground underline underline-offset-4"
               onClick={() => {
@@ -183,7 +183,7 @@ export default function LoginPage() {
               }}
             >
               {mode === "signin" ? "去注册" : "去登录"}
-            </button>
+            </Button>
           </p>
         </div>
       </section>

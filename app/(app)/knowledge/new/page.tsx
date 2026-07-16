@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createKnowledgeCard } from "../actions";
 import { CARD_TYPES, type CardType } from "../types";
+import { Button } from "@/components/ui/button";
 
 export default function NewKnowledgeCardPage() {
   const router = useRouter();
@@ -48,7 +49,7 @@ export default function NewKnowledgeCardPage() {
           <label className="mb-1.5 block text-sm font-medium">类型</label>
           <div className="flex flex-wrap gap-2">
             {CARD_TYPES.map((t) => (
-              <button
+              <Button
                 key={t.key}
                 type="button"
                 onClick={() => setCardType(t.key)}
@@ -59,7 +60,7 @@ export default function NewKnowledgeCardPage() {
                 }`}
               >
                 {t.label}
-              </button>
+              </Button>
             ))}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -110,13 +111,13 @@ export default function NewKnowledgeCardPage() {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex gap-3 pt-2">
-          <button
+          <Button
             type="submit"
             disabled={isPending || !content.trim()}
             className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
           >
             {isPending ? "保存中…" : "保存卡片"}
-          </button>
+          </Button>
           <Link
             href="/knowledge"
             className="rounded-lg border px-4 py-2 text-sm text-muted-foreground hover:bg-muted"

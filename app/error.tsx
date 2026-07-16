@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+
 export default function GlobalPageError({
   error,
   reset,
@@ -18,13 +20,13 @@ export default function GlobalPageError({
       <p className="max-w-md text-sm text-muted-foreground">
         {error.message || "发生了一个未知错误。"}
       </p>
-      <button
+      <Button
         type="button"
         onClick={reset}
         className="mt-2 rounded-md bg-foreground px-4 py-2 text-sm text-background"
       >
         重试
-      </button>
+      </Button>
     </div>
   );
 }

@@ -209,7 +209,7 @@ export function DreamWorkspace({
 
           <div className="mt-7 flex gap-2 overflow-x-auto pb-1">
             {initialCase.branches.map((branch, index) => (
-              <button
+              <Button
                 key={branch.id}
                 type="button"
                 onClick={() => setActiveBranchId(branch.id)}
@@ -227,7 +227,7 @@ export function DreamWorkspace({
                 {branch.is_focused ? (
                   <Star className="size-3 fill-current" />
                 ) : null}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -343,7 +343,7 @@ export function DreamWorkspace({
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {(["branch", "case"] as const).map((scope) => (
-                <button
+                <Button
                   key={scope}
                   type="button"
                   onClick={() => setRealityScope(scope)}
@@ -355,7 +355,7 @@ export function DreamWorkspace({
                   }
                 >
                   {scope === "branch" ? "只用于当前路径" : "用于全部路径"}
-                </button>
+                </Button>
               ))}
             </div>
             <select
@@ -519,7 +519,7 @@ function DreamCanvasEditor({
                     <h4 className="text-xs font-medium text-muted-foreground">
                       {dimension.label}
                     </h4>
-                    <button
+                    <Button
                       type="button"
                       className="rounded-full p-1 text-muted-foreground/80 hover:bg-muted hover:text-foreground"
                       onClick={() => {
@@ -529,7 +529,7 @@ function DreamCanvasEditor({
                       }}
                     >
                       <PencilLine className="size-3.5" />
-                    </button>
+                    </Button>
                   </div>
                   <div className="mt-3 space-y-2">
                     {items.length ? (
@@ -558,7 +558,7 @@ function DreamCanvasEditor({
                               </span>
                               <div className="flex gap-1">
                                 {!suggestion ? (
-                                  <button
+                                  <Button
                                     type="button"
                                     aria-label="修改画布内容"
                                     className="rounded-full p-1 text-muted-foreground/80 hover:bg-muted hover:text-foreground"
@@ -570,11 +570,11 @@ function DreamCanvasEditor({
                                     }}
                                   >
                                     <PencilLine className="size-3" />
-                                  </button>
+                                  </Button>
                                 ) : null}
                                 {suggestion ? (
                                   <>
-                                    <button
+                                    <Button
                                       type="button"
                                       aria-label="确认AI推演"
                                       className="rounded-full bg-status-mvp/15 p-1 text-status-mvp"
@@ -597,8 +597,8 @@ function DreamCanvasEditor({
                                       }
                                     >
                                       <Check className="size-3" />
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                       type="button"
                                       aria-label="拒绝AI推演"
                                       className="rounded-full bg-muted p-1 text-muted-foreground"
@@ -621,11 +621,11 @@ function DreamCanvasEditor({
                                       }
                                     >
                                       <X className="size-3" />
-                                    </button>
+                                    </Button>
                                   </>
                                 ) : null}
                                 {!suggestion ? (
-                                  <button
+                                  <Button
                                     type="button"
                                     aria-label="删除画布内容"
                                     className="rounded-full p-1 text-muted-foreground/80 hover:bg-destructive/15 hover:text-destructive"
@@ -646,7 +646,7 @@ function DreamCanvasEditor({
                                     }
                                   >
                                     <Trash2 className="size-3" />
-                                  </button>
+                                  </Button>
                                 ) : null}
                               </div>
                             </div>
@@ -866,7 +866,7 @@ function BranchControls({
         </div>
       ) : null}
       {dreamCase.branches.length > 1 ? (
-        <button
+        <Button
           type="button"
           disabled={Boolean(busy)}
           className="mt-4 inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 hover:text-destructive"
@@ -880,7 +880,7 @@ function BranchControls({
         >
           <Archive className="size-3" />
           归档当前分支
-        </button>
+        </Button>
       ) : null}
     </section>
   );

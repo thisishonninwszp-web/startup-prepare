@@ -9,6 +9,7 @@ import type {
   FirstPrinciplesSessionWithNodes,
   NodeBasisType,
 } from "@/app/(app)/reasoning/types";
+import { Button } from "@/components/ui/button";
 
 // ── Basis type metadata ───────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ function NodeCard({
             </span>
           )}
         </div>
-        <button
+        <Button
           type="button"
           onClick={toggleVerified}
           disabled={pending}
@@ -115,7 +116,7 @@ function NodeCard({
           } flex items-center justify-center text-[10px]`}
         >
           {verified ? "✓" : ""}
-        </button>
+        </Button>
       </div>
 
       <p className="text-sm font-medium leading-relaxed">{node.claim}</p>
@@ -124,14 +125,14 @@ function NodeCard({
         {node.basis_note}
       </p>
 
-      <button
+      <Button
         type="button"
         onClick={() => setShowChallenge((v) => !v)}
         className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
       >
         <span>{showChallenge ? "▾" : "▸"}</span>
         证伪问题
-      </button>
+      </Button>
 
       {showChallenge && (
         <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-foreground leading-relaxed">

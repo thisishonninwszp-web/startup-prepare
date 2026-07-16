@@ -97,7 +97,7 @@ export function CustomerPatterns({
           />
           <div className="flex gap-2">
             {(["cn", "jp", "en"] as CustomerMarket[]).map((market) => (
-              <button
+              <Button
                 key={market}
                 type="button"
                 onClick={() =>
@@ -115,7 +115,7 @@ export function CustomerPatterns({
                 }
               >
                 {market}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -195,14 +195,14 @@ export function CustomerPatterns({
               <h2 className="mt-2 text-sm font-medium">顾客模式与反例</h2>
             </div>
             {report.opportunities.length === 0 && (
-              <button
+              <Button
                 type="button"
                 onClick={() => opportunities(report.id)}
                 disabled={busy === report.id}
                 className="shrink-0 rounded-md border px-3 py-2 text-xs hover:bg-muted"
               >
                 生成候选机会
-              </button>
+              </Button>
             )}
           </div>
           <div className="mt-5 space-y-5">
@@ -245,14 +245,14 @@ export function CustomerPatterns({
                           查看想法 <ArrowRight className="size-3" />
                         </Link>
                       ) : (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => promote(item.id)}
                           disabled={busy === item.id}
                           className="mt-4 text-xs underline underline-offset-4"
                         >
                           明确选择并创建观察
-                        </button>
+                        </Button>
                       )}
                     </div>
                   );

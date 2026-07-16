@@ -51,14 +51,14 @@ export function FactsPanel({ initialFacts }: { initialFacts: CompanyKbFact[] }) 
               className="flex items-center gap-2 rounded-lg border bg-card p-3 text-sm"
             >
               <span className="min-w-0 flex-1 leading-relaxed">{f.fact}</span>
-              <button
+              <Button
                 type="button"
                 onClick={() => void handleArchive(f.id)}
                 disabled={busy}
                 className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline"
               >
                 删除
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

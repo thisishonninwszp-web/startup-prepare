@@ -214,25 +214,25 @@ export function RealityWorkspace({
                 {initialCase.initial_statement}
               </p>
             </div>
-            <button
+            <Button
               type="button"
               onClick={() => setArchiveOpen((value) => !value)}
               className="inline-flex items-center gap-2 self-start rounded-md border px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
             >
               <Archive className="size-3.5" />
               归档课题
-            </button>
+            </Button>
           </div>
           {archiveOpen && (
             <div className="mt-4 flex items-center justify-between gap-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
               <span>归档后不再出现在课题列表中，历史版本仍保留。</span>
-              <button
+              <Button
                 type="button"
                 onClick={archiveCase}
                 className="shrink-0 font-medium underline underline-offset-4"
               >
                 确认归档
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -327,14 +327,14 @@ export function RealityWorkspace({
                         {asking ? "追问中…" : "提交并继续追问"}
                       </Button>
                       {(ready || assistantTurns >= 2) && (
-                        <button
+                        <Button
                           type="button"
                           onClick={generateVersion}
                           disabled={generating}
                           className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
                         >
                           先基于现有信息生成地图
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -352,14 +352,14 @@ export function RealityWorkspace({
                       >
                         {generating ? "生成中…" : "生成现状地图"}
                       </Button>
-                      <button
+                      <Button
                         type="button"
                         onClick={() => ask(true)}
                         disabled={asking}
                         className="rounded-md border px-3 py-2 text-xs hover:bg-muted"
                       >
                         再继续一轮
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -477,13 +477,13 @@ export function RealityWorkspace({
                   >
                     {savingPath ? "保存中…" : "确认初步方向"}
                   </Button>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setPathIndex(null)}
                     className="text-xs text-muted-foreground"
                   >
                     取消
-                  </button>
+                  </Button>
                 </div>
               </div>
             </section>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 /** ISO 周编号，作为"本周已读"的 localStorage key。 */
 function isoWeekKey(): string {
@@ -113,13 +114,13 @@ export function WeeklyDigest({ data }: { data: WeeklyDigestData }) {
             </li>
           ))}
         </ul>
-        <button
+        <Button
           type="button"
           onClick={dismiss}
           className="mt-8 w-full rounded-lg border px-4 py-3 text-sm text-muted-foreground hover:bg-muted"
         >
           我看到了（本周不再提醒）
-        </button>
+        </Button>
       </div>
     </div>
   );

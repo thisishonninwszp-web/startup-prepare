@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, ExternalLink, X } from "lucide-react";
 import { reviewCustomerMaterial } from "../actions";
 import type { CustomerMaterialListItem } from "../queries";
+import { Button } from "@/components/ui/button";
 
 export function CustomerInbox({
   initial,
@@ -78,7 +79,7 @@ export function CustomerInbox({
                   <ExternalLink className="size-3.5" />
                 </a>
               )}
-              <button
+              <Button
                 type="button"
                 onClick={() => review(item, false)}
                 disabled={busy === item.id}
@@ -86,8 +87,8 @@ export function CustomerInbox({
               >
                 <X className="size-3.5" />
                 排除
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => review(item, true)}
                 disabled={busy === item.id}
@@ -95,7 +96,7 @@ export function CustomerInbox({
               >
                 <Check className="size-3.5" />
                 保留
-              </button>
+              </Button>
             </div>
           </div>
           <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">

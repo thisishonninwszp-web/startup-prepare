@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { deleteCompanyKbNote, updateCompanyKbNote } from "../actions";
 import type { CompanyKbNote } from "../types";
+import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 
 export function NoteEditor({ note }: { note: CompanyKbNote }) {
   const router = useRouter();
@@ -31,7 +33,6 @@ export function NoteEditor({ note }: { note: CompanyKbNote }) {
   }
 
   function handleDelete() {
-    if (!confirm("确认删除这条笔记吗？删除后无法恢复。")) return;
     startDeleteTransition(async () => {
       try {
         await deleteCompanyKbNote(note.id);
@@ -51,14 +52,16 @@ export function NoteEditor({ note }: { note: CompanyKbNote }) {
           </Link>
           <h1 className="text-xl font-semibold tracking-tight">编辑笔记</h1>
         </div>
-        <button
+        <ConfirmButton
           type="button"
+          variant="ghost"
           onClick={handleDelete}
           disabled={deleting}
-          className="text-xs text-muted-foreground hover:text-destructive"
+          confirmLabel="确认删除笔记"
+          className="h-auto p-0 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
         >
           删除笔记
-        </button>
+        </ConfirmButton>
       </div>
 
       <div className="space-y-5">
@@ -91,14 +94,14 @@ export function NoteEditor({ note }: { note: CompanyKbNote }) {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex items-center gap-3">
-          <button
+          <Button
             type="button"
             onClick={handleSave}
             disabled={saving || !title.trim()}
             className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
           >
             {saving ? "保存中…" : "保存"}
-          </button>
+          </Button>
           {saveMsg && <span className="text-xs text-status-mvp">{saveMsg}</span>}
         </div>
       </div>

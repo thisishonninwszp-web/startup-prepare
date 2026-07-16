@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { sendCouncilMessage } from "@/app/(app)/council/actions";
 import type { CouncilPersona, CouncilSessionWithMessages } from "@/app/(app)/council/types";
+import { Button } from "@/components/ui/button";
 
 function personaLabel(
   personaByKey: Record<string, CouncilPersona>,
@@ -124,7 +125,7 @@ export function CouncilChat({
           {session.personas.map((p) => {
             const persona = personaByKey[p.persona_key];
             return (
-              <button
+              <Button
                 key={p.persona_key}
                 type="button"
                 onClick={() => mention(p.persona_key)}
@@ -137,7 +138,7 @@ export function CouncilChat({
                     {p.turns_since_last_spoke} 轮未发言
                   </span>
                 )}
-              </button>
+              </Button>
             );
           })}
         </aside>
@@ -165,14 +166,14 @@ export function CouncilChat({
             placeholder="说点什么……"
             className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
-          <button
+          <Button
             type="button"
             onClick={handleSend}
             disabled={pending || !content.trim()}
             className="shrink-0 rounded-md bg-foreground px-4 text-sm text-background disabled:opacity-50"
           >
             {pending ? "发送中…" : "发送"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ import {
 } from "@/app/(app)/knowledge/actions";
 import type { CompanyDetail, CompanyType } from "@/app/(app)/knowledge/types";
 import { JobOutreachPanel } from "./job-outreach-panel";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   company: CompanyDetail;
@@ -141,12 +142,12 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
           <p className="mt-0.5 text-sm text-muted-foreground">{currentTypeLabel}</p>
         </div>
         {!editingCeo && (
-          <button
+          <Button
             onClick={() => setEditingCeo(true)}
             className="text-xs text-muted-foreground underline underline-offset-2"
           >
             编辑
-          </button>
+          </Button>
         )}
       </div>
 
@@ -165,7 +166,7 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {companyTypes.map((t) => (
-                <button
+                <Button
                   key={t.key}
                   type="button"
                   onClick={() => setCompanyType(t.key)}
@@ -176,7 +177,7 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
                   }`}
                 >
                   {t.label}
-                </button>
+                </Button>
               ))}
             </div>
             <textarea
@@ -187,14 +188,14 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
               className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <div className="flex gap-2">
-              <button
+              <Button
                 onClick={saveCeoNotes}
                 disabled={isPending}
                 className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
               >
                 {isPending ? "保存中…" : "保存"}
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => {
                   setEditingCeo(false);
                   setName(company.name);
@@ -204,7 +205,7 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
                 className="rounded-lg border px-3 py-1.5 text-sm text-muted-foreground"
               >
                 取消
-              </button>
+              </Button>
             </div>
           </div>
         ) : ceoNotes ? (
@@ -220,13 +221,13 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
           <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             大事记时间线
           </h2>
-          <button
+          <Button
             onClick={() => setShowEventForm((v) => !v)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
             添加
-          </button>
+          </Button>
         </div>
 
         {showEventForm && (
@@ -256,20 +257,20 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
               className="w-full rounded border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <div className="flex gap-2">
-              <button
+              <Button
                 type="submit"
                 disabled={isPending}
                 className="rounded-lg bg-foreground px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
               >
                 {isPending ? "添加中…" : "添加"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setShowEventForm(false)}
                 className="rounded-lg border px-3 py-1 text-sm text-muted-foreground"
               >
                 取消
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -292,13 +293,13 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
                     <p className="mt-0.5 text-xs text-muted-foreground">{ev.related_party}</p>
                   )}
                 </div>
-                <button
+                <Button
                   onClick={() => removeEvent(ev.id)}
                   disabled={isPending}
                   className="shrink-0 text-muted-foreground/40 hover:text-destructive"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -311,13 +312,13 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
           <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             想法 / 备注
           </h2>
-          <button
+          <Button
             onClick={() => setShowNoteForm((v) => !v)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
             添加
-          </button>
+          </Button>
         </div>
 
         {showNoteForm && (
@@ -331,20 +332,20 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
               className="w-full rounded border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <div className="flex gap-2">
-              <button
+              <Button
                 type="submit"
                 disabled={isPending}
                 className="rounded-lg bg-foreground px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
               >
                 {isPending ? "添加中…" : "添加"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setShowNoteForm(false)}
                 className="rounded-lg border px-3 py-1 text-sm text-muted-foreground"
               >
                 取消
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -362,13 +363,13 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
                     {note.idea_id && " · 关联想法"}
                   </p>
                 </div>
-                <button
+                <Button
                   onClick={() => removeNote(note.id)}
                   disabled={isPending}
                   className="shrink-0 text-muted-foreground/40 hover:text-destructive"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>

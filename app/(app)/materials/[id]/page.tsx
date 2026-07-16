@@ -15,6 +15,7 @@ import {
   routeHref,
 } from "../material-labels";
 import { MATERIAL_ROUTE_TARGETS, type MaterialRouteTarget } from "../types";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -56,9 +57,9 @@ export default async function MaterialDetailPage({
         {material.status === "failed" ? (
           <form action={retryRealityMaterialAi}>
             <input type="hidden" name="material_id" value={material.id} />
-            <button className="rounded-md border px-3 py-2 text-sm hover:bg-muted">
+            <Button className="rounded-md border px-3 py-2 text-sm hover:bg-muted">
               重试 AI 审阅
-            </button>
+            </Button>
           </form>
         ) : null}
       </div>
@@ -200,9 +201,9 @@ export default async function MaterialDetailPage({
                 <form action={setRealityMaterialDecision} key={value}>
                   <input type="hidden" name="material_id" value={material.id} />
                   <input type="hidden" name="decision" value={value} />
-                  <button className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted">
+                  <Button className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted">
                     {label}
-                  </button>
+                  </Button>
                 </form>
               ))}
             </div>
@@ -252,9 +253,9 @@ export default async function MaterialDetailPage({
                     placeholder="例如：作为下一版现状地图的来源"
                   />
                 </label>
-                <button className="w-full rounded-md bg-foreground px-3 py-2 text-sm text-background">
+                <Button className="w-full rounded-md bg-foreground px-3 py-2 text-sm text-background">
                   记录分流
-                </button>
+                </Button>
               </form>
             ) : (
               <p className="text-sm text-muted-foreground">
