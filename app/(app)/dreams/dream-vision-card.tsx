@@ -34,7 +34,7 @@ export function DreamVisionCard({
         </details>
       )}
 
-      <section className="relative overflow-hidden rounded-[2rem] bg-foreground p-7 text-background sm:p-10">
+      <section className="relative overflow-hidden rounded-lg bg-foreground p-7 text-background sm:p-10">
         <div className="absolute right-0 top-0 size-48 rounded-full border border-white/10 translate-x-1/3 -translate-y-1/3" />
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground/80">
           A day in the future
@@ -90,13 +90,13 @@ export function DreamVisionCard({
         </blockquote>
       </section>
 
-      <section className="rounded-[2rem] border border-border bg-muted/50 p-6">
+      <section className="rounded-lg border border-border bg-muted/50 p-6">
         <h3 className="font-serif text-xl">希望真正发生的变化</h3>
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {vision.desired_changes.map((item, index) => (
             <li
               key={index}
-              className="rounded-lg bg-[#f4f1ea] p-4 text-sm leading-6"
+              className="rounded-lg bg-background p-4 text-sm leading-6"
             >
               {item}
             </li>
@@ -104,7 +104,7 @@ export function DreamVisionCard({
         </ul>
       </section>
 
-      <details className="rounded-[2rem] border border-border bg-muted/50 p-6">
+      <details className="rounded-lg border border-border bg-muted/50 p-6">
         <summary className="cursor-pointer font-serif text-xl">
           查看代价、前提与现实连接
         </summary>

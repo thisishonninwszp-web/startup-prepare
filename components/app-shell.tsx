@@ -20,6 +20,7 @@ import {
   RotateCcw,
   ScanSearch,
   Settings,
+  UserCircle,
   Users,
   Wrench,
   X,
@@ -179,6 +180,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Download className="size-4" strokeWidth={1.7} />
             数据导出
+          </Link>
+          <Link
+            href="/profile"
+            className="mb-1 flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <UserCircle className="size-4" strokeWidth={1.7} />
+            创业者档案
           </Link>
           <Link
             href="/settings/audit"

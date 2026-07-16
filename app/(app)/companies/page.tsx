@@ -37,13 +37,21 @@ export default async function CompaniesPage({
             </p>
           </div>
         </div>
-        <Link
-          href="/companies/new"
-          className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background"
-        >
-          <Plus className="h-4 w-4" />
-          添加
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/company-kb"
+            className="flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            公司知识库
+          </Link>
+          <Link
+            href="/companies/new"
+            className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background"
+          >
+            <Plus className="h-4 w-4" />
+            添加
+          </Link>
+        </div>
       </div>
 
       <Link

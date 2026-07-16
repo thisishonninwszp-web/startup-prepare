@@ -137,7 +137,7 @@ export function WeeklyRetrospectiveWorkspace({
 
   const completed = initialPeriod.status === "completed";
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
+    <main className="min-h-screen bg-background">
       <header className="border-b bg-background px-4 py-7 sm:px-8 lg:px-12">
         <div className="mx-auto max-w-6xl">
           <Link

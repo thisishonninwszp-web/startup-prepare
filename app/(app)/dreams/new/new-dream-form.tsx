@@ -48,7 +48,7 @@ export function NewDreamForm() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-foreground sm:px-8">
+    <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-8">
       <div className="mx-auto max-w-3xl">
         <Link
           href="/dreams"
@@ -64,7 +64,7 @@ export function NewDreamForm() {
           你想看见怎样的一天？
         </h1>
 
-        <div className="mt-10 space-y-8 rounded-[2rem] border border-border bg-muted/50 p-6 sm:p-8">
+        <div className="mt-10 space-y-8 rounded-lg border border-border bg-muted/50 p-6 sm:p-8">
           <label className="block text-sm">
             给这个未来一个暂定名字
             <input

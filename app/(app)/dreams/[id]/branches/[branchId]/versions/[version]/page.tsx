@@ -32,7 +32,7 @@ export default async function DreamBranchVersionPage({
   const { branch, version } = result;
   return (
     <>
-      <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-foreground sm:px-8 lg:px-12">
+      <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-8 lg:px-12">
         <div className="mx-auto max-w-4xl">
           <Link
             href={`/dreams/${dreamCase.id}`}

@@ -13,7 +13,7 @@ export default function AppleIcon() {
         style={{
           width: "100%",
           height: "100%",
-          background: "#18181b",
+          background: "#211f1c",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -25,7 +25,7 @@ export default function AppleIcon() {
               width: 84,
               height: 84,
               borderRadius: "50%",
-              border: "11px solid #fafafa",
+              border: "11px solid #faf8f4",
             }}
           />
           <div
@@ -35,7 +35,7 @@ export default function AppleIcon() {
               bottom: 2,
               width: 38,
               height: 11,
-              background: "#fafafa",
+              background: "#faf8f4",
               borderRadius: 6,
               transform: "rotate(45deg)",
             }}

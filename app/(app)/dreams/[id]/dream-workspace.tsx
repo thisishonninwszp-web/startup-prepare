@@ -149,7 +149,7 @@ export function DreamWorkspace({
 
   if (!activeBranch || !activeBranch.canvas) {
     return (
-      <main className="min-h-screen bg-[#f4f1ea] p-8 text-foreground">
+      <main className="min-h-screen bg-background p-8 text-foreground">
         <p>梦想分支尚未完成初始化，请确认011迁移已经执行。</p>
       </main>
     );
@@ -158,8 +158,8 @@ export function DreamWorkspace({
   const canvas = activeBranch.canvas;
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] text-foreground">
-      <header className="border-b border-border bg-[#f9f7f2] px-4 py-6 sm:px-8 lg:px-12">
+    <main className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border bg-card px-4 py-6 sm:px-8 lg:px-12">
         <div className="mx-auto max-w-[90rem]">
           <div className="flex items-center justify-between gap-4">
             <Link
@@ -235,7 +235,7 @@ export function DreamWorkspace({
 
       <div className="mx-auto grid max-w-[90rem] gap-6 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(20rem,.78fr)_minmax(0,1.22fr)] lg:px-12">
         <section className="space-y-5 lg:sticky lg:top-5 lg:self-start">
-          <div className="overflow-hidden rounded-[2rem] border border-border bg-foreground text-background">
+          <div className="overflow-hidden rounded-lg border border-border bg-foreground text-background">
             <div className="border-b border-white/10 px-6 py-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/80">
@@ -305,7 +305,7 @@ export function DreamWorkspace({
             </div>
           </div>
 
-          <details className="rounded-lg border border-border bg-[#f9f7f2] p-5">
+          <details className="rounded-lg border border-border bg-card p-5">
             <summary className="cursor-pointer text-sm font-medium">
               查看这条路径的访谈记录
             </summary>
@@ -333,7 +333,7 @@ export function DreamWorkspace({
             run={run}
           />
 
-          <section className="rounded-lg border border-border bg-[#f9f7f2] p-5">
+          <section className="rounded-lg border border-border bg-card p-5">
             <div className="flex items-center gap-2">
               <ScanSearch className="size-4" />
               <h2 className="text-sm font-medium">连接现状</h2>
@@ -542,7 +542,7 @@ function DreamCanvasEditor({
                               "rounded-lg border p-3 " +
                               (item.status === "pending"
                                 ? "border-status-validating/30 bg-status-validating/10"
-                                : "border-transparent bg-[#f4f1ea]")
+                                : "border-transparent bg-background")
                             }
                           >
                             <p className="text-sm leading-6">{item.text}</p>
@@ -717,7 +717,7 @@ function DreamCanvasEditor({
         return section.folded ? (
           <details
             key={section.title}
-            className="rounded-[2rem] border border-border bg-[#f9f7f2] p-5 sm:p-6"
+            className="rounded-lg border border-border bg-card p-5 sm:p-6"
           >
             <summary className="cursor-pointer font-serif text-xl">
               {section.title}
@@ -730,7 +730,7 @@ function DreamCanvasEditor({
         ) : (
           <section
             key={section.title}
-            className="rounded-[2rem] border border-border bg-[#f9f7f2] p-5 sm:p-6"
+            className="rounded-lg border border-border bg-card p-5 sm:p-6"
           >
             <div className="flex items-end justify-between gap-4">
               <h3 className="font-serif text-2xl">{section.title}</h3>
@@ -763,7 +763,7 @@ function BranchControls({
   ) => void;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-[#f9f7f2] p-5">
+    <section className="rounded-lg border border-border bg-card p-5">
       <div className="flex items-center gap-2">
         <GitBranch className="size-4" />
         <h2 className="text-sm font-medium">未来分支</h2>

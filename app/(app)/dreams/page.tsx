@@ -25,7 +25,7 @@ export default async function DreamsPage() {
   const cases = await listDreamCases(user!.id);
   return (
     <>
-      <main className="min-h-screen bg-[#f4f1ea] text-foreground">
+      <main className="min-h-screen bg-background text-foreground">
         <section className="relative overflow-hidden border-b border-border/70 px-4 py-12 sm:px-8 lg:px-12">
           <div className="absolute -right-24 -top-24 size-80 rounded-full border border-border/60" />
           <div className="absolute -right-8 -top-8 size-48 rounded-full border border-border/60" />
@@ -56,7 +56,7 @@ export default async function DreamsPage() {
 
         <section className="mx-auto max-w-6xl px-4 py-10 sm:px-8 lg:px-12">
           {cases.length === 0 ? (
-            <div className="rounded-[2rem] border border-dashed border-foreground/30/70 p-12 text-center">
+            <div className="rounded-lg border border-dashed border-foreground/30/70 p-12 text-center">
               <p className="font-serif text-xl">这里还没有未来画面。</p>
               <p className="mt-3 text-sm text-muted-foreground">
                 不必先证明现实可行，只要从“我想看见怎样的一天”开始。
@@ -68,7 +68,7 @@ export default async function DreamsPage() {
                 <div
                   key={item.id}
                   className={
-                    "group relative min-h-64 overflow-hidden rounded-[2rem] border border-border bg-muted/50 transition-transform hover:-translate-y-1 " +
+                    "group relative min-h-64 overflow-hidden rounded-lg border border-border bg-muted/50 transition-transform hover:-translate-y-1 " +
                     (index % 3 === 0 ? "md:col-span-2 md:min-h-72" : "")
                   }
                 >

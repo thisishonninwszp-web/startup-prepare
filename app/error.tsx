@@ -8,7 +8,7 @@ export default function GlobalPageError({
   reset: () => void;
 }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#f7f7f5] px-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
       <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
         Something broke
       </p>

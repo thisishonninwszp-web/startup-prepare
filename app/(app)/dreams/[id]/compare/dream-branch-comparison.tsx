@@ -40,7 +40,7 @@ export function DreamBranchComparison({
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-foreground sm:px-8 lg:px-12">
+    <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-8 lg:px-12">
       <div className="mx-auto max-w-[90rem]">
         <Link
           href={`/dreams/${dreamCase.id}`}
@@ -76,7 +76,7 @@ export function DreamBranchComparison({
           {dreamCase.branches.map((branch, index) => (
             <article
               key={branch.id}
-              className="rounded-[2rem] border border-border bg-[#f9f7f2] p-5"
+              className="rounded-lg border border-border bg-card p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -129,7 +129,7 @@ export function DreamBranchComparison({
         </div>
 
         {comparison ? (
-          <section className="mt-6 grid gap-5 rounded-[2rem] bg-foreground p-6 text-background md:grid-cols-2">
+          <section className="mt-6 grid gap-5 rounded-lg bg-foreground p-6 text-background md:grid-cols-2">
             <div>
               <h2 className="font-serif text-xl">共同地面</h2>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-background/80">

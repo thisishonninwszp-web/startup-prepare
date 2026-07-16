@@ -77,7 +77,7 @@ export default async function RetrospectivesPage() {
   return (
     <>
       <RetroNav />
-      <main className="min-h-screen bg-[#f7f7f5]">
+      <main className="min-h-screen bg-background">
         <section className="border-b bg-background px-4 py-10 sm:px-8 lg:px-12">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 md:flex-row md:items-end md:justify-between">
             <div>
@@ -124,28 +124,30 @@ export default async function RetrospectivesPage() {
             </section>
           )}
 
+          {/* 周复盘是成长轴的主节奏：判断对账放在最重的位置（宪法：周复盘为主）。 */}
           <div className="grid gap-4 lg:grid-cols-[1.25fr_.75fr]">
-            <Link
-              href={`/retrospectives/daily/${today}`}
-              className="group relative overflow-hidden rounded-lg border bg-foreground p-6 text-background"
-            >
+            <article className="relative overflow-hidden rounded-lg border bg-foreground p-6 text-background">
               <div className="absolute right-0 top-0 font-mono text-[7rem] leading-none opacity-[0.05]">
-                24
+                7
               </div>
               <div className="flex items-center gap-2 text-xs opacity-60">
-                <Clock3 className="size-4" />
-                TODAY · {today}
+                <CalendarDays className="size-4" />
+                WEEKLY · {week.start}—{week.end}
               </div>
               <h2 className="mt-8 text-2xl font-medium tracking-tight">
-                {todayReflection?.status === "confirmed"
-                  ? todayReflection.fact_observation
-                  : "今天实际交给了什么？"}
+                本周的判断，对过现实的账了吗？
               </h2>
-              <div className="mt-6 inline-flex items-center gap-2 text-sm">
-                {todayReflection ? "查看时间镜子" : "写下今天"}
-                <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-              </div>
-            </Link>
+              <p className="mt-2 text-sm opacity-70">
+                {recentDays.filter((day) => day.status === "confirmed").length}{" "}
+                天有确认时间镜子 · 预测对账 {duePredictions.length} 条到期
+              </p>
+              <RetroHomeActions
+                period={weeklyPeriod}
+                type="weekly"
+                start={week.start}
+                end={week.end}
+              />
+            </article>
 
             <section className="rounded-lg border bg-card p-5">
               <div className="flex items-center gap-2">
@@ -180,21 +182,30 @@ export default async function RetrospectivesPage() {
             </section>
           </div>
 
+          {/* 日/月是周复盘的次级视图：日喂素材，月修规则。 */}
           <section className="mt-10">
             <div className="flex items-center gap-2">
-              <CalendarDays className="size-4" />
-              <h2 className="text-sm font-medium">周期对账</h2>
+              <Clock3 className="size-4" />
+              <h2 className="text-sm font-medium">次级视图：每日素材与月度规则</h2>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <PeriodCard
-                eyebrow="Weekly"
-                title={`${week.start}—${week.end}`}
-                description={`${recentDays.filter((day) => day.status === "confirmed").length} 天有确认时间镜子`}
-                period={weeklyPeriod}
-                type="weekly"
-                start={week.start}
-                end={week.end}
-              />
+              <Link
+                href={`/retrospectives/daily/${today}`}
+                className="group rounded-lg border bg-card p-5 transition-colors hover:bg-muted/60"
+              >
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Daily
+                </div>
+                <h3 className="mt-2 text-lg font-medium">
+                  {todayReflection?.status === "confirmed"
+                    ? todayReflection.fact_observation
+                    : "今天实际交给了什么？"}
+                </h3>
+                <p className="mt-2 inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  {todayReflection ? "查看时间镜子" : "写下今天"}
+                  <ArrowRight className="size-3 transition-transform group-hover:translate-x-1" />
+                </p>
+              </Link>
               <PeriodCard
                 eyebrow="Monthly"
                 title={month.start.slice(0, 7)}
