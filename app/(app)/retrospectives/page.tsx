@@ -103,11 +103,11 @@ export default async function RetrospectivesPage() {
 
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:px-12">
           {duePredictions.length > 0 && (
-            <section className="mb-8 rounded-xl border border-orange-300 bg-orange-50 p-5">
-              <h2 className="text-sm font-medium text-orange-950">
+            <section className="mb-8 rounded-lg border border-status-validating/30 bg-status-validating/10 p-5">
+              <h2 className="text-sm font-medium text-status-validating">
                 周复盘预测到期
               </h2>
-              <p className="mt-1 text-xs text-orange-900/70">
+              <p className="mt-1 text-xs text-status-validating/70">
                 不解释过去，先标记命中还是没命中。
               </p>
               <RetroHomeActions duePredictions={duePredictions} />
@@ -115,7 +115,7 @@ export default async function RetrospectivesPage() {
           )}
 
           {openCommitments.length > 0 && (
-            <section className="mb-8 rounded-xl border bg-card p-5">
+            <section className="mb-8 rounded-lg border bg-card p-5">
               <h2 className="text-sm font-medium">上次复盘留下的现实行动</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 完成之后再记录，不用提前证明自己会做到。
@@ -127,7 +127,7 @@ export default async function RetrospectivesPage() {
           <div className="grid gap-4 lg:grid-cols-[1.25fr_.75fr]">
             <Link
               href={`/retrospectives/daily/${today}`}
-              className="group relative overflow-hidden rounded-xl border bg-foreground p-6 text-background"
+              className="group relative overflow-hidden rounded-lg border bg-foreground p-6 text-background"
             >
               <div className="absolute right-0 top-0 font-mono text-[7rem] leading-none opacity-[0.05]">
                 24
@@ -147,7 +147,7 @@ export default async function RetrospectivesPage() {
               </div>
             </Link>
 
-            <section className="rounded-xl border bg-card p-5">
+            <section className="rounded-lg border bg-card p-5">
               <div className="flex items-center gap-2">
                 <Scale className="size-4" />
                 <h2 className="text-sm font-medium">本周已确认时间</h2>
@@ -229,7 +229,7 @@ export default async function RetrospectivesPage() {
                 ))}
               </div>
             ) : (
-              <p className="mt-4 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+              <p className="mt-4 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                 完成第一份周复盘后，这里会出现一条可被现实修正的判断规则。
               </p>
             )}
@@ -263,7 +263,7 @@ function PeriodCard({
   end: string;
 }) {
   return (
-    <article className="rounded-xl border bg-card p-5">
+    <article className="rounded-lg border bg-card p-5">
       <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
         {eyebrow}
       </div>

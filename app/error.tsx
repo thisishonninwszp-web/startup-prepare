@@ -21,7 +21,7 @@ export default function GlobalPageError({
       <button
         type="button"
         onClick={reset}
-        className="mt-2 rounded-md bg-stone-950 px-4 py-2 text-sm text-stone-50"
+        className="mt-2 rounded-md bg-foreground px-4 py-2 text-sm text-background"
       >
         重试
       </button>

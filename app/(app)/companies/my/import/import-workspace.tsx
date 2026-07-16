@@ -236,7 +236,7 @@ export function ImportWorkspace({
           ["2", "确认脱敏", "供应商和直接身份信息被替换"],
           ["3", "私有上传", "只保存脱敏后的 gzip 分块"],
         ].map(([number, title, text]) => (
-          <div key={number} className="rounded-xl border bg-card p-4">
+          <div key={number} className="rounded-lg border bg-card p-4">
             <p className="text-xs text-muted-foreground">{number}</p>
             <p className="mt-1 text-sm font-medium">{title}</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p>
@@ -244,7 +244,7 @@ export function ImportWorkspace({
         ))}
       </div>
 
-      <section className="mt-6 rounded-xl border bg-card p-5">
+      <section className="mt-6 rounded-lg border bg-card p-5">
         <div className="flex items-center gap-2">
           <FileSpreadsheet className="h-4 w-4" />
           <h2 className="font-medium">选择 .xlsx</h2>
@@ -266,14 +266,14 @@ export function ImportWorkspace({
       </section>
 
       {phase === "parsing" ? (
-        <div className="mt-4 flex items-center gap-2 rounded-xl border p-4 text-sm">
+        <div className="mt-4 flex items-center gap-2 rounded-lg border p-4 text-sm">
           <Loader2 className="h-4 w-4 animate-spin" />
           正在浏览器本地解析，尚未上传任何内容…
         </div>
       ) : null}
 
       {parsed && file ? (
-        <section className="mt-6 rounded-xl border bg-card p-5">
+        <section className="mt-6 rounded-lg border bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="font-medium">确认本地解析结果</h2>
@@ -281,7 +281,7 @@ export function ImportWorkspace({
                 {file.name} · {parsed.sheets.length} 个可见工作表
               </p>
             </div>
-            <ShieldCheck className="h-5 w-5 text-emerald-700" />
+            <ShieldCheck className="h-5 w-5 text-status-mvp" />
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -315,7 +315,7 @@ export function ImportWorkspace({
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-xs text-amber-800">
+              <p className="mt-2 text-xs text-status-validating">
                 未自动发现候选信息。自动检测不能保证识别所有商业机密，请确认工作簿本身适合进入 AI 分析。
               </p>
             )}
@@ -376,7 +376,7 @@ export function ImportWorkspace({
       ) : null}
 
       {phase === "done" ? (
-        <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
+        <div className="mt-6 rounded-lg border border-status-mvp/30 bg-status-mvp/10 p-5 text-status-mvp">
           <div className="flex items-center gap-2 font-medium">
             <CheckCircle2 className="h-4 w-4" />
             v{completedVersion} 的脱敏分块已保存
@@ -390,7 +390,7 @@ export function ImportWorkspace({
       {error ? (
         <p
           role="alert"
-          className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+          className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
         >
           {error}。原始 Excel 未上传；你可以重新确认后重试。
         </p>

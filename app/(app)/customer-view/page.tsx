@@ -61,7 +61,7 @@ export default async function CustomerViewPage() {
           {candidates.length > 0 && (
             <Link
               href="/customer-view/inbox"
-              className="mt-6 flex items-center gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950"
+              className="mt-6 flex items-center gap-3 rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-sm text-status-validating"
             >
               <span className="min-w-0 flex-1">
                 有 {candidates.length} 条网络材料等待快速审核

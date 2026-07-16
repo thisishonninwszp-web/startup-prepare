@@ -240,9 +240,9 @@ export default async function IdeaReportPage({
                         <span
                           className={
                             v.has_pain === "yes"
-                              ? "text-green-600"
+                              ? "text-status-mvp"
                               : v.has_pain === "no"
-                              ? "text-red-600"
+                              ? "text-destructive"
                               : "text-muted-foreground"
                           }
                         >
@@ -254,9 +254,9 @@ export default async function IdeaReportPage({
                         <span
                           className={
                             v.will_pay === "yes"
-                              ? "text-green-600"
+                              ? "text-status-mvp"
                               : v.will_pay === "no"
-                              ? "text-red-600"
+                              ? "text-destructive"
                               : "text-muted-foreground"
                           }
                         >
@@ -316,9 +316,9 @@ export default async function IdeaReportPage({
                     <span
                       className={
                         b.current_posterior < 0.3
-                          ? "text-red-600"
+                          ? "text-destructive"
                           : b.current_posterior > 0.7
-                          ? "text-green-600"
+                          ? "text-status-mvp"
                           : ""
                       }
                     >
@@ -365,9 +365,9 @@ export default async function IdeaReportPage({
                   <span
                     className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                       p.outcome === "hit"
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-status-mvp/15 text-status-mvp"
                         : p.outcome === "miss"
-                        ? "bg-red-100 text-red-700"
+                        ? "bg-destructive/15 text-destructive"
                         : "bg-muted text-muted-foreground"
                     }`}
                   >
@@ -392,7 +392,7 @@ export default async function IdeaReportPage({
 
         {/* ⑦ 决策 */}
         {decision && (
-          <section className="mb-8 rounded-xl border-2 p-5">
+          <section className="mb-8 rounded-lg border-2 p-5">
             <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               决策
             </h2>

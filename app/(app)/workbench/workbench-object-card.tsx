@@ -28,8 +28,8 @@ export function WorkbenchObjectCard({
     <Link
       href={`/workbench/${object.object_type}/${object.object_id}`}
       className={
-        "block rounded-xl border bg-card p-4 transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md " +
-        (due ? "border-orange-300 bg-orange-50" : "")
+        "block rounded-lg border bg-card p-4 transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md " +
+        (due ? "border-status-validating/30 bg-status-validating/10" : "")
       }
     >
       <div className="flex items-start justify-between gap-3">

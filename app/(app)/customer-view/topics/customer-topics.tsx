@@ -118,7 +118,7 @@ export function CustomerTopics({ initial }: { initial: Topic[] }) {
             </div>
           </div>
           {topic.last_error && (
-            <p className="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">
+            <p className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
               上次错误：{topic.last_error}
             </p>
           )}

@@ -177,29 +177,29 @@ export function ConceptWorkspace({
 
   return (
     <div className="space-y-8">
-      <header className="border-b border-zinc-200 pb-6">
+      <header className="border-b border-border pb-6">
         <Link
           href={`/ideas/${detail.idea.id}`}
-          className="text-xs text-zinc-500 hover:text-zinc-900"
+          className="text-xs text-muted-foreground hover:text-foreground"
         >
           ← 返回想法
         </Link>
-        <p className="mt-6 text-xs uppercase tracking-[0.22em] text-zinc-500">
+        <p className="mt-6 text-xs uppercase tracking-[0.22em] text-muted-foreground">
           Value Blueprint
         </p>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-950">
+        <h1 className="mt-2 text-2xl font-semibold text-foreground">
           {detail.idea.title}
         </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           把顾客证据、梦想愿景与公司事实收敛为一个可用于取舍的价值设计图。这里不评价想法，只暴露证据缺口。
         </p>
       </header>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_18rem]">
-        <div className="space-y-4 rounded-xl border border-zinc-200 p-5">
+        <div className="space-y-4 rounded-lg border border-border p-5">
           <div>
             <h2 className="font-medium">1. 选择来源</h2>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               新来源只进入下一次草稿和新版本。
             </p>
           </div>
@@ -257,13 +257,13 @@ export function ConceptWorkspace({
             />
           </div>
           <label className="block space-y-1 text-sm">
-            <span className="text-zinc-600">故事类型</span>
+            <span className="text-muted-foreground">故事类型</span>
             <select
               value={storyType}
               onChange={(event) =>
                 setStoryType(event.target.value as ConceptStoryType)
               }
-              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2"
+              className="w-full rounded-md border border-border bg-white px-3 py-2"
             >
               {Object.entries(STORY_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -280,7 +280,7 @@ export function ConceptWorkspace({
           </Button>
         </div>
 
-        <aside className="rounded-xl bg-zinc-950 p-5 text-zinc-100">
+        <aside className="rounded-lg bg-foreground p-5 text-background">
           <h2 className="text-sm font-medium">VOSS 证据状态</h2>
           <div className="mt-4 space-y-4">
             {gates.map((gate) => (
@@ -288,7 +288,7 @@ export function ConceptWorkspace({
                 <p className="text-sm">
                   <span
                     className={
-                      gate.met ? "text-emerald-400" : "text-amber-300"
+                      gate.met ? "text-status-mvp/80" : "text-status-validating/80"
                     }
                   >
                     {gate.met ? "已具备" : "缺口"}
@@ -296,7 +296,7 @@ export function ConceptWorkspace({
                   {" · "}
                   {gate.label}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-zinc-400">
+                <p className="mt-1 text-xs leading-5 text-muted-foreground/80">
                   {gate.note}
                 </p>
               </div>
@@ -305,9 +305,9 @@ export function ConceptWorkspace({
         </aside>
       </section>
 
-      <section className="rounded-xl border border-zinc-200 p-5">
+      <section className="rounded-lg border border-border p-5">
         <h2 className="font-medium">2. 公司事实</h2>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-muted-foreground">
           只写可核对的事实。AI不能替你发明独特性。
         </p>
         <div className="mt-4 flex gap-2">
@@ -315,7 +315,7 @@ export function ConceptWorkspace({
             value={fact}
             onChange={(event) => setFact(event.target.value)}
             placeholder="例如：我们已连续访谈这一类顾客12个月"
-            className="min-w-0 flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-md border border-border px-3 py-2 text-sm"
           />
           <Button
             variant="outline"
@@ -335,11 +335,11 @@ export function ConceptWorkspace({
           {detail.facts.map((item) => (
             <div
               key={item.id}
-              className="flex items-start justify-between gap-4 rounded-md bg-zinc-50 px-3 py-2 text-sm"
+              className="flex items-start justify-between gap-4 rounded-md bg-muted/50 px-3 py-2 text-sm"
             >
               <span>{item.fact}</span>
               <button
-                className="shrink-0 text-xs text-zinc-500 hover:text-zinc-900"
+                className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() =>
                   run(
                     () => archiveCompanyFact(detail.idea.id, item.id),
@@ -354,11 +354,11 @@ export function ConceptWorkspace({
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-200 p-5">
+      <section className="rounded-lg border border-border p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-medium">3. 生成价值设计草稿</h2>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               AI只能使用已选择并验证归属的来源。
             </p>
           </div>
@@ -377,8 +377,8 @@ export function ConceptWorkspace({
 
         {draft ? (
           <div className="mt-6 space-y-6">
-            <div className="border-l-2 border-zinc-950 pl-4">
-              <p className="text-xs text-zinc-500">Central Question</p>
+            <div className="border-l-2 border-foreground pl-4">
+              <p className="text-xs text-muted-foreground">Central Question</p>
               <p className="mt-1 font-medium">
                 {draft.central_question.question}
               </p>
@@ -386,11 +386,11 @@ export function ConceptWorkspace({
             {draft.insight_story ? (
               <div>
                 <h3 className="text-sm font-medium">顾客矛盾与遗漏</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-700">
+                <p className="mt-2 text-sm leading-6 text-foreground">
                   想要「{draft.insight_story.conflict.desire_a}」，但又想「
                   {draft.insight_story.conflict.desire_b}」
                 </p>
-                <p className="mt-2 text-sm leading-6 text-zinc-700">
+                <p className="mt-2 text-sm leading-6 text-foreground">
                   现有方案遗漏：{draft.insight_story.overlooked_gap}
                 </p>
                 <Competitors story={draft.insight_story} />
@@ -399,7 +399,7 @@ export function ConceptWorkspace({
             {draft.vision_story ? (
               <div>
                 <h3 className="text-sm font-medium">愿景变化</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-700">
+                <p className="mt-2 text-sm leading-6 text-foreground">
                   {draft.vision_story.current_world} →{" "}
                   {draft.vision_story.future_world}
                 </p>
@@ -413,7 +413,7 @@ export function ConceptWorkspace({
                 {draft.benefit_chain.map((chain) => (
                   <p
                     key={chain.fact_id}
-                    className="rounded-md bg-zinc-50 p-3 text-sm leading-6"
+                    className="rounded-md bg-muted/50 p-3 text-sm leading-6"
                   >
                     {chain.fact} → {chain.general_benefit} →{" "}
                     {chain.customer_benefit}
@@ -433,8 +433,8 @@ export function ConceptWorkspace({
                     }}
                     className={`rounded-lg border p-4 text-left ${
                       selectedIndex === index
-                        ? "border-zinc-950 bg-zinc-950 text-white"
-                        : "border-zinc-200 hover:border-zinc-400"
+                        ? "border-foreground bg-foreground text-primary-foreground"
+                        : "border-border hover:border-foreground/30"
                     }`}
                   >
                     <span className="text-xs opacity-60">
@@ -455,13 +455,13 @@ export function ConceptWorkspace({
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1 text-sm">
-                <span className="text-zinc-600">这句话让你的体温升高吗？</span>
+                <span className="text-muted-foreground">这句话让你的体温升高吗？</span>
                 <select
                   value={resonance}
                   onChange={(event) =>
                     setResonance(event.target.value as "" | "yes" | "no")
                   }
-                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2"
+                  className="w-full rounded-md border border-border bg-white px-3 py-2"
                 >
                   <option value="">未记录</option>
                   <option value="yes">是</option>
@@ -469,11 +469,11 @@ export function ConceptWorkspace({
                 </select>
               </label>
               <label className="space-y-1 text-sm">
-                <span className="text-zinc-600">与上一版相比为何改变</span>
+                <span className="text-muted-foreground">与上一版相比为何改变</span>
                 <input
                   value={changeReason}
                   onChange={(event) => setChangeReason(event.target.value)}
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2"
+                  className="w-full rounded-md border border-border px-3 py-2"
                 />
               </label>
             </div>
@@ -497,7 +497,7 @@ export function ConceptWorkspace({
             </Button>
           </div>
         ) : (
-          <p className="mt-6 text-sm text-zinc-500">
+          <p className="mt-6 text-sm text-muted-foreground">
             先保存来源，再生成第一份草稿。
           </p>
         )}
@@ -510,7 +510,7 @@ export function ConceptWorkspace({
       />
 
       {message ? (
-        <p className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p className="rounded-md bg-status-mvp/10 px-4 py-3 text-sm text-status-mvp">
           {message}
         </p>
       ) : null}
@@ -534,11 +534,11 @@ function SourceSelect({
 }) {
   return (
     <label className="block space-y-1 text-sm">
-      <span className="text-zinc-600">{label}</span>
+      <span className="text-muted-foreground">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2"
+        className="w-full rounded-md border border-border bg-white px-3 py-2"
       >
         <option value="">{optional ? "不引用" : "请选择"}</option>
         {options.map((option) => (
@@ -565,8 +565,8 @@ function Competitors({
           ["品类替代", story.competitors.category],
         ] as const
       ).map(([label, items]) => (
-        <div key={label} className="rounded-md border border-zinc-200 p-3">
-          <p className="text-xs font-medium text-zinc-500">{label}</p>
+        <div key={label} className="rounded-md border border-border p-3">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
           {items.length ? (
             items.map((item) => (
               <p key={`${item.name}-${item.weakness}`} className="mt-2 text-xs">
@@ -574,7 +574,7 @@ function Competitors({
               </p>
             ))
           ) : (
-            <p className="mt-2 text-xs text-zinc-400">证据中未知</p>
+            <p className="mt-2 text-xs text-muted-foreground/80">证据中未知</p>
           )}
         </div>
       ))}
@@ -597,7 +597,7 @@ function CandidateEditor({
     ["give_up", "主动放弃什么"],
   ];
   return (
-    <div className="grid gap-3 rounded-lg bg-zinc-50 p-4 sm:grid-cols-2">
+    <div className="grid gap-3 rounded-lg bg-muted/50 p-4 sm:grid-cols-2">
       {fields.map(([key, label]) => (
         <label
           key={key}
@@ -605,14 +605,14 @@ function CandidateEditor({
             key === "one_line" ? "sm:col-span-2" : ""
           }`}
         >
-          <span className="text-zinc-600">{label}</span>
+          <span className="text-muted-foreground">{label}</span>
           <textarea
             value={candidate[key] as string}
             onChange={(event) =>
               onChange({ ...candidate, [key]: event.target.value })
             }
             rows={key === "one_line" ? 2 : 3}
-            className="w-full resize-y rounded-md border border-zinc-300 bg-white px-3 py-2"
+            className="w-full resize-y rounded-md border border-border bg-white px-3 py-2"
           />
         </label>
       ))}
@@ -643,11 +643,11 @@ function VersionHistory({
       {detail.versions.map((version) => (
         <article
           key={version.id}
-          className="rounded-xl border border-zinc-200 p-5"
+          className="rounded-lg border border-border p-5"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 v{version.version_no} ·{" "}
                 {version.status === "confirmed" ? "已确认" : "临时"}
               </p>
@@ -691,27 +691,27 @@ function VersionHistory({
 
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="text-zinc-500">服务谁</dt>
+              <dt className="text-muted-foreground">服务谁</dt>
               <dd className="mt-1">{version.selected_concept.serves_whom}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">创造的变化</dt>
+              <dt className="text-muted-foreground">创造的变化</dt>
               <dd className="mt-1">{version.selected_concept.change}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">凭什么不同</dt>
+              <dt className="text-muted-foreground">凭什么不同</dt>
               <dd className="mt-1">{version.selected_concept.difference}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">主动放弃</dt>
+              <dt className="text-muted-foreground">主动放弃</dt>
               <dd className="mt-1">{version.selected_concept.give_up}</dd>
             </div>
           </dl>
 
           {version.evidence_gaps.length ? (
-            <div className="mt-4 rounded-md bg-amber-50 p-3">
-              <p className="text-xs font-medium text-amber-900">证据缺口</p>
-              <ul className="mt-2 space-y-1 text-xs text-amber-800">
+            <div className="mt-4 rounded-md bg-status-validating/10 p-3">
+              <p className="text-xs font-medium text-status-validating">证据缺口</p>
+              <ul className="mt-2 space-y-1 text-xs text-status-validating">
                 {version.evidence_gaps.map((gap) => (
                   <li key={gap}>— {gap}</li>
                 ))}
@@ -720,8 +720,8 @@ function VersionHistory({
           ) : null}
 
           {version.delta ? (
-            <details className="mt-4 rounded-md border border-zinc-200 p-3">
-              <summary className="cursor-pointer text-xs font-medium text-zinc-700">
+            <details className="mt-4 rounded-md border border-border p-3">
+              <summary className="cursor-pointer text-xs font-medium text-foreground">
                 与上一版的差异
               </summary>
               <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
@@ -734,7 +734,7 @@ function VersionHistory({
                   ["新增缺口", version.delta.new_gaps],
                 ].map(([label, items]) => (
                   <div key={label as string}>
-                    <p className="font-medium text-zinc-500">
+                    <p className="font-medium text-muted-foreground">
                       {label as string}
                     </p>
                     {(items as string[]).length ? (
@@ -744,7 +744,7 @@ function VersionHistory({
                         </p>
                       ))
                     ) : (
-                      <p className="mt-1 text-zinc-400">没有记录</p>
+                      <p className="mt-1 text-muted-foreground/80">没有记录</p>
                     )}
                   </div>
                 ))}
@@ -752,21 +752,21 @@ function VersionHistory({
             </details>
           ) : null}
 
-          <div className="mt-5 border-t border-zinc-200 pt-4">
+          <div className="mt-5 border-t border-border pt-4">
             <p className="text-sm font-medium">真人复述</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
               <input
                 value={repeatedWords}
                 onChange={(event) => setRepeatedWords(event.target.value)}
                 placeholder="对方复述的原话"
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                className="rounded-md border border-border px-3 py-2 text-sm"
               />
               <select
                 value={capturedCore}
                 onChange={(event) =>
                   setCapturedCore(event.target.value as "yes" | "no")
                 }
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
+                className="rounded-md border border-border bg-white px-3 py-2 text-sm"
               >
                 <option value="yes">抓住核心</option>
                 <option value="no">没有抓住</option>
@@ -796,15 +796,15 @@ function VersionHistory({
           {version.derivatives.map((derivative) => (
             <div
               key={derivative.id as string}
-              className="mt-5 border-t border-zinc-200 pt-4"
+              className="mt-5 border-t border-border pt-4"
             >
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 派生版本 v{derivative.version_no as number}
               </p>
               <h4 className="mt-2 text-lg font-medium">
                 {derivative.landing_page.headline}
               </h4>
-              <p className="mt-1 text-sm text-zinc-600">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {derivative.landing_page.subheadline}
               </p>
               <ul className="mt-3 space-y-1 text-sm">
@@ -817,9 +817,9 @@ function VersionHistory({
               </p>
               <div className="mt-4 space-y-2">
                 {derivative.action_values.values.map((value) => (
-                  <div key={value.statement} className="rounded-md bg-zinc-50 p-3">
+                  <div key={value.statement} className="rounded-md bg-muted/50 p-3">
                     <p className="text-sm font-medium">{value.statement}</p>
-                    <p className="mt-1 text-xs text-zinc-600">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       代价：{value.cost} · 反例：{value.counterexample}
                     </p>
                   </div>

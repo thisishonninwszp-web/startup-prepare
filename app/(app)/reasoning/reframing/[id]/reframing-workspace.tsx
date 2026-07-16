@@ -21,15 +21,15 @@ import type {
 } from "@/lib/domains/concepts/types";
 
 const GROUP_COLORS: Record<string, string> = {
-  "时间维度": "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300",
-  "空间维度": "bg-violet-50 border-violet-200 text-violet-700 dark:bg-violet-950/30 dark:border-violet-800 dark:text-violet-300",
-  "人物维度": "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300",
-  "意义维度": "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300",
-  "假设维度": "bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/30 dark:border-rose-800 dark:text-rose-300",
-  "系统维度": "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300",
-  "情绪与自我": "bg-pink-50 border-pink-200 text-pink-700 dark:bg-pink-950/30 dark:border-pink-800 dark:text-pink-300",
-  "叙事与模式": "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/30 dark:border-indigo-800 dark:text-indigo-300",
-  "行动与系统": "bg-teal-50 border-teal-200 text-teal-700 dark:bg-teal-950/30 dark:border-teal-800 dark:text-teal-300",
+  "时间维度": "bg-status-hypothesis/10 border-status-hypothesis/30 text-status-hypothesis",
+  "空间维度": "bg-verdict-learned/10 border-verdict-learned/30 text-verdict-learned",
+  "人物维度": "bg-status-validating/10 border-status-validating/30 text-status-validating",
+  "意义维度": "bg-status-mvp/10 border-status-mvp/30 text-status-mvp",
+  "假设维度": "bg-destructive/10 border-destructive/30 text-destructive",
+  "系统维度": "bg-status-validating/10 border-status-validating/30 text-status-validating",
+  "情绪与自我": "bg-verdict-learned/10 border-verdict-learned/30 text-verdict-learned",
+  "叙事与模式": "bg-status-hypothesis/10 border-status-hypothesis/30 text-status-hypothesis",
+  "行动与系统": "bg-status-hypothesis/10 border-status-hypothesis/30 text-status-hypothesis",
 };
 
 const FRAME_TYPE_LABELS: Record<string, string> = {
@@ -218,7 +218,7 @@ export function ReframingWorkspace({
       </div>
 
       {centralQuestionAvailable && (
-      <section className="mt-10 rounded-xl border bg-card p-5 sm:p-6">
+      <section className="mt-10 rounded-lg border bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">

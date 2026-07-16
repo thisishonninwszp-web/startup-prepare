@@ -224,7 +224,7 @@ export function RealityWorkspace({
             </button>
           </div>
           {archiveOpen && (
-            <div className="mt-4 flex items-center justify-between gap-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            <div className="mt-4 flex items-center justify-between gap-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
               <span>归档后不再出现在课题列表中，历史版本仍保留。</span>
               <button
                 type="button"

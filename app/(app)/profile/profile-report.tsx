@@ -12,10 +12,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  interest: "bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800",
-  value: "bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800",
-  cognitive_style: "bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800",
-  social_orientation: "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800",
+  interest: "bg-status-hypothesis/10 border-status-hypothesis/30",
+  value: "bg-verdict-learned/10 border-verdict-learned/30",
+  cognitive_style: "bg-status-validating/10 border-status-validating/30",
+  social_orientation: "bg-status-mvp/10 border-status-mvp/30",
 };
 
 const CONFIDENCE_LABELS: Record<string, string> = {
@@ -24,8 +24,8 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   low: "低置信",
 };
 const CONFIDENCE_COLORS: Record<string, string> = {
-  high: "text-green-700 dark:text-green-400",
-  medium: "text-yellow-700 dark:text-yellow-400",
+  high: "text-status-mvp",
+  medium: "text-status-validating",
   low: "text-muted-foreground",
 };
 

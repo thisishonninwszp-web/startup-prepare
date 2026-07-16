@@ -117,7 +117,7 @@ export function RecurringSignals() {
                       {s.count} 次
                     </span>
                     {s.painCount > 0 && (
-                      <span className="rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-[10px] text-orange-700">
+                      <span className="rounded-full border border-status-validating/30 bg-status-validating/10 px-2 py-0.5 text-[10px] text-status-validating">
                         {s.painCount} 条带真痛信号
                       </span>
                     )}
@@ -126,7 +126,7 @@ export function RecurringSignals() {
                   {built ? (
                     <Link
                       href={`/ideas/${built}`}
-                      className="shrink-0 text-xs text-green-600 underline-offset-4 hover:underline"
+                      className="shrink-0 text-xs text-status-mvp underline-offset-4 hover:underline"
                     >
                       已建为想法 ✓ 打开 →
                     </Link>
@@ -142,7 +142,7 @@ export function RecurringSignals() {
                         </button>
                       )}
                       {promoted[s.repId] && (
-                        <span className="text-xs text-green-600">已提升 ✓</span>
+                        <span className="text-xs text-status-mvp">已提升 ✓</span>
                       )}
                       <button
                         type="button"

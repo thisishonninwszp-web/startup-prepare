@@ -13,7 +13,7 @@ export function ObjectSummary({
   const active = detail.object.current_closure;
   const due = Boolean(active && active.due_on <= today);
   return (
-    <section className="rounded-xl border bg-card p-5">
+    <section className="rounded-lg border bg-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -73,9 +73,9 @@ export function ObjectSummary({
       </div>
 
       {active && due && (
-        <div className="mt-5 rounded-lg border border-orange-300 bg-orange-50 p-4">
-          <h2 className="text-sm font-medium text-orange-950">结果学习</h2>
-          <p className="mt-1 text-xs text-orange-800">
+        <div className="mt-5 rounded-lg border border-status-validating/30 bg-status-validating/10 p-4">
+          <h2 className="text-sm font-medium text-status-validating">结果学习</h2>
+          <p className="mt-1 text-xs text-status-validating">
             这一步已经到期。先对账，再决定是否创建新的收束。
           </p>
           <ClosureResultForm
@@ -109,7 +109,7 @@ export function ObjectSummary({
 export function ClosureList({ closures }: { closures: DecisionClosure[] }) {
   if (closures.length === 0) return null;
   return (
-    <section className="rounded-xl border bg-card p-5">
+    <section className="rounded-lg border bg-card p-5">
       <h2 className="text-lg font-medium">统一收束历史</h2>
       <ul className="mt-4 space-y-2">
         {closures.map((closure) => (

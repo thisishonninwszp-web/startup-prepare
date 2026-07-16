@@ -40,8 +40,8 @@ export default async function WorkbenchPage() {
         </header>
 
         {dueObjects.length > 0 && (
-          <section className="mb-8 rounded-xl border border-orange-300 bg-orange-50 p-5">
-            <h2 className="text-sm font-medium text-orange-950">
+          <section className="mb-8 rounded-lg border border-status-validating/30 bg-status-validating/10 p-5">
+            <h2 className="text-sm font-medium text-status-validating">
               到期需要对账
             </h2>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -57,7 +57,7 @@ export default async function WorkbenchPage() {
         )}
 
         {stuckObjects.length > 0 && (
-          <section className="mb-8 rounded-xl border bg-card p-5">
+          <section className="mb-8 rounded-lg border bg-card p-5">
             <h2 className="text-sm font-medium">可能重复卡住</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               {stuckObjects.map((object) => {
@@ -93,7 +93,7 @@ export default async function WorkbenchPage() {
             </Link>
           </div>
           {objects.length === 0 ? (
-            <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">
+            <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
               还没有可聚合的决策对象。先去捕捉、创建想法或建立现状课题。
             </div>
           ) : (

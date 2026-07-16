@@ -44,7 +44,7 @@ export default async function CouncilPage() {
         </div>
 
         {sessions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
             还没有顾问团会话。开始一场，邀请几位顾问就可以聊了。
           </div>
         ) : (
@@ -53,7 +53,7 @@ export default async function CouncilPage() {
               <Link
                 key={session.id}
                 href={`/council/${session.id}`}
-                className="group flex items-center justify-between gap-3 rounded-xl border bg-card p-4 hover:bg-muted"
+                className="group flex items-center justify-between gap-3 rounded-lg border bg-card p-4 hover:bg-muted"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">

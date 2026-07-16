@@ -68,7 +68,7 @@ export function CouncilChat({
       </div>
 
       {/* Disclaimer */}
-      <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-300">
+      <div className="mb-4 rounded-lg border border-status-validating/30 bg-status-validating/10 px-3 py-2 text-xs text-status-validating">
         以下发言是 AI 基于公开已知方法论的推演，不是这些人物的真实言论。
       </div>
 
@@ -84,7 +84,7 @@ export function CouncilChat({
             if (message.role === "user") {
               return (
                 <div key={message.id} className="flex justify-end">
-                  <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-foreground px-4 py-2.5 text-sm text-background">
+                  <div className="max-w-[80%] rounded-lg rounded-tr-sm bg-foreground px-4 py-2.5 text-sm text-background">
                     {message.content}
                   </div>
                 </div>
@@ -93,7 +93,7 @@ export function CouncilChat({
             const persona = message.persona_key ? personaByKey[message.persona_key] : null;
             return (
               <div key={message.id} className="flex justify-start">
-                <div className="max-w-[85%] space-y-1.5 rounded-2xl rounded-tl-sm border bg-card px-4 py-2.5">
+                <div className="max-w-[85%] space-y-1.5 rounded-lg rounded-tl-sm border bg-card px-4 py-2.5">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-xs font-semibold">
                       {persona?.display_name ?? message.persona_key}
@@ -144,7 +144,7 @@ export function CouncilChat({
       </div>
 
       {/* Composer */}
-      <div className="sticky bottom-4 mt-6 rounded-xl border bg-card p-3 shadow-sm">
+      <div className="sticky bottom-4 mt-6 rounded-lg border bg-card p-3 shadow-sm">
         {error && (
           <p className="mb-2 text-sm text-destructive" role="alert">
             {error}

@@ -7,9 +7,9 @@ import { COMPANY_TYPES, type CompanyType } from "@/app/(app)/knowledge/types";
 export const dynamic = "force-dynamic";
 
 const TYPE_COLORS: Record<CompanyType, string> = {
-  prospect: "bg-blue-50 text-blue-700 border-blue-200",
-  customer: "bg-green-50 text-green-700 border-green-200",
-  both: "bg-purple-50 text-purple-700 border-purple-200",
+  prospect: "bg-status-hypothesis/10 text-status-hypothesis border-status-hypothesis/30",
+  customer: "bg-status-mvp/10 text-status-mvp border-status-mvp/30",
+  both: "bg-verdict-learned/10 text-verdict-learned border-verdict-learned/30",
 };
 
 export default async function CompaniesPage({
@@ -48,7 +48,7 @@ export default async function CompaniesPage({
 
       <Link
         href="/companies/my"
-        className="mb-6 block rounded-xl border border-zinc-300 bg-zinc-950 p-5 text-zinc-50 transition-colors hover:bg-zinc-900"
+        className="mb-6 block rounded-lg border border-border bg-foreground p-5 text-background transition-colors hover:bg-foreground"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -56,11 +56,11 @@ export default async function CompaniesPage({
               <LockKeyhole className="h-4 w-4" />
               <p className="font-medium">我的公司 · 内部档案</p>
             </div>
-            <p className="mt-2 text-sm text-zinc-300">
+            <p className="mt-2 text-sm text-background/80">
               在浏览器本地读取并脱敏经营计划，与下方外部公司档案分开保存。
             </p>
           </div>
-          <span className="shrink-0 text-sm text-zinc-400">进入 →</span>
+          <span className="shrink-0 text-sm text-muted-foreground/80">进入 →</span>
         </div>
       </Link>
 
@@ -92,7 +92,7 @@ export default async function CompaniesPage({
       </div>
 
       {companies.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-10 text-center">
+        <div className="rounded-lg border border-dashed p-10 text-center">
           <p className="text-sm text-muted-foreground">
             {activeType ? `暂无${COMPANY_TYPES.find((t) => t.key === activeType)?.label}档案` : "还没有公司档案"}
           </p>
@@ -115,7 +115,7 @@ export default async function CompaniesPage({
               <Link
                 key={company.id}
                 href={`/companies/${company.id}`}
-                className="block rounded-xl border bg-card p-4 hover:bg-muted/30 transition-colors"
+                className="block rounded-lg border bg-card p-4 hover:bg-muted/30 transition-colors"
               >
                 <div className="flex items-center justify-between gap-4">
                   <p className="font-medium">{company.name}</p>

@@ -186,7 +186,7 @@ function InsightsBlock({ insights }: { insights: Insights }) {
         </p>
 
         {armchairKills > 0 && (
-          <div className="rounded-md border border-orange-300 bg-orange-50 p-3 text-orange-800">
+          <div className="rounded-md border border-status-validating/30 bg-status-validating/10 p-3 text-status-validating">
             其中{" "}
             <span className="font-mono tabular-nums">{armchairKills}</span>{" "}
             个，你没有接触任何真人就否决了。分析跨不过同理心鸿沟。

@@ -83,7 +83,7 @@ function DimCard({
   const hasFilled = value.trim().length > 0;
   const hasChallenged = !!challenge;
   const borderClass = hasChallenged
-    ? "border-l-2 border-l-blue-400 border-t border-r border-b"
+    ? "border-l-2 border-l-status-hypothesis border-t border-r border-b"
     : "border";
 
   return (
@@ -93,10 +93,10 @@ function DimCard({
           <span className="text-base">{meta.emoji}</span>
           <h3 className="text-sm font-medium">{meta.label}</h3>
           {hasFilled && !hasChallenged && (
-            <span className="h-1.5 w-1.5 rounded-full bg-orange-400" title="已填写，未挑战" />
+            <span className="h-1.5 w-1.5 rounded-full bg-status-validating/40" title="已填写，未挑战" />
           )}
           {hasChallenged && (
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400" title="已获得 AI 挑战" />
+            <span className="h-1.5 w-1.5 rounded-full bg-status-hypothesis/40" title="已获得 AI 挑战" />
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -142,7 +142,7 @@ function DimCard({
           <button
             type="button"
             onClick={() => setShowChallenge((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400"
+            className="flex items-center gap-1.5 text-xs font-medium text-status-hypothesis"
           >
             <span>{showChallenge ? "▾" : "▸"}</span>
             AI 挑战
@@ -156,7 +156,7 @@ function DimCard({
             </span>
           </button>
           {showChallenge && (
-            <div className="rounded-md bg-blue-50 px-3 py-2 text-sm dark:bg-blue-950/30">
+            <div className="rounded-md bg-status-hypothesis/10 px-3 py-2 text-sm">
               <p className="whitespace-pre-wrap leading-relaxed">{challenge.feedback}</p>
             </div>
           )}

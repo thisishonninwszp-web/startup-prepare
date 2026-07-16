@@ -7,10 +7,10 @@ import { CARD_TYPES, type CardType } from "./types";
 export const dynamic = "force-dynamic";
 
 const CARD_TYPE_COLORS: Record<CardType, string> = {
-  market: "bg-blue-50 text-blue-700 border-blue-200",
-  customer: "bg-purple-50 text-purple-700 border-purple-200",
-  judgment: "bg-amber-50 text-amber-700 border-amber-200",
-  domain: "bg-green-50 text-green-700 border-green-200",
+  market: "bg-status-hypothesis/10 text-status-hypothesis border-status-hypothesis/30",
+  customer: "bg-verdict-learned/10 text-verdict-learned border-verdict-learned/30",
+  judgment: "bg-status-validating/10 text-status-validating border-status-validating/30",
+  domain: "bg-status-mvp/10 text-status-mvp border-status-mvp/30",
 };
 
 function fmtDate(iso: string): string {
@@ -91,7 +91,7 @@ export default async function KnowledgePage({
       </div>
 
       {cards.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-10 text-center">
+        <div className="rounded-lg border border-dashed p-10 text-center">
           <p className="text-sm text-muted-foreground">
             {activeType ? `暂无${CARD_TYPES.find((t) => t.key === activeType)?.label}类知识卡片` : "还没有知识卡片"}
           </p>
@@ -113,7 +113,7 @@ export default async function KnowledgePage({
             return (
               <div
                 key={card.id}
-                className="rounded-xl border bg-card p-4"
+                className="rounded-lg border bg-card p-4"
               >
                 <div className="flex items-start justify-between gap-4">
                   <p className="flex-1 text-sm leading-relaxed">{card.content}</p>

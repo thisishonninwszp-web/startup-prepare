@@ -31,13 +31,13 @@ import {
 type Reflection = Awaited<ReturnType<typeof getDailyReflection>>;
 
 const CATEGORY_CLASS: Record<string, string> = {
-  business: "border-zinc-800 bg-zinc-900 text-white",
-  life: "border-stone-300 bg-stone-100 text-stone-900",
-  relationship: "border-amber-300 bg-amber-100 text-amber-950",
-  growth: "border-blue-300 bg-blue-100 text-blue-950",
-  recovery: "border-emerald-300 bg-emerald-100 text-emerald-950",
-  gray: "border-orange-300 bg-orange-100 text-orange-950",
-  unknown: "border-dashed border-slate-200 bg-slate-50 text-slate-400",
+  business: "border-foreground/30 bg-foreground text-primary-foreground",
+  life: "border-border bg-muted text-foreground",
+  relationship: "border-status-validating/30 bg-status-validating/15 text-status-validating",
+  growth: "border-status-hypothesis/30 bg-status-hypothesis/15 text-status-hypothesis",
+  recovery: "border-status-mvp/30 bg-status-mvp/15 text-status-mvp",
+  gray: "border-status-validating/30 bg-status-validating/15 text-status-validating",
+  unknown: "border-dashed border-border bg-muted/50 text-muted-foreground/80",
 };
 
 export function DailyReflectionWorkspace({
@@ -166,7 +166,7 @@ export function DailyReflectionWorkspace({
               className={
                 "rounded-full border px-3 py-1 font-mono text-[10px] " +
                 (initialReflection?.status === "confirmed"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                  ? "border-status-mvp/30 bg-status-mvp/10 text-status-mvp"
                   : "bg-card text-muted-foreground")
               }
             >
@@ -178,7 +178,7 @@ export function DailyReflectionWorkspace({
 
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_28rem] lg:px-12">
         <section className="space-y-6">
-          <div className="rounded-xl border bg-card p-5 sm:p-6">
+          <div className="rounded-lg border bg-card p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <ShieldCheck className="size-4" />
               <h2 className="text-sm font-medium">1. 在浏览器里遮蔽原始日记</h2>
@@ -202,10 +202,10 @@ export function DailyReflectionWorkspace({
           </div>
 
           {previewed && (
-            <div className="rounded-xl border bg-card p-5 sm:p-6">
+            <div className="rounded-lg border bg-card p-5 sm:p-6">
               <h2 className="text-sm font-medium">2. 确认发送给AI的文本</h2>
               {redactions.length > 0 && (
-                <p className="mt-2 text-xs text-orange-700">
+                <p className="mt-2 text-xs text-status-validating">
                   已处理：{redactions.join("、")}
                 </p>
               )}
@@ -222,7 +222,7 @@ export function DailyReflectionWorkspace({
           )}
 
           {blocks.length > 0 && (
-            <div className="rounded-xl border bg-card p-5 sm:p-6">
+            <div className="rounded-lg border bg-card p-5 sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-medium">3. 校正事件块</h2>
@@ -252,9 +252,9 @@ export function DailyReflectionWorkspace({
                 </Button>
               </div>
               {ambiguities.length > 0 && (
-                <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 p-3">
-                  <div className="text-xs font-medium text-orange-900">需要确认</div>
-                  <ul className="mt-1 space-y-1 text-xs text-orange-800">
+                <div className="mt-4 rounded-md border border-status-validating/30 bg-status-validating/10 p-3">
+                  <div className="text-xs font-medium text-status-validating">需要确认</div>
+                  <ul className="mt-1 space-y-1 text-xs text-status-validating">
                     {ambiguities.map((item, index) => (
                       <li key={index}>· {item}</li>
                     ))}
@@ -262,7 +262,7 @@ export function DailyReflectionWorkspace({
                 </div>
               )}
               {timelinePreview.error && (
-                <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
                   {timelinePreview.error}
                 </p>
               )}
@@ -320,7 +320,7 @@ export function DailyReflectionWorkspace({
           )}
 
           {blocks.length > 0 && (
-            <div className="rounded-xl border bg-card p-5 sm:p-6">
+            <div className="rounded-lg border bg-card p-5 sm:p-6">
               <h2 className="text-sm font-medium">4. 留下一句事实观察</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 不写计划，不评价自己。只写今天真正发生了什么。
@@ -349,8 +349,8 @@ export function DailyReflectionWorkspace({
               className={
                 "rounded-md border p-3 text-sm " +
                 (error
-                  ? "border-red-200 bg-red-50 text-red-700"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700")
+                  ? "border-destructive/30 bg-destructive/10 text-destructive"
+                  : "border-status-mvp/30 bg-status-mvp/10 text-status-mvp")
               }
             >
               {error ?? notice}
@@ -359,7 +359,7 @@ export function DailyReflectionWorkspace({
         </section>
 
         <aside>
-          <div className="sticky top-6 rounded-xl border bg-card p-5">
+          <div className="sticky top-6 rounded-lg border bg-card p-5">
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-medium">24小时镜子</h2>
               <span className="font-mono text-[10px] text-muted-foreground">
@@ -374,9 +374,9 @@ export function DailyReflectionWorkspace({
                   </div>
                 ))}
               </div>
-              <div className="relative grid grid-rows-[repeat(48,1.25rem)] overflow-hidden rounded-md border bg-slate-50">
+              <div className="relative grid grid-rows-[repeat(48,1.25rem)] overflow-hidden rounded-md border bg-muted/50">
                 {slots.map((slot) => (
-                  <div key={slot.slot} className="border-b border-slate-200/70" />
+                  <div key={slot.slot} className="border-b border-border/70" />
                 ))}
                 {blocks.map((block, index) => (
                   <div
@@ -387,7 +387,7 @@ export function DailyReflectionWorkspace({
                     className={
                       "z-10 mx-1 overflow-hidden rounded border px-2 py-1 text-[10px] leading-4 " +
                       (CATEGORY_CLASS[block.category_key] ??
-                        "border-slate-300 bg-white text-slate-900")
+                        "border-border bg-white text-foreground")
                     }
                   >
                     <div className="font-medium">{block.event}</div>

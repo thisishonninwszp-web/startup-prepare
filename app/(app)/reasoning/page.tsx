@@ -96,9 +96,9 @@ export default async function ReasoningPage() {
   }
 
   const insightColors = {
-    low: "border-l-red-500 bg-red-50 dark:bg-red-950/20",
-    high: "border-l-green-500 bg-green-50 dark:bg-green-950/20",
-    blindspot: "border-l-blue-500 bg-blue-50 dark:bg-blue-950/20",
+    low: "border-l-destructive bg-destructive/10",
+    high: "border-l-status-mvp bg-status-mvp/10",
+    blindspot: "border-l-status-hypothesis bg-status-hypothesis/10",
   };
 
   return (
@@ -159,7 +159,7 @@ export default async function ReasoningPage() {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {/* Bayesian */}
-        <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
+        <div className="rounded-lg border bg-card p-5 flex flex-col gap-4">
           <div>
             <h2 className="font-semibold">贝叶斯信念追踪</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
@@ -203,7 +203,7 @@ export default async function ReasoningPage() {
         </div>
 
         {/* Fermi */}
-        <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
+        <div className="rounded-lg border bg-card p-5 flex flex-col gap-4">
           <div>
             <h2 className="font-semibold">费米估算</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
@@ -248,7 +248,7 @@ export default async function ReasoningPage() {
         </div>
 
         {/* Reframing */}
-        <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
+        <div className="rounded-lg border bg-card p-5 flex flex-col gap-4">
           <div>
             <h2 className="font-semibold">认知重构</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
@@ -289,7 +289,7 @@ export default async function ReasoningPage() {
         </div>
 
         {/* First Principles */}
-        <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
+        <div className="rounded-lg border bg-card p-5 flex flex-col gap-4">
           <div>
             <h2 className="font-semibold">第一性原理分解</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
@@ -333,7 +333,7 @@ export default async function ReasoningPage() {
         </div>
 
         {/* Outside View */}
-        <div className="rounded-xl border bg-card p-5 flex flex-col gap-4">
+        <div className="rounded-lg border bg-card p-5 flex flex-col gap-4">
           <div>
             <h2 className="font-semibold">外部视角/基础比率</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">

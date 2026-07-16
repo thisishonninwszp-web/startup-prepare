@@ -97,7 +97,7 @@ export function MonthlyRetrospectiveWorkspace({
 
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-8 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-12">
         <aside>
-          <div className="sticky top-6 rounded-xl border bg-card p-4">
+          <div className="sticky top-6 rounded-lg border bg-card p-4">
             <h2 className="text-sm font-medium">已完成周复盘</h2>
             <div className="mt-4 space-y-2">
               {initialPeriod.sources.map((source) => (
@@ -137,7 +137,7 @@ export function MonthlyRetrospectiveWorkspace({
         <section className="space-y-6">
           {draft ? (
             <>
-              <section className="rounded-xl border bg-card p-5">
+              <section className="rounded-lg border bg-card p-5">
                 <h2 className="text-sm font-medium">重复模式与反例</h2>
                 <div className="mt-4 space-y-4">
                   {draft.repeated_patterns.map((pattern, index) => (
@@ -154,13 +154,13 @@ export function MonthlyRetrospectiveWorkspace({
                 <List title="已失效规则" items={draft.invalidated_rules} />
                 <List title="人生／事业冲突" items={draft.life_business_conflicts} />
               </div>
-              <section className="rounded-xl border bg-foreground p-6 text-background">
+              <section className="rounded-lg border bg-foreground p-6 text-background">
                 <div className="font-mono text-[10px] uppercase tracking-[0.2em] opacity-50">
                   One focus
                 </div>
                 <p className="mt-3 text-lg leading-7">{draft.only_focus}</p>
               </section>
-              <section className="rounded-xl border bg-card p-5">
+              <section className="rounded-lg border bg-card p-5">
                 <h2 className="text-sm font-medium">判断规则决定</h2>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <select
@@ -208,14 +208,14 @@ export function MonthlyRetrospectiveWorkspace({
               </section>
             </>
           ) : (
-            <div className="rounded-xl border border-dashed p-10 text-center text-sm">
+            <div className="rounded-lg border border-dashed p-10 text-center text-sm">
               先确认纳入哪些周复盘。
             </div>
           )}
           {error ? (
             <AiErrorNotice error={error} />
           ) : notice ? (
-            <p className="text-sm text-emerald-700">{notice}</p>
+            <p className="text-sm text-status-mvp">{notice}</p>
           ) : null}
         </section>
       </div>
@@ -225,7 +225,7 @@ export function MonthlyRetrospectiveWorkspace({
 
 function List({ title, items }: { title: string; items: string[] }) {
   return (
-    <section className="rounded-xl border bg-card p-5">
+    <section className="rounded-lg border bg-card p-5">
       <h2 className="text-sm font-medium">{title}</h2>
       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
         {items.map((item, index) => (

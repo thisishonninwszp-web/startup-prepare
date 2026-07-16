@@ -35,7 +35,7 @@ export default async function CouncilQuestionsPage() {
         </div>
 
         {questions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
             还没有收录任何提问。去顾问团开一场会话，尖锐的问题会自动挂到这面墙上。
           </div>
         ) : (
@@ -44,7 +44,7 @@ export default async function CouncilQuestionsPage() {
               <Link
                 key={q.id}
                 href={`/council/${q.session_id}`}
-                className="group mb-4 block break-inside-avoid rounded-xl border bg-card p-5 transition-colors hover:bg-muted"
+                className="group mb-4 block break-inside-avoid rounded-lg border bg-card p-5 transition-colors hover:bg-muted"
                 style={{ animationDelay: `${Math.min(i * 60, 600)}ms` }}
               >
                 <p className="font-serif text-base leading-relaxed">

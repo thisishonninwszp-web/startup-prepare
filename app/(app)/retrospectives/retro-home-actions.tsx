@@ -53,7 +53,7 @@ export function RetroHomeActions({
         {duePredictions.map((prediction) => (
           <div
             key={prediction.id}
-            className="flex flex-col gap-3 rounded-md border border-orange-200 bg-white p-3 sm:flex-row sm:items-center"
+            className="flex flex-col gap-3 rounded-md border border-status-validating/30 bg-white p-3 sm:flex-row sm:items-center"
           >
             <span className="min-w-0 flex-1 text-sm">{prediction.text}</span>
             <div className="flex gap-2">
@@ -102,7 +102,7 @@ export function RetroHomeActions({
             </div>
           </div>
         ))}
-        {error && <p className="text-xs text-red-700">{error}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     );
   }
@@ -140,7 +140,7 @@ export function RetroHomeActions({
             </Button>
           </div>
         ))}
-        {error && <p className="text-xs text-red-700">{error}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     );
   }
@@ -179,7 +179,7 @@ export function RetroHomeActions({
       >
         准备{type === "weekly" ? "周" : "月"}复盘
       </Button>
-      {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </div>
   );
 }

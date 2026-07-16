@@ -29,7 +29,7 @@ export function AiErrorNotice({
   return (
     <div
       className={
-        "rounded-md border border-amber-300/50 bg-amber-50 p-3 text-sm text-amber-950 " +
+        "rounded-md border border-status-validating/30/50 bg-status-validating/10 p-3 text-sm text-status-validating " +
         className
       }
       role="alert"
@@ -38,7 +38,7 @@ export function AiErrorNotice({
         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="font-medium">{aiError.message}</p>
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-amber-900/80">
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-status-validating/80">
             <span className="font-mono">request: {aiError.requestId}</span>
             <span>类型：{aiError.code}</span>
             <span>{aiError.inputSaved ? "输入已保留" : "输入未确认保存"}</span>

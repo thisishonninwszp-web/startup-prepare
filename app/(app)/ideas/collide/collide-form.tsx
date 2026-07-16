@@ -90,22 +90,22 @@ export function CollideForm({
           )}
 
           {result.resource_conflict && (
-            <div className="rounded-lg border border-orange-300 bg-orange-50 p-4 dark:border-orange-700 dark:bg-orange-950/20">
-              <p className="text-xs font-medium uppercase tracking-wider text-orange-700 dark:text-orange-400">
+            <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-status-validating">
                 资源冲突
               </p>
-              <p className="mt-2 text-sm text-orange-900 dark:text-orange-200">
+              <p className="mt-2 text-sm text-status-validating">
                 {result.resource_conflict}
               </p>
             </div>
           )}
 
           {result.contradictory_theories && (
-            <div className="rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-700 dark:bg-red-950/20">
-              <p className="text-xs font-medium uppercase tracking-wider text-red-700 dark:text-red-400">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-destructive">
                 矛盾的判断
               </p>
-              <p className="mt-2 text-sm text-red-900 dark:text-red-200">
+              <p className="mt-2 text-sm text-destructive">
                 {result.contradictory_theories}
               </p>
             </div>

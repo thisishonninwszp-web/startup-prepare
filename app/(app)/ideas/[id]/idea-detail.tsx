@@ -61,9 +61,9 @@ import { OutreachPanel } from "./outreach-panel";
 const STATUS_COLOR: Record<IdeaStatus, string> = {
   观察: "text-muted-foreground",
   假设: "text-muted-foreground",
-  验证中: "text-orange-600",
-  MVP候选: "text-green-600",
-  归档: "text-red-600",
+  验证中: "text-status-validating",
+  MVP候选: "text-status-mvp",
+  归档: "text-destructive",
 };
 
 type Fields = Record<HypothesisField, string>;
@@ -210,10 +210,10 @@ export function IdeaDetail({
       </div>
 
       {conceptAvailable && (
-      <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-5">
+      <section className="rounded-lg border border-border bg-muted/50 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               价值设计图
             </p>
             <h2 className="mt-2 text-sm font-medium">
@@ -226,17 +226,17 @@ export function IdeaDetail({
                 : "尚未建立产品概念"}
             </h2>
             {conceptSummary ? (
-              <p className="mt-2 text-sm leading-6 text-zinc-700">
+              <p className="mt-2 text-sm leading-6 text-foreground">
                 {conceptSummary.one_line}
               </p>
             ) : (
-              <p className="mt-2 text-xs leading-5 text-zinc-500">
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
                 引用顾客证据、梦想版本、Central Question 与公司事实，形成可用于MVP取舍的一行概念。
               </p>
             )}
             {status === "MVP候选" &&
             !conceptSummary?.has_confirmed ? (
-              <p className="mt-3 text-xs text-amber-700">
+              <p className="mt-3 text-xs text-status-validating">
                 MVP候选尚缺已确认的产品概念。当前仅提醒，不会锁定状态。
               </p>
             ) : null}
@@ -252,8 +252,8 @@ export function IdeaDetail({
 
       {/* 出口舱：MVP候选是系统的边界，从这里出去的只能是存在于系统外面的东西。 */}
       {status === "MVP候选" && (
-        <section className="rounded-xl border-2 border-green-600/40 bg-green-50/50 p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-green-700">
+        <section className="rounded-lg border-2 border-status-mvp/50/40 bg-status-mvp/10/50 p-5">
+          <p className="text-xs uppercase tracking-[0.18em] text-status-mvp">
             出口舱
           </p>
           <h2 className="mt-2 text-sm font-medium">
@@ -266,13 +266,13 @@ export function IdeaDetail({
             <Link
               href={`/ideas/${idea.id}/pocket-card`}
               target="_blank"
-              className="rounded-md border border-green-600/40 bg-background px-4 py-2 text-sm hover:bg-green-50"
+              className="rounded-md border border-status-mvp/50/40 bg-background px-4 py-2 text-sm hover:bg-status-mvp/10"
             >
               打印访谈口袋卡，去见一个真人
             </Link>
             <Link
               href="/outreach"
-              className="rounded-md border border-green-600/40 bg-background px-4 py-2 text-sm hover:bg-green-50"
+              className="rounded-md border border-status-mvp/50/40 bg-background px-4 py-2 text-sm hover:bg-status-mvp/10"
             >
               规划触达：具体找谁、怎么开口
             </Link>
@@ -395,16 +395,16 @@ export function IdeaDetail({
           <span className="text-xs text-muted-foreground">
             {complete ? "✓ 6 个空已填满" : "尚有空未填"}
           </span>
-          {saveMsg && <span className="text-xs text-green-600">{saveMsg}</span>}
+          {saveMsg && <span className="text-xs text-status-mvp">{saveMsg}</span>}
           {saveErr && <span className="text-xs text-destructive">{saveErr}</span>}
         </div>
 
         {selfEcho?.matched && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/20">
-            <p className="text-amber-900 dark:text-amber-200">
+          <div className="rounded-md border border-status-validating/30 bg-status-validating/10 p-3 text-sm">
+            <p className="text-status-validating">
               你在《{selfEcho.echoedTitle}》里说过类似的话，当时学到的是：
             </p>
-            <p className="mt-1 text-amber-800 dark:text-amber-300">
+            <p className="mt-1 text-status-validating">
               {selfEcho.echoedLearned}
             </p>
           </div>
@@ -560,7 +560,7 @@ function RoleChallenge({
 
       {/* 强制出口机制：锁定提示 */}
       {locked && (
-        <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-800">
+        <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-3 text-sm text-status-validating">
           {AI_LOCK_MESSAGE}
         </div>
       )}
@@ -1186,7 +1186,7 @@ function PersonaDropInCard({ ideaId }: { ideaId: string }) {
   if (dismissed) return null;
 
   return (
-    <section className="rounded-xl border border-dashed border-muted-foreground/40 bg-muted/20 p-4 space-y-3">
+    <section className="rounded-lg border border-dashed border-muted-foreground/40 bg-muted/20 p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-muted-foreground">
@@ -1422,12 +1422,12 @@ function PredictionRow({
       <div className="flex items-start justify-between gap-3">
         <p className="whitespace-pre-wrap">{p.text}</p>
         {p.outcome === "hit" && (
-          <span className="shrink-0 rounded-full border border-green-300 bg-green-50 px-2 py-0.5 text-[10px] text-green-700">
+          <span className="shrink-0 rounded-full border border-status-mvp/30 bg-status-mvp/10 px-2 py-0.5 text-[10px] text-status-mvp">
             命中
           </span>
         )}
         {p.outcome === "miss" && (
-          <span className="shrink-0 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] text-red-700">
+          <span className="shrink-0 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10px] text-destructive">
             没命中
           </span>
         )}
@@ -1436,7 +1436,7 @@ function PredictionRow({
             className={
               "shrink-0 rounded-full border px-2 py-0.5 text-[10px] " +
               (due
-                ? "border-orange-300 bg-orange-50 text-orange-700"
+                ? "border-status-validating/30 bg-status-validating/10 text-status-validating"
                 : "border-border bg-muted text-muted-foreground")
             }
           >
@@ -1607,7 +1607,7 @@ function ExitCriteriaSection({
                   className={
                     "rounded-full border px-2.5 py-1 text-xs transition-colors " +
                     (c.triggered === "yes"
-                      ? "border-red-300 bg-red-50 text-red-700"
+                      ? "border-destructive/30 bg-destructive/10 text-destructive"
                       : "text-muted-foreground hover:bg-muted")
                   }
                 >
@@ -1619,7 +1619,7 @@ function ExitCriteriaSection({
                   className={
                     "rounded-full border px-2.5 py-1 text-xs transition-colors " +
                     (c.triggered === "no"
-                      ? "border-green-300 bg-green-50 text-green-700"
+                      ? "border-status-mvp/30 bg-status-mvp/10 text-status-mvp"
                       : "text-muted-foreground hover:bg-muted")
                   }
                 >
@@ -1861,7 +1861,7 @@ function DecisionSection({
       <h2 className="text-sm font-medium">做决策</h2>
 
       {unreviewedCount > 0 && (
-        <p className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+        <p className="rounded-md border border-status-validating/30 bg-status-validating/10 px-3 py-2 text-xs text-status-validating">
           还有 {unreviewedCount} 条退出条件未对照。先在上方逐条标记“触发了 /
           没触发”，才能做 Go / Kill 决策。
         </p>
@@ -1899,7 +1899,7 @@ function DecisionSection({
         </p>
       )}
       {done && done !== "Pivot" && (
-        <p className="text-sm text-green-600">已记录决策：{done}</p>
+        <p className="text-sm text-status-mvp">已记录决策：{done}</p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
 

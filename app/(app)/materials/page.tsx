@@ -56,9 +56,9 @@ export default async function MaterialsPage({
       </header>
 
       {!schemaAvailable ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+        <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-5 text-sm text-status-validating">
           现实材料箱数据库迁移尚未运行。请先执行
-          <code className="mx-1 rounded bg-amber-100 px-1">
+          <code className="mx-1 rounded bg-status-validating/15 px-1">
             029_reality_materials.sql
           </code>
           ，现有页面不会崩溃。
@@ -71,15 +71,15 @@ export default async function MaterialsPage({
             {pending.length > 0 ? (
               <Link
                 href="/materials/review"
-                className="rounded-xl border border-red-300 bg-red-50 p-4 transition-colors hover:bg-red-100"
+                className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 transition-colors hover:bg-destructive/15"
               >
-                <p className="text-[10px] font-medium uppercase tracking-wider text-red-700">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-destructive">
                   待朱批
                 </p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-red-900">
+                <p className="mt-1 text-xl font-semibold tabular-nums text-destructive">
                   {pending.length}
                 </p>
-                <p className="mt-0.5 text-xs text-red-700">进入批阅模式 →</p>
+                <p className="mt-0.5 text-xs text-destructive">进入批阅模式 →</p>
               </Link>
             ) : (
               <StatCard label="待朱批" value={pending.length} />
@@ -94,7 +94,7 @@ export default async function MaterialsPage({
               <h2 className="font-medium">最近材料</h2>
             </div>
             {materials.length === 0 ? (
-              <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                 还没有材料。先把一段真实发生的事情丢进来。
               </div>
             ) : (
@@ -103,7 +103,7 @@ export default async function MaterialsPage({
                   <Link
                     key={item.id}
                     href={`/materials/${item.id}`}
-                    className="rounded-xl border bg-card p-4 transition-colors hover:bg-muted/50"
+                    className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -145,7 +145,7 @@ export default async function MaterialsPage({
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-lg border bg-card p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-2xl font-semibold">{value}</p>
     </div>

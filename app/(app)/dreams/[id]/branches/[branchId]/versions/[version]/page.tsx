@@ -32,21 +32,21 @@ export default async function DreamBranchVersionPage({
   const { branch, version } = result;
   return (
     <>
-      <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-stone-950 sm:px-8 lg:px-12">
+      <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-foreground sm:px-8 lg:px-12">
         <div className="mx-auto max-w-4xl">
           <Link
             href={`/dreams/${dreamCase.id}`}
-            className="inline-flex items-center gap-2 text-xs text-stone-500"
+            className="inline-flex items-center gap-2 text-xs text-muted-foreground"
           >
             <ArrowLeft className="size-3" />
             返回 {dreamCase.title}
           </Link>
-          <div className="mt-8 border-b border-stone-300 pb-6">
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-500">
+          <div className="mt-8 border-b border-border pb-6">
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
               {branch.name} · archived vision {version.version_no}
             </p>
             <h1 className="mt-3 font-serif text-3xl">{dreamCase.title}</h1>
-            <p className="mt-2 text-xs text-stone-500">
+            <p className="mt-2 text-xs text-muted-foreground">
               {new Date(version.created_at).toLocaleString("zh-CN")}
             </p>
           </div>

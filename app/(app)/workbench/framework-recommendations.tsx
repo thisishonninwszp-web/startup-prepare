@@ -14,7 +14,7 @@ export function FrameworkRecommendations({
   cards: FrameworkRecommendation[];
 }) {
   return (
-    <section className="rounded-xl border bg-card p-5">
+    <section className="rounded-lg border bg-card p-5">
       <div>
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           Framework router

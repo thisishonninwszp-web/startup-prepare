@@ -4,12 +4,12 @@ function cellClass(day: { realContactCount: number; armchairCount: number } | un
   if (!day) return "bg-muted/30";
   if (day.realContactCount > 0) {
     return day.realContactCount >= 3
-      ? "bg-emerald-600"
+      ? "bg-status-mvp"
       : day.realContactCount === 2
-        ? "bg-emerald-400"
-        : "bg-emerald-300";
+        ? "bg-status-mvp/40"
+        : "bg-status-mvp/40";
   }
-  if (day.armchairCount > 0) return "bg-slate-300 dark:bg-slate-600";
+  if (day.armchairCount > 0) return "bg-muted";
   return "bg-muted/30";
 }
 
@@ -45,11 +45,11 @@ export function SurvivalCalendar({ calendar }: { calendar: SurvivalCalendar }) {
         </p>
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
           <span className="inline-flex items-center gap-1">
-            <span className="size-2.5 rounded-sm bg-emerald-500" />
+            <span className="size-2.5 rounded-sm bg-status-mvp" />
             真实接触
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="size-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" />
+            <span className="size-2.5 rounded-sm bg-muted" />
             空想
           </span>
           <span className="inline-flex items-center gap-1">

@@ -12,10 +12,10 @@ const OBS_TYPE_LABELS: Record<string, string> = {
 };
 
 const OBS_TYPE_COLORS: Record<string, string> = {
-  dream_action_gap: "border-l-purple-500 bg-purple-50 dark:bg-purple-950/20",
-  action_concentration: "border-l-orange-500 bg-orange-50 dark:bg-orange-950/20",
-  stale_domain: "border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/20",
-  missing_validation: "border-l-red-500 bg-red-50 dark:bg-red-950/20",
+  dream_action_gap: "border-l-verdict-learned bg-verdict-learned/10",
+  action_concentration: "border-l-status-validating bg-status-validating/10",
+  stale_domain: "border-l-status-validating bg-status-validating/10",
+  missing_validation: "border-l-destructive bg-destructive/10",
 };
 
 function ObsCard({ obs }: { obs: AlignmentObservation }) {

@@ -43,7 +43,7 @@ export function CustomerProxyView({
   return (
     <div className="space-y-8">
       {proxy.is_provisional && (
-        <div className="rounded-lg border border-orange-300 bg-orange-50 p-4 text-sm text-orange-950">
+        <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-sm text-status-validating">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle className="size-4" />
             临时代理

@@ -104,7 +104,7 @@ export default async function AiSettingsPage() {
         <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
           ← 返回首页
         </Link>
-        <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-5">
+        <div className="mt-6 rounded-lg border border-destructive/30 bg-destructive/5 p-5">
           <h1 className="text-lg font-semibold">AI 诊断不可用</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             读取 ai_calls 失败。通常是 015 迁移还没运行，或 Vercel/Supabase
@@ -149,7 +149,7 @@ export default async function AiSettingsPage() {
       </div>
 
       {!hasAiLogEncryptionKey() && (
-        <div className="mt-5 flex gap-3 rounded-xl border border-amber-300/40 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="mt-5 flex gap-3 rounded-lg border border-status-validating/30/40 bg-status-validating/10 p-4 text-sm text-status-validating">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div>
             <p className="font-medium">未配置 AI_LOG_ENCRYPTION_KEY</p>
@@ -167,7 +167,7 @@ export default async function AiSettingsPage() {
           ["失败", counts.failed],
           ["运行中", counts.running],
         ].map(([label, value]) => (
-          <div key={label} className="rounded-xl border bg-card p-4">
+          <div key={label} className="rounded-lg border bg-card p-4">
             <div className="text-xs text-muted-foreground">{label}</div>
             <div className="mt-1 text-2xl font-semibold">{value}</div>
           </div>
@@ -176,14 +176,14 @@ export default async function AiSettingsPage() {
 
       <section className="mt-6 space-y-4">
         {rows.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-8 text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed p-8 text-sm text-muted-foreground">
             还没有 AI 调用日志。
           </div>
         ) : (
           rows.map((row) => {
             const requestPayload = tryDecrypt(row.encrypted_request_payload);
             return (
-              <details key={row.id} className="rounded-xl border bg-card p-4">
+              <details key={row.id} className="rounded-lg border bg-card p-4">
                 <summary className="cursor-pointer list-none">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>

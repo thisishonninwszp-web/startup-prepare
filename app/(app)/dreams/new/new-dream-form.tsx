@@ -48,30 +48,30 @@ export function NewDreamForm() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-stone-950 sm:px-8">
+    <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-foreground sm:px-8">
       <div className="mx-auto max-w-3xl">
         <Link
           href="/dreams"
-          className="inline-flex items-center gap-2 text-xs text-stone-500"
+          className="inline-flex items-center gap-2 text-xs text-muted-foreground"
         >
           <ArrowLeft className="size-3" />
           返回梦想
         </Link>
-        <p className="mt-10 font-mono text-[10px] uppercase tracking-[0.24em] text-stone-500">
+        <p className="mt-10 font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
           Open a future
         </p>
         <h1 className="mt-4 font-serif text-4xl tracking-[-0.04em]">
           你想看见怎样的一天？
         </h1>
 
-        <div className="mt-10 space-y-8 rounded-[2rem] border border-stone-300 bg-stone-50 p-6 sm:p-8">
+        <div className="mt-10 space-y-8 rounded-[2rem] border border-border bg-muted/50 p-6 sm:p-8">
           <label className="block text-sm">
             给这个未来一个暂定名字
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="例如：一个不用催促自己的早晨"
-              className="mt-3 w-full border-0 border-b border-stone-300 bg-transparent px-0 py-3 text-xl outline-none focus:border-stone-900"
+              className="mt-3 w-full border-0 border-b border-border bg-transparent px-0 py-3 text-xl outline-none focus:border-foreground/30"
             />
           </label>
 
@@ -84,10 +84,10 @@ export function NewDreamForm() {
                   type="button"
                   onClick={() => setContext(item.key)}
                   className={
-                    "rounded-2xl border p-4 text-left transition-colors " +
+                    "rounded-lg border p-4 text-left transition-colors " +
                     (context === item.key
-                      ? "border-stone-900 bg-stone-900 text-stone-50"
-                      : "border-stone-300 hover:border-stone-500")
+                      ? "border-foreground/30 bg-foreground text-background"
+                      : "border-border hover:border-foreground/30")
                   }
                 >
                   <span className="text-sm font-medium">{item.label}</span>
@@ -108,10 +108,10 @@ export function NewDreamForm() {
                   type="button"
                   onClick={() => setScale(item.key)}
                   className={
-                    "rounded-2xl border p-4 text-left transition-colors " +
+                    "rounded-lg border p-4 text-left transition-colors " +
                     (scale === item.key
-                      ? "border-stone-900 bg-stone-900 text-stone-50"
-                      : "border-stone-300 hover:border-stone-500")
+                      ? "border-foreground/30 bg-foreground text-background"
+                      : "border-border hover:border-foreground/30")
                   }
                 >
                   <span className="text-sm font-medium">{item.label}</span>
@@ -129,11 +129,11 @@ export function NewDreamForm() {
               value={desire}
               onChange={(event) => setDesire(event.target.value)}
               placeholder="不用解释为什么可行，也不用写计划……"
-              className="mt-3 min-h-40 w-full rounded-2xl border border-stone-300 bg-white p-4 text-sm leading-7 outline-none focus:border-stone-700"
+              className="mt-3 min-h-40 w-full rounded-lg border border-border bg-white p-4 text-sm leading-7 outline-none focus:border-foreground/30"
             />
           </label>
 
-          {error && <p className="text-sm text-red-700">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <Button
             type="button"
             onClick={submit}

@@ -11,7 +11,7 @@ export function DreamVisionCard({
   return (
     <article className="space-y-8">
       {delta && (
-        <details className="rounded-2xl border border-stone-300 bg-stone-50 p-5">
+        <details className="rounded-lg border border-border bg-muted/50 p-5">
           <summary className="cursor-pointer text-sm font-medium">
             这个版本发生了什么变化
           </summary>
@@ -27,22 +27,22 @@ export function DreamVisionCard({
             <List title="新的冲突" items={delta.new_conflicts} />
           </div>
           {delta.change_reason && (
-            <p className="mt-4 border-t border-stone-200 pt-3 text-xs text-stone-500">
+            <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
               变化原因：{delta.change_reason}
             </p>
           )}
         </details>
       )}
 
-      <section className="relative overflow-hidden rounded-[2rem] bg-stone-950 p-7 text-stone-50 sm:p-10">
+      <section className="relative overflow-hidden rounded-[2rem] bg-foreground p-7 text-background sm:p-10">
         <div className="absolute right-0 top-0 size-48 rounded-full border border-white/10 translate-x-1/3 -translate-y-1/3" />
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-400">
+        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground/80">
           A day in the future
         </p>
         <h2 className="mt-5 max-w-3xl font-serif text-3xl leading-tight tracking-[-0.03em] sm:text-4xl">
           {vision.scene.title}
         </h2>
-        <div className="mt-6 flex flex-wrap gap-4 text-xs text-stone-400">
+        <div className="mt-6 flex flex-wrap gap-4 text-xs text-muted-foreground/80">
           <span className="inline-flex items-center gap-1.5">
             <Eye className="size-3.5" />
             {vision.scene.horizon}
@@ -61,7 +61,7 @@ export function DreamVisionCard({
 
         <div className="mt-10 grid gap-8 md:grid-cols-[.8fr_1.2fr]">
           <div>
-            <div className="text-xs text-stone-400">你能感觉到</div>
+            <div className="text-xs text-muted-foreground/80">你能感觉到</div>
             <ul className="mt-3 space-y-2 font-serif text-lg leading-7">
               {vision.scene.sensory_details.map((item, index) => (
                 <li key={index}>“{item}”</li>
@@ -69,14 +69,14 @@ export function DreamVisionCard({
             </ul>
           </div>
           <div>
-            <div className="text-xs text-stone-400">这一天正在发生</div>
+            <div className="text-xs text-muted-foreground/80">这一天正在发生</div>
             <ol className="mt-3 space-y-3">
               {vision.scene.actions.map((item, index) => (
                 <li
                   key={index}
                   className="grid grid-cols-[2rem_1fr] gap-2 text-sm leading-6"
                 >
-                  <span className="font-mono text-xs text-stone-500">
+                  <span className="font-mono text-xs text-muted-foreground">
                     {String(index + 1).padStart(2, "0")}
                   </span>
                   <span>{item}</span>
@@ -85,18 +85,18 @@ export function DreamVisionCard({
             </ol>
           </div>
         </div>
-        <blockquote className="mt-10 border-l border-stone-600 pl-4 font-serif text-xl italic leading-8 text-stone-300">
+        <blockquote className="mt-10 border-l border-foreground/30 pl-4 font-serif text-xl italic leading-8 text-background/80">
           {vision.scene.inner_state}
         </blockquote>
       </section>
 
-      <section className="rounded-[2rem] border border-stone-300 bg-stone-50 p-6">
+      <section className="rounded-[2rem] border border-border bg-muted/50 p-6">
         <h3 className="font-serif text-xl">希望真正发生的变化</h3>
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {vision.desired_changes.map((item, index) => (
             <li
               key={index}
-              className="rounded-xl bg-[#f4f1ea] p-4 text-sm leading-6"
+              className="rounded-lg bg-[#f4f1ea] p-4 text-sm leading-6"
             >
               {item}
             </li>
@@ -104,11 +104,11 @@ export function DreamVisionCard({
         </ul>
       </section>
 
-      <details className="rounded-[2rem] border border-stone-300 bg-stone-50 p-6">
+      <details className="rounded-[2rem] border border-border bg-muted/50 p-6">
         <summary className="cursor-pointer font-serif text-xl">
           查看代价、前提与现实连接
         </summary>
-        <p className="mt-2 text-xs text-stone-500">
+        <p className="mt-2 text-xs text-muted-foreground">
           这些内容不否定梦想，只说明它靠什么成立。
         </p>
         <div className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -127,7 +127,7 @@ export function DreamVisionCard({
 function List({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
-      <h4 className="text-xs font-medium text-stone-500">{title}</h4>
+      <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
       {items.length > 0 ? (
         <ul className="mt-2 space-y-2">
           {items.map((item, index) => (
@@ -137,7 +137,7 @@ function List({ title, items }: { title: string; items: string[] }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-stone-400">目前没有明确内容</p>
+        <p className="mt-2 text-xs text-muted-foreground/80">目前没有明确内容</p>
       )}
     </div>
   );

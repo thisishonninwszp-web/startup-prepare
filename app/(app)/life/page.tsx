@@ -119,13 +119,13 @@ export default async function LifePage() {
                 <div
                   key={domain.tag}
                   className={`rounded-lg border bg-card px-4 py-3 space-y-1.5 ${
-                    domain.is_stale ? "border-yellow-400/50 dark:border-yellow-600/40" : ""
+                    domain.is_stale ? "border-status-validating/50/50" : ""
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{domain.tag}</span>
                     {domain.is_stale && (
-                      <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-medium">
+                      <span className="text-[10px] text-status-validating font-medium">
                         ⚠ 停滞
                       </span>
                     )}

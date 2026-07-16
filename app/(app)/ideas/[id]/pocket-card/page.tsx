@@ -80,7 +80,7 @@ export default async function PocketCardPage({
           <PrintButton />
         </div>
 
-        <div className="pocket-card rounded-2xl border-2 border-foreground p-6">
+        <div className="pocket-card rounded-lg border-2 border-foreground p-6">
           <p className="text-center font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             访谈口袋卡
           </p>

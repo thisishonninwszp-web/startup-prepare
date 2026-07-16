@@ -167,7 +167,7 @@ export function FocusedInquiryPanel({
   }
 
   const panel = active ? (
-    <div className="flex max-h-[85vh] flex-col rounded-t-xl border bg-card shadow-2xl lg:max-h-[calc(100vh-3rem)] lg:rounded-xl lg:shadow-sm">
+    <div className="flex max-h-[85vh] flex-col rounded-t-xl border bg-card shadow-2xl lg:max-h-[calc(100vh-3rem)] lg:rounded-lg lg:shadow-sm">
       <div className="flex items-start gap-3 border-b p-4">
         <MessageCircleQuestion className="mt-0.5 size-4 shrink-0" />
         <div className="min-w-0 flex-1">
@@ -208,7 +208,7 @@ export function FocusedInquiryPanel({
             return (
               <div
                 key={message.id}
-                className="rounded-md border border-red-300 bg-red-50 p-3 text-xs leading-5 text-red-900"
+                className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs leading-5 text-destructive"
               >
                 {(message.content as { message?: string }).message}
               </div>

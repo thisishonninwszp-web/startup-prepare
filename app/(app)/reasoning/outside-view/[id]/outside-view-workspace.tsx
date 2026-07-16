@@ -21,10 +21,10 @@ const PREVALENCE_LABELS: Record<PrevalenceBucket, string> = {
 };
 
 const PREVALENCE_BADGE: Record<PrevalenceBucket, string> = {
-  most: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  many: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-  some: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
-  few: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  most: "bg-destructive/15 text-destructive",
+  many: "bg-status-validating/15 text-status-validating",
+  some: "bg-status-validating/15 text-status-validating",
+  few: "bg-status-mvp/15 text-status-mvp",
 };
 
 function CheckItem({ check }: { check: OutsideViewCheck }) {
@@ -56,7 +56,7 @@ function CheckItem({ check }: { check: OutsideViewCheck }) {
         title={done ? "取消完成标记" : "标记为已完成"}
         className={`mt-0.5 shrink-0 h-4 w-4 rounded border transition-colors ${
           done
-            ? "border-green-500 bg-green-500 text-white"
+            ? "border-status-mvp/50 bg-status-mvp text-primary-foreground"
             : "border-border hover:border-foreground/40"
         } flex items-center justify-center text-[10px]`}
       >
@@ -147,8 +147,8 @@ export function OutsideViewWorkspace({
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
                     example.is_well_known
-                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
-                      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      ? "bg-status-hypothesis/15 text-status-hypothesis"
+                      : "bg-muted text-foreground"
                   }`}
                 >
                   {example.is_well_known ? "已知真实案例" : "典型模式"}
@@ -190,11 +190,11 @@ export function OutsideViewWorkspace({
           {pending ? "AI 质疑中…" : "提交给 AI 质疑"}
         </button>
         {pushback && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/20 p-3">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
+          <div className="rounded-md border border-status-validating/30 bg-status-validating/10 p-3">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-status-validating">
               AI 的质疑
             </p>
-            <p className="mt-1 text-sm text-amber-900 dark:text-amber-200 leading-relaxed">
+            <p className="mt-1 text-sm text-status-validating leading-relaxed">
               {pushback}
             </p>
           </div>

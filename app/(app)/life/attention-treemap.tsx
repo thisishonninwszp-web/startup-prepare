@@ -1,24 +1,24 @@
 import type { AttentionCategoryMinutes, DomainCard } from "./queries";
 
 const COLOR_CLASS: Record<string, string> = {
-  zinc: "bg-zinc-800",
-  stone: "bg-stone-500",
-  amber: "bg-amber-500",
-  blue: "bg-blue-500",
-  emerald: "bg-emerald-500",
-  orange: "bg-orange-500",
-  slate: "bg-slate-400",
+  zinc: "bg-foreground/90",
+  stone: "bg-chart-3",
+  amber: "bg-status-validating",
+  blue: "bg-status-hypothesis",
+  emerald: "bg-status-mvp",
+  orange: "bg-status-validating",
+  slate: "bg-chart-4",
 };
 
 const DOMAIN_PALETTE = [
-  "bg-indigo-500",
-  "bg-rose-500",
-  "bg-teal-500",
-  "bg-fuchsia-500",
-  "bg-lime-600",
-  "bg-cyan-500",
-  "bg-purple-500",
-  "bg-yellow-600",
+  "bg-status-hypothesis",
+  "bg-destructive",
+  "bg-status-hypothesis",
+  "bg-verdict-learned",
+  "bg-status-mvp",
+  "bg-status-hypothesis",
+  "bg-verdict-learned",
+  "bg-status-validating",
 ];
 
 function Bar({
@@ -40,7 +40,7 @@ function Bar({
         <div
           key={item.key}
           title={`${item.label} · ${item.value}`}
-          className={`${item.colorClass} flex items-center justify-center overflow-hidden text-[10px] text-white/90`}
+          className={`${item.colorClass} flex items-center justify-center overflow-hidden text-[10px] text-primary-foreground/90`}
           style={{ width: `${(item.value / total) * 100}%` }}
         >
           {item.value / total > 0.08 && (

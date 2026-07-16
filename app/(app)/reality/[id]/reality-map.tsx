@@ -155,7 +155,7 @@ export function RealityMapView({
       </MapSection>
 
       <MapSection icon={AlertTriangle} number="07" title="矛盾与盲区">
-        <div className="rounded-md border border-orange-300 bg-orange-50 p-4 text-orange-950">
+        <div className="rounded-md border border-status-validating/30 bg-status-validating/10 p-4 text-status-validating">
           <TextList
             items={map.contradictions}
             anchorType="contradiction"

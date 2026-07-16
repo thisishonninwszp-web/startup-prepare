@@ -57,7 +57,7 @@ export default async function OwnCompanyPage() {
         ) : null}
       </div>
 
-      <section className="rounded-xl border bg-card p-5">
+      <section className="rounded-lg border bg-card p-5">
         <div className="mb-4 flex items-center gap-2">
           <LockKeyhole className="h-4 w-4 text-muted-foreground" />
           <h2 className="font-medium">内部档案</h2>
@@ -68,11 +68,11 @@ export default async function OwnCompanyPage() {
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-medium">经营计划版本</h2>
         {!profile ? (
-          <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
             先建立“我的公司”档案，再导入经营计划。
           </p>
         ) : imports.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-8 text-center">
+          <div className="rounded-lg border border-dashed p-8 text-center">
             <FileSpreadsheet className="mx-auto h-5 w-5 text-muted-foreground" />
             <p className="mt-3 text-sm">还没有经营计划版本</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -84,7 +84,7 @@ export default async function OwnCompanyPage() {
             {imports.map((item) => (
               <div
                 key={item.id}
-                className="flex items-center justify-between rounded-xl border bg-card p-4"
+                className="flex items-center justify-between rounded-lg border bg-card p-4"
               >
                 <div>
                   <p className="text-sm font-medium">

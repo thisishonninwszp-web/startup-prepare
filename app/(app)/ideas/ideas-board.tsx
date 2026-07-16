@@ -17,9 +17,9 @@ const STATUS_STYLE: Record<
 > = {
   观察: { dot: "bg-muted-foreground/40", header: "text-foreground", ring: "ring-foreground/30" },
   假设: { dot: "bg-muted-foreground/40", header: "text-foreground", ring: "ring-foreground/30" },
-  验证中: { dot: "bg-orange-500", header: "text-orange-600", ring: "ring-orange-400" },
-  MVP候选: { dot: "bg-green-500", header: "text-green-600", ring: "ring-green-400" },
-  归档: { dot: "bg-red-500", header: "text-red-600", ring: "ring-red-400" },
+  验证中: { dot: "bg-status-validating", header: "text-status-validating", ring: "ring-status-validating/40" },
+  MVP候选: { dot: "bg-status-mvp", header: "text-status-mvp", ring: "ring-status-mvp/40" },
+  归档: { dot: "bg-destructive", header: "text-destructive", ring: "ring-destructive/40" },
 };
 
 export function IdeasBoard({ initial }: { initial: Idea[] }) {
@@ -219,10 +219,10 @@ function LockBadge({ lastActivityAt }: { lastActivityAt: string }) {
   let text: string;
   if (left <= 0) {
     text = "已锁定";
-    cls = "border-red-300 bg-red-50 text-red-700";
+    cls = "border-destructive/30 bg-destructive/10 text-destructive";
   } else if (left <= 1) {
     text = `还剩 ${left} 天`;
-    cls = "border-orange-300 bg-orange-50 text-orange-700";
+    cls = "border-status-validating/30 bg-status-validating/10 text-status-validating";
   } else {
     text = `还剩 ${left} 天`;
     cls = "border-border bg-muted text-muted-foreground";

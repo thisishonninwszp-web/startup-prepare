@@ -74,7 +74,7 @@ export default async function RealityPage() {
           {due.length > 0 && (
             <section className="mb-10">
               <div className="mb-3 flex items-center gap-2">
-                <CalendarClock className="size-4 text-orange-600" />
+                <CalendarClock className="size-4 text-status-validating" />
                 <h2 className="text-sm font-medium">该重新看一眼了</h2>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
@@ -82,12 +82,12 @@ export default async function RealityPage() {
                   <Link
                     key={item.id}
                     href={`/reality/${item.id}`}
-                    className="group rounded-lg border border-orange-300 bg-orange-50 p-4 text-orange-950 transition-transform hover:-translate-y-0.5"
+                    className="group rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-status-validating transition-transform hover:-translate-y-0.5"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-sm font-medium">{item.title}</div>
-                        <p className="mt-1 text-xs text-orange-800">
+                        <p className="mt-1 text-xs text-status-validating">
                           {item.closure_due_on ? "下一步到期：" : "复查日："}
                           {new Date(
                             item.closure_due_on ?? item.review_due_at!

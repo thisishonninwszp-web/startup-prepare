@@ -82,7 +82,7 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
   }
 
   return (
-    <section className="rounded-2xl border bg-card p-5 shadow-sm">
+    <section className="rounded-lg border bg-card p-5 shadow-sm">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
         三省入口
       </p>
@@ -114,7 +114,7 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
         onChange={(event) => setText(event.target.value)}
         rows={6}
         placeholder="刚刚现实里发生了什么？可以是一句话、顾客原话、供应商报价、成本变化、极限感、一个拖延动作。"
-        className="mt-4 w-full resize-none rounded-xl border bg-background p-4 text-sm outline-none focus:ring-2 focus:ring-foreground/20"
+        className="mt-4 w-full resize-none rounded-lg border bg-background p-4 text-sm outline-none focus:ring-2 focus:ring-foreground/20"
       />
       <div className="mt-3 flex items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">
@@ -180,12 +180,12 @@ export function MaterialInput({ initialUrl = "" }: { initialUrl?: string }) {
       </div>
 
       {notice ? (
-        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="mt-3 rounded-md border border-status-validating/30 bg-status-validating/10 p-3 text-sm text-status-validating">
           {notice}
         </p>
       ) : null}
       {error ? (
-        <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </p>
       ) : null}

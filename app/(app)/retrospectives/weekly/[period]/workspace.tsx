@@ -172,7 +172,7 @@ export function WeeklyRetrospectiveWorkspace({
 
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-8 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-12">
         <aside>
-          <div className="sticky top-6 rounded-xl border bg-card p-4">
+          <div className="sticky top-6 rounded-lg border bg-card p-4">
             <h2 className="text-sm font-medium">本周期证据</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               先排除噪声，再让AI解释。
@@ -291,7 +291,7 @@ export function WeeklyRetrospectiveWorkspace({
             <>
               <Pair title="当时以为" items={draft.expected} />
               <Pair title="实际发生" items={draft.actual} />
-              <section className="rounded-xl border bg-card p-5">
+              <section className="rounded-lg border bg-card p-5">
                 <h2 className="text-sm font-medium">差距与原因</h2>
                 <div className="mt-4 space-y-3">
                   {draft.gaps.map((gap, index) => (
@@ -320,18 +320,18 @@ export function WeeklyRetrospectiveWorkspace({
               </div>
 
               {!completed && (
-                <section className="rounded-xl border border-orange-200 bg-orange-50 p-5">
+                <section className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-5">
                   <div className="flex items-center gap-2">
                     <MessageSquareWarning className="size-4" />
                     <h2 className="text-sm font-medium">诊断追问</h2>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-orange-900/70">
+                  <p className="mt-2 text-xs leading-5 text-status-validating/70">
                     回答一个关键缺口，或直接要求AI提出下一轮问题。
                   </p>
                   <textarea
                     value={answer}
                     onChange={(event) => setAnswer(event.target.value)}
-                    className="mt-3 min-h-24 w-full rounded-md border border-orange-200 bg-white p-3 text-sm"
+                    className="mt-3 min-h-24 w-full rounded-md border border-status-validating/30 bg-white p-3 text-sm"
                     placeholder="补充当时的真实约束、选择或证据……"
                   />
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -356,7 +356,7 @@ export function WeeklyRetrospectiveWorkspace({
                 </section>
               )}
 
-              <section className="rounded-xl border bg-foreground p-5 text-background sm:p-6">
+              <section className="rounded-lg border bg-foreground p-5 text-background sm:p-6">
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] opacity-50">
                   Mandatory exit
                 </p>
@@ -372,7 +372,7 @@ export function WeeklyRetrospectiveWorkspace({
                       value={dueDate}
                       disabled={completed}
                       onChange={(event) => setDueDate(event.target.value)}
-                      className="mt-2 block rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm text-white"
+                      className="mt-2 block rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm text-primary-foreground"
                     />
                   </label>
                 </div>
@@ -391,7 +391,7 @@ export function WeeklyRetrospectiveWorkspace({
               </section>
             </>
           ) : (
-            <div className="rounded-xl border border-dashed p-10 text-center">
+            <div className="rounded-lg border border-dashed p-10 text-center">
               <p className="text-sm">先确认左侧证据，再生成本周对账。</p>
             </div>
           )}
@@ -399,7 +399,7 @@ export function WeeklyRetrospectiveWorkspace({
           {error ? (
             <AiErrorNotice error={error} />
           ) : notice ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+            <p className="rounded-md border border-status-mvp/30 bg-status-mvp/10 p-3 text-sm text-status-mvp">
               {notice}
             </p>
           ) : null}
@@ -411,7 +411,7 @@ export function WeeklyRetrospectiveWorkspace({
 
 function Pair({ title, items }: { title: string; items: string[] }) {
   return (
-    <section className="rounded-xl border bg-card p-5">
+    <section className="rounded-lg border bg-card p-5">
       <h2 className="text-sm font-medium">{title}</h2>
       <ul className="mt-3 space-y-2">
         {items.map((item, index) => (
@@ -442,7 +442,7 @@ function Field({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 min-h-20 w-full rounded-md border border-white/20 bg-white/10 p-3 text-sm leading-6 text-white disabled:opacity-70"
+        className="mt-2 min-h-20 w-full rounded-md border border-white/20 bg-white/10 p-3 text-sm leading-6 text-primary-foreground disabled:opacity-70"
       />
     </label>
   );

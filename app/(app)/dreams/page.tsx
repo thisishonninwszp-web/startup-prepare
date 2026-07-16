@@ -25,13 +25,13 @@ export default async function DreamsPage() {
   const cases = await listDreamCases(user!.id);
   return (
     <>
-      <main className="min-h-screen bg-[#f4f1ea] text-stone-950">
-        <section className="relative overflow-hidden border-b border-stone-300/70 px-4 py-12 sm:px-8 lg:px-12">
-          <div className="absolute -right-24 -top-24 size-80 rounded-full border border-stone-300/60" />
-          <div className="absolute -right-8 -top-8 size-48 rounded-full border border-stone-300/60" />
+      <main className="min-h-screen bg-[#f4f1ea] text-foreground">
+        <section className="relative overflow-hidden border-b border-border/70 px-4 py-12 sm:px-8 lg:px-12">
+          <div className="absolute -right-24 -top-24 size-80 rounded-full border border-border/60" />
+          <div className="absolute -right-8 -top-8 size-48 rounded-full border border-border/60" />
           <div className="relative mx-auto flex max-w-6xl flex-col gap-8 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.24em] text-stone-500">
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
                 <CloudMoon className="size-4" />
                 Future archive
               </div>
@@ -40,13 +40,13 @@ export default async function DreamsPage() {
                 <br />
                 再看它靠什么成立。
               </h1>
-              <p className="mt-5 max-w-2xl text-sm leading-7 text-stone-600">
+              <p className="mt-5 max-w-2xl text-sm leading-7 text-muted-foreground">
                 不把梦想压成任务。先看见某一天的光线、人物、动作和内心，再折叠查看代价与前提。
               </p>
             </div>
             <Link
               href="/dreams/new"
-              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-stone-950 px-5 text-sm text-stone-50"
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-foreground px-5 text-sm text-background"
             >
               <Plus className="size-4" />
               开始做一个梦
@@ -56,9 +56,9 @@ export default async function DreamsPage() {
 
         <section className="mx-auto max-w-6xl px-4 py-10 sm:px-8 lg:px-12">
           {cases.length === 0 ? (
-            <div className="rounded-[2rem] border border-dashed border-stone-400/70 p-12 text-center">
+            <div className="rounded-[2rem] border border-dashed border-foreground/30/70 p-12 text-center">
               <p className="font-serif text-xl">这里还没有未来画面。</p>
-              <p className="mt-3 text-sm text-stone-600">
+              <p className="mt-3 text-sm text-muted-foreground">
                 不必先证明现实可行，只要从“我想看见怎样的一天”开始。
               </p>
             </div>
@@ -68,12 +68,12 @@ export default async function DreamsPage() {
                 <div
                   key={item.id}
                   className={
-                    "group relative min-h-64 overflow-hidden rounded-[2rem] border border-stone-300 bg-stone-50 transition-transform hover:-translate-y-1 " +
+                    "group relative min-h-64 overflow-hidden rounded-[2rem] border border-border bg-muted/50 transition-transform hover:-translate-y-1 " +
                     (index % 3 === 0 ? "md:col-span-2 md:min-h-72" : "")
                   }
                 >
                   <DreamDeleteButton caseId={item.id} />
-                  <div className="absolute right-5 top-3 font-serif text-7xl text-stone-200/70">
+                  <div className="absolute right-5 top-3 font-serif text-7xl text-background/70">
                     {String(index + 1).padStart(2, "0")}
                   </div>
                 <Link
@@ -81,21 +81,21 @@ export default async function DreamsPage() {
                   className="relative block h-full p-6"
                 >
                   <div className="flex h-full flex-col">
-                    <div className="flex flex-wrap gap-2 text-[10px] text-stone-500">
-                      <span className="rounded-full border border-stone-300 px-2 py-1">
+                    <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                      <span className="rounded-full border border-border px-2 py-1">
                         {CONTEXT_LABEL[item.context]}
                       </span>
-                      <span className="rounded-full border border-stone-300 px-2 py-1">
+                      <span className="rounded-full border border-border px-2 py-1">
                         {SCALE_LABEL[item.scale]}
                       </span>
                     </div>
                     <h2 className="mt-8 max-w-2xl font-serif text-2xl leading-snug">
                       {item.title}
                     </h2>
-                    <p className="mt-3 max-w-2xl line-clamp-2 text-sm leading-6 text-stone-600">
+                    <p className="mt-3 max-w-2xl line-clamp-2 text-sm leading-6 text-muted-foreground">
                       {item.initial_desire}
                     </p>
-                    <div className="mt-auto flex items-center justify-between pt-8 text-xs text-stone-500">
+                    <div className="mt-auto flex items-center justify-between pt-8 text-xs text-muted-foreground">
                       <span>
                         {item.branch_count} 条路径 · {item.version_count} 个愿景版本
                       </span>

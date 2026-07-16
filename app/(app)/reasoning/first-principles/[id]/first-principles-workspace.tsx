@@ -18,33 +18,33 @@ const BASIS_META: Record<
 > = {
   bedrock: {
     label: "基础事实",
-    badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-    dotClass: "bg-green-500",
+    badgeClass: "bg-status-mvp/15 text-status-mvp",
+    dotClass: "bg-status-mvp",
   },
   data_backed: {
     label: "有数据支撑",
-    badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-    dotClass: "bg-blue-500",
+    badgeClass: "bg-status-hypothesis/15 text-status-hypothesis",
+    dotClass: "bg-status-hypothesis",
   },
   personal_experience: {
     label: "个人经验",
-    badgeClass: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
-    dotClass: "bg-yellow-500",
+    badgeClass: "bg-status-validating/15 text-status-validating",
+    dotClass: "bg-status-validating",
   },
   industry_consensus: {
     label: "行业共识",
-    badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-    dotClass: "bg-orange-500",
+    badgeClass: "bg-status-validating/15 text-status-validating",
+    dotClass: "bg-status-validating",
   },
   media_narrative: {
     label: "媒体叙事",
-    badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-    dotClass: "bg-red-400",
+    badgeClass: "bg-destructive/15 text-destructive",
+    dotClass: "bg-destructive/40",
   },
   pure_assumption: {
     label: "纯假设",
-    badgeClass: "bg-red-200 text-red-900 dark:bg-red-900/60 dark:text-red-200",
-    dotClass: "bg-red-600",
+    badgeClass: "bg-destructive/20 text-destructive",
+    dotClass: "bg-destructive",
   },
 };
 
@@ -84,7 +84,7 @@ function NodeCard({
     <div
       className={`rounded-lg border p-4 space-y-2.5 transition-opacity ${
         verified ? "opacity-60" : ""
-      } ${isWeak ? "border-red-300 dark:border-red-700" : ""}`}
+      } ${isWeak ? "border-destructive/30" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
@@ -98,7 +98,7 @@ function NodeCard({
             {DEPTH_LABELS[node.depth] ?? `深度 ${node.depth}`}
           </span>
           {isWeak && (
-            <span className="text-[10px] font-medium text-red-600 dark:text-red-400">
+            <span className="text-[10px] font-medium text-destructive">
               ⚠ 脆弱环节
             </span>
           )}
@@ -110,7 +110,7 @@ function NodeCard({
           title={verified ? "取消验证标记" : "标记为已验证"}
           className={`shrink-0 h-4 w-4 rounded border transition-colors ${
             verified
-              ? "border-green-500 bg-green-500 text-white"
+              ? "border-status-mvp/50 bg-status-mvp text-primary-foreground"
               : "border-border hover:border-foreground/40"
           } flex items-center justify-center text-[10px]`}
         >
@@ -189,13 +189,13 @@ export function FirstPrinciplesWorkspace({
 
       {/* 脆弱环节警示 */}
       {session.weakest_links.length > 0 && (
-        <div className="mb-8 rounded-lg border border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950/20 p-4 space-y-2">
-          <p className="text-xs font-medium text-red-700 dark:text-red-400">
+        <div className="mb-8 rounded-lg border border-destructive/30 bg-destructive/10 p-4 space-y-2">
+          <p className="text-xs font-medium text-destructive">
             ⚠ 最脆弱的环节（优先验证这些）
           </p>
           <ul className="space-y-1">
             {session.weakest_links.map((link, i) => (
-              <li key={i} className="text-sm text-red-800 dark:text-red-300 leading-relaxed">
+              <li key={i} className="text-sm text-destructive leading-relaxed">
                 · {link}
               </li>
             ))}
@@ -224,11 +224,11 @@ export function FirstPrinciplesWorkspace({
       })}
 
       {/* 基石总结 */}
-      <div className="rounded-lg border border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/20 p-4 space-y-1">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-green-700 dark:text-green-400">
+      <div className="rounded-lg border border-status-mvp/30 bg-status-mvp/10 p-4 space-y-1">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-status-mvp">
           真正站得住脚的部分
         </p>
-        <p className="text-sm text-green-800 dark:text-green-300 leading-relaxed">
+        <p className="text-sm text-status-mvp leading-relaxed">
           {session.bedrock_summary}
         </p>
       </div>

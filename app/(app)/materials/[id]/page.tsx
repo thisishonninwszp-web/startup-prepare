@@ -87,11 +87,11 @@ export default async function MaterialDetailPage({
                 </p>
               ) : null}
               {material.redactions.length > 0 ? (
-                <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="rounded-md border border-status-validating/30 bg-status-validating/10 p-3 text-xs text-status-validating">
                   已自动遮蔽：{material.redactions.join("、")}
                 </p>
               ) : null}
-              <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl bg-muted p-4 text-sm leading-6">
+              <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-4 text-sm leading-6">
                 {material.sanitized_text || "暂无脱敏文本"}
               </pre>
               {material.extraction?.unreadable.length ? (
@@ -213,7 +213,7 @@ export default async function MaterialDetailPage({
 
           <Panel title="4. 尚书省执行">
             {reviewBlocksRouting ? (
-              <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="rounded-md border border-status-validating/30 bg-status-validating/10 p-3 text-sm text-status-validating">
                 门下省判断这份材料暂不应分流。可以先暂存、驳回，或补充材料后重跑审阅。
               </p>
             ) : canRoute ? (
@@ -303,7 +303,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border bg-card p-5">
+    <section className="rounded-lg border bg-card p-5">
       <h2 className="mb-4 text-sm font-semibold">{title}</h2>
       {children}
     </section>

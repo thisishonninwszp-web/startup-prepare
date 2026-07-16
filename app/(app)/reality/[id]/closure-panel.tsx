@@ -207,7 +207,7 @@ export function RealityClosurePanel({
   return (
     <section
       id="current-next-move"
-      className="scroll-mt-6 rounded-xl border-2 border-foreground bg-card p-5 sm:p-6"
+      className="scroll-mt-6 rounded-lg border-2 border-foreground bg-card p-5 sm:p-6"
     >
       <div className="flex items-start gap-3">
         <Target className="mt-0.5 size-5 shrink-0" />
@@ -222,7 +222,7 @@ export function RealityClosurePanel({
       {active ? (
         <div className="mt-5">
           {stale && (
-            <div className="mb-4 flex gap-2 rounded-md border border-orange-300 bg-orange-50 p-3 text-xs leading-5 text-orange-950">
+            <div className="mb-4 flex gap-2 rounded-md border border-status-validating/30 bg-status-validating/10 p-3 text-xs leading-5 text-status-validating">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <span>
                 这一步基于旧现状版本。现实已经更新，请确认继续执行或带原因替代。
@@ -230,7 +230,7 @@ export function RealityClosurePanel({
             </div>
           )}
           {due && (
-            <div className="mb-4 flex gap-2 rounded-md border border-orange-300 bg-orange-50 p-3 text-xs leading-5 text-orange-950">
+            <div className="mb-4 flex gap-2 rounded-md border border-status-validating/30 bg-status-validating/10 p-3 text-xs leading-5 text-status-validating">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <span>这一步已经到期。先记录现实结果，再决定是否继续分析。</span>
             </div>

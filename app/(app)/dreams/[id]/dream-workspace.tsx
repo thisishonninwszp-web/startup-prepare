@@ -149,7 +149,7 @@ export function DreamWorkspace({
 
   if (!activeBranch || !activeBranch.canvas) {
     return (
-      <main className="min-h-screen bg-[#f4f1ea] p-8 text-stone-950">
+      <main className="min-h-screen bg-[#f4f1ea] p-8 text-foreground">
         <p>梦想分支尚未完成初始化，请确认011迁移已经执行。</p>
       </main>
     );
@@ -158,13 +158,13 @@ export function DreamWorkspace({
   const canvas = activeBranch.canvas;
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] text-stone-950">
-      <header className="border-b border-stone-300 bg-[#f9f7f2] px-4 py-6 sm:px-8 lg:px-12">
+    <main className="min-h-screen bg-[#f4f1ea] text-foreground">
+      <header className="border-b border-border bg-[#f9f7f2] px-4 py-6 sm:px-8 lg:px-12">
         <div className="mx-auto max-w-[90rem]">
           <div className="flex items-center justify-between gap-4">
             <Link
               href="/dreams"
-              className="inline-flex items-center gap-2 text-xs text-stone-500 hover:text-stone-950"
+              className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="size-3" />
               返回未来档案
@@ -172,7 +172,7 @@ export function DreamWorkspace({
             {initialCase.branches.length >= 2 ? (
               <Link
                 href={`/dreams/${initialCase.id}/compare`}
-                className="inline-flex items-center gap-2 text-xs text-stone-600 hover:text-stone-950"
+                className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
               >
                 <Split className="size-3.5" />
                 并排比较未来
@@ -182,23 +182,23 @@ export function DreamWorkspace({
 
           <div className="mt-6 flex flex-wrap items-end justify-between gap-5">
             <div>
-              <div className="flex gap-2 text-[10px] text-stone-500">
-                <span className="rounded-full border border-stone-300 px-2 py-1">
+              <div className="flex gap-2 text-[10px] text-muted-foreground">
+                <span className="rounded-full border border-border px-2 py-1">
                   {CONTEXT_LABEL[initialCase.context]}
                 </span>
-                <span className="rounded-full border border-stone-300 px-2 py-1">
+                <span className="rounded-full border border-border px-2 py-1">
                   {SCALE_LABEL[initialCase.scale]}
                 </span>
               </div>
               <h1 className="mt-4 font-serif text-3xl tracking-[-0.04em] sm:text-4xl">
                 {initialCase.title}
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 {initialCase.initial_desire}
               </p>
             </div>
             <div className="text-right">
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/80">
                 Canvas revision
               </p>
               <p className="mt-1 font-serif text-2xl">
@@ -216,8 +216,8 @@ export function DreamWorkspace({
                 className={
                   "group flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs transition-colors " +
                   (branch.id === activeBranch.id
-                    ? "border-stone-950 bg-stone-950 text-stone-50"
-                    : "border-stone-300 bg-white/60 hover:border-stone-500")
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border bg-white/60 hover:border-foreground/30")
                 }
               >
                 <span className="font-mono opacity-55">
@@ -235,13 +235,13 @@ export function DreamWorkspace({
 
       <div className="mx-auto grid max-w-[90rem] gap-6 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(20rem,.78fr)_minmax(0,1.22fr)] lg:px-12">
         <section className="space-y-5 lg:sticky lg:top-5 lg:self-start">
-          <div className="overflow-hidden rounded-[2rem] border border-stone-300 bg-stone-950 text-stone-50">
+          <div className="overflow-hidden rounded-[2rem] border border-border bg-foreground text-background">
             <div className="border-b border-white/10 px-6 py-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-400">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/80">
                   One question at a time
                 </p>
-                <span className="text-[10px] text-stone-400">
+                <span className="text-[10px] text-muted-foreground/80">
                   {phaseIndex + 1} / {PHASES.length}
                 </span>
               </div>
@@ -251,14 +251,14 @@ export function DreamWorkspace({
                     key={phase}
                     className={
                       "h-1 flex-1 rounded-full " +
-                      (index <= phaseIndex ? "bg-stone-100" : "bg-white/15")
+                      (index <= phaseIndex ? "bg-muted" : "bg-white/15")
                     }
                   />
                 ))}
               </div>
             </div>
             <div className="p-6 sm:p-7">
-              <p className="text-xs text-stone-400">
+              <p className="text-xs text-muted-foreground/80">
                 {PHASES[phaseIndex]?.[1]}
               </p>
               <h2 className="mt-4 font-serif text-2xl leading-9">
@@ -271,11 +271,11 @@ export function DreamWorkspace({
                   answerKey.current = crypto.randomUUID();
                 }}
                 placeholder="只写你真实看见、记得或在意的部分……"
-                className="mt-6 min-h-32 w-full rounded-2xl border border-white/15 bg-white/5 p-4 text-sm leading-7 text-white outline-none placeholder:text-stone-500 focus:border-white/40"
+                className="mt-6 min-h-32 w-full rounded-lg border border-white/15 bg-white/5 p-4 text-sm leading-7 text-primary-foreground outline-none placeholder:text-muted-foreground focus:border-white/40"
               />
               <Button
                 type="button"
-                className="mt-3 w-full rounded-full bg-stone-50 text-stone-950 hover:bg-white"
+                className="mt-3 w-full rounded-full bg-muted/50 text-foreground hover:bg-white"
                 disabled={!answer.trim() || busy === "answer"}
                 onClick={() =>
                   run(
@@ -299,13 +299,13 @@ export function DreamWorkspace({
               >
                 {busy === "answer" ? "正在整理原话…" : "回答并看下一题"}
               </Button>
-              <p className="mt-3 text-center text-[10px] leading-4 text-stone-500">
+              <p className="mt-3 text-center text-[10px] leading-4 text-muted-foreground">
                 回答会先保存。即使AI暂时失败，你写下的内容也不会丢失。
               </p>
             </div>
           </div>
 
-          <details className="rounded-3xl border border-stone-300 bg-[#f9f7f2] p-5">
+          <details className="rounded-lg border border-border bg-[#f9f7f2] p-5">
             <summary className="cursor-pointer text-sm font-medium">
               查看这条路径的访谈记录
             </summary>
@@ -314,10 +314,10 @@ export function DreamWorkspace({
                 <div
                   key={message.id}
                   className={
-                    "rounded-2xl p-3 text-xs leading-5 " +
+                    "rounded-lg p-3 text-xs leading-5 " +
                     (message.role === "user"
-                      ? "ml-5 bg-stone-900 text-stone-50"
-                      : "mr-5 bg-stone-200/70 text-stone-700")
+                      ? "ml-5 bg-foreground text-background"
+                      : "mr-5 bg-muted/70 text-foreground")
                   }
                 >
                   {message.content}
@@ -333,12 +333,12 @@ export function DreamWorkspace({
             run={run}
           />
 
-          <section className="rounded-3xl border border-stone-300 bg-[#f9f7f2] p-5">
+          <section className="rounded-lg border border-border bg-[#f9f7f2] p-5">
             <div className="flex items-center gap-2">
               <ScanSearch className="size-4" />
               <h2 className="text-sm font-medium">连接现状</h2>
             </div>
-            <p className="mt-2 text-xs leading-5 text-stone-500">
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
               只进入前提、代价、信号和冲突，不改写未来场景。
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -350,8 +350,8 @@ export function DreamWorkspace({
                   className={
                     "rounded-full border px-3 py-2 text-xs " +
                     (realityScope === scope
-                      ? "border-stone-900 bg-stone-900 text-white"
-                      : "border-stone-300")
+                      ? "border-foreground/30 bg-foreground text-primary-foreground"
+                      : "border-border")
                   }
                 >
                   {scope === "branch" ? "只用于当前路径" : "用于全部路径"}
@@ -361,7 +361,7 @@ export function DreamWorkspace({
             <select
               value={realityVersionId}
               onChange={(event) => setRealityVersionId(event.target.value)}
-              className="mt-3 w-full rounded-2xl border border-stone-300 bg-white px-3 py-2 text-xs"
+              className="mt-3 w-full rounded-lg border border-border bg-white px-3 py-2 text-xs"
             >
               <option value="">选择现状地图</option>
               {realityChoices.map((choice) => (
@@ -396,9 +396,9 @@ export function DreamWorkspace({
           </section>
 
           {error ? (
-            <AiErrorNotice error={error} className="rounded-2xl text-xs leading-5" />
+            <AiErrorNotice error={error} className="rounded-lg text-xs leading-5" />
           ) : notice ? (
-            <p className="rounded-2xl border border-emerald-300 bg-emerald-50 p-3 text-xs leading-5 text-emerald-700">
+            <p className="rounded-lg border border-status-mvp/30 bg-status-mvp/10 p-3 text-xs leading-5 text-status-mvp">
               {notice}
             </p>
           ) : null}
@@ -407,7 +407,7 @@ export function DreamWorkspace({
         <section className="min-w-0 space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-500">
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 Live future canvas
               </p>
               <h2 className="mt-1 font-serif text-2xl">
@@ -418,7 +418,7 @@ export function DreamWorkspace({
               {activeBranch.versions.length ? (
                 <Link
                   href={`/dreams/${initialCase.id}/branches/${activeBranch.id}/versions/${activeBranch.versions[0].version_no}`}
-                  className="inline-flex h-9 items-center rounded-full border border-stone-300 bg-white px-4 text-xs"
+                  className="inline-flex h-9 items-center rounded-full border border-border bg-white px-4 text-xs"
                 >
                   查看版本 v{activeBranch.versions[0].version_no}
                 </Link>
@@ -451,7 +451,7 @@ export function DreamWorkspace({
               value={changeReason}
               onChange={(event) => setChangeReason(event.target.value)}
               placeholder="这次为什么改变（可选）"
-              className="w-full rounded-full border border-stone-300 bg-white/70 px-4 py-2 text-xs"
+              className="w-full rounded-full border border-border bg-white/70 px-4 py-2 text-xs"
             />
           ) : null}
 
@@ -513,15 +513,15 @@ function DreamCanvasEditor({
               return (
                 <article
                   key={dimension.key}
-                  className="group rounded-2xl border border-stone-300/80 bg-white/55 p-4"
+                  className="group rounded-lg border border-border/80 bg-white/55 p-4"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-xs font-medium text-stone-500">
+                    <h4 className="text-xs font-medium text-muted-foreground">
                       {dimension.label}
                     </h4>
                     <button
                       type="button"
-                      className="rounded-full p-1 text-stone-400 hover:bg-stone-200 hover:text-stone-900"
+                      className="rounded-full p-1 text-muted-foreground/80 hover:bg-muted hover:text-foreground"
                       onClick={() => {
                         setAdding(dimension.key);
                         setEditingItemId(null);
@@ -539,15 +539,15 @@ function DreamCanvasEditor({
                           <div
                             key={item.id}
                             className={
-                              "rounded-xl border p-3 " +
+                              "rounded-lg border p-3 " +
                               (item.status === "pending"
-                                ? "border-amber-300 bg-amber-50"
+                                ? "border-status-validating/30 bg-status-validating/10"
                                 : "border-transparent bg-[#f4f1ea]")
                             }
                           >
                             <p className="text-sm leading-6">{item.text}</p>
                             <div className="mt-2 flex items-center justify-between gap-2">
-                              <span className="text-[10px] text-stone-500">
+                              <span className="text-[10px] text-muted-foreground">
                                 {item.status === "pending"
                                   ? "AI推演 · 待确认"
                                   : item.origin === "explicit"
@@ -561,7 +561,7 @@ function DreamCanvasEditor({
                                   <button
                                     type="button"
                                     aria-label="修改画布内容"
-                                    className="rounded-full p-1 text-stone-400 hover:bg-stone-200 hover:text-stone-900"
+                                    className="rounded-full p-1 text-muted-foreground/80 hover:bg-muted hover:text-foreground"
                                     disabled={Boolean(busy)}
                                     onClick={() => {
                                       setAdding(dimension.key);
@@ -577,7 +577,7 @@ function DreamCanvasEditor({
                                     <button
                                       type="button"
                                       aria-label="确认AI推演"
-                                      className="rounded-full bg-emerald-100 p-1 text-emerald-800"
+                                      className="rounded-full bg-status-mvp/15 p-1 text-status-mvp"
                                       disabled={Boolean(busy)}
                                       onClick={() =>
                                         run(
@@ -601,7 +601,7 @@ function DreamCanvasEditor({
                                     <button
                                       type="button"
                                       aria-label="拒绝AI推演"
-                                      className="rounded-full bg-stone-200 p-1 text-stone-600"
+                                      className="rounded-full bg-muted p-1 text-muted-foreground"
                                       disabled={Boolean(busy)}
                                       onClick={() =>
                                         run(
@@ -628,7 +628,7 @@ function DreamCanvasEditor({
                                   <button
                                     type="button"
                                     aria-label="删除画布内容"
-                                    className="rounded-full p-1 text-stone-400 hover:bg-red-100 hover:text-red-700"
+                                    className="rounded-full p-1 text-muted-foreground/80 hover:bg-destructive/15 hover:text-destructive"
                                     disabled={Boolean(busy)}
                                     onClick={() =>
                                       run(
@@ -654,7 +654,7 @@ function DreamCanvasEditor({
                         );
                       })
                     ) : (
-                      <p className="py-3 font-serif text-sm italic text-stone-400">
+                      <p className="py-3 font-serif text-sm italic text-muted-foreground/80">
                         尚未看清
                       </p>
                     )}
@@ -664,7 +664,7 @@ function DreamCanvasEditor({
                           autoFocus
                           value={draft}
                           onChange={(event) => setDraft(event.target.value)}
-                          className="min-h-20 w-full rounded-xl border border-stone-300 bg-white p-3 text-sm"
+                          className="min-h-20 w-full rounded-lg border border-border bg-white p-3 text-sm"
                           placeholder="用自己的话补充……"
                         />
                         <div className="flex gap-2">
@@ -717,12 +717,12 @@ function DreamCanvasEditor({
         return section.folded ? (
           <details
             key={section.title}
-            className="rounded-[2rem] border border-stone-300 bg-[#f9f7f2] p-5 sm:p-6"
+            className="rounded-[2rem] border border-border bg-[#f9f7f2] p-5 sm:p-6"
           >
             <summary className="cursor-pointer font-serif text-xl">
               {section.title}
             </summary>
-            <p className="mt-2 text-xs text-stone-500">
+            <p className="mt-2 text-xs text-muted-foreground">
               现实只在这里与梦想相遇，不会改写上面的场景。
             </p>
             <div className="mt-5">{body}</div>
@@ -730,11 +730,11 @@ function DreamCanvasEditor({
         ) : (
           <section
             key={section.title}
-            className="rounded-[2rem] border border-stone-300 bg-[#f9f7f2] p-5 sm:p-6"
+            className="rounded-[2rem] border border-border bg-[#f9f7f2] p-5 sm:p-6"
           >
             <div className="flex items-end justify-between gap-4">
               <h3 className="font-serif text-2xl">{section.title}</h3>
-              <p className="text-[10px] text-stone-400">
+              <p className="text-[10px] text-muted-foreground/80">
                 原话自动显影 · 推演必须确认
               </p>
             </div>
@@ -763,12 +763,12 @@ function BranchControls({
   ) => void;
 }) {
   return (
-    <section className="rounded-3xl border border-stone-300 bg-[#f9f7f2] p-5">
+    <section className="rounded-lg border border-border bg-[#f9f7f2] p-5">
       <div className="flex items-center gap-2">
         <GitBranch className="size-4" />
         <h2 className="text-sm font-medium">未来分支</h2>
       </div>
-      <p className="mt-2 text-xs leading-5 text-stone-500">
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">
         AI只能从你已经表达的真实取舍中提出分叉，不会替你选择。
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2">
@@ -814,13 +814,13 @@ function BranchControls({
           {activeBranch.suggestions.map((suggestion) => (
             <div
               key={suggestion.id}
-              className="rounded-2xl border border-stone-300 bg-white p-3"
+              className="rounded-lg border border-border bg-white p-3"
             >
               <p className="text-sm font-medium">{suggestion.label}</p>
-              <p className="mt-1 text-xs leading-5 text-stone-600">
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {suggestion.fork_question}
               </p>
-              <p className="mt-1 text-[10px] text-stone-500">
+              <p className="mt-1 text-[10px] text-muted-foreground">
                 取舍：{suggestion.tradeoff}
               </p>
               <div className="mt-3 flex gap-2">
@@ -869,7 +869,7 @@ function BranchControls({
         <button
           type="button"
           disabled={Boolean(busy)}
-          className="mt-4 inline-flex items-center gap-1 text-[10px] text-stone-400 hover:text-red-700"
+          className="mt-4 inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 hover:text-destructive"
           onClick={() =>
             run(
               "archive",

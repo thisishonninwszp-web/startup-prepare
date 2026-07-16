@@ -222,7 +222,7 @@ function ObservationItem({ card }: { card: ObservationCard }) {
       <div className="flex items-start justify-between gap-3">
         <p className="whitespace-pre-wrap text-sm">{card.raw_text}</p>
         {promoted ? (
-          <span className="shrink-0 text-xs text-green-600">已提升 ✓</span>
+          <span className="shrink-0 text-xs text-status-mvp">已提升 ✓</span>
         ) : (
           <button
             type="button"

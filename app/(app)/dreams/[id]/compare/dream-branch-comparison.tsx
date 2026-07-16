@@ -40,24 +40,24 @@ export function DreamBranchComparison({
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-stone-950 sm:px-8 lg:px-12">
+    <main className="min-h-screen bg-[#f4f1ea] px-4 py-8 text-foreground sm:px-8 lg:px-12">
       <div className="mx-auto max-w-[90rem]">
         <Link
           href={`/dreams/${dreamCase.id}`}
-          className="inline-flex items-center gap-2 text-xs text-stone-500"
+          className="inline-flex items-center gap-2 text-xs text-muted-foreground"
         >
           <ArrowLeft className="size-3" />
           返回梦想工作台
         </Link>
-        <div className="mt-8 flex flex-wrap items-end justify-between gap-4 border-b border-stone-300 pb-6">
+        <div className="mt-8 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-stone-500">
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
               Parallel futures
             </p>
             <h1 className="mt-3 font-serif text-4xl tracking-[-0.04em]">
               不选赢家，只看取舍。
             </h1>
-            <p className="mt-3 text-sm text-stone-600">
+            <p className="mt-3 text-sm text-muted-foreground">
               {dreamCase.title} · {dreamCase.branches.length}条活跃路径
             </p>
           </div>
@@ -76,23 +76,23 @@ export function DreamBranchComparison({
           {dreamCase.branches.map((branch, index) => (
             <article
               key={branch.id}
-              className="rounded-[2rem] border border-stone-300 bg-[#f9f7f2] p-5"
+              className="rounded-[2rem] border border-border bg-[#f9f7f2] p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-mono text-[10px] text-stone-400">
+                  <p className="font-mono text-[10px] text-muted-foreground/80">
                     PATH {String(index + 1).padStart(2, "0")}
                   </p>
                   <h2 className="mt-2 font-serif text-2xl">{branch.name}</h2>
                 </div>
                 {branch.is_focused ? (
-                  <span className="rounded-full bg-stone-900 px-2 py-1 text-[10px] text-white">
+                  <span className="rounded-full bg-foreground px-2 py-1 text-[10px] text-primary-foreground">
                     当前焦点
                   </span>
                 ) : null}
               </div>
               {branch.tradeoff ? (
-                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                <p className="mt-3 rounded-lg bg-status-validating/10 p-3 text-xs leading-5 text-status-validating">
                   取舍：{branch.tradeoff}
                 </p>
               ) : null}
@@ -104,7 +104,7 @@ export function DreamBranchComparison({
                       .map((item) => item.text) ?? [];
                   return (
                     <section key={dimension}>
-                      <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-stone-400">
+                      <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
                         {label}
                       </h3>
                       {values.length ? (
@@ -116,7 +116,7 @@ export function DreamBranchComparison({
                           ))}
                         </ul>
                       ) : (
-                        <p className="mt-2 font-serif text-sm italic text-stone-400">
+                        <p className="mt-2 font-serif text-sm italic text-muted-foreground/80">
                           尚未看清
                         </p>
                       )}
@@ -129,10 +129,10 @@ export function DreamBranchComparison({
         </div>
 
         {comparison ? (
-          <section className="mt-6 grid gap-5 rounded-[2rem] bg-stone-950 p-6 text-stone-50 md:grid-cols-2">
+          <section className="mt-6 grid gap-5 rounded-[2rem] bg-foreground p-6 text-background md:grid-cols-2">
             <div>
               <h2 className="font-serif text-xl">共同地面</h2>
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-300">
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-background/80">
                 {comparison.common_ground.map((item) => (
                   <li key={item}>— {item}</li>
                 ))}
@@ -140,7 +140,7 @@ export function DreamBranchComparison({
             </div>
             <div>
               <h2 className="font-serif text-xl">仍然未知</h2>
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-300">
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-background/80">
                 {comparison.unknowns.map((item) => (
                   <li key={item}>— {item}</li>
                 ))}
@@ -152,9 +152,9 @@ export function DreamBranchComparison({
                 {comparison.differences.map((difference) => (
                   <div
                     key={difference.dimension}
-                    className="rounded-2xl border border-white/10 p-4"
+                    className="rounded-lg border border-white/10 p-4"
                   >
-                    <p className="text-xs text-stone-400">
+                    <p className="text-xs text-muted-foreground/80">
                       {difference.dimension}
                     </p>
                     {difference.branches.map((branch) => (

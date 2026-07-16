@@ -14,12 +14,12 @@ const PATTERN_TYPE_LABELS: Record<string, string> = {
 };
 
 const PATTERN_TYPE_COLORS: Record<string, string> = {
-  validation_bias: "border-l-orange-500 bg-orange-50 dark:bg-orange-950/20",
-  prediction_calibration: "border-l-blue-500 bg-blue-50 dark:bg-blue-950/20",
-  domain_concentration: "border-l-purple-500 bg-purple-50 dark:bg-purple-950/20",
-  reasoning_tendency: "border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/20",
-  execution_speed: "border-l-red-500 bg-red-50 dark:bg-red-950/20",
-  evidence_avoidance: "border-l-rose-500 bg-rose-50 dark:bg-rose-950/20",
+  validation_bias: "border-l-status-validating bg-status-validating/10",
+  prediction_calibration: "border-l-status-hypothesis bg-status-hypothesis/10",
+  domain_concentration: "border-l-verdict-learned bg-verdict-learned/10",
+  reasoning_tendency: "border-l-status-validating bg-status-validating/10",
+  execution_speed: "border-l-destructive bg-destructive/10",
+  evidence_avoidance: "border-l-destructive bg-destructive/10",
 };
 
 function PatternCard({ pattern }: { pattern: CognitivePattern }) {

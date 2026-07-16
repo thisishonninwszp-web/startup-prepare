@@ -61,7 +61,7 @@ export function TimelineView({ events }: { events: TimelineEvent[] }) {
                 className={
                   "absolute -left-8 grid size-6 place-items-center rounded-full border-2 bg-background " +
                   (event.isRealContact
-                    ? "border-emerald-500 text-emerald-600"
+                    ? "border-status-mvp/50 text-status-mvp"
                     : "border-muted-foreground/30 text-muted-foreground")
                 }
               >
@@ -70,7 +70,7 @@ export function TimelineView({ events }: { events: TimelineEvent[] }) {
               <div
                 className={
                   "rounded-lg border p-3 " +
-                  (event.isRealContact ? "border-emerald-200 bg-emerald-50/50" : "bg-card")
+                  (event.isRealContact ? "border-status-mvp/30 bg-status-mvp/10/50" : "bg-card")
                 }
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">

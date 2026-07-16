@@ -99,7 +99,7 @@ export function NoteEditor({ note }: { note: CompanyKbNote }) {
           >
             {saving ? "保存中…" : "保存"}
           </button>
-          {saveMsg && <span className="text-xs text-green-600">{saveMsg}</span>}
+          {saveMsg && <span className="text-xs text-status-mvp">{saveMsg}</span>}
         </div>
       </div>
     </div>

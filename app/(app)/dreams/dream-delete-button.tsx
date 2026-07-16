@@ -21,7 +21,7 @@ export function DreamDeleteButton({ caseId }: { caseId: string }) {
       type="button"
       onClick={handleDelete}
       disabled={pending}
-      className="absolute right-4 top-4 z-10 grid size-8 place-items-center rounded-full bg-stone-100/80 text-stone-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-50"
+      className="absolute right-4 top-4 z-10 grid size-8 place-items-center rounded-full bg-muted/80 text-muted-foreground/80 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
       aria-label="删除梦想"
     >
       <Trash2 className="size-3.5" />

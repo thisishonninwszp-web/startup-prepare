@@ -101,42 +101,42 @@ export function RealityDecisionClosurePanel({
   }
 
   return (
-    <section className="rounded-xl border border-zinc-900 bg-zinc-950 p-5 text-zinc-50 shadow-sm sm:p-6">
+    <section className="rounded-lg border border-foreground/30 bg-foreground p-5 text-background shadow-sm sm:p-6">
       <div className="flex items-start gap-3">
         <Target className="mt-0.5 size-5 shrink-0" />
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80">
             Unified closure
           </p>
           <h2 className="mt-1 text-lg font-medium">统一收束 · 今日下一步</h2>
-          <p className="mt-1 text-xs leading-5 text-zinc-400">
+          <p className="mt-1 text-xs leading-5 text-muted-foreground/80">
             把这次分析压缩成一个当前判断、最大未知和可对账的唯一下一步。
           </p>
         </div>
       </div>
 
       {active ? (
-        <div className="mt-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4">
+        <div className="mt-5 rounded-lg border border-foreground/30 bg-foreground p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="rounded-full bg-zinc-50 px-2.5 py-1 text-[10px] text-zinc-950">
+            <span className="rounded-full bg-muted/50 px-2.5 py-1 text-[10px] text-foreground">
               当前
             </span>
-            <span className="text-xs text-zinc-400">对账日 {active.due_on}</span>
+            <span className="text-xs text-muted-foreground/80">对账日 {active.due_on}</span>
           </div>
           <p className="mt-4 text-base font-medium leading-7">
             {active.selected_next_step}
           </p>
-          <p className="mt-2 text-xs leading-5 text-zinc-400">
+          <p className="mt-2 text-xs leading-5 text-muted-foreground/80">
             完成标准：{active.completion_criterion}
           </p>
           <details className="mt-4 text-xs">
-            <summary className="cursor-pointer text-zinc-300">
+            <summary className="cursor-pointer text-background/80">
               查看判断、未知和路径
             </summary>
-            <div className="mt-3 space-y-3 leading-5 text-zinc-400">
+            <div className="mt-3 space-y-3 leading-5 text-muted-foreground/80">
               <p>当前判断：{active.current_judgment}</p>
               <div>
-                <p className="text-zinc-300">最大未知</p>
+                <p className="text-background/80">最大未知</p>
                 <ul className="mt-1 list-disc space-y-1 pl-5">
                   {active.critical_unknowns.map((item) => (
                     <li key={item}>{item}</li>
@@ -144,11 +144,11 @@ export function RealityDecisionClosurePanel({
                 </ul>
               </div>
               <div>
-                <p className="text-zinc-300">可选路径</p>
+                <p className="text-background/80">可选路径</p>
                 <ul className="mt-1 space-y-2">
                   {active.options.map((item) => (
-                    <li key={item.label} className="rounded-md bg-zinc-950 p-2">
-                      <p className="font-medium text-zinc-200">{item.label}</p>
+                    <li key={item.label} className="rounded-md bg-foreground p-2">
+                      <p className="font-medium text-background">{item.label}</p>
                       <p>适用：{item.when_to_choose}</p>
                       <p>代价：{item.tradeoff}</p>
                       <p>小尝试：{item.small_try}</p>
@@ -167,13 +167,13 @@ export function RealityDecisionClosurePanel({
             </Button>
           </div>
           {resultOpen && (
-            <div className="mt-4 rounded-md border border-zinc-700 p-3">
+            <div className="mt-4 rounded-md border border-foreground/30 p-3">
               <textarea
                 value={resultNote}
                 onChange={(event) => setResultNote(event.target.value)}
                 rows={3}
                 placeholder="现实中发生了什么？"
-                className="w-full rounded-md border border-zinc-700 bg-zinc-950 p-3 text-sm outline-none"
+                className="w-full rounded-md border border-foreground/30 bg-foreground p-3 text-sm outline-none"
               />
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
@@ -216,7 +216,7 @@ export function RealityDecisionClosurePanel({
       )}
 
       {draft && (
-        <div className="mt-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4">
+        <div className="mt-5 rounded-lg border border-foreground/30 bg-foreground p-4">
           <p className="text-sm font-medium">
             可编辑收束草稿{sourceVersionNo ? ` · 现状版本 ${sourceVersionNo}` : ""}
           </p>
@@ -242,12 +242,12 @@ export function RealityDecisionClosurePanel({
               onChange={(value) => update("expected_feedback", value)}
             />
             <label className="block">
-              <span className="text-xs text-zinc-400">对账日期</span>
+              <span className="text-xs text-muted-foreground/80">对账日期</span>
               <input
                 type="date"
                 value={draft.due_on}
                 onChange={(event) => update("due_on", event.target.value)}
-                className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none"
+                className="mt-1 w-full rounded-md border border-foreground/30 bg-foreground px-3 py-2 text-sm outline-none"
               />
             </label>
             {replacing && (
@@ -283,11 +283,11 @@ export function RealityDecisionClosurePanel({
       )}
 
       {history.length > 0 && (
-        <details className="mt-5 text-xs text-zinc-400">
+        <details className="mt-5 text-xs text-muted-foreground/80">
           <summary className="cursor-pointer">统一收束历史（{history.length}）</summary>
           <ul className="mt-3 space-y-2">
             {history.map((item) => (
-              <li key={item.id} className="rounded-md border border-zinc-800 p-2">
+              <li key={item.id} className="rounded-md border border-foreground/30 p-2">
                 {item.selected_next_step}
               </li>
             ))}
@@ -311,12 +311,12 @@ function TextArea({
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-zinc-400">{label}</span>
+      <span className="text-xs text-muted-foreground/80">{label}</span>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={3}
-        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm leading-6 outline-none"
+        className="mt-1 w-full rounded-md border border-foreground/30 bg-foreground px-3 py-2 text-sm leading-6 outline-none"
       />
     </label>
   );

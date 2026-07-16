@@ -139,10 +139,10 @@ export default async function PatternsPage() {
               <div>
                 <p className="text-muted-foreground mb-1">有真实痛苦 (has_pain)</p>
                 <div className="flex gap-3">
-                  <span className="text-green-600 dark:text-green-400">
+                  <span className="text-status-mvp">
                     是 {snap.validations.has_pain_yes}
                   </span>
-                  <span className="text-red-600 dark:text-red-400">
+                  <span className="text-destructive">
                     否 {snap.validations.has_pain_no}
                   </span>
                   <span className="text-muted-foreground">
@@ -153,10 +153,10 @@ export default async function PatternsPage() {
               <div>
                 <p className="text-muted-foreground mb-1">愿意付钱 (will_pay)</p>
                 <div className="flex gap-3">
-                  <span className="text-green-600 dark:text-green-400">
+                  <span className="text-status-mvp">
                     是 {snap.validations.will_pay_yes}
                   </span>
-                  <span className="text-red-600 dark:text-red-400">
+                  <span className="text-destructive">
                     否 {snap.validations.will_pay_no}
                   </span>
                   <span className="text-muted-foreground">

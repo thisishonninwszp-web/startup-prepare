@@ -52,7 +52,7 @@ export function ReflectionSettingsForm({
 
   return (
     <div className="mt-10 space-y-8">
-      <section className="rounded-xl border bg-card p-5 sm:p-6">
+      <section className="rounded-lg border bg-card p-5 sm:p-6">
         <h2 className="text-sm font-medium">周期</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="text-xs text-muted-foreground">
@@ -80,7 +80,7 @@ export function ReflectionSettingsForm({
         </div>
       </section>
 
-      <section className="rounded-xl border bg-card p-5 sm:p-6">
+      <section className="rounded-lg border bg-card p-5 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium">时间分类</h2>
@@ -178,7 +178,7 @@ export function ReflectionSettingsForm({
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">
-        <label className="rounded-xl border bg-card p-5 text-sm">
+        <label className="rounded-lg border bg-card p-5 text-sm">
           <span className="font-medium">灰色时间关键词</span>
           <span className="mt-1 block text-xs leading-5 text-muted-foreground">
             每行一个。只有事件文字命中这些规则时才标成灰色。
@@ -190,7 +190,7 @@ export function ReflectionSettingsForm({
             className="mt-4 min-h-32 w-full rounded-md border bg-background p-3 text-sm"
           />
         </label>
-        <label className="rounded-xl border bg-card p-5 text-sm">
+        <label className="rounded-lg border bg-card p-5 text-sm">
           <span className="font-medium">日记遮蔽词典</span>
           <span className="mt-1 block text-xs leading-5 text-muted-foreground">
             每行一个人名或私人词。原文仍只留在浏览器。
@@ -209,8 +209,8 @@ export function ReflectionSettingsForm({
           className={
             "rounded-md border p-3 text-sm " +
             (error
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700")
+              ? "border-destructive/30 bg-destructive/10 text-destructive"
+              : "border-status-mvp/30 bg-status-mvp/10 text-status-mvp")
           }
         >
           {error ?? message}

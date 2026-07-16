@@ -73,7 +73,7 @@ export default async function MaterialReviewPage() {
         </span>
       </div>
 
-      <article className="animate-fade-up rounded-2xl border bg-card px-6 py-8 sm:px-10">
+      <article className="animate-fade-up rounded-lg border bg-card px-6 py-8 sm:px-10">
         <p className="text-center font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
           {SOURCE_LABELS[material.source_type]} ·{" "}
           {new Date(material.created_at).toLocaleDateString("zh-CN")}
@@ -88,7 +88,7 @@ export default async function MaterialReviewPage() {
           </p>
         )}
 
-        <div className="mt-6 max-h-64 overflow-auto rounded-xl bg-muted p-4">
+        <div className="mt-6 max-h-64 overflow-auto rounded-lg bg-muted p-4">
           <pre className="whitespace-pre-wrap text-sm leading-6">
             {material.sanitized_text || "暂无脱敏文本"}
           </pre>
@@ -124,7 +124,7 @@ export default async function MaterialReviewPage() {
         )}
 
         {review && (
-          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="mt-6 rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-sm text-status-validating">
             <p className="text-xs font-medium">门下省驳议</p>
             <p className="mt-1 leading-relaxed">{review.review_summary}</p>
             {review.misleading_risks.length > 0 && (
@@ -154,21 +154,21 @@ export default async function MaterialReviewPage() {
           <form action={setRealityMaterialDecision}>
             <input type="hidden" name="material_id" value={material.id} />
             <input type="hidden" name="decision" value="confirmed" />
-            <button className="w-full rounded-xl bg-foreground px-4 py-3 font-serif text-lg text-background transition-transform hover:-translate-y-0.5">
+            <button className="w-full rounded-lg bg-foreground px-4 py-3 font-serif text-lg text-background transition-transform hover:-translate-y-0.5">
               准
             </button>
           </form>
           <form action={setRealityMaterialDecision}>
             <input type="hidden" name="material_id" value={material.id} />
             <input type="hidden" name="decision" value="rejected" />
-            <button className="w-full rounded-xl border border-destructive/40 px-4 py-3 font-serif text-lg text-destructive transition-transform hover:-translate-y-0.5">
+            <button className="w-full rounded-lg border border-destructive/40 px-4 py-3 font-serif text-lg text-destructive transition-transform hover:-translate-y-0.5">
               驳
             </button>
           </form>
           <form action={setRealityMaterialDecision}>
             <input type="hidden" name="material_id" value={material.id} />
             <input type="hidden" name="decision" value="parked" />
-            <button className="w-full rounded-xl border px-4 py-3 font-serif text-lg text-muted-foreground transition-transform hover:-translate-y-0.5">
+            <button className="w-full rounded-lg border px-4 py-3 font-serif text-lg text-muted-foreground transition-transform hover:-translate-y-0.5">
               留中
             </button>
           </form>

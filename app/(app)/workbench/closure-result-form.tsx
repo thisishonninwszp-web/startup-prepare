@@ -56,16 +56,16 @@ export function ClosureResultForm({
         onChange={(event) => setActualResult(event.target.value)}
         rows={3}
         placeholder="现实中实际发生了什么？"
-        className="w-full rounded-md border border-orange-300 bg-white p-3 text-sm text-orange-950 outline-none"
+        className="w-full rounded-md border border-status-validating/30 bg-white p-3 text-sm text-status-validating outline-none"
       />
-      <label className="block text-xs text-orange-900">
+      <label className="block text-xs text-status-validating">
         差距原因
         <select
           value={gapReason}
           onChange={(event) =>
             setGapReason(event.target.value as typeof gapReason)
           }
-          className="mt-1 w-full rounded-md border border-orange-300 bg-white px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-md border border-status-validating/30 bg-white px-3 py-2 text-sm"
         >
           <option value="judgment">判断</option>
           <option value="execution">执行</option>
@@ -78,9 +78,9 @@ export function ClosureResultForm({
         value={updatedRule}
         onChange={(event) => setUpdatedRule(event.target.value)}
         placeholder="可选：这次学到的一条判断规则"
-        className="w-full rounded-md border border-orange-300 bg-white px-3 py-2 text-sm text-orange-950 outline-none"
+        className="w-full rounded-md border border-status-validating/30 bg-white px-3 py-2 text-sm text-status-validating outline-none"
       />
-      {error && <p className="text-xs text-red-700">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
