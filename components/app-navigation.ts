@@ -11,37 +11,35 @@ export type AppNavGroup = {
 
 export const NAV_GROUPS: AppNavGroup[] = [
   {
-    label: "决策系统",
+    label: "决策",
     items: [
       { href: "/dashboard", label: "今日行动", shortLabel: "行动" },
-      { href: "/workbench", label: "决策工作台", shortLabel: "工作台" },
-      { href: "/materials", label: "现实材料箱", shortLabel: "材料" },
       { href: "/capture", label: "捕捉", shortLabel: "捕捉" },
+      { href: "/materials", label: "材料箱", shortLabel: "材料" },
       { href: "/ideas", label: "想法库", shortLabel: "想法" },
-      { href: "/learnings", label: "判断复盘", shortLabel: "学习" },
+      { href: "/workbench", label: "工作台", shortLabel: "工作台" },
     ],
   },
   {
-    label: "工具",
+    label: "成长",
     items: [
-      { href: "/reality", label: "现状认识", shortLabel: "现状" },
-      { href: "/customer-view", label: "顾客视点", shortLabel: "顾客" },
-      { href: "/dreams", label: "梦想系统", shortLabel: "梦想" },
-      { href: "/retrospectives", label: "复盘系统", shortLabel: "复盘" },
-      { href: "/reasoning", label: "推理工具", shortLabel: "推理" },
-      { href: "/council", label: "顾问团", shortLabel: "顾问" },
-      { href: "/patterns", label: "认知镜", shortLabel: "认知" },
-      { href: "/life", label: "生活罗盘", shortLabel: "生活" },
-      { href: "/profile", label: "创业者档案", shortLabel: "档案" },
+      { href: "/dreams", label: "梦想", shortLabel: "梦想" },
+      { href: "/retrospectives", label: "周复盘", shortLabel: "复盘" },
+      { href: "/learnings", label: "学到了", shortLabel: "学习" },
     ],
   },
   {
-    label: "知识",
+    label: "认识",
     items: [
+      { href: "/reality", label: "现状", shortLabel: "现状" },
+      { href: "/customer-view", label: "顾客", shortLabel: "顾客" },
+    ],
+  },
+  {
+    label: "档案",
+    items: [
+      { href: "/companies", label: "公司", shortLabel: "公司" },
       { href: "/knowledge", label: "知识库", shortLabel: "知识" },
-      { href: "/companies", label: "公司档案", shortLabel: "公司" },
-      { href: "/company-kb", label: "公司知识库", shortLabel: "公司库" },
-      { href: "/outreach", label: "触达规划", shortLabel: "触达" },
     ],
   },
 ];

@@ -7,10 +7,8 @@ import {
   Activity,
   Archive,
   BookOpen,
-  Brain,
   Building2,
   CloudMoon,
-  Compass,
   Download,
   FolderKanban,
   Home,
@@ -18,15 +16,12 @@ import {
   Library,
   LogOut,
   Menu,
-  MessagesSquare,
-  NotebookText,
-  Radar,
+  PenLine,
   RotateCcw,
   ScanSearch,
   Settings,
-  Target,
-  UserCircle,
   Users,
+  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -35,26 +30,17 @@ import { NAV_GROUPS, isActiveRoute } from "./app-navigation";
 
 const ICONS: Record<string, LucideIcon> = {
   "/dashboard": Home,
-  "/workbench": FolderKanban,
+  "/capture": PenLine,
   "/materials": Inbox,
-  "/capture": Inbox,
-  "/review": Radar,
   "/ideas": Library,
+  "/workbench": FolderKanban,
+  "/dreams": CloudMoon,
+  "/retrospectives": RotateCcw,
   "/learnings": Archive,
   "/reality": ScanSearch,
   "/customer-view": Users,
-  "/retrospectives": RotateCcw,
-  "/dreams": CloudMoon,
-  "/reasoning": Brain,
-  "/council": MessagesSquare,
-  "/patterns": Activity,
-  "/life": Compass,
-  "/profile": UserCircle,
-  "/knowledge": BookOpen,
   "/companies": Building2,
-  "/company-kb": NotebookText,
-  "/outreach": Target,
-  "/settings/ai": Settings,
+  "/knowledge": BookOpen,
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -173,6 +159,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="border-t p-3">
+          <Link
+            href="/tools"
+            className="mb-1 flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Wrench className="size-4" strokeWidth={1.7} />
+            工具
+          </Link>
           <Link
             href="/settings/ai"
             className="mb-1 flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

@@ -2,11 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CORE_PAGE_FILES = [
-  "app/capture/page.tsx",
-  "app/dashboard/page.tsx",
-  "app/ideas/page.tsx",
-  "app/ideas/[id]/page.tsx",
-  "app/learnings/page.tsx",
+  "app/(app)/capture/page.tsx",
+  "app/(app)/dashboard/page.tsx",
+  "app/(app)/ideas/page.tsx",
+  "app/(app)/ideas/[id]/page.tsx",
+  "app/(app)/learnings/page.tsx",
 ];
 
 describe("core page database error handling", () => {

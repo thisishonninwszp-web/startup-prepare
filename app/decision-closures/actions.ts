@@ -7,8 +7,8 @@ import { draftDecisionClosure } from "@/lib/ai";
 import {
   getReflectionSettings,
   todayInTimezone,
-} from "@/app/retrospectives/queries";
-import { loadClosureSourceSnapshot } from "@/app/reality/closure-queries";
+} from "@/app/(app)/retrospectives/queries";
+import { loadClosureSourceSnapshot } from "@/app/(app)/reality/closure-queries";
 import { buildRealityDecisionClosureSource } from "./reality-source";
 import {
   assertDecisionClosureDueDate,

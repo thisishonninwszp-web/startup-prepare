@@ -12,8 +12,8 @@ import {
   generateLandingPageConcept,
   type ConceptCustomerEvidence,
 } from "@/lib/ai";
-import { parseDreamVision } from "@/app/dreams/types";
-import { parseCustomerProxy } from "@/app/customer-view/types";
+import { parseDreamVision } from "@/app/(app)/dreams/types";
+import { parseCustomerProxy } from "@/app/(app)/customer-view/types";
 import {
   evaluateConceptConfirmation,
   parseConceptCandidates,

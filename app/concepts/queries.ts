@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { listDreamVersionChoices } from "@/app/dreams/queries";
+import { listDreamVersionChoices } from "@/app/(app)/dreams/queries";
 import {
   parseActionValues,
   parseCentralQuestions,

@@ -18,7 +18,7 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 
-vi.mock("@/app/dreams/queries", () => ({
+vi.mock("@/app/(app)/dreams/queries", () => ({
   listDreamVersionChoices: vi.fn(),
 }));
 

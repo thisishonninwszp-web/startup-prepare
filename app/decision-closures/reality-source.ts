@@ -1,7 +1,7 @@
 import {
   allowedClosureBasisRefs,
   type RealityClosureSourceSnapshot,
-} from "../reality/closure-source";
+} from "@/app/(app)/reality/closure-source";
 import type { DecisionClosureSourceSnapshot } from "./domain";
 
 const REF_LABELS: Record<string, string> = {
