@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("reality delta prompt", () => {
   it("shows string array elements without invalid blank placeholders", () => {
-    const source = readFileSync("lib/ai.ts", "utf8");
+    const source = readFileSync("lib/ai/reality.ts", "utf8");
     const prompt = source.match(
       /const REALITY_DELTA_PROMPT = `([\s\S]*?)`;/u
     )?.[1];

@@ -33,8 +33,8 @@ import {
   type FocusRequest,
 } from "./focused-inquiry-panel";
 import type { RealityFocusSession } from "../focus";
-import { RealityDecisionClosurePanel } from "@/app/decision-closures/decision-closure-panel";
-import type { DecisionClosure } from "@/app/decision-closures/domain";
+import { RealityDecisionClosurePanel } from "@/lib/domains/closures/decision-closure-panel";
+import type { DecisionClosure } from "@/lib/domains/closures/domain";
 
 const CONTEXT_LABEL = {
   personal: "人生",

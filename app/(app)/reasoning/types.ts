@@ -1,4 +1,4 @@
-import type { CentralQuestionCandidate } from "@/app/concepts/types";
+import type { CentralQuestionCandidate } from "@/lib/domains/concepts/types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

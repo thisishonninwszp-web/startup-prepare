@@ -14,12 +14,12 @@ import {
   generateConceptDraft,
   recordConceptComprehension,
   saveConceptSelections,
-} from "@/app/concepts/actions";
-import type { ConceptWorkspaceDetail } from "@/app/concepts/queries";
+} from "@/lib/domains/concepts/actions";
+import type { ConceptWorkspaceDetail } from "@/lib/domains/concepts/queries";
 import type {
   ConceptCandidate,
   ConceptStoryType,
-} from "@/app/concepts/types";
+} from "@/lib/domains/concepts/types";
 
 const STORY_LABELS: Record<ConceptStoryType, string> = {
   insight: "洞察型",

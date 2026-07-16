@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import type {
   DecisionClosure,
   DecisionClosureObjectType,
-} from "@/app/decision-closures/domain";
+} from "@/lib/domains/closures/domain";
 import {
   DECISION_OBJECT_TYPES,
   objectHref,
@@ -184,7 +184,7 @@ export async function listWorkbenchObjects(
     import("../reality/queries"),
     import("../customer-view/queries"),
     import("../dreams/queries"),
-    import("@/app/decision-closures/queries"),
+    import("@/lib/domains/closures/queries"),
   ]);
   const [reality, ideas, customers, dreams, dreamBranches, companies] =
     await Promise.all([
@@ -296,7 +296,7 @@ async function listClosuresForWorkbenchObject(
     return (data ?? []) as unknown as DecisionClosure[];
   }
   const { listDecisionClosuresForObject } = await import(
-    "@/app/decision-closures/queries"
+    "@/lib/domains/closures/queries"
   );
   return listDecisionClosuresForObject(
     userId,

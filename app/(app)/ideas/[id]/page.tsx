@@ -24,7 +24,7 @@ import {
   getIdeaConceptSummary,
   getIdeaEvidenceSnapshot,
   type IdeaEvidenceSnapshot,
-} from "@/app/concepts/queries";
+} from "@/lib/domains/concepts/queries";
 
 export const dynamic = "force-dynamic";
 

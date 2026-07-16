@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 import { getReframingSession } from "@/app/(app)/reasoning/queries";
-import { getConceptSchemaStatus } from "@/app/concepts/queries";
+import { getConceptSchemaStatus } from "@/lib/domains/concepts/queries";
 import { ReframingWorkspace } from "./reframing-workspace";
 import { getReasoningSource } from "../../reality-source";
 

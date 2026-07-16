@@ -54,8 +54,8 @@ import type {
   FermiEstimate,
   ReframingSession,
 } from "@/app/(app)/reasoning/types";
-import type { IdeaEvidenceSnapshot } from "@/app/concepts/queries";
-import { addCompanyFact, archiveCompanyFact } from "@/app/concepts/actions";
+import type { IdeaEvidenceSnapshot } from "@/lib/domains/concepts/queries";
+import { addCompanyFact, archiveCompanyFact } from "@/lib/domains/concepts/actions";
 import { OutreachPanel } from "./outreach-panel";
 
 const STATUS_COLOR: Record<IdeaStatus, string> = {

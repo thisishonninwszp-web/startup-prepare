@@ -12,7 +12,7 @@ import { listOpenOutsideViewChecks } from "../reasoning/queries";
 import {
   getDecisionClosureSchemaStatus,
   listOpenDecisionClosures,
-} from "@/app/decision-closures/queries";
+} from "@/lib/domains/closures/queries";
 import {
   getReflectionSettings,
   listDueRetroPredictions,

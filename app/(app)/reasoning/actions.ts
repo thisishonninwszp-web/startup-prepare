@@ -19,7 +19,7 @@ import {
   parseCentralQuestions,
   selectCentralQuestion,
   type CentralQuestionType,
-} from "@/app/concepts/types";
+} from "@/lib/domains/concepts/types";
 import {
   normalizeCreateBayesianBelief,
   normalizeCreateFermiEstimate,

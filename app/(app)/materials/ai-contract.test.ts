@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const ai = readFileSync("lib/ai.ts", "utf8");
+const ai = readFileSync("lib/ai/materials.ts", "utf8");
 
 describe("reality material AI contract", () => {
   it("exposes the three-province AI functions through lib/ai.ts", () => {

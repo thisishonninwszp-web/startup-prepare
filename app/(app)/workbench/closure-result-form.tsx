@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import type { DecisionClosure } from "@/app/decision-closures/domain";
+import type { DecisionClosure } from "@/lib/domains/closures/domain";
 import type { WorkbenchObjectType } from "./domain";
 import { resolveWorkbenchClosure } from "./actions";
 

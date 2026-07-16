@@ -1,4 +1,4 @@
-import type { TavilyResult } from "@/app/ideas/types";
+import type { TavilyResult } from "@/app/(app)/ideas/types";
 
 /**
  * 外部检索层：Tavily（为 LLM/agent 设计的搜索+抽取 API）。

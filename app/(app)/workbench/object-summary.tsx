@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DecisionClosure } from "@/app/decision-closures/domain";
+import type { DecisionClosure } from "@/lib/domains/closures/domain";
 import type { WorkbenchDetail } from "./queries";
 import { ClosureResultForm } from "./closure-result-form";
 

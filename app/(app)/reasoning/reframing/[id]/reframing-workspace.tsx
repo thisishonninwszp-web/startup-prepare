@@ -18,7 +18,7 @@ import type { ReframingFrame, ReframingSessionWithFrames } from "@/app/(app)/rea
 import type {
   CentralQuestionCandidate,
   CentralQuestionType,
-} from "@/app/concepts/types";
+} from "@/lib/domains/concepts/types";
 
 const GROUP_COLORS: Record<string, string> = {
   "时间维度": "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300",

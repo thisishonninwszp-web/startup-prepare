@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getConceptSchemaStatus,
   getConceptWorkspaceDetail,
-} from "@/app/concepts/queries";
+} from "@/lib/domains/concepts/queries";
 import { ConceptWorkspace } from "./concept-workspace";
 
 export const dynamic = "force-dynamic";

@@ -1,7 +1,7 @@
 import type {
   DecisionClosure,
   DecisionClosureObjectType,
-} from "@/app/decision-closures/domain";
+} from "@/lib/domains/closures/domain";
 
 export const DECISION_OBJECT_TYPES = [
   "reality_case",

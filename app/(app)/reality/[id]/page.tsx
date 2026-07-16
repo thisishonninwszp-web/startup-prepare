@@ -15,7 +15,7 @@ import {
 import {
   getDecisionClosureSchemaStatus,
   listDecisionClosuresForObject,
-} from "@/app/decision-closures/queries";
+} from "@/lib/domains/closures/queries";
 
 export const dynamic = "force-dynamic";
 

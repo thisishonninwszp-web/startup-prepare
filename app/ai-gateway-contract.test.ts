@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
 
@@ -6,7 +6,10 @@ const ROOT = process.cwd();
 
 describe("AI gateway contract", () => {
   it("keeps direct Gemini generateContent calls inside lib/ai-gateway.ts only", () => {
-    const files = ["lib/ai.ts", "lib/ai-gateway.ts"].map((file) => ({
+    const aiModules = readdirSync(join(ROOT, "lib/ai"))
+      .filter((name) => name.endsWith(".ts"))
+      .map((name) => `lib/ai/${name}`);
+    const files = [...aiModules, "lib/ai-gateway.ts"].map((file) => ({
       file,
       text: readFileSync(join(ROOT, file), "utf8"),
     }));
