@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { PersonalLayerNav } from "@/components/personal-layer-nav";
 import { PrintButton } from "@/components/print-button";
 import { getProfileData } from "./queries";
 import { ProfileReport } from "./profile-report";
@@ -36,7 +35,6 @@ export default async function ProfilePage() {
         }
         @page { margin: 1.5cm; }
       `}</style>
-      <PersonalLayerNav current="/profile" />
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">创业者档案</h1>

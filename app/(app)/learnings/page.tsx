@@ -1,7 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getPatternsSnapshot } from "../patterns/queries";
+import { getPatternsSnapshot, getSurvivalCalendar } from "../patterns/queries";
+import { getReflectionSettings } from "../retrospectives/queries";
+import { PatternReport } from "../patterns/pattern-report";
+import { SurvivalCalendar } from "../patterns/survival-calendar";
 import { PageContainer } from "@/components/ui/page-container";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +24,31 @@ function parseReason(reason: string | null): ReasonParts {
   }
 }
 
-export default async function LearningsPage() {
+function StatCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+}) {
+  return (
+    <div className="space-y-0.5 rounded-lg border bg-card px-4 py-3">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <p className="text-xl font-semibold tabular-nums">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
+export default async function LearningsPage({
+  searchParams,
+}: {
+  searchParams: { tab?: string };
+}) {
   const supabase = createClient();
   const {
     data: { user },
@@ -50,7 +78,14 @@ export default async function LearningsPage() {
 
   // 判断模式和预测校准的绝对计数来自认知镜的统一快照，避免两处各自重算一遍。
   // 宪法第 1 条：绝不打分、绝不用百分比。
-  const snap = await getPatternsSnapshot(userId);
+  const [snap, reflectionSettings] = await Promise.all([
+    getPatternsSnapshot(userId),
+    getReflectionSettings(userId),
+  ]);
+  const survivalCalendar = await getSurvivalCalendar(
+    userId,
+    reflectionSettings.timezone
+  );
   const insights = {
     killedCount: snap.kills.total,
     noPainIdeas: snap.kills.no_pain_kills,
@@ -59,82 +94,196 @@ export default async function LearningsPage() {
   };
   const hits = snap.predictions.hit;
   const misses = snap.predictions.miss;
+  const predTotal = snap.predictions.total;
+  const predResolved = hits + misses;
+  const hitRate =
+    predResolved > 0 ? `${Math.round((hits / predResolved) * 100)}%` : "—";
+  const statusItems = Object.entries(snap.ideas.by_status)
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${status} ${count}`)
+    .join(" · ");
 
   return (
-    <>
-      <PageContainer width="narrow" className="animate-fade-up">
-        <p className="mb-2 text-sm text-muted-foreground">
-          归档过的想法和你从中学到的判断力。回看它们，是为了下次更早识别同类机会。
-        </p>
-        <div className="mb-6 flex flex-wrap gap-x-6 gap-y-1">
-          <a
-            href="/patterns"
-            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-          >
-            查看跨全部想法的判断模式（认知镜）→
-          </a>
-          <a
-            href="/learnings/handbook"
-            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-          >
-            打印“学到了什么”合集手册 →
-          </a>
-        </div>
+    <PageContainer width="narrow" className="animate-fade-up">
+      <p className="mb-2 text-sm text-muted-foreground">
+        归档过的想法、你从中学到的判断力，以及跨全部想法的认知模式。
+      </p>
+      <a
+        href="/learnings/handbook"
+        className="mb-6 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+      >
+        打印“学到了什么”合集手册 →
+      </a>
 
-        {hits + misses > 0 && <CalibrationBlock hits={hits} misses={misses} />}
+      <Tabs defaultValue={searchParams.tab === "patterns" ? "patterns" : "learned"}>
+        <TabsList>
+          <TabsTrigger value="learned">学到了</TabsTrigger>
+          <TabsTrigger value="patterns">认知镜</TabsTrigger>
+        </TabsList>
 
-        {insights.killedCount > 0 && <InsightsBlock insights={insights} />}
+        <TabsContent value="learned" className="space-y-0">
+          {hits + misses > 0 && <CalibrationBlock hits={hits} misses={misses} />}
 
-        {learnings.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            还没有归档的想法。这里会汇总你 Kill 掉的想法和“学到了什么”。
-          </p>
-        ) : (
-          <ul className="grid gap-5 sm:grid-cols-2">
-            {learnings.map((l) => (
-              <li
-                key={l.id}
-                className="rounded-t-3xl rounded-b-lg border bg-card px-5 pb-4 pt-7"
-              >
-                <h2 className="text-center font-serif text-base tracking-tight">
-                  {l.title}
-                </h2>
-                <p className="mt-1 text-center text-xs text-muted-foreground">
-                  {new Date(l.decided_at).toLocaleDateString()}
-                </p>
+          {insights.killedCount > 0 && <InsightsBlock insights={insights} />}
 
-                {l.learned && (
-                  <p className="mt-4 text-center font-serif text-sm italic leading-relaxed">
-                    “{l.learned}”
+          {learnings.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              还没有归档的想法。这里会汇总你 Kill 掉的想法和“学到了什么”。
+            </p>
+          ) : (
+            <ul className="mt-4 grid gap-5 sm:grid-cols-2">
+              {learnings.map((l) => (
+                <li
+                  key={l.id}
+                  className="rounded-t-3xl rounded-b-lg border bg-card px-5 pb-4 pt-7"
+                >
+                  <h2 className="text-center font-serif text-base tracking-tight">
+                    {l.title}
+                  </h2>
+                  <p className="mt-1 text-center text-xs text-muted-foreground">
+                    {new Date(l.decided_at).toLocaleDateString()}
                   </p>
-                )}
 
-                {(l.reason.original_judgment ||
-                  l.reason.validation_action ||
-                  l.reason.real_result) && (
-                  <details className="mt-4 border-t pt-3">
-                    <summary className="cursor-pointer text-center text-xs text-muted-foreground hover:text-foreground">
-                      查看当时的判断
-                    </summary>
-                    <dl className="mt-3 space-y-2 text-sm">
-                      {l.reason.original_judgment && (
-                        <Row label="原始判断" value={l.reason.original_judgment} />
-                      )}
-                      {l.reason.validation_action && (
-                        <Row label="验证动作" value={l.reason.validation_action} />
-                      )}
-                      {l.reason.real_result && (
-                        <Row label="真实结果" value={l.reason.real_result} />
-                      )}
-                    </dl>
-                  </details>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </PageContainer>
-    </>
+                  {l.learned && (
+                    <p className="mt-4 text-center font-serif text-sm italic leading-relaxed">
+                      “{l.learned}”
+                    </p>
+                  )}
+
+                  {(l.reason.original_judgment ||
+                    l.reason.validation_action ||
+                    l.reason.real_result) && (
+                    <details className="mt-4 border-t pt-3">
+                      <summary className="cursor-pointer text-center text-xs text-muted-foreground hover:text-foreground">
+                        查看当时的判断
+                      </summary>
+                      <dl className="mt-3 space-y-2 text-sm">
+                        {l.reason.original_judgment && (
+                          <Row label="原始判断" value={l.reason.original_judgment} />
+                        )}
+                        {l.reason.validation_action && (
+                          <Row label="验证动作" value={l.reason.validation_action} />
+                        )}
+                        {l.reason.real_result && (
+                          <Row label="真实结果" value={l.reason.real_result} />
+                        )}
+                      </dl>
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </TabsContent>
+
+        <TabsContent value="patterns">
+          <p className="mb-6 mt-4 text-sm text-muted-foreground">
+            跨所有想法回望你的决策模式——AI 找盲区，不给鼓励。
+          </p>
+
+          <div className="space-y-4">
+            <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              数据快照
+            </h2>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard
+                label="想法总数"
+                value={snap.ideas.total}
+                sub={statusItems || undefined}
+              />
+              <StatCard
+                label="验证记录"
+                value={snap.validations.total}
+                sub={
+                  snap.validations.total > 0
+                    ? `有痛 ${snap.validations.has_pain_yes} · 无痛 ${snap.validations.has_pain_no}`
+                    : undefined
+                }
+              />
+              <StatCard
+                label="预测命中率"
+                value={hitRate}
+                sub={
+                  predTotal > 0
+                    ? `共 ${predTotal} 条预测，${predResolved} 条已决`
+                    : "暂无预测"
+                }
+              />
+              <StatCard
+                label="空想 Kill"
+                value={snap.kills.armchair_kills}
+                sub="未验证就否决的想法数"
+              />
+            </div>
+
+            {snap.validations.total > 0 && (
+              <div className="space-y-2 rounded-lg border bg-card px-4 py-3">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  验证信号分布
+                </p>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <p className="mb-1 text-muted-foreground">有真实痛苦 (has_pain)</p>
+                    <div className="flex gap-3">
+                      <span className="text-status-mvp">
+                        是 {snap.validations.has_pain_yes}
+                      </span>
+                      <span className="text-destructive">
+                        否 {snap.validations.has_pain_no}
+                      </span>
+                      <span className="text-muted-foreground">
+                        不确定 {snap.validations.has_pain_unsure}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-muted-foreground">愿意付钱 (will_pay)</p>
+                    <div className="flex gap-3">
+                      <span className="text-status-mvp">
+                        是 {snap.validations.will_pay_yes}
+                      </span>
+                      <span className="text-destructive">
+                        否 {snap.validations.will_pay_no}
+                      </span>
+                      <span className="text-muted-foreground">
+                        不确定 {snap.validations.will_pay_unsure}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {snap.reframing.top_marked_frames.length > 0 && (
+              <div className="space-y-2 rounded-lg border bg-card px-4 py-3">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  重构标记最多的视角
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {snap.reframing.top_marked_frames.map((f) => (
+                    <span
+                      key={f.frame_type}
+                      className="rounded-full bg-muted px-2.5 py-0.5 text-xs"
+                    >
+                      {f.frame_type.replace(/_/g, " ")} × {f.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <SurvivalCalendar calendar={survivalCalendar} />
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <PatternReport hasEnoughData={snap.has_enough_data} />
+          </div>
+        </TabsContent>
+      </Tabs>
+    </PageContainer>
   );
 }
 

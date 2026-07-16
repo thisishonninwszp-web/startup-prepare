@@ -61,7 +61,7 @@ export function WeeklyDigest({ data }: { data: WeeklyDigestData }) {
   if (data.realContacts === 0) {
     lines.push({
       text: `过去 7 天真实接触 0 次，工具内操作 ${data.toolOps} 次`,
-      href: "/patterns",
+      href: "/learnings?tab=patterns",
       severe: true,
     });
   }
