@@ -7,6 +7,7 @@ import {
   listCustomerIdeas,
 } from "../queries";
 import { CustomerWorkspace } from "./customer-workspace";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +30,14 @@ export default async function CustomerCasePage({
     <>
       <CustomerNav />
       <main className="min-h-screen">
-        <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
+        <PageContainer width="default" className="pt-4">
           <Link
             href={`/workbench/customer_case/${customerCase.id}`}
             className="inline-flex rounded-md border px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             在决策工作台打开
           </Link>
-        </div>
+        </PageContainer>
         <CustomerWorkspace initialCase={customerCase} ideas={ideas} />
       </main>
     </>

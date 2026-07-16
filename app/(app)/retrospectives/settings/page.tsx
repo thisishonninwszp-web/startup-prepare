@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { RetroNav } from "../retro-nav";
 import { getReflectionSettings } from "../queries";
 import { ReflectionSettingsForm } from "./settings-form";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function ReflectionSettingsPage() {
   return (
     <>
       <RetroNav />
-      <main className="mx-auto max-w-4xl px-4 py-10 sm:px-8">
+      <PageContainer width="default">
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
           Reflection protocol
         </p>
@@ -25,7 +26,7 @@ export default async function ReflectionSettingsPage() {
           灰色时间只按你的规则产生。恢复、关系和生活维护默认都是正当时间。
         </p>
         <ReflectionSettingsForm initial={settings} />
-      </main>
+      </PageContainer>
     </>
   );
 }

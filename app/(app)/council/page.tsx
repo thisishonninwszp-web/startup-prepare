@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, MessagesSquare, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { listCouncilSessions } from "./queries";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function CouncilPage() {
 
   return (
     <>
-      <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+      <PageContainer width="narrow">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
@@ -68,7 +69,7 @@ export default async function CouncilPage() {
             ))}
           </div>
         )}
-      </main>
+      </PageContainer>
     </>
   );
 }

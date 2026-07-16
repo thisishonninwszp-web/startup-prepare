@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { decryptAiPayload, hasAiLogEncryptionKey } from "@/lib/ai-gateway";
 import { Button } from "@/components/ui/button";
+import { PageContainer } from "@/components/ui/page-container";
 
 type AiCallRow = {
   id: string;
@@ -101,7 +102,7 @@ export default async function AiSettingsPage() {
 
   if (result.error) {
     return (
-      <main className="mx-auto max-w-4xl px-6 py-10">
+      <PageContainer width="default">
         <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
           ← 返回首页
         </Link>
@@ -115,7 +116,7 @@ export default async function AiSettingsPage() {
             {result.error.message}
           </p>
         </div>
-      </main>
+      </PageContainer>
     );
   }
 
@@ -130,7 +131,7 @@ export default async function AiSettingsPage() {
   );
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
+    <PageContainer width="wide">
       <div className="flex flex-col gap-4 border-b pb-6 md:flex-row md:items-end md:justify-between">
         <div>
           <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
@@ -269,6 +270,6 @@ export default async function AiSettingsPage() {
           })
         )}
       </section>
-    </main>
+    </PageContainer>
   );
 }

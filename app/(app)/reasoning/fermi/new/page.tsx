@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 import { loadOwnedRealityReasoningSnapshot } from "../../reality-source";
+import { PageContainer } from "@/components/ui/page-container";
 
 export default async function NewFermiEstimatePage({
   searchParams,
@@ -24,16 +25,16 @@ export default async function NewFermiEstimatePage({
     : null;
   if (params.reality_version_id && !source) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-12">
+      <PageContainer width="narrow">
         <h1 className="text-xl font-semibold">现状来源不可用</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           该现状版本不存在或不属于当前用户。
         </p>
-      </div>
+      </PageContainer>
     );
   }
   return (
-    <div className="mx-auto max-w-xl px-4 py-12">
+    <PageContainer width="narrow">
       <div className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">新建费米估算</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -41,6 +42,6 @@ export default async function NewFermiEstimatePage({
         </p>
       </div>
       <FermiForm ideaId={params.idea_id ?? null} realitySource={source} />
-    </div>
+    </PageContainer>
   );
 }

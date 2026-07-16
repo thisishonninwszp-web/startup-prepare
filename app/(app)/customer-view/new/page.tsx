@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CustomerNav } from "../customer-nav";
 import { listCustomerIdeas } from "../queries";
 import { NewCustomerCaseForm } from "./new-customer-form";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function NewCustomerCasePage({
   return (
     <>
       <CustomerNav />
-      <main className="mx-auto min-h-screen max-w-3xl px-4 py-10 sm:px-8 lg:py-14">
+      <PageContainer width="narrow" className="min-h-screen lg:py-14">
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
           New customer research case
         </p>
@@ -35,7 +36,7 @@ export default async function NewCustomerCasePage({
             initialIdeaId={searchParams.ideaId ?? ""}
           />
         </div>
-      </main>
+      </PageContainer>
     </>
   );
 }

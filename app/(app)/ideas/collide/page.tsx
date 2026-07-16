@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { CollideForm } from "./collide-form";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -26,13 +27,13 @@ export default async function IdeaColliderPage() {
 
   return (
     <>
-      <main className="mx-auto max-w-2xl px-4 py-10">
+      <PageContainer width="narrow">
         <h1 className="mb-1 text-xl font-semibold tracking-tight">想法对撞机</h1>
         <p className="mb-6 text-sm text-muted-foreground">
           挑两个想法，看它们之间藏着什么你没意识到的联系——不是比哪个更好。
         </p>
         <CollideForm options={options} />
-      </main>
+      </PageContainer>
     </>
   );
 }

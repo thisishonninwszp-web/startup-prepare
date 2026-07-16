@@ -12,6 +12,7 @@ import {
   SOURCE_LABELS,
   STATUS_LABELS,
 } from "./material-labels";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function MaterialsPage({
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+    <PageContainer width="wide">
       <header className="mb-8">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           Reality material inbox
@@ -139,7 +140,7 @@ export default async function MaterialsPage({
           </section>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

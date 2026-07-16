@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { PrintButton } from "@/components/print-button";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -40,9 +41,9 @@ export default async function LearningsHandbookPage() {
   } = await supabase.auth.getUser();
   if (!user) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-10 text-sm text-muted-foreground">
+      <PageContainer width="narrow" className="text-sm text-muted-foreground">
         请先登录。
-      </div>
+      </PageContainer>
     );
   }
 
@@ -90,7 +91,7 @@ export default async function LearningsHandbookPage() {
         @page { margin: 2cm; }
       `}</style>
 
-      <div className="mx-auto max-w-2xl px-6 py-10 text-sm">
+      <PageContainer width="narrow" className="text-sm">
         <div className="no-print mb-10 flex items-center justify-between">
           <Link
             href="/learnings"
@@ -171,7 +172,7 @@ export default async function LearningsHandbookPage() {
             </section>
           ))
         )}
-      </div>
+      </PageContainer>
     </>
   );
 }

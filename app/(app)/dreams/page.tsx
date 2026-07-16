@@ -3,6 +3,7 @@ import { ArrowRight, CloudMoon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { listDreamCases } from "./queries";
 import { DreamDeleteButton } from "./dream-delete-button";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +55,7 @@ export default async function DreamsPage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-4 py-10 sm:px-8 lg:px-12">
+        <PageContainer width="wide" className="lg:px-12">
           {cases.length === 0 ? (
             <div className="rounded-lg border border-dashed border-foreground/30/70 p-12 text-center">
               <p className="font-serif text-xl">这里还没有未来画面。</p>
@@ -107,7 +108,7 @@ export default async function DreamsPage() {
               ))}
             </div>
           )}
-        </section>
+        </PageContainer>
       </main>
     </>
   );

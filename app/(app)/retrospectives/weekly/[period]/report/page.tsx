@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { PrintButton } from "@/components/print-button";
 import { getRetroPeriod } from "../../../queries";
 import type { WeeklyRetrospective } from "../../../types";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function WeeklyRetroReportPage({
   if (!period || period.period_type !== "weekly") notFound();
   if (period.status !== "completed" || !period.final) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-10 text-sm">
+      <PageContainer width="narrow" className="text-sm">
         <p className="text-muted-foreground">
           这份周复盘还没有完成，暂时无法生成报告。
         </p>
@@ -49,7 +50,7 @@ export default async function WeeklyRetroReportPage({
         >
           ← 返回周复盘
         </Link>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -87,7 +88,7 @@ export default async function WeeklyRetroReportPage({
         @page { margin: 2cm; }
       `}</style>
 
-      <div className="mx-auto max-w-3xl px-6 py-10 text-sm">
+      <PageContainer width="narrow" className="text-sm">
         <div className="no-print mb-8 flex items-center justify-between">
           <Link
             href={`/retrospectives/weekly/${params.period}`}
@@ -204,7 +205,7 @@ export default async function WeeklyRetroReportPage({
             {final.prediction.text}（到期：{final.prediction.due_date}）
           </p>
         </section>
-      </div>
+      </PageContainer>
     </>
   );
 }

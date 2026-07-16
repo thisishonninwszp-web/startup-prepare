@@ -25,6 +25,7 @@ import {
   getIdeaEvidenceSnapshot,
   type IdeaEvidenceSnapshot,
 } from "@/lib/domains/concepts/queries";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -123,7 +124,7 @@ export default async function IdeaDetailPage({
 
   return (
     <>
-      <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <PageContainer width="narrow" className="animate-fade-up">
         <Link
           href={`/workbench/idea/${ideaCore.id}`}
           className="mb-4 inline-flex rounded-md border px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -144,7 +145,7 @@ export default async function IdeaDetailPage({
           conceptAvailable={conceptAvailable}
           evidenceSnapshot={evidenceSnapshot}
         />
-      </main>
+      </PageContainer>
     </>
   );
 }

@@ -9,6 +9,7 @@ import {
 } from "../queries";
 import { DEPARTMENT_LABELS, SOURCE_LABELS } from "../material-labels";
 import { Button } from "@/components/ui/button";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +27,9 @@ export default async function MaterialReviewPage() {
   const schemaAvailable = await getMaterialsSchemaAvailable();
   if (!schemaAvailable) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-10 text-sm text-muted-foreground">
+      <PageContainer width="narrow" className="text-sm text-muted-foreground">
         现实材料箱数据库迁移尚未运行，无法批阅。
-      </div>
+      </PageContainer>
     );
   }
 
@@ -40,7 +41,7 @@ export default async function MaterialReviewPage() {
 
   if (pendingList.length === 0) {
     return (
-      <div className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center px-6 text-center">
+      <PageContainer width="narrow" className="flex min-h-[70vh] flex-col items-center justify-center text-center">
         <p className="font-serif text-2xl">今日折子已批完</p>
         <p className="mt-3 text-sm text-muted-foreground">
           没有等待朱批的材料。批过的东西才算进了系统，去现实里收集下一批。
@@ -51,7 +52,7 @@ export default async function MaterialReviewPage() {
         >
           ← 返回现实材料箱
         </Link>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -61,7 +62,7 @@ export default async function MaterialReviewPage() {
   const review = material.latest_review;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+    <PageContainer width="narrow">
       <div className="mb-6 flex items-center justify-between">
         <Link
           href="/materials"
@@ -182,6 +183,6 @@ export default async function MaterialReviewPage() {
           。
         </p>
       </article>
-    </div>
+    </PageContainer>
   );
 }

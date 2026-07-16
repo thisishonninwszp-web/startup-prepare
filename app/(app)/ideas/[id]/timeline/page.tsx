@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getIdeaTimeline } from "./queries";
 import { TimelineView } from "./timeline-view";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function IdeaTimelinePage({
 
   return (
     <>
-      <main className="mx-auto max-w-2xl px-4 py-10">
+      <PageContainer width="narrow">
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
           想法时间线
         </p>
@@ -40,7 +41,7 @@ export default async function IdeaTimelinePage({
           从第一条观察到现在的完整轨迹。亮色节点是真实接触，灰色节点是分析或AI质疑。
         </p>
         <TimelineView events={events} />
-      </main>
+      </PageContainer>
     </>
   );
 }

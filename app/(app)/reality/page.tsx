@@ -5,6 +5,7 @@ import { listRealityCases } from "./queries";
 import { listActiveRealityClosureDueDates } from "./closure-queries";
 import { isClosureDue } from "./closure";
 import { todayInTimezone } from "@/app/(app)/retrospectives/queries";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export default async function RealityPage() {
     <>
       <main className="min-h-screen">
         <section className="bg-dotgrid border-b px-4 py-10 sm:px-8 lg:px-12">
-          <div className="mx-auto flex max-w-5xl flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mx-auto flex max-w-4xl flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 <ScanSearch className="size-4" />
@@ -70,7 +71,7 @@ export default async function RealityPage() {
           </div>
         </section>
 
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 lg:px-12">
+        <PageContainer width="default" className="lg:px-12">
           {due.length > 0 && (
             <section className="mb-10">
               <div className="mb-3 flex items-center gap-2">
@@ -152,7 +153,7 @@ export default async function RealityPage() {
               </div>
             )}
           </section>
-        </div>
+        </PageContainer>
       </main>
     </>
   );

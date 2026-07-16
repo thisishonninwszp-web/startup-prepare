@@ -7,6 +7,7 @@ import {
   listBusinessPlanImports,
 } from "./queries";
 import { ProfileForm } from "./profile-form";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function OwnCompanyPage() {
     : [];
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
+    <PageContainer width="default">
       <Link
         href="/companies"
         className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -102,6 +103,6 @@ export default async function OwnCompanyPage() {
           </div>
         )}
       </section>
-    </main>
+    </PageContainer>
   );
 }

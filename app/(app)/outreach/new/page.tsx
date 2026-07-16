@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { USE_CASES, type UseCase } from "../types";
 import { createCanvas } from "../actions";
 import { Button } from "@/components/ui/button";
+import { PageContainer } from "@/components/ui/page-container";
 
 function NewCanvasForm() {
   const router = useRouter();
@@ -133,7 +134,7 @@ function NewCanvasForm() {
 
 export default function NewCanvasPage() {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <PageContainer width="narrow">
       <h1 className="mb-1 text-xl font-semibold tracking-tight">新建触达画布</h1>
       <p className="mb-8 text-sm text-muted-foreground">
         选一个场景，描述你的目标——画布帮你逐维度想清楚。
@@ -141,6 +142,6 @@ export default function NewCanvasPage() {
       <Suspense fallback={null}>
         <NewCanvasForm />
       </Suspense>
-    </div>
+    </PageContainer>
   );
 }

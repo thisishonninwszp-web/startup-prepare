@@ -5,6 +5,7 @@ import { getReflectionSettings, todayInTimezone } from "@/app/(app)/retrospectiv
 import { recommendFrameworks } from "./framework-router";
 import { listWorkbenchObjects, signalForObject } from "./queries";
 import { WorkbenchObjectCard } from "./workbench-object-card";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function WorkbenchPage() {
 
   return (
     <>
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <PageContainer width="wide">
         <header className="mb-8">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             Decision workbench
@@ -108,7 +109,7 @@ export default async function WorkbenchPage() {
             </div>
           )}
         </section>
-      </main>
+      </PageContainer>
     </>
   );
 }

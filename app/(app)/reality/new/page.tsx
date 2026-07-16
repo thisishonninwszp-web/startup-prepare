@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { listRealitySourceOptions } from "../queries";
 import { NewRealityForm } from "./reality-form";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function NewRealityPage() {
 
   return (
     <>
-      <main className="mx-auto min-h-screen max-w-4xl px-4 py-8 sm:px-8 lg:py-12">
+      <PageContainer width="default" className="min-h-screen lg:py-12">
         <div className="mb-10">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
             New reality case
@@ -26,7 +27,7 @@ export default async function NewRealityPage() {
           </p>
         </div>
         <NewRealityForm sources={sources} />
-      </main>
+      </PageContainer>
     </>
   );
 }

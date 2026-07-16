@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageContainer } from "@/components/ui/page-container";
 
 const TOOLS = [
   {
@@ -20,7 +21,7 @@ const TOOLS = [
 
 export default function ToolsPage() {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 md:px-8">
+    <PageContainer width="default">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold">工具</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -39,6 +40,6 @@ export default function ToolsPage() {
           </Link>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

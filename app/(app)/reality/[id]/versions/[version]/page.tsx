@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getRealityCase } from "../../../queries";
 import { RealityMapView } from "../../reality-map";
 import { getReasoningSourceSchemaStatus } from "@/app/(app)/reasoning/reality-source";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function RealityVersionPage({
 
   return (
     <>
-      <main className="mx-auto min-h-screen max-w-4xl px-4 py-8 sm:px-8 lg:py-12">
+      <PageContainer width="default" className="min-h-screen lg:py-12">
         <Link
           href={`/reality/${params.id}`}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
@@ -58,7 +59,7 @@ export default async function RealityVersionPage({
           versionId={version.id}
           reasoningBridgeAvailable={reasoningBridgeAvailable}
         />
-      </main>
+      </PageContainer>
     </>
   );
 }

@@ -7,6 +7,7 @@ import {
   getDreamBranchVersion,
   getDreamCase,
 } from "../../../../../queries";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export default async function DreamBranchVersionPage({
   return (
     <>
       <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-8 lg:px-12">
-        <div className="mx-auto max-w-4xl">
+        <PageContainer width="default">
           <Link
             href={`/dreams/${dreamCase.id}`}
             className="inline-flex items-center gap-2 text-xs text-muted-foreground"
@@ -53,7 +54,7 @@ export default async function DreamBranchVersionPage({
           <div className="mt-8">
             <DreamVisionCard vision={version.vision} delta={version.delta} />
           </div>
-        </div>
+        </PageContainer>
       </main>
     </>
   );

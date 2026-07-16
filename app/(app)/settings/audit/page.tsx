@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +104,7 @@ export default async function ModuleAuditPage() {
 
   return (
     <>
-      <main className="animate-fade-up mx-auto max-w-3xl px-4 py-10 sm:px-6">
+      <PageContainer width="narrow" className="animate-fade-up">
         <header className="mb-8">
           <h1 className="text-xl font-semibold tracking-tight">模块使用审计</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -143,7 +144,7 @@ export default async function ModuleAuditPage() {
             );
           })}
         </ul>
-      </main>
+      </PageContainer>
     </>
   );
 }

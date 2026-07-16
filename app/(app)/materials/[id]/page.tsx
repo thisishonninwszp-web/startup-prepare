@@ -16,6 +16,7 @@ import {
 } from "../material-labels";
 import { MATERIAL_ROUTE_TARGETS, type MaterialRouteTarget } from "../types";
 import { Button } from "@/components/ui/button";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export default async function MaterialDetailPage({
     ["confirmed", "summary_only"].includes(material.status) && !reviewBlocksRouting;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+    <PageContainer width="wide">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link
@@ -292,7 +293,7 @@ export default async function MaterialDetailPage({
           </Panel>
         </aside>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 

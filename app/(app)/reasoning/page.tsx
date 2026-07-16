@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
 import {
   listBayesianBeliefs,
   listFermiEstimates,
@@ -11,6 +10,9 @@ import {
   listReframingSessions,
   getMarkedFramePatterns,
 } from "./queries";
+import { PageContainer } from "@/components/ui/page-container";
+
+export const dynamic = "force-dynamic";
 
 function pct(n: number): string {
   return (n * 100).toFixed(1) + "%";
@@ -102,7 +104,7 @@ export default async function ReasoningPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <PageContainer width="default">
       <div className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">推理工具</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -376,6 +378,6 @@ export default async function ReasoningPage() {
           </Link>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

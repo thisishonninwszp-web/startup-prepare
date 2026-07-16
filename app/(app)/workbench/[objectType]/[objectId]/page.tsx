@@ -9,6 +9,7 @@ import { recommendFrameworks } from "../../framework-router";
 import { getWorkbenchDetail } from "../../queries";
 import { FrameworkRecommendations } from "../../framework-recommendations";
 import { ClosureList, ObjectSummary } from "../../object-summary";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +40,11 @@ export default async function WorkbenchDetailPage({
 
   return (
     <>
-      <main className="mx-auto max-w-5xl space-y-5 px-4 py-8 sm:px-6">
+      <PageContainer width="default" className="space-y-5">
         <ObjectSummary detail={detail} today={today} />
         <FrameworkRecommendations cards={recommendations} />
         <ClosureList closures={detail.closures} />
-      </main>
+      </PageContainer>
     </>
   );
 }

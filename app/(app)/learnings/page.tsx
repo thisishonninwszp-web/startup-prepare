@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getPatternsSnapshot } from "../patterns/queries";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function LearningsPage() {
 
   return (
     <>
-      <main className="animate-fade-up mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <PageContainer width="narrow" className="animate-fade-up">
         <p className="mb-2 text-sm text-muted-foreground">
           归档过的想法和你从中学到的判断力。回看它们，是为了下次更早识别同类机会。
         </p>
@@ -132,7 +133,7 @@ export default async function LearningsPage() {
             ))}
           </ul>
         )}
-      </main>
+      </PageContainer>
     </>
   );
 }

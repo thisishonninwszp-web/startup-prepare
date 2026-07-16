@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { CaptureClient, type ObservationCard } from "./capture-client";
 import { RecurringSignals } from "./recurring-signals";
 import { isObservationPromoted, visibleTags } from "../ideas/types";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -83,10 +84,10 @@ export default async function CapturePage({
 
   return (
     <>
-      <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <PageContainer width="default" className="animate-fade-up">
         <CaptureClient initial={initial} initialText={sharedText} />
         <RecurringSignals />
-      </main>
+      </PageContainer>
     </>
   );
 }

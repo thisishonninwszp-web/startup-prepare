@@ -19,6 +19,7 @@ import {
   getReframingSessionsForIdea,
 } from "@/app/(app)/reasoning/queries";
 import { PrintButton } from "@/components/print-button";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -143,7 +144,7 @@ export default async function IdeaReportPage({
         @page { margin: 2cm; }
       `}</style>
 
-      <div className="mx-auto max-w-3xl px-6 py-10 text-sm">
+      <PageContainer width="narrow" className="text-sm">
         {/* 返回 + 打印 */}
         <div className="no-print mb-8 flex items-center justify-between">
           <Link
@@ -420,7 +421,7 @@ export default async function IdeaReportPage({
         <footer className="mt-12 border-t pt-4 text-xs text-muted-foreground">
           <p>IdeaOS · 生成于 {fmtDate(new Date().toISOString())}</p>
         </footer>
-      </div>
+      </PageContainer>
     </>
   );
 }

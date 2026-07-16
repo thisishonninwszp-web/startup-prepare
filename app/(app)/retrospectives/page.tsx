@@ -20,6 +20,7 @@ import {
 } from "./queries";
 import { getMonthlyPeriod, getWeeklyPeriod } from "./types";
 import { RetroHomeActions } from "./retro-home-actions";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +102,7 @@ export default async function RetrospectivesPage() {
           </div>
         </section>
 
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:px-12">
+        <PageContainer width="wide" className="lg:px-12">
           {duePredictions.length > 0 && (
             <section className="mb-8 rounded-lg border border-status-validating/30 bg-status-validating/10 p-5">
               <h2 className="text-sm font-medium text-status-validating">
@@ -245,7 +246,7 @@ export default async function RetrospectivesPage() {
               </p>
             )}
           </section>
-        </div>
+        </PageContainer>
       </main>
     </>
   );

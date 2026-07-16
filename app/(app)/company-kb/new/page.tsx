@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createCompanyKbNote } from "../actions";
 import { Button } from "@/components/ui/button";
+import { PageContainer } from "@/components/ui/page-container";
 
 export default function NewCompanyKbNotePage() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export default function NewCompanyKbNotePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <PageContainer width="narrow">
       <div className="mb-8 flex items-center gap-3">
         <Link href="/company-kb" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
@@ -84,6 +85,6 @@ export default function NewCompanyKbNotePage() {
           </Link>
         </div>
       </form>
-    </div>
+    </PageContainer>
   );
 }

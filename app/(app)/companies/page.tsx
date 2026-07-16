@@ -3,6 +3,7 @@ import { Plus, Building2, LockKeyhole } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { listCompanies } from "@/app/(app)/knowledge/queries";
 import { COMPANY_TYPES, type CompanyType } from "@/app/(app)/knowledge/types";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function CompaniesPage({
   const companies = await listCompanies(user!.id, activeType);
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <PageContainer width="default">
       <div className="mb-8 flex items-start justify-between">
         <div className="flex items-center gap-3">
           <Building2 className="h-5 w-5 text-muted-foreground" />
@@ -138,6 +139,6 @@ export default async function CompaniesPage({
           })}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

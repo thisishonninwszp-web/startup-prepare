@@ -4,6 +4,7 @@ import { PersonalLayerNav } from "@/components/personal-layer-nav";
 import { PrintButton } from "@/components/print-button";
 import { getProfileData } from "./queries";
 import { ProfileReport } from "./profile-report";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function ProfilePage() {
     data.validation_notes.length;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <PageContainer width="default">
       <style>{`
         @media print {
           aside, header, nav, button, .no-print { display: none !important; }
@@ -71,6 +72,6 @@ export default async function ProfilePage() {
       )}
 
       <ProfileReport hasEnoughData={hasEnoughData} />
-    </div>
+    </PageContainer>
   );
 }

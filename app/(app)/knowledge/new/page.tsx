@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { createKnowledgeCard } from "../actions";
 import { CARD_TYPES, type CardType } from "../types";
 import { Button } from "@/components/ui/button";
+import { PageContainer } from "@/components/ui/page-container";
 
 export default function NewKnowledgeCardPage() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function NewKnowledgeCardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <PageContainer width="narrow">
       <div className="mb-8 flex items-center gap-3">
         <Link href="/knowledge" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
@@ -126,6 +127,6 @@ export default function NewKnowledgeCardPage() {
           </Link>
         </div>
       </form>
-    </div>
+    </PageContainer>
   );
 }

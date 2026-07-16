@@ -5,6 +5,7 @@ import { getReflectionSettings } from "@/app/(app)/retrospectives/queries";
 import { getPatternsSnapshot, getSurvivalCalendar } from "./queries";
 import { PatternReport } from "./pattern-report";
 import { SurvivalCalendar } from "./survival-calendar";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,7 @@ export default async function PatternsPage() {
     .join(" · ");
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <PageContainer width="default">
       <PersonalLayerNav current="/patterns" />
       <div className="mb-8">
         <h1 className="text-xl font-semibold tracking-tight">认知镜</h1>
@@ -195,6 +196,6 @@ export default async function PatternsPage() {
 
       {/* AI 认知分析 */}
       <PatternReport hasEnoughData={snap.has_enough_data} />
-    </div>
+    </PageContainer>
   );
 }

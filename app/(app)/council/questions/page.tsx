@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MessageCircleQuestion } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { listSharpestQuestions } from "../queries";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function CouncilQuestionsPage() {
 
   return (
     <>
-      <main className="animate-fade-up mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <PageContainer width="default" className="animate-fade-up">
         <div className="mb-8">
           <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
             <MessageCircleQuestion className="size-4" />
@@ -70,7 +71,7 @@ export default async function CouncilQuestionsPage() {
             ))}
           </div>
         )}
-      </main>
+      </PageContainer>
     </>
   );
 }

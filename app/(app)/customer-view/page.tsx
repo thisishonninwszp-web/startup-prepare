@@ -7,6 +7,7 @@ import {
   listCustomerMaterials,
   listCustomerTopics,
 } from "./queries";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function CustomerViewPage() {
           </div>
         </section>
 
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 lg:px-12">
+        <PageContainer width="wide" className="lg:px-12">
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat icon={Users} value={cases.length} label="顾客课题" />
             <Stat icon={Quote} value={kept.length} label="保留材料关联" />
@@ -119,7 +120,7 @@ export default async function CustomerViewPage() {
               </div>
             )}
           </section>
-        </div>
+        </PageContainer>
       </main>
     </>
   );

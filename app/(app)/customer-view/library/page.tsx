@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CustomerNav } from "../customer-nav";
 import { listCustomerMaterials } from "../queries";
 import { CustomerLibrary } from "./customer-library";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function CustomerLibraryPage() {
   return (
     <>
       <CustomerNav />
-      <main className="mx-auto min-h-screen max-w-6xl px-4 py-8 sm:px-8 lg:px-12">
+      <PageContainer width="wide" className="min-h-screen lg:px-12">
         <h1 className="text-2xl font-semibold tracking-tight">跨课题证据库</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           这里保存的是经你审核的顾客材料关联。它们可以被不同研究课题复用，但始终保留来源和市场。
@@ -22,7 +23,7 @@ export default async function CustomerLibraryPage() {
         <div className="mt-8">
           <CustomerLibrary materials={materials} />
         </div>
-      </main>
+      </PageContainer>
     </>
   );
 }

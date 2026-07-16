@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { listCanvases } from "./queries";
 import { USE_CASES } from "./types";
+import { PageContainer } from "@/components/ui/page-container";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function OutreachPage() {
   const canvases = await listCanvases(userId);
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <PageContainer width="default">
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">触达规划</h1>
@@ -100,6 +101,6 @@ export default async function OutreachPage() {
           还没有画布。选一个场景开始思考。
         </p>
       )}
-    </div>
+    </PageContainer>
   );
 }
