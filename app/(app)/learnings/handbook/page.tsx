@@ -27,6 +27,7 @@ type Entry = {
   learned: string | null;
   reason: ReasonParts;
   decided_at: string;
+  source: "kill" | "decoy";
 };
 
 function monthKey(iso: string): string {
@@ -55,6 +56,14 @@ export default async function LearningsHandbookPage() {
     .order("decided_at", { ascending: true });
   if (error) throw new Error(error.message);
 
+  const { data: decoyRows, error: decoyError } = await supabaseAdmin
+    .from("decoy_sessions")
+    .select("id, problem, learned, created_at")
+    .eq("user_id", user.id)
+    .not("learned", "is", null)
+    .order("created_at", { ascending: true });
+  if (decoyError) throw new Error(decoyError.message);
+
   const entries: Entry[] = (rows ?? []).map((r) => {
     const ideaRel = r.ideas as unknown;
     const idea = Array.isArray(ideaRel) ? ideaRel[0] : ideaRel;
@@ -64,20 +73,32 @@ export default async function LearningsHandbookPage() {
       learned: r.learned as string | null,
       reason: parseReason(r.reason as string | null),
       decided_at: r.decided_at as string,
+      source: "kill",
     };
   });
+  const decoyEntries: Entry[] = (decoyRows ?? []).map((r) => ({
+    id: r.id as string,
+    title: `假方案练习：${(r.problem as string).slice(0, 30)}`,
+    learned: r.learned as string | null,
+    reason: {},
+    decided_at: r.created_at as string,
+    source: "decoy",
+  }));
+  const allEntries = [...entries, ...decoyEntries].sort(
+    (a, b) => new Date(a.decided_at).getTime() - new Date(b.decided_at).getTime()
+  );
 
   // 按月分组（时间正序：手册从最早的教训读起）
   const groups: { month: string; items: Entry[] }[] = [];
-  for (const entry of entries) {
+  for (const entry of allEntries) {
     const key = monthKey(entry.decided_at);
     const last = groups[groups.length - 1];
     if (last && last.month === key) last.items.push(entry);
     else groups.push({ month: key, items: [entry] });
   }
 
-  const firstDate = entries[0]?.decided_at;
-  const lastDate = entries[entries.length - 1]?.decided_at;
+  const firstDate = allEntries[0]?.decided_at;
+  const lastDate = allEntries[allEntries.length - 1]?.decided_at;
 
   return (
     <>
@@ -111,7 +132,7 @@ export default async function LearningsHandbookPage() {
             <p className="mt-3 text-xs text-muted-foreground">
               {new Date(firstDate).toLocaleDateString("zh-CN")} —{" "}
               {new Date(lastDate).toLocaleDateString("zh-CN")} · 共{" "}
-              {entries.length} 条
+              {allEntries.length} 条
             </p>
           )}
           <p className="mx-auto mt-6 max-w-md text-xs leading-relaxed text-muted-foreground">
@@ -120,7 +141,7 @@ export default async function LearningsHandbookPage() {
           </p>
         </header>
 
-        {entries.length === 0 ? (
+        {allEntries.length === 0 ? (
           <p className="text-center text-muted-foreground">
             还没有归档的想法，册子暂时是空的。
           </p>

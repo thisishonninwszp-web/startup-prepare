@@ -63,6 +63,14 @@ export default async function LearningsPage({
     .order("decided_at", { ascending: false });
   if (rowsError) throw new Error(rowsError.message);
 
+  const { data: decoyRows, error: decoyError } = await supabaseAdmin
+    .from("decoy_sessions")
+    .select("id, problem, learned, created_at")
+    .eq("user_id", userId)
+    .not("learned", "is", null)
+    .order("created_at", { ascending: false });
+  if (decoyError) throw new Error(decoyError.message);
+
   const learnings = (rows ?? []).map((r) => {
     // 嵌套关系在 PostgREST 里可能是对象或单元素数组，做个兼容。
     const ideaRel = r.ideas as unknown;
@@ -72,9 +80,21 @@ export default async function LearningsPage({
       title: (idea?.title as string) ?? "（无标题）",
       learned: r.learned as string | null,
       reason: parseReason(r.reason as string | null),
-      decided_at: r.decided_at as string,
+      at: r.decided_at as string,
+      source: "kill" as const,
     };
   });
+  const decoyLearnings = (decoyRows ?? []).map((r) => ({
+    id: r.id as string,
+    title: (r.problem as string).slice(0, 40),
+    learned: r.learned as string | null,
+    reason: {} as ReasonParts,
+    at: r.created_at as string,
+    source: "decoy" as const,
+  }));
+  const allLearnings = [...learnings, ...decoyLearnings].sort(
+    (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()
+  );
 
   // 判断模式和预测校准的绝对计数来自认知镜的统一快照，避免两处各自重算一遍。
   // 宪法第 1 条：绝不打分、绝不用百分比。
@@ -126,13 +146,13 @@ export default async function LearningsPage({
 
           {insights.killedCount > 0 && <InsightsBlock insights={insights} />}
 
-          {learnings.length === 0 ? (
+          {allLearnings.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">
-              还没有归档的想法。这里会汇总你 Kill 掉的想法和“学到了什么”。
+              还没有学到的东西。Kill 掉的想法和假方案练习的总结会汇总在这里。
             </p>
           ) : (
             <ul className="mt-4 grid gap-5 sm:grid-cols-2">
-              {learnings.map((l) => (
+              {allLearnings.map((l) => (
                 <li
                   key={l.id}
                   className="rounded-t-3xl rounded-b-lg border bg-card px-5 pb-4 pt-7"
@@ -141,7 +161,8 @@ export default async function LearningsPage({
                     {l.title}
                   </h2>
                   <p className="mt-1 text-center text-xs text-muted-foreground">
-                    {new Date(l.decided_at).toLocaleDateString()}
+                    {new Date(l.at).toLocaleDateString()}
+                    {l.source === "decoy" && " · 假方案练习"}
                   </p>
 
                   {l.learned && (
