@@ -19,6 +19,37 @@ export function decoyFlawLabel(type: DecoyFlawType): string {
   return DECOY_FLAW_TYPES.find((t) => t.type === type)?.label ?? type;
 }
 
+// 画风 = 文风 + 离谱程度一体的难度档位。存进 plan jsonb 的 style 字段（无需迁移）。
+export const DECOY_STYLES = [
+  {
+    style: "consultant",
+    label: "一本正经",
+    description: "结构化方案体，雷埋得最深——最难找",
+  },
+  {
+    style: "rambling",
+    label: "想到哪说到哪",
+    description: "碎碎念独白，雷混在跑题和自我说服里",
+  },
+  {
+    style: "unhinged",
+    label: "放飞自我",
+    description: "步子极大、张口就来，雷多而浮夸——热身难度",
+  },
+] as const;
+
+export type DecoyStyle = (typeof DECOY_STYLES)[number]["style"];
+
+export const DEFAULT_DECOY_STYLE: DecoyStyle = "consultant";
+
+export function isDecoyStyle(value: unknown): value is DecoyStyle {
+  return typeof value === "string" && DECOY_STYLES.some((s) => s.style === value);
+}
+
+export function decoyStyleLabel(style: DecoyStyle): string {
+  return DECOY_STYLES.find((s) => s.style === style)?.label ?? style;
+}
+
 export type DecoySessionStatus =
   | "drafted"
   | "challenged"
@@ -38,6 +69,8 @@ export type DecoyPlantedFlaw = {
 export type DecoyPlan = {
   sections: DecoySection[];
   planted_flaws: DecoyPlantedFlaw[];
+  // 生成时的画风；老数据没有该字段，视为 consultant。解析器不校验它（落库时由 action 附加）。
+  style?: DecoyStyle;
 };
 
 export type DecoyCaught = {

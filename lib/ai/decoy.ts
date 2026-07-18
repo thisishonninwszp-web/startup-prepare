@@ -5,6 +5,7 @@ import {
   parseOwnPlanCritique,
   type DecoyPlan,
   type DecoyReveal,
+  type DecoyStyle,
   type OwnPlanCritique,
 } from "@/app/(app)/decoy/types";
 import { executeAiText } from "@/lib/ai-gateway";
@@ -26,21 +27,47 @@ const DECOY_COMMON_RULES = `你服务于 IdeaOS 的"假方案"思维陪练功能
 - 错漏类型只能从以下分类学中选（type 字段必须逐字使用左侧英文标识）：
 ${TAXONOMY_BLOCK}`;
 
-const GENERATE_PROMPT = `${DECOY_COMMON_RULES}
+// 三档画风：文风 + 离谱程度（= 雷的隐蔽度）绑在一起，作为练习难度档位。
+const STYLE_BLOCKS: Record<DecoyStyle, string> = {
+  consultant: `画风：一本正经（最难档）。
+- 方案体，分 3-5 段（如：问题重述 / 解法路径 / 资源与执行 / 如何验证），语气笃定专业，像一份真的方案。
+- 埋 2-3 处雷，埋得深：混在完全站得住脚的内容里，不细想根本看不出来。
+- 除埋下的雷以外，其余内容尽量正确——雷越少越隐蔽，练习价值越高。`,
+  rambling: `画风：想到哪说到哪（中间档）。
+- 写成创业者深夜语音转文字那种碎碎念：一个念头接一个念头、中途打断自己、突然跑题又绕回来、
+  时不时自我说服（"对吧？肯定是这样"）。多用口语："就是说""反正""对了还有""你懂吧"。
+- 不要正式章节。heading 写成念头片段（如"就是说啊""然后我突然想到""等等，还有个事"），
+  content 是连贯的口语独白，一段一个念头，共 3-5 段。
+- 埋 2-4 处雷，藏在顺嘴带过的断言和自我说服里——念头是乱的，但每处雷单独看要"好像有道理"。
+- 乱是文风的乱，不是内容的胡编：没埋雷的部分要是真实可信的思考。`,
+  unhinged: `画风：放飞自我（热身档）。
+- 极度亢奋自信，步子迈得巨大：张口就是精确的大数字、"这肯定爆"、把一个个例当成普遍规律、
+  三步就从"做个小工具"推到"改变行业"。分 3-5 段，heading 也要浮夸。
+- 埋 3-4 处雷，可以更明显——这是给新手热身的难度，但也不许低级到病句或常识错误，
+  每处雷仍要披着"听起来很燃"的外衣。`,
+};
 
-任务：用户被一个问题卡住了。你要生成一份"假方案"——表面上流畅、自信、看起来专业可行，
-但其中故意埋了 2-4 处符合上述分类学的错漏。用户将试图找出这些雷来锻炼独立思考。
-要求：
-- 方案正文分 3-5 段（如：问题重述 / 解法路径 / 资源与执行 / 如何验证），语气笃定，像一份真的方案。
-- 埋的雷必须"看起来对"：混在合理内容里，不要低级到一眼假，也不要玄学到无法识破。
+function generatePrompt(style: DecoyStyle): string {
+  return `${DECOY_COMMON_RULES}
+
+任务：用户被一个问题卡住了。你要生成一份"假方案"——看起来说得通，
+但其中故意埋了若干处符合上述分类学的错漏。用户将试图找出这些雷来锻炼独立思考。
+
+${STYLE_BLOCKS[style]}
+
+通用要求：
 - 每处雷的 quote 必须是某段 content 里的逐字子串（一字不差），section 写所在段的 heading。
-- 除埋下的雷以外，其余内容尽量站得住脚——雷越少越隐蔽，练习价值越高。
+- 埋的雷必须"看起来对"：不要低级到一眼假，也不要玄学到无法识破。
 只输出 JSON：
 {"sections":[{"heading":"...","content":"..."}],"planted_flaws":[{"section":"...","quote":"...","type":"...","why_wrong":"..."}]}`;
+}
 
-export async function generateDecoyPlan(problem: string): Promise<DecoyPlan> {
+export async function generateDecoyPlan(
+  problem: string,
+  style: DecoyStyle
+): Promise<DecoyPlan> {
   return generateRealityJson(
-    GENERATE_PROMPT,
+    generatePrompt(style),
     `用户卡住的问题：\n${problem}`,
     parseDecoyPlan
   );

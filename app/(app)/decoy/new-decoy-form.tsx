@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createDecoySession } from "./actions";
+import { DECOY_STYLES, DEFAULT_DECOY_STYLE, type DecoyStyle } from "./types";
 
 export function NewDecoyForm({ ideaId }: { ideaId: string | null }) {
   const router = useRouter();
   const [problem, setProblem] = useState("");
+  const [style, setStyle] = useState<DecoyStyle>(DEFAULT_DECOY_STYLE);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -26,6 +28,28 @@ export function NewDecoyForm({ ideaId }: { ideaId: string | null }) {
         placeholder="例如：不知道第一批种子用户去哪找"
         disabled={pending}
       />
+
+      <p className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        假方案的画风
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+        {DECOY_STYLES.map((s) => (
+          <Button
+            key={s.style}
+            type="button"
+            variant={style === s.style ? "secondary" : "outline"}
+            disabled={pending}
+            onClick={() => setStyle(s.style)}
+            className="h-auto flex-col items-start gap-1 px-3 py-2.5 text-left"
+          >
+            <span className="text-sm">{s.label}</span>
+            <span className="whitespace-normal text-xs font-normal text-muted-foreground">
+              {s.description}
+            </span>
+          </Button>
+        ))}
+      </div>
+
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
       <div className="mt-3 flex justify-end">
         <Button
@@ -34,7 +58,7 @@ export function NewDecoyForm({ ideaId }: { ideaId: string | null }) {
             setError(null);
             startTransition(async () => {
               try {
-                const { sessionId } = await createDecoySession({ problem, ideaId });
+                const { sessionId } = await createDecoySession({ problem, ideaId, style });
                 router.push(`/decoy?session=${sessionId}`);
               } catch (e) {
                 setError(e instanceof Error ? e.message : "生成失败，请重试");

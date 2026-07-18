@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { critiqueOwnPlan, expandOwnPlan, generateDecoyPlan, revealDecoy } from "@/lib/ai";
-import { parseDecoyPlan, type DecoySessionStatus } from "./types";
+import {
+  DEFAULT_DECOY_STYLE,
+  isDecoyStyle,
+  parseDecoyPlan,
+  type DecoySessionStatus,
+} from "./types";
 import { getDecoySession } from "./queries";
 
 async function requireUserId(): Promise<string> {
@@ -40,17 +45,25 @@ async function requireOwnedOptionalIdea(ideaId: string | null, userId: string) {
 export async function createDecoySession(input: {
   problem: string;
   ideaId?: string | null;
+  style?: string;
 }): Promise<{ sessionId: string }> {
   const userId = await requireUserId();
   const problem = input.problem.trim();
   if (!problem) throw new Error("先写下卡住你的问题");
   const ideaId = input.ideaId?.trim() || null;
   await requireOwnedOptionalIdea(ideaId, userId);
+  const style = isDecoyStyle(input.style) ? input.style : DEFAULT_DECOY_STYLE;
 
-  const plan = await generateDecoyPlan(problem);
+  const plan = await generateDecoyPlan(problem, style);
   const { data, error } = await supabaseAdmin
     .from("decoy_sessions")
-    .insert({ user_id: userId, idea_id: ideaId, problem, plan, status: "drafted" })
+    .insert({
+      user_id: userId,
+      idea_id: ideaId,
+      problem,
+      plan: { ...plan, style },
+      status: "drafted",
+    })
     .select("id")
     .single();
   if (error) throw new Error(error.message);

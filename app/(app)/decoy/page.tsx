@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { getDecoySession, listDecoySessions } from "./queries";
-import type { DecoyPlanPublic, DecoySessionRow } from "./types";
+import { DEFAULT_DECOY_STYLE, type DecoyPlanPublic, type DecoySessionRow } from "./types";
 import { NewDecoyForm } from "./new-decoy-form";
 import { DecoyFlow, type DecoySessionForClient } from "./decoy-flow";
 
@@ -24,6 +24,7 @@ function toClientSession(row: DecoySessionRow): DecoySessionForClient {
     final_plan: row.final_plan,
     learned: row.learned,
     status: row.status,
+    style: row.plan.style ?? DEFAULT_DECOY_STYLE,
   };
 }
 

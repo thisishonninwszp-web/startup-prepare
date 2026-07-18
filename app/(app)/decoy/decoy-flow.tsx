@@ -17,10 +17,12 @@ import {
 } from "./actions";
 import {
   decoyFlawLabel,
+  decoyStyleLabel,
   type DecoyPlanPublic,
   type DecoyPlantedFlaw,
   type DecoyReveal,
   type DecoySessionStatus,
+  type DecoyStyle,
   type OwnPlanCritique,
 } from "./types";
 
@@ -36,6 +38,7 @@ export type DecoySessionForClient = {
   final_plan: string | null;
   learned: string | null;
   status: DecoySessionStatus;
+  style: DecoyStyle;
 };
 
 function useAction() {
@@ -96,7 +99,12 @@ export function DecoyFlow({ session }: { session: DecoySessionForClient }) {
       {/* 阶段 1-2：假方案 + 质疑 */}
       <section className="rounded-lg border bg-card p-5">
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-sm font-medium">一份方案</h2>
+          <h2 className="text-sm font-medium">
+            一份方案
+            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] font-normal text-muted-foreground">
+              {decoyStyleLabel(session.style)}
+            </span>
+          </h2>
           {session.reveal ? (
             <span className="text-xs text-muted-foreground">已揭底：它是故意埋了雷的</span>
           ) : (

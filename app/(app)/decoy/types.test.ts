@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DECOY_FLAW_TYPES,
+  DECOY_STYLES,
+  DEFAULT_DECOY_STYLE,
   decoyFlawLabel,
+  decoyStyleLabel,
+  isDecoyStyle,
   parseDecoyPlan,
   parseDecoyReveal,
   parseOwnPlanCritique,
@@ -129,5 +133,24 @@ describe("decoyFlawLabel", () => {
     for (const t of DECOY_FLAW_TYPES) {
       expect(decoyFlawLabel(t.type)).toBe(t.label);
     }
+  });
+});
+
+describe("decoy styles", () => {
+  it("每个画风都有中文名", () => {
+    for (const s of DECOY_STYLES) {
+      expect(decoyStyleLabel(s.style)).toBe(s.label);
+    }
+  });
+
+  it("isDecoyStyle 只认分类里的画风", () => {
+    expect(isDecoyStyle("rambling")).toBe(true);
+    expect(isDecoyStyle("unhinged")).toBe(true);
+    expect(isDecoyStyle("serious")).toBe(false);
+    expect(isDecoyStyle(undefined)).toBe(false);
+  });
+
+  it("默认画风是合法画风", () => {
+    expect(isDecoyStyle(DEFAULT_DECOY_STYLE)).toBe(true);
   });
 });
