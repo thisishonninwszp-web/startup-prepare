@@ -17,6 +17,11 @@ const TOOLS = [
     title: "触达规划",
     description: "验证行动的触达画布",
   },
+  {
+    href: "/decoy",
+    title: "假方案",
+    description: "AI 给一份埋了雷的方案，你找茬，然后写出自己的方案",
+  },
 ];
 
 export default function ToolsPage() {
