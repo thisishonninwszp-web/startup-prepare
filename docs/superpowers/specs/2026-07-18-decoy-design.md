@@ -15,7 +15,9 @@
 - **入口**:`/tools` 聚合页新增卡片;`/decoy` 路由;可从 idea/workbench 上下文带 `idea_id` 唤起(非必须,不关联 idea 也能用)。
 - **不新增**:一级导航项、独立输入口、独立闭环系统。
 
-## 单次练习流程(session 三阶段,线性)
+## 单次练习流程(session 五阶段,线性)
+
+**落点原则:假方案只是磨刀石,session 的主产物是用户最后写出的自己的方案。**历史列表以"自己的方案"为主展示,假方案与揭底作为过程记录附于其后。
 
 1. **出题(drafted)**:用户输入卡住的问题(一段文字,30 秒内可完成,不强制关联 idea)。AI 一次性生成:
    - 分 3-5 段的方案正文(如:问题重述 / 解法路径 / 资源与执行 / 如何验证);
@@ -25,6 +27,8 @@
    - **抓到的**:用户识破的雷;
    - **漏掉的**:未发现的雷,附"为什么它看起来对、实际为什么错";
    - **额外发现**:用户提出的、AI 没埋但成立的真问题。明确指出这是独立思考的证据,措辞克制,不迎合(宪法原则 2)。
+4. **写自己的方案(drafting_own)**:揭底页之后,界面引导用户写下**自己的方案**(自由文本,可对照揭底结果)。这是本次练习的主产物。
+5. **方案被质疑(concluded)**:提交自己的方案后,AI 用同一套错漏分类学对它做**一次性**对抗性质疑(不是多轮对话):指出方案中疑似踩中的雷(带 type 标签)与未覆盖的关键疑点。用户可据此修订方案文本(修订直接覆盖 `own_plan`,不做版本历史),session 结束。真正的检验仍留给现实接触。
 
 ## 埋雷机制与错漏分类学
 
@@ -55,11 +59,15 @@ create table if not exists public.decoy_sessions (
   plan        jsonb not null,          -- { sections: [...], planted_flaws: [...] }
   challenges  text,                    -- 用户质疑原文
   reveal      jsonb,                   -- { caught: [...], missed: [...], bonus: [...] }
+  own_plan    text,                    -- 用户自己的方案(主产物,可修订覆盖)
+  own_plan_critique jsonb,             -- AI 对 own_plan 的一次性对抗质疑
   learned     text,                    -- 用户亲笔的一句总结(可空)
   status      text not null default 'drafted'
-              check (status in ('drafted', 'challenged', 'revealed')),
+              check (status in ('drafted', 'challenged', 'revealed',
+                                'drafting_own', 'concluded')),
   created_at  timestamptz not null default now(),
-  revealed_at timestamptz
+  revealed_at timestamptz,
+  concluded_at timestamptz
 );
 ```
 
@@ -67,10 +75,10 @@ RLS 与现有表一致(单用户阶段 service role 跑通)。
 
 ## 代码落点
 
-- `lib/ai/decoy.ts`:两个 AI 函数(生成假方案、对照揭底)+ JSON 解析器 + 错漏分类学常量;经 `lib/ai/index.ts` 桶导出;传输走 `lib/ai-gateway.ts`。
+- `lib/ai/decoy.ts`:三个 AI 函数(生成假方案、对照揭底、质疑用户方案)+ JSON 解析器 + 错漏分类学常量;经 `lib/ai/index.ts` 桶导出;传输走 `lib/ai-gateway.ts`。
 - `app/(app)/decoy/`:page.tsx + actions.ts + queries.ts(+ 客户端交互组件)。`PageContainer width="narrow"`。按钮用共享 `Button`/`ConfirmButton`(提交质疑是不可逆动作,用 ConfirmButton)。
 - `app/(app)/tools/page.tsx`:TOOLS 数组加一项(title: 假方案,description 说明陪练用途)。
-- 历史 session 列表放 `/decoy` 页底部,可点开回看已揭底的练习。
+- 历史 session 列表放 `/decoy` 页底部,以"自己的方案"为主展示,可点开回看完整过程(假方案 → 质疑 → 揭底 → 自己的方案 → AI 质疑)。
 
 ## 沉淀到"学到了"
 
@@ -90,4 +98,5 @@ RLS 与现有表一致(单用户阶段 service role 跑通)。
 
 - 不做"常漏哪类雷"统计视图(数据存对即可,将来再做)。
 - 不做逐段强制质疑(选了自由文本一次提交)。
-- 不做假方案的多轮对话;一个 session 一次生成、一次质疑、一次揭底。
+- 不做多轮对话;一个 session 内每个 AI 环节(生成、揭底、质疑用户方案)各只调用一次。
+- 不做 own_plan 的版本历史;修订直接覆盖。
