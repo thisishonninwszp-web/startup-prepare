@@ -33,8 +33,8 @@ export const DECOY_STYLES = [
   },
   {
     style: "unhinged",
-    label: "放飞自我",
-    description: "步子极大、张口就来，雷多而浮夸——热身难度",
+    label: "一眼假",
+    description: "结构完整但明显不可行——练的是把'为什么死'说清楚",
   },
 ] as const;
 
