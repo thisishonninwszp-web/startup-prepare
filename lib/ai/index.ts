@@ -10,6 +10,7 @@ export * from "./concepts";
 export * from "./reasoning";
 export * from "./council";
 export * from "./decoy";
+export * from "./battle";
 export * from "./knowledge";
 export * from "./outreach";
 export * from "./patterns";
