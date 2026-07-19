@@ -9,6 +9,11 @@ export const DECOY_FLAW_TYPES = [
   { type: "causal_inversion", label: "因果倒置", hint: "相关当因果" },
   { type: "hidden_cost", label: "隐藏成本", hint: "时间/合规/维护被略过" },
   { type: "unfalsifiable", label: "不可证伪", hint: "方案怎样都能自圆其说" },
+  { type: "solution_first", label: "拿锤找钉", hint: "先有方案再倒推问题存在" },
+  { type: "self_as_user", label: "自我代入", hint: '"我会用"当"市场会买"，样本只有自己' },
+  { type: "competitor_blind", label: "竞品真空", hint: '假装没人做过，"我们没有竞争对手"' },
+  { type: "vanity_metric", label: "虚荣指标", hint: "用下载量/点赞/围观当付费验证" },
+  { type: "best_case_only", label: "只算晴天账", hint: "全按最顺利情况排，没有失败分支" },
 ] as const;
 
 export type DecoyFlawType = (typeof DECOY_FLAW_TYPES)[number]["type"];

@@ -60,6 +60,11 @@ AI 生成结构化 JSON。每处雷:`{ section, quote(埋雷句原文), type, wh
 | `causal_inversion` | 因果倒置 | 相关当因果 |
 | `hidden_cost` | 隐藏成本 | 时间/合规/维护被略过 |
 | `unfalsifiable` | 不可证伪 | 方案怎样都能自圆其说 |
+| `solution_first` | 拿锤找钉 | 先有方案再倒推问题存在 |
+| `self_as_user` | 自我代入 | "我会用"当"市场会买",样本只有自己 |
+| `competitor_blind` | 竞品真空 | 假装没人做过,"我们没有竞争对手" |
+| `vanity_metric` | 虚荣指标 | 用下载量/点赞/围观当付费验证 |
+| `best_case_only` | 只算晴天账 | 全按最顺利情况排,没有失败分支 |
 
 揭底时按类型展示。数据结构为将来在 learnings/patterns 统计"常漏哪类雷"留好基础(本期不做统计视图)。
 
