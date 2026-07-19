@@ -22,6 +22,11 @@ const TOOLS = [
     title: "假方案",
     description: "AI 给一份埋了雷的方案，你找茬，然后写出自己的方案",
   },
+  {
+    href: "/battle",
+    title: "心魔",
+    description: "AI 替你护盘你想信的主张，你负责把它拆到词穷",
+  },
 ];
 
 export default function ToolsPage() {
