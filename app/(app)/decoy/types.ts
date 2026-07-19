@@ -14,6 +14,12 @@ export const DECOY_FLAW_TYPES = [
   { type: "competitor_blind", label: "竞品真空", hint: '假装没人做过，"我们没有竞争对手"' },
   { type: "vanity_metric", label: "虚荣指标", hint: "用下载量/点赞/围观当付费验证" },
   { type: "best_case_only", label: "只算晴天账", hint: "全按最顺利情况排，没有失败分支" },
+  { type: "tam_fallacy", label: "大盘算账", hint: '"千亿市场拿下 1% 就是十亿"式自上而下算账' },
+  { type: "free_to_paid", label: "免费幻觉", hint: "把免费用户当成未来付费用户，跳过付费验证" },
+  { type: "polite_yes", label: "礼貌好评", hint: '把"朋友说不错"的客套当成需求证据' },
+  { type: "analogy_leap", label: "类比当论证", hint: '"我们是 X 界的 Uber"，用类比替代验证' },
+  { type: "trend_surfing", label: "风口叙事", hint: "用宏观趋势/风口替代自身方案的验证" },
+  { type: "single_dependency", label: "单点依赖", hint: "整个方案押在一个不受控的外部条件上" },
 ] as const;
 
 export type DecoyFlawType = (typeof DECOY_FLAW_TYPES)[number]["type"];

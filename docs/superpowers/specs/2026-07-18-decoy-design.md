@@ -65,6 +65,12 @@ AI 生成结构化 JSON。每处雷:`{ section, quote(埋雷句原文), type, wh
 | `competitor_blind` | 竞品真空 | 假装没人做过,"我们没有竞争对手" |
 | `vanity_metric` | 虚荣指标 | 用下载量/点赞/围观当付费验证 |
 | `best_case_only` | 只算晴天账 | 全按最顺利情况排,没有失败分支 |
+| `tam_fallacy` | 大盘算账 | "千亿市场拿下 1% 就是十亿"式自上而下算账 |
+| `free_to_paid` | 免费幻觉 | 把免费用户当成未来付费用户,跳过付费验证 |
+| `polite_yes` | 礼貌好评 | 把"朋友说不错"的客套当成需求证据 |
+| `analogy_leap` | 类比当论证 | "我们是 X 界的 Uber",用类比替代验证 |
+| `trend_surfing` | 风口叙事 | 用宏观趋势/风口替代自身方案的验证 |
+| `single_dependency` | 单点依赖 | 整个方案押在一个不受控的外部条件上 |
 
 揭底时按类型展示。数据结构为将来在 learnings/patterns 统计"常漏哪类雷"留好基础(本期不做统计视图)。
 
