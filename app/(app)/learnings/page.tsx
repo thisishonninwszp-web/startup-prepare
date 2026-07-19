@@ -71,6 +71,14 @@ export default async function LearningsPage({
     .order("created_at", { ascending: false });
   if (decoyError) throw new Error(decoyError.message);
 
+  const { data: battleRows, error: battleError } = await supabaseAdmin
+    .from("battle_sessions")
+    .select("id, claim, learned, created_at")
+    .eq("user_id", userId)
+    .not("learned", "is", null)
+    .order("created_at", { ascending: false });
+  if (battleError) throw new Error(battleError.message);
+
   const learnings = (rows ?? []).map((r) => {
     // 嵌套关系在 PostgREST 里可能是对象或单元素数组，做个兼容。
     const ideaRel = r.ideas as unknown;
@@ -92,7 +100,15 @@ export default async function LearningsPage({
     at: r.created_at as string,
     source: "decoy" as const,
   }));
-  const allLearnings = [...learnings, ...decoyLearnings].sort(
+  const battleLearnings = (battleRows ?? []).map((r) => ({
+    id: r.id as string,
+    title: (r.claim as string).slice(0, 40),
+    learned: r.learned as string | null,
+    reason: {} as ReasonParts,
+    at: r.created_at as string,
+    source: "battle" as const,
+  }));
+  const allLearnings = [...learnings, ...decoyLearnings, ...battleLearnings].sort(
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()
   );
 
@@ -148,7 +164,7 @@ export default async function LearningsPage({
 
           {allLearnings.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">
-              还没有学到的东西。Kill 掉的想法和假方案练习的总结会汇总在这里。
+              还没有学到的东西。Kill 掉的想法、假方案练习和心魔对战的总结会汇总在这里。
             </p>
           ) : (
             <ul className="mt-4 grid gap-5 sm:grid-cols-2">
@@ -163,6 +179,7 @@ export default async function LearningsPage({
                   <p className="mt-1 text-center text-xs text-muted-foreground">
                     {new Date(l.at).toLocaleDateString()}
                     {l.source === "decoy" && " · 假方案练习"}
+                    {l.source === "battle" && " · 心魔"}
                   </p>
 
                   {l.learned && (

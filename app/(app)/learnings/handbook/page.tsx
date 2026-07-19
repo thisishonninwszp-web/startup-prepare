@@ -27,7 +27,7 @@ type Entry = {
   learned: string | null;
   reason: ReasonParts;
   decided_at: string;
-  source: "kill" | "decoy";
+  source: "kill" | "decoy" | "battle";
 };
 
 function monthKey(iso: string): string {
@@ -64,6 +64,14 @@ export default async function LearningsHandbookPage() {
     .order("created_at", { ascending: true });
   if (decoyError) throw new Error(decoyError.message);
 
+  const { data: battleRows, error: battleError } = await supabaseAdmin
+    .from("battle_sessions")
+    .select("id, claim, learned, created_at")
+    .eq("user_id", user.id)
+    .not("learned", "is", null)
+    .order("created_at", { ascending: true });
+  if (battleError) throw new Error(battleError.message);
+
   const entries: Entry[] = (rows ?? []).map((r) => {
     const ideaRel = r.ideas as unknown;
     const idea = Array.isArray(ideaRel) ? ideaRel[0] : ideaRel;
@@ -84,7 +92,15 @@ export default async function LearningsHandbookPage() {
     decided_at: r.created_at as string,
     source: "decoy",
   }));
-  const allEntries = [...entries, ...decoyEntries].sort(
+  const battleEntries: Entry[] = (battleRows ?? []).map((r) => ({
+    id: r.id as string,
+    title: `心魔对战：${(r.claim as string).slice(0, 30)}`,
+    learned: r.learned as string | null,
+    reason: {},
+    decided_at: r.created_at as string,
+    source: "battle",
+  }));
+  const allEntries = [...entries, ...decoyEntries, ...battleEntries].sort(
     (a, b) => new Date(a.decided_at).getTime() - new Date(b.decided_at).getTime()
   );
 
