@@ -15,7 +15,12 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Separator } from "@/components/ui/separator";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import type { SelfTier } from "@/lib/domains/self-model/tiers";
 import type {
   Domain,
@@ -526,6 +531,17 @@ export default async function SelfPage() {
         />
       </section>
 
+      <Tabs defaultValue="overview" className="mt-2">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="overview">总览</TabsTrigger>
+          <TabsTrigger value="attributes">属性</TabsTrigger>
+          <TabsTrigger value="skills">技能</TabsTrigger>
+          <TabsTrigger value="traits">特性</TabsTrigger>
+          <TabsTrigger value="ledger">台账</TabsTrigger>
+          <TabsTrigger value="log">记录</TabsTrigger>
+        </TabsList>
+
+      <TabsContent value="overview" className="mt-6 space-y-8">
       <section className="mb-8 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">本周怪物</h2>
@@ -596,7 +612,42 @@ export default async function SelfPage() {
           </span>
         </p>
       </section>
+      </TabsContent>
 
+      <TabsContent value="attributes" className="mt-6 space-y-8">
+      <section className="mb-8 space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">属性</h2>
+          <p className="text-sm text-muted-foreground">
+            九主 / 二十六子。子属性扛数值与域，主属性只做同量纲合成，跨属性永不求和。
+          </p>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {panel.panel.mains.map((main) => (
+            <MainCard key={main.key} main={main} />
+          ))}
+        </div>
+
+        {panel.spread.spread !== null && panel.spread.strongest && (
+          <p className="text-sm text-muted-foreground">
+            特化度 {panel.spread.spread} —— 最强
+            <span className="text-foreground">
+              {" "}
+              {panel.spread.strongest.name} Lv.{panel.spread.strongest.level}
+            </span>
+            ，最弱
+            <span className="text-foreground">
+              {" "}
+              {panel.spread.weakest?.name} Lv.{panel.spread.weakest?.level}
+            </span>
+            。数字越大说明你越吃环境：峰值高，但换个场子就掉得快。
+          </p>
+        )}
+
+      </section>
+      </TabsContent>
+
+      <TabsContent value="skills" className="mt-6 space-y-8">
       <section className="mb-8 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">技能</h2>
@@ -716,7 +767,9 @@ export default async function SelfPage() {
           ))}
         </div>
       </section>
+      </TabsContent>
 
+      <TabsContent value="traits" className="mt-6 space-y-8">
       <section className="mb-8 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">特性</h2>
@@ -804,74 +857,9 @@ export default async function SelfPage() {
           </details>
         )}
       </section>
+      </TabsContent>
 
-      <Separator className="my-8" />
-
-      <section className="mb-8 space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold">属性</h2>
-          <p className="text-sm text-muted-foreground">
-            九主 / 二十六子。子属性扛数值与域，主属性只做同量纲合成，跨属性永不求和。
-          </p>
-        </div>
-        <div className="grid gap-3 lg:grid-cols-2">
-          {panel.panel.mains.map((main) => (
-            <MainCard key={main.key} main={main} />
-          ))}
-        </div>
-
-        {panel.spread.spread !== null && panel.spread.strongest && (
-          <p className="text-sm text-muted-foreground">
-            特化度 {panel.spread.spread} —— 最强
-            <span className="text-foreground">
-              {" "}
-              {panel.spread.strongest.name} Lv.{panel.spread.strongest.level}
-            </span>
-            ，最弱
-            <span className="text-foreground">
-              {" "}
-              {panel.spread.weakest?.name} Lv.{panel.spread.weakest?.level}
-            </span>
-            。数字越大说明你越吃环境：峰值高，但换个场子就掉得快。
-          </p>
-        )}
-
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="self-panel p-5">
-            <h3 className="mb-1 text-sm font-medium">记一条训练</h3>
-            <p className="mb-3 text-xs text-muted-foreground">
-              身体是你的第二类情境，也是唯一一处叙述插不上手的数据。
-            </p>
-            <BodyLogForm />
-          </div>
-
-          <div className="self-panel p-5">
-            <h3 className="mb-1 text-sm font-medium">记一次与人的互动</h3>
-            <p className="mb-3 text-xs text-muted-foreground">
-              人际域只能从这里亮 —— 自己回忆照不出自己看不见的东西。
-            </p>
-            <EncounterForm />
-          </div>
-
-          <div className="self-panel p-5">
-            <h3 className="mb-1 text-sm font-medium">底牌快照</h3>
-            <p className="mb-3 text-xs text-muted-foreground">
-              这三个数决定你现在能打几级本，而大多数人从来没写下来过。
-            </p>
-            <ResourcesForm />
-          </div>
-
-          <div className="self-panel p-5">
-            <h3 className="mb-3 text-sm font-medium">今天的睡眠</h3>
-            <SleepForm />
-            <p className="mt-3 text-xs text-muted-foreground">
-              算的是「睡够 7 小时的天数占比」，不是平均时长 ——
-              平均值会把「五天四小时 + 两天十二小时」洗成健康。
-            </p>
-          </div>
-        </div>
-      </section>
-
+      <TabsContent value="ledger" className="mt-6 space-y-8">
       <section className="mb-8 grid gap-3 sm:grid-cols-3">
         <Stat
           label="self forecast"
@@ -959,8 +947,6 @@ export default async function SelfPage() {
         </div>
       </section>
 
-      <Separator className="my-8" />
-
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold">假设台账</h2>
@@ -1000,6 +986,54 @@ export default async function SelfPage() {
           </details>
         )}
       </section>
+      </TabsContent>
+
+      <TabsContent value="log" className="mt-6 space-y-8">
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">记录口</h2>
+          <p className="text-sm text-muted-foreground">
+            每一条都是分母的一部分。记录超过 20 秒就没人记了，所以字段刻意少。
+          </p>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="self-panel p-5">
+            <h3 className="mb-1 text-sm font-medium">记一条训练</h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              身体是你的第二类情境，也是唯一一处叙述插不上手的数据。
+            </p>
+            <BodyLogForm />
+          </div>
+
+          <div className="self-panel p-5">
+            <h3 className="mb-1 text-sm font-medium">记一次与人的互动</h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              人际域只能从这里亮 —— 自己回忆照不出自己看不见的东西。
+            </p>
+            <EncounterForm />
+          </div>
+
+          <div className="self-panel p-5">
+            <h3 className="mb-1 text-sm font-medium">底牌快照</h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              这三个数决定你现在能打几级本，而大多数人从来没写下来过。
+            </p>
+            <ResourcesForm />
+          </div>
+
+          <div className="self-panel p-5">
+            <h3 className="mb-3 text-sm font-medium">今天的睡眠</h3>
+            <SleepForm />
+            <p className="mt-3 text-xs text-muted-foreground">
+              算的是「睡够 7 小时的天数占比」，不是平均时长 ——
+              平均值会把「五天四小时 + 两天十二小时」洗成健康。
+            </p>
+          </div>
+        </div>
+      </section>
+      </TabsContent>
+      </Tabs>
+
     </PageContainer>
   );
 }
