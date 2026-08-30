@@ -34,7 +34,7 @@ const coreProbes = [
   ["self_daily", "id,user_id,logged_on,sleep_hours"],
   ["self_encounters", "id,user_id,occurred_on,kind,counterpart,outcome"],
   ["self_resources", "id,user_id,recorded_on,runway_months,allies,weekly_free_hours"],
-  ["self_traits", "id,user_id,spectrum_key,name,modifiers,status"],
+  ["self_traits", "id,user_id,spectrum_key,name,modifiers,status,source,library_key"],
   ["self_skills", "id,user_id,skill_key,value,passion"],
   ["self_skill_ticks", "id,user_id,skill_key,occurred_on,note,settled_at"],
   ["self_feats", "id,user_id,feat_key,taken_on"],

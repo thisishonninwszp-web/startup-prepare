@@ -54,6 +54,7 @@ import {
 } from "./queries";
 import {
   CharacterCreationForm,
+  ScanLibraryButton,
   SettleSkillsButton,
   TakeFeatButton,
   TickControl,
@@ -829,6 +830,19 @@ export default async function SelfPage() {
         )}
 
         <div className="self-panel p-5">
+          <h3 className="mb-1 text-sm font-medium">扫描特性库</h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            26 根互斥光谱 × 两端 = 52 条预定义特性，按面板数值自动授予与褪色。
+            一根光谱同时只能持有一条 —— 稀缺来自互斥。
+          </p>
+          <ScanLibraryButton />
+        </div>
+
+        <div className="self-panel p-5">
+          <h3 className="mb-1 text-sm font-medium">自建一条</h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            库里没有的才手写。手写的标 custom，品级上限比库里的低一档。
+          </p>
           <NewTraitForm
             subs={panel.panel.mains.flatMap((main) =>
               main.subs.map((sub) => ({

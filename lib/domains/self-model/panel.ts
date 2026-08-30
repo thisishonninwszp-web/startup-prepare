@@ -137,6 +137,47 @@ export type PanelInput = {
   weeklyFreeHours: number | null;
 };
 
+/** 全空的输入。用来取子属性清单，或者给测试当底座。 */
+export const EMPTY_PANEL_INPUT: PanelInput = {
+  predictionsSettled: 0,
+  predictionsHit: 0,
+  ideaLifespans: [],
+  longestSpanDays: 0,
+  activeIdeas: 0,
+  ideasTotal: 0,
+  ideasPerMonth: 0,
+  decisionsTotal: 0,
+  validationsPerIdea: [],
+  validationsPerMonth: 0,
+  painNo: 0,
+  painTotal: 0,
+  firstContactDelays: [],
+  learnedTexts: [],
+  battlesConcluded: 0,
+  battlesWithNewPosition: 0,
+  commitmentsTotal: 0,
+  commitmentsDone: 0,
+  liftSessions: 0,
+  strengthStart: 0,
+  strengthNow: 0,
+  weeklyTonnage: 0,
+  trainingDays: 0,
+  trainingLogs: 0,
+  cardioSessions: 0,
+  cardioMinutes: 0,
+  distinctContexts: 0,
+  sleepDays: 0,
+  sleepEnoughDays: 0,
+  exposures: 0,
+  proposalsTotal: 0,
+  proposalsAccepted: 0,
+  newFaces: 0,
+  serendipities: 0,
+  runwayMonths: null,
+  allies: null,
+  weeklyFreeHours: null,
+};
+
 const MIN_SAMPLE = 5;
 const MIN_SAMPLE_SMALL = 3;
 const MIN_SAMPLE_BODY = 4;

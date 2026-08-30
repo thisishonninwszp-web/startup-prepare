@@ -10,7 +10,13 @@ import {
   SKILL_GROUPS,
   SKILL_GROUP_NAMES,
 } from "@/lib/domains/self-model/skills";
-import { createCharacter, settleSkills, takeFeat, tickSkill } from "./actions";
+import {
+  createCharacter,
+  settleSkills,
+  syncLibraryTraits,
+  takeFeat,
+  tickSkill,
+} from "./actions";
 
 function Err({ message }: { message: string | null }) {
   if (!message) return null;
@@ -241,6 +247,54 @@ export function TakeFeatButton({
         花 1 点点上
       </ConfirmButton>
       <Err message={error} />
+    </div>
+  );
+}
+
+/**
+ * 扫一遍特性库。平时不自动跑，攒着一次性揭晓 ——
+ * 实时刷新的数字没人看第二眼，开箱才有那一下。
+ */
+export function ScanLibraryButton() {
+  const [result, setResult] = useState<{
+    granted: string[];
+    faded: string[];
+  } | null>(null);
+  const { pending, error, run } = useAction();
+
+  return (
+    <div className="space-y-2">
+      <Button
+        variant="outline"
+        disabled={pending}
+        onClick={() =>
+          run(async () => {
+            setResult(await syncLibraryTraits());
+          })
+        }
+      >
+        {pending ? "扫描中…" : "扫描特性库"}
+      </Button>
+      <Err message={error} />
+      {result && (
+        <div className="space-y-1 text-sm">
+          {result.granted.length === 0 && result.faded.length === 0 && (
+            <p className="text-muted-foreground">
+              这一轮没有变化。数值还在常人区，或者样本不够 —— 空着才是常态。
+            </p>
+          )}
+          {result.granted.map((line) => (
+            <p key={line}>
+              <span className="text-primary">解锁</span> {line}
+            </p>
+          ))}
+          {result.faded.map((line) => (
+            <p key={line} className="text-muted-foreground">
+              褪色 {line}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

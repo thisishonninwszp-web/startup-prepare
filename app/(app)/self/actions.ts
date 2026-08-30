@@ -10,7 +10,7 @@ import {
   type SelfHypothesisKind,
   type WindowGrade,
 } from "@/lib/domains/self-model/tiers";
-import { buildPanel, type PanelInput } from "@/lib/domains/self-model/panel";
+import { EMPTY_PANEL_INPUT, buildPanel } from "@/lib/domains/self-model/panel";
 import {
   FEAT_DEFS,
   SKILL_DEFS,
@@ -19,48 +19,9 @@ import {
   isSkillKey,
   rustFor,
 } from "@/lib/domains/self-model/skills";
-import { nextHypothesisCode } from "./queries";
+import { scanLibrary } from "@/lib/domains/self-model/trait-library";
+import { getSelfPanel, nextHypothesisCode } from "./queries";
 
-/** 只用来取子属性 key 的清单，数值一概不看。 */
-const EMPTY_PANEL_INPUT: PanelInput = {
-  predictionsSettled: 0,
-  predictionsHit: 0,
-  ideaLifespans: [],
-  longestSpanDays: 0,
-  activeIdeas: 0,
-  ideasTotal: 0,
-  ideasPerMonth: 0,
-  decisionsTotal: 0,
-  validationsPerIdea: [],
-  validationsPerMonth: 0,
-  painNo: 0,
-  painTotal: 0,
-  firstContactDelays: [],
-  learnedTexts: [],
-  battlesConcluded: 0,
-  battlesWithNewPosition: 0,
-  commitmentsTotal: 0,
-  commitmentsDone: 0,
-  liftSessions: 0,
-  strengthStart: 0,
-  strengthNow: 0,
-  weeklyTonnage: 0,
-  trainingDays: 0,
-  trainingLogs: 0,
-  cardioSessions: 0,
-  cardioMinutes: 0,
-  distinctContexts: 0,
-  sleepDays: 0,
-  sleepEnoughDays: 0,
-  exposures: 0,
-  proposalsTotal: 0,
-  proposalsAccepted: 0,
-  newFaces: 0,
-  serendipities: 0,
-  runwayMonths: null,
-  allies: null,
-  weeklyFreeHours: null,
-};
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -626,4 +587,70 @@ export async function takeFeat(featKey: string): Promise<void> {
     throw new Error(error.message);
   }
   revalidatePath("/self");
+}
+
+/**
+ * 扫描特性库：该发的发，该撤的撤。
+ * 纯规则驱动 —— 谁该拿到哪条特性，由 trait-library.ts 从面板数值算出来，
+ * 这个函数只负责把结果落库。AI 不参与，用户也不能手动"给自己发一条库里的"。
+ */
+export async function syncLibraryTraits(): Promise<{
+  granted: string[];
+  faded: string[];
+}> {
+  const userId = await requireUserId();
+  const { panel } = await getSelfPanel(userId);
+
+  const { data, error } = await supabaseAdmin
+    .from("self_traits")
+    .select("id, spectrum_key, library_key")
+    .eq("user_id", userId)
+    .eq("status", "held");
+  if (error) throw new Error(error.message);
+
+  const held = ((data ?? []) as {
+    id: string;
+    spectrum_key: string;
+    library_key: string | null;
+  }[]).map((row) => ({
+    id: row.id,
+    libraryKey: row.library_key,
+    spectrumKey: row.spectrum_key,
+  }));
+
+  const result = scanLibrary(panel, held);
+
+  if (result.grant.length > 0) {
+    const { error: insertError } = await supabaseAdmin
+      .from("self_traits")
+      .insert(
+        result.grant.map((def) => ({
+          user_id: userId,
+          spectrum_key: def.spectrumKey,
+          name: def.name,
+          modifiers: def.modifiers,
+          backfire: def.backfire ?? null,
+          equip_note: def.equipNote ?? null,
+          source: "library",
+          library_key: def.key,
+        }))
+      );
+    if (insertError) throw new Error(insertError.message);
+  }
+
+  for (const item of result.fade) {
+    const row = held.find((entry) => entry.libraryKey === item.key);
+    if (!row) continue;
+    const { error: fadeError } = await supabaseAdmin
+      .from("self_traits")
+      .update({ status: "faded", faded_at: new Date().toISOString() })
+      .eq("id", row.id);
+    if (fadeError) throw new Error(fadeError.message);
+  }
+
+  revalidatePath("/self");
+  return {
+    granted: result.grant.map((def) => `${def.name} —— ${def.gloss}`),
+    faded: result.fade.map((item) => `${item.name}：${item.reason}`),
+  };
 }
