@@ -33,6 +33,7 @@ export const NAV_GROUPS: AppNavGroup[] = [
     items: [
       { href: "/reality", label: "现状", shortLabel: "现状" },
       { href: "/customer-view", label: "顾客", shortLabel: "顾客" },
+      { href: "/self", label: "自我", shortLabel: "自我" },
     ],
   },
   {

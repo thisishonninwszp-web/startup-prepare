@@ -125,3 +125,128 @@
     line-height: 1.4;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   /self 角色卡的专属外观（宪法 UI 铁律的唯一例外，见 CLAUDE.md 原则 1 例外条款）。
+   这些 token 与类只允许在 .self-sheet 作用域内使用；别的模块引用视为 bug。
+
+   隐喻仍然是田野笔记：不引入新色相，七品级靠同一套暖色系的明度与饱和度拉开，
+   结构靠发丝线与页眉条，而不是阴影和圆角。
+--------------------------------------------------------------------------- */
+@layer base {
+  .self-sheet {
+    --rarity-common: 40 8% 52%;
+    --rarity-magic: 210 30% 42%;
+    --rarity-rare: 45 55% 34%;
+    --rarity-epic: 278 24% 42%;
+    --rarity-legend: 26 60% 42%;
+    --rarity-set: 140 24% 32%;
+    --rarity-unique: 38 60% 32%;
+  }
+}
+
+@layer components {
+  /* 方格纸底。用前景色的极低透明度，跟着主题走，不写死颜色。 */
+  .self-sheet {
+    background-image: linear-gradient(
+        hsl(var(--foreground) / 0.035) 1px,
+        transparent 1px
+      ),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.035) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* 页眉：外一道墨线 + 内一道发丝线，像盖了框的档案封面。 */
+  .self-frame {
+    border: 1.5px solid hsl(var(--foreground));
+    box-shadow: inset 0 0 0 1px hsl(var(--border));
+    background-color: hsl(var(--card));
+    border-radius: var(--radius);
+  }
+
+  /* 面板：发丝线 + 页眉条。结构靠线，不靠阴影。 */
+  .self-panel {
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    border-radius: var(--radius);
+  }
+  .self-panel__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.625rem;
+    padding: 0.5rem 0.875rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background-color: hsl(var(--muted));
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .self-panel__body {
+    padding: 0.875rem;
+  }
+
+  /* mono 小标签：仅 ASCII 才允许 tracking（宪法 UI 铁律 6）。 */
+  .self-label {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    line-height: 1.6;
+  }
+
+  /* 表格式行：点线分隔，最后一行不留线。 */
+  .self-row {
+    border-bottom: 1px dotted hsl(var(--border));
+  }
+  .self-row:last-child {
+    border-bottom: 0;
+  }
+
+  /* 七品级。只在 .self-sheet 内有定义。 */
+  .self-rarity {
+    display: inline-block;
+    border: 1px solid currentColor;
+    padding: 0 0.3125rem;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    line-height: 1.5;
+  }
+  .self-rarity--common {
+    color: hsl(var(--rarity-common));
+  }
+  .self-rarity--magic {
+    color: hsl(var(--rarity-magic));
+  }
+  .self-rarity--rare {
+    color: hsl(var(--rarity-rare));
+  }
+  .self-rarity--epic {
+    color: hsl(var(--rarity-epic));
+  }
+  .self-rarity--legend {
+    color: hsl(var(--rarity-legend));
+  }
+  .self-rarity--set {
+    color: hsl(var(--rarity-set));
+    border-style: dashed;
+  }
+  .self-rarity--unique {
+    color: hsl(var(--rarity-unique));
+  }
+
+  /* 已推翻的骑缝章。 */
+  .self-stamp {
+    display: inline-block;
+    border: 1.5px solid hsl(var(--destructive));
+    color: hsl(var(--destructive));
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 0 0.3125rem;
+    transform: rotate(-3deg);
+  }
+}

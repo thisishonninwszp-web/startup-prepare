@@ -18,6 +18,11 @@ IdeaOS 不是笔记工具,不是 AI 聊天工具。它是一个服务于"用户�
 
 1. **绝不加评分系统**。不要任何 1-10 分、星级、百分比的"想法打分"。
    理由:精确的数字会给主观判断穿上客观外衣(精确性偏误)。只允许二元决策。
+   **唯一例外(self 模块)**:自我假设的触发率、命中率、把握度可以是数字,
+   但必须同时满足三条 —— ①由代码从行为数据算出,AI 不得直接输出任何数值;
+   ②每个数字都能点开看到分子分母,样本不足时只显示样本数、不显示比率;
+   ③不得聚合成任何形式的总分(战力值、综合评分、雷达面积)。
+   例外只对"关于自己的可证伪命题"成立,对想法/机会打分仍然禁止。
 
 2. **AI 必须是对抗性的,不许迎合**。所有 AI prompt 的目标是"找出这个想法会死的理由",
    不是让用户感觉良好。禁止输出"很有潜力""不错的想法"这类话。
@@ -41,13 +46,15 @@ IdeaOS 不是笔记工具,不是 AI 聊天工具。它是一个服务于"用户�
 |---|---|---|
 | 决策轴(一级导航) | dashboard, capture, materials, ideas, workbench, learnings | materials 是唯一统一输入口;collide/concept/outreach 是 idea 详情内的工具入口,不独立铺导航 |
 | 成长轴(一级导航) | dreams, retrospectives(周为主), learnings | dreams 保持可编辑一级模块;日/月复盘是周复盘页内的次级视图;patterns 报告是 learnings 的视图 |
-| 认识层(一级导航) | reality, customer-view | customer-view 的证据输入走 materials |
+| 认识层(一级导航) | reality, customer-view, self | self 是自我认知台账:自述不进推理,只记可证伪的条件命题;数值规则见原则 1 例外 |
 | 档案层(低权重导航) | companies(含原 company-kb), knowledge | |
 | 工具层(无一级导航) | reasoning 5 框架, council | 从 workbench/idea 上下文调用,/tools 聚合页兜底 |
 | 设置区 | AI 诊断、导出、审计、profile | |
 | 已杀死 | life(生活罗盘), /review(外部信号页) | 不得复活;同类需求走 materials |
 
-**禁止**:新增一级导航模块、新增独立闭环系统、新增独立输入口。导航固定 4 组 12 项 + 底栏。
+**禁止**:新增一级导航模块、新增独立闭环系统、新增独立输入口。导航固定 4 组 13 项 + 底栏。
+新增一级模块必须先写进上表并同步 `components/app-navigation.test.ts`(该测试锁死组数与项数);
+self 是经用户明确裁决后加入的唯一例外,不构成后续新增的先例。
 
 ## 目录规范
 
@@ -106,8 +113,12 @@ components/ui/       共享原子组件(shadcn 模式);页面禁止手搓 button
 - validations: id, idea_id, has_pain(enum), will_pay(enum), note, contacted_at
 - ai_sessions: id, idea_id, role(enum), messages(jsonb), created_at
 - decisions: id, idea_id, verdict(enum), reason, learned, decided_at
-- predictions: id, user_id, source_type(idea/retro), idea_id(source_type=idea时必填), period_id(source_type=retro时必填), text, due_at, made_at, outcome(enum pending/hit/miss), resolved_at, note
-  — 统一的预测对账表,idea 侧和周复盘侧共用同一张表、同一套到期/命中逻辑(idea_id 与 period_id 互斥)
+- predictions: id, user_id, source_type(idea/retro/self), idea_id(source_type=idea时必填), period_id(source_type=retro时必填), hypothesis_id(self 侧可选), confidence(0-100,用户自填的把握度), text, due_at, made_at, outcome(enum pending/hit/miss), resolved_at, note
+  — 统一的预测对账表,idea 侧、周复盘侧、self 侧共用同一张表与同一套到期/命中逻辑
+  (idea_id 与 period_id 互斥;source_type=self 时两者皆空)。三侧同表是为了能横向比校准。
+- self_hypotheses / self_windows / self_declarations: /self 台账。self_windows 记录每一次
+  "符合触发条件的情境"含行为未发生的(outcome=miss)——它是触发率的分母,少了它数字就退回评分。
+  档位升降规则在 lib/domains/self-model/tiers.ts,AI 只有提名权、无授予权。
 - idea_exit_criteria: id, idea_id, user_id, criterion, triggered(unreviewed/yes/no), reviewed_at, created_at
 
 其余模块的表定义见 `supabase/migrations/`(按编号顺序执行,append-only);

@@ -10,6 +10,7 @@ import {
   Building2,
   CloudMoon,
   Download,
+  Fingerprint,
   FolderKanban,
   Home,
   Inbox,
@@ -41,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/learnings": Archive,
   "/reality": ScanSearch,
   "/customer-view": Users,
+  "/self": Fingerprint,
   "/companies": Building2,
   "/knowledge": BookOpen,
 };
