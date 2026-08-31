@@ -67,7 +67,11 @@ import {
   recordDerivedEvents,
   type SelfLedgerEntry,
 } from "./queries";
-import { byAxis, stateOf } from "@/lib/domains/self-model/dispositions";
+import {
+  byAxis,
+  matchTypes,
+  stateOf,
+} from "@/lib/domains/self-model/dispositions";
 import {
   CharacterCreationForm,
   DeedForm,
@@ -1484,6 +1488,40 @@ export default async function SelfPage() {
               声明归声明，不进任何计算。
             </p>
           </div>
+
+          {(() => {
+            const claimedKeys = Object.keys(dispositions);
+            const types = matchTypes(claimedKeys);
+            if (types.length === 0) return null;
+            return (
+              <div className="self-panel p-4">
+                <p className="self-label mb-2">组合出的类型</p>
+                <div className="flex flex-wrap gap-2">
+                  {types.map((type) => (
+                    <span
+                      key={type.def.key}
+                      className={`self-card px-3 py-1.5 text-[13px] ${
+                        type.complete ? "self-card--epic" : "border-dashed"
+                      }`}
+                      title={type.def.gloss}
+                    >
+                      <b>{type.def.name}</b>{" "}
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {type.matched.length}/{type.def.requires.length}
+                      </span>
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        {type.def.gloss}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  类型是几条气质组合出来的，不是单独一根轴 —— MBTI 的 INTP
+                  也是四根轴各取一端。它照旧全部来自声明，不进任何计算。
+                </p>
+              </div>
+            );
+          })()}
 
           {byAxis().map((group) => (
             <div key={group.axis} className="self-panel">

@@ -103,6 +103,64 @@ export const DISPOSITIONS: DispositionDef[] = [
     test: "复盘里归因到自己与归因到外部的比例" },
   { key: "prove", axis: "conflict", name: "被质疑就加码", claim: "越有人不看好越想做成",
     test: "被反驳之后的一周，该项目的投入是升还是降" },
+
+  // ---------------- 第二批 ----------------
+  { key: "morninghead", axis: "energy", name: "早上清醒", claim: "上午两小时抵下午一天",
+    test: "高质量产出集中在 12 点以前" },
+  { key: "steadypace", axis: "energy", name: "细水长流", claim: "每天一点比爆发更适合我",
+    test: "产出的日间分布方差小" },
+  { key: "recharge_make", axis: "energy", name: "做出来才回血", claim: "只要做成一点点就有劲",
+    test: "有交付物的那天，第二天产出更高" },
+  { key: "drainmeeting", axis: "energy", name: "会议吸血", claim: "开完会就废了",
+    test: "会议时长与当天产出负相关" },
+  { key: "hyperfocus", axis: "attention", name: "一头扎进去", claim: "进入状态后忘记时间",
+    test: "单次连续工作时长的上四分位" },
+  { key: "needsilence", axis: "attention", name: "要安静", claim: "有杂音就没法想事",
+    test: "在嘈杂环境的产出与安静时的差" },
+  { key: "visualfirst", axis: "attention", name: "先画出来", claim: "写不清楚就先画",
+    test: "开始一件事时先出图的比例" },
+  { key: "listmaker", axis: "attention", name: "先列清单", claim: "不列出来心里没底",
+    test: "有清单日与无清单日的完成率" },
+  { key: "evidencefirst", axis: "decision", name: "先要证据", claim: "没数据我不敢下判断",
+    test: "决策前是否有可引用的数据" },
+  { key: "gutcall", axis: "decision", name: "凭直觉", claim: "想太多反而错",
+    test: "无数据决策的事后命中率" },
+  { key: "worstcase", axis: "decision", name: "先想最坏", claim: "先算亏得起多少",
+    test: "决策记录里是否写了下行" },
+  { key: "consensus", axis: "decision", name: "要有人同意", claim: "没人认同我不敢推",
+    test: "推进前征询他人的比例" },
+  { key: "contrarian", axis: "decision", name: "偏要反着来", claim: "大家都说好我就警惕",
+    test: "与多数意见相反的决策比例及其结果" },
+  { key: "perfectgate", axis: "decision", name: "不到好不出手", claim: "没做到心里那条线就不发",
+    test: "从可用到发布之间拖了多久" },
+  { key: "ruleskeeper", axis: "structure", name: "守规矩", claim: "定了的就照做",
+    test: "自己定的规则被遵守的比例" },
+  { key: "ruleshater", axis: "structure", name: "讨厌流程", claim: "流程一多我就绕开",
+    test: "流程步骤增加后完成率的变化" },
+  { key: "cleanslate", axis: "structure", name: "喜欢从零开始", claim: "接手别人的不如自己重写",
+    test: "重写与改造的选择比例" },
+  { key: "archivist", axis: "structure", name: "什么都留档", claim: "记下来才安心",
+    test: "记录条数与实际回看次数" },
+  { key: "shinychase", axis: "novelty", name: "见新就想试", claim: "看到新工具就想上手",
+    test: "新开项目与工具试用的频率" },
+  { key: "classicfirst", axis: "novelty", name: "先看老东西", claim: "新东西先等等看",
+    test: "采用一样东西距它出现多久" },
+  { key: "finisher", axis: "novelty", name: "喜欢收尾", claim: "把烂摊子收干净很爽",
+    test: "接手未完成项并完成的次数" },
+  { key: "teachurge", axis: "novelty", name: "学完想讲", claim: "学会了就想讲给人听",
+    test: "学完后产出讲解材料的比例" },
+  { key: "apologyfirst", axis: "conflict", name: "先道歉", claim: "先把气氛压下来再说",
+    test: "冲突中率先让步的比例" },
+  { key: "holdline", axis: "conflict", name: "守得住线", claim: "该坚持的不让",
+    test: "被施压后改变决定的比例" },
+  { key: "silenttreat", axis: "conflict", name: "冷处理", claim: "不想说就先不说",
+    test: "分歧后到再次沟通的间隔" },
+  { key: "humorout", axis: "conflict", name: "用玩笑化解", claim: "开个玩笑就过去了",
+    test: "冲突记录里是否真的落成安排" },
+  { key: "gritteeth", axis: "conflict", name: "硬扛", claim: "自己咽下去",
+    test: "卡住到求助的天数" },
+  { key: "askwhy", axis: "conflict", name: "非要问清楚", claim: "不弄明白为什么不罢休",
+    test: "分歧后是否追到根因" },
 ];
 
 export const DISPOSITION_TOTAL = DISPOSITIONS.length;
@@ -137,4 +195,64 @@ export function stateOf(input: {
     return "supported";
   }
   return "declared";
+}
+
+export type TypeDef = {
+  key: string;
+  name: string;
+  gloss: string;
+  /** 由哪些气质组合而成。 */
+  requires: string[];
+  /** 至少命中几条才算。 */
+  min: number;
+};
+
+/**
+ * 类型 = 若干条气质的组合。
+ *
+ * MBTI 的 INTP 不是一个标签，是四根轴各取一端的组合 ——
+ * 所以"再多一点这种特性"的正确做法不是加更多单条气质，
+ * 是让已认领的气质**组合出名字**。
+ *
+ * 和别处一样：类型仍然全部来自声明，不进任何计算。
+ * 它是给你一个说得出口的短名字，不是一个结论。
+ */
+export const TYPE_DEFS: TypeDef[] = [
+  { key: "towerscholar", name: "塔中书生", gloss: "一个人待着，先懂原理，喜欢往深里挖",
+    requires: ["solo", "principled", "depth", "thinkfirst"], min: 3 },
+  { key: "firestarter", name: "点火人", gloss: "先动手，见新就试，同时开好几件",
+    requires: ["actfirst", "shinychase", "scatter", "novelty"], min: 3 },
+  { key: "gatekeeper", name: "守门人", gloss: "有计划、要收干净、不轻易冒进",
+    requires: ["planner", "tidymind", "worstcase", "ruleskeeper"], min: 3 },
+  { key: "nightsmith", name: "夜工", gloss: "夜里清醒，一头扎进去，怕被打断",
+    requires: ["nightowl", "hyperfocus", "deepfocus", "needsilence"], min: 3 },
+  { key: "diplomat", name: "调停者", gloss: "先看人，避冲突，要有人同意",
+    requires: ["avoidconflict", "consensus", "apologyfirst", "crowd"], min: 3 },
+  { key: "blade", name: "直刃", gloss: "当面说清，守得住线，非要问清楚",
+    requires: ["directconflict", "holdline", "askwhy", "reversible"], min: 3 },
+  { key: "collectorsage", name: "藏书人", gloss: "先囤起来，什么都留档，先看老东西",
+    requires: ["collector", "archivist", "classicfirst", "principled"], min: 3 },
+  { key: "sprinter", name: "阵发型选手", gloss: "阵发投入，做出来才回血，讨厌流程",
+    requires: ["burst", "recharge_make", "ruleshater", "gutcall"], min: 3 },
+  { key: "quartermind", name: "算账的", gloss: "先要证据，先想最坏，凭数据说话",
+    requires: ["evidencefirst", "worstcase", "thinkfirst", "listmaker"], min: 3 },
+  { key: "hermitmaker", name: "地窖匠", gloss: "独处、往深里挖、不到好不出手",
+    requires: ["solo", "depth", "perfectgate", "hyperfocus"], min: 3 },
+  { key: "teacher", name: "好为人师", gloss: "学完想讲，先画出来，讲得清",
+    requires: ["teachurge", "visualfirst", "principled", "crowd"], min: 3 },
+  { key: "restarter", name: "重开党", gloss: "喜欢从零开始，见新就试，讨厌流程",
+    requires: ["cleanslate", "shinychase", "ruleshater", "novelty"], min: 3 },
+];
+
+export type TypeMatch = { def: TypeDef; matched: string[]; complete: boolean };
+
+/** 认领的气质能组合出哪些类型。命中越多排越前。 */
+export function matchTypes(claimedKeys: string[]): TypeMatch[] {
+  const claimed = new Set(claimedKeys);
+  return TYPE_DEFS.map((def) => {
+    const matched = def.requires.filter((key) => claimed.has(key));
+    return { def, matched, complete: matched.length >= def.min };
+  })
+    .filter((item) => item.matched.length > 0)
+    .sort((a, b) => b.matched.length - a.matched.length);
 }

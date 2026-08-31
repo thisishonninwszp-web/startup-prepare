@@ -6,11 +6,13 @@ import {
   byAxis,
   findDisposition,
   stateOf,
+  matchTypes,
+  TYPE_DEFS,
 } from "./dispositions";
 
 describe("dispositions", () => {
-  it("ships a couple dozen with unique keys", () => {
-    expect(DISPOSITION_TOTAL).toBeGreaterThanOrEqual(20);
+  it("ships fifty with unique keys", () => {
+    expect(DISPOSITION_TOTAL).toBe(50);
     expect(new Set(DISPOSITIONS.map((item) => item.key)).size).toBe(
       DISPOSITION_TOTAL
     );
@@ -63,5 +65,42 @@ describe("dispositions", () => {
     expect(names).toContain("先动手再说");
     expect(names).toContain("独处充电");
     expect(names).toContain("人群充电");
+  });
+});
+
+describe("types", () => {
+  it("builds a type out of several dispositions, not one axis", () => {
+    // INTP 不是一个标签，是四根轴各取一端 —— 类型也一样，靠组合。
+    for (const def of TYPE_DEFS) {
+      expect(def.requires.length).toBeGreaterThanOrEqual(3);
+      expect(def.min).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("only references dispositions that exist", () => {
+    for (const def of TYPE_DEFS) {
+      for (const key of def.requires) {
+        expect(findDisposition(key), `${def.name} → ${key}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("stays incomplete until enough dispositions are claimed", () => {
+    const two = matchTypes(["solo", "principled"]);
+    const tower = two.find((item) => item.def.key === "towerscholar");
+    expect(tower?.complete).toBe(false);
+    const three = matchTypes(["solo", "principled", "depth"]);
+    expect(
+      three.find((item) => item.def.key === "towerscholar")?.complete
+    ).toBe(true);
+  });
+
+  it("says nothing at all when nothing is claimed", () => {
+    expect(matchTypes([])).toEqual([]);
+  });
+
+  it("ranks the closest type first", () => {
+    const matches = matchTypes(["solo", "principled", "depth", "actfirst"]);
+    expect(matches[0].def.key).toBe("towerscholar");
   });
 });
