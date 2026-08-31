@@ -181,9 +181,20 @@ function SubRow({ sub }: { sub: SubAttribute }) {
   );
 }
 
-function MainCard({ main }: { main: MainAttribute }) {
+function MainCard({
+  main,
+  crafts,
+}: {
+  main: MainAttribute;
+  crafts: { name: string; value: number; ceiling: number }[];
+}) {
   const Icon = MAIN_ICONS[main.key];
   const known = main.level !== null;
+  const top = [...crafts].sort((a, b) => b.value - a.value).slice(0, 3);
+  const craftAverage =
+    crafts.length > 0
+      ? Math.round(crafts.reduce((sum, item) => sum + item.value, 0) / crafts.length)
+      : null;
   return (
     <div className="self-panel">
       <div className="self-panel__head">
@@ -216,6 +227,26 @@ function MainCard({ main }: { main: MainAttribute }) {
             <SubRow key={sub.key} sub={sub} />
           ))}
         </div>
+
+        {crafts.length > 0 && (
+          <div className="mt-3 border-t pt-2">
+            <p className="self-label mb-1">手艺 {crafts.length} 门 · 均 {craftAverage}</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px]">
+              {top.map((craft) => (
+                <span key={craft.name}>
+                  {craft.name}{" "}
+                  <span className="font-semibold text-foreground">
+                    {craft.value}
+                  </span>
+                  <span className="text-muted-foreground">/{craft.ceiling}</span>
+                </span>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              手艺不加成属性：属性是行为算出来的，手艺的起点是你自己填的。
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1053,7 +1084,17 @@ export default async function SelfPage() {
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           {panel.panel.mains.map((main) => (
-            <MainCard key={main.key} main={main} />
+            <MainCard
+              key={main.key}
+              main={main}
+              crafts={skillState.skills
+                .filter((skill) => skill.main === main.key)
+                .map((skill) => ({
+                  name: skill.name,
+                  value: skill.value,
+                  ceiling: skill.ceiling,
+                }))}
+            />
           ))}
         </div>
 

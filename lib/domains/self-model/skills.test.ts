@@ -22,6 +22,7 @@ import {
   type FeatContext,
   type SkillState,
 } from "./skills";
+import { MAIN_KEYS } from "./panel";
 
 function skill(over: Partial<SkillState> = {}): SkillState {
   return { key: "asking", value: 40, passion: 0, ticks: 0, daysSinceTick: 10, ...over };
@@ -112,7 +113,7 @@ describe("feats", () => {
   it("spells out exactly which skill is short and by how much", () => {
     const result = evaluateFeat(coldread, ctx({ skills: { asking: 20, listening: 40 } }));
     expect(result.unlocked).toBe(false);
-    expect(result.missing).toEqual(["提问 20/30"]);
+    expect(result.missing).toEqual(["叩问 20/30"]);
   });
 
   it("unlocks once every prerequisite is met", () => {
@@ -233,7 +234,7 @@ describe("the tree", () => {
     const interview = paths.find((path) => path.line === "interview")!;
     expect(interview.reached).toBe(1);
     expect(interview.next?.def.name).toBe("深访");
-    expect(interview.next?.missing.join(" ")).toContain("观察");
+    expect(interview.next?.missing.join(" ")).toContain("明眼");
   });
 });
 
@@ -272,7 +273,7 @@ describe("skill prerequisites and milestones", () => {
     const base = { ...values, listening: 20 };
     const { ceiling, limitedBy } = skillCeiling("asking", base);
     expect(ceiling).toBe(20 + SKILL_HEADROOM);
-    expect(limitedBy?.name).toBe("倾听");
+    expect(limitedBy?.name).toBe("听风");
   });
 
   it("lets a skill with no prerequisites go all the way", () => {
@@ -282,7 +283,7 @@ describe("skill prerequisites and milestones", () => {
 
   it("picks the weakest of several foundations", () => {
     const base = { ...values, persuading: 70, listening: 30 };
-    expect(skillCeiling("negotiating", base).limitedBy?.name).toBe("倾听");
+    expect(skillCeiling("negotiating", base).limitedBy?.name).toBe("听风");
   });
 
   it("stops growth at the ceiling — you must go back and fill the base", () => {
@@ -295,6 +296,12 @@ describe("skill prerequisites and milestones", () => {
     };
     expect(growthFor(state, 40)).toBe(0);
     expect(growthFor(state, 100)).toBeGreaterThan(0);
+  });
+
+  it("files every skill under a main attribute", () => {
+    for (const def of SKILL_DEFS) {
+      expect(MAIN_KEYS, def.name).toContain(def.main);
+    }
   });
 
   it("gives every skill three milestones with a checkable test", () => {

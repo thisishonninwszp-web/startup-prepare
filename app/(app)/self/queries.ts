@@ -3,6 +3,7 @@ import {
   buildPanel,
   estimateOneRepMax,
   specialization,
+  type MainKey,
   type Panel,
   type PanelInput,
 } from "@/lib/domains/self-model/panel";
@@ -688,6 +689,7 @@ export type SkillRow = {
   key: string;
   name: string;
   group: SkillGroup;
+  main: MainKey;
   value: number;
   passion: number;
   /** 本季未结算的勾。 */

@@ -10,6 +10,8 @@
 //
 // 两条资源线互相独立：技能靠打勾涨，专长点靠升级发。交叉才解锁节点。
 
+import type { MainKey } from "./panel";
+
 export const SKILL_GROUPS = [
   "info",
   "express",
@@ -33,6 +35,12 @@ export type SkillDef = {
   key: string;
   name: string;
   group: SkillGroup;
+  /**
+   * 这门手艺算在哪个主属性名下。
+   * 注意：手艺**不加成属性** —— 属性是行为算出来的，有分母；
+   * 手艺的起点是你自己填的。两者在个人页并列显示，各说各的，绝不混算。
+   */
+  main: MainKey;
   /**
    * 前置技能。不是硬锁 —— 你照样可以练，但**练不上去**：
    * 一项技能的上限 = 所有前置里最低的那个 + HEADROOM。
@@ -63,56 +71,56 @@ export const MILESTONE_TIERS = [40, 65, 85] as const;
 export const SKILL_HEADROOM = 20;
 
 export const SKILL_DEFS: SkillDef[] = [
-  { key: "analysis", name: "数据分析", group: "info" , requires: ["research"] },
-  { key: "research", name: "查资料", group: "info" },
-  { key: "finstmt", name: "读财报", group: "info" , requires: ["analysis"] },
-  { key: "recon", name: "竞品侦查", group: "info" , requires: ["research", "observing"] },
-  { key: "asking", name: "提问", group: "info" , requires: ["listening"] },
-  { key: "listening", name: "倾听", group: "info" },
-  { key: "observing", name: "观察", group: "info" },
-  { key: "experiment", name: "做实验", group: "info" , requires: ["asking", "analysis"] },
+  { key: "analysis", name: "测算", group: "info", main: "INT" , requires: ["research"] },
+  { key: "research", name: "访书", group: "info", main: "INT" },
+  { key: "finstmt", name: "读账", group: "info", main: "RES" , requires: ["analysis"] },
+  { key: "recon", name: "踩点", group: "info", main: "WIS" , requires: ["research", "observing"] },
+  { key: "asking", name: "叩问", group: "info", main: "WIS" , requires: ["listening"] },
+  { key: "listening", name: "听风", group: "info", main: "WIS" },
+  { key: "observing", name: "明眼", group: "info", main: "WIS" },
+  { key: "experiment", name: "验方", group: "info", main: "INT" , requires: ["asking", "analysis"] },
 
-  { key: "writing", name: "写作", group: "express" },
-  { key: "presenting", name: "演示", group: "express" , requires: ["explaining"] },
-  { key: "negotiating", name: "谈判", group: "express" , requires: ["persuading", "listening"] },
-  { key: "persuading", name: "说服", group: "express" , requires: ["explaining", "listening"] },
-  { key: "coldopen", name: "冷启动开口", group: "express" , requires: ["introducing"] },
-  { key: "jpbiz", name: "商务日语", group: "express" },
-  { key: "explaining", name: "讲清楚一件事", group: "express" , requires: ["writing"] },
-  { key: "headline", name: "起标题", group: "express" , requires: ["writing"] },
+  { key: "writing", name: "执笔", group: "express", main: "CHA" },
+  { key: "presenting", name: "登台", group: "express", main: "CHA" , requires: ["explaining"] },
+  { key: "negotiating", name: "议价", group: "express", main: "RES" , requires: ["persuading", "listening"] },
+  { key: "persuading", name: "游说", group: "express", main: "CHA" , requires: ["explaining", "listening"] },
+  { key: "coldopen", name: "搭话", group: "express", main: "LCK" , requires: ["introducing"] },
+  { key: "jpbiz", name: "异乡语", group: "express", main: "CHA" },
+  { key: "explaining", name: "说书", group: "express", main: "CHA" , requires: ["writing"] },
+  { key: "headline", name: "点睛", group: "express", main: "CHA" , requires: ["writing"] },
 
-  { key: "coding", name: "编程", group: "make" },
-  { key: "productdesign", name: "产品设计", group: "make" , requires: ["prototyping", "observing"] },
-  { key: "prototyping", name: "原型", group: "make" , requires: ["coding"] },
-  { key: "aiorchestration", name: "AI 编排", group: "make" , requires: ["coding", "explaining"] },
-  { key: "automation", name: "自动化", group: "make" , requires: ["coding", "debugging"] },
-  { key: "debugging", name: "调试", group: "make" , requires: ["coding"] },
-  { key: "testing", name: "测试", group: "make" , requires: ["debugging"] },
+  { key: "coding", name: "铸造", group: "make", main: "DEX" },
+  { key: "productdesign", name: "图样", group: "make", main: "DEX" , requires: ["prototyping", "observing"] },
+  { key: "prototyping", name: "打样", group: "make", main: "DEX" , requires: ["coding"] },
+  { key: "aiorchestration", name: "驭械", group: "make", main: "DEX" , requires: ["coding", "explaining"] },
+  { key: "automation", name: "机关", group: "make", main: "DEX" , requires: ["coding", "debugging"] },
+  { key: "debugging", name: "捉虫", group: "make", main: "DEX" , requires: ["coding"] },
+  { key: "testing", name: "验货", group: "make", main: "WIL" , requires: ["debugging"] },
 
-  { key: "pricing", name: "定价", group: "run" , requires: ["finance", "analysis"] },
-  { key: "finance", name: "财务", group: "run" },
-  { key: "hiring", name: "招人", group: "run" , requires: ["asking", "trustbuilding"] },
-  { key: "delegating", name: "分工", group: "run" , requires: ["explaining"] },
-  { key: "processdesign", name: "流程设计", group: "run" , requires: ["delegating", "retro"] },
-  { key: "support", name: "客服", group: "run" , requires: ["listening"] },
-  { key: "procurement", name: "采购", group: "run" , requires: ["negotiating"] },
-  { key: "partnering", name: "谈合作", group: "run" , requires: ["negotiating", "trustbuilding"] },
+  { key: "pricing", name: "标价", group: "run", main: "RES" , requires: ["finance", "analysis"] },
+  { key: "finance", name: "算账", group: "run", main: "RES" },
+  { key: "hiring", name: "募人", group: "run", main: "CHA" , requires: ["asking", "trustbuilding"] },
+  { key: "delegating", name: "派活", group: "run", main: "WIL" , requires: ["explaining"] },
+  { key: "processdesign", name: "立规", group: "run", main: "WIL" , requires: ["delegating", "retro"] },
+  { key: "support", name: "接客", group: "run", main: "CHA" , requires: ["listening"] },
+  { key: "procurement", name: "采买", group: "run", main: "RES" , requires: ["negotiating"] },
+  { key: "partnering", name: "结盟", group: "run", main: "RES" , requires: ["negotiating", "trustbuilding"] },
 
-  { key: "retro", name: "复盘", group: "self" },
-  { key: "forecasting", name: "预测", group: "self" , requires: ["retro", "analysis"] },
-  { key: "scheduling", name: "时间安排", group: "self" },
-  { key: "sleepcraft", name: "睡眠管理", group: "self" },
-  { key: "training", name: "训练计划", group: "self" },
-  { key: "recovery", name: "情绪回收", group: "self" },
-  { key: "learning", name: "学新东西", group: "self" },
+  { key: "retro", name: "复盘", group: "self", main: "WIS" },
+  { key: "forecasting", name: "卜算", group: "self", main: "INT" , requires: ["retro", "analysis"] },
+  { key: "scheduling", name: "排期", group: "self", main: "WIL" },
+  { key: "sleepcraft", name: "安寝", group: "self", main: "CON" },
+  { key: "training", name: "淬体", group: "self", main: "STR" },
+  { key: "recovery", name: "回气", group: "self", main: "CON" },
+  { key: "learning", name: "偷师", group: "self", main: "INT" },
 
-  { key: "trustbuilding", name: "建立信任", group: "relate" , requires: ["listening", "introducing"] },
-  { key: "askinghelp", name: "求助", group: "relate" , requires: ["introducing"] },
-  { key: "feedback", name: "给反馈", group: "relate" , requires: ["explaining", "trustbuilding"] },
-  { key: "takingheat", name: "挨批评", group: "relate" },
-  { key: "conflict", name: "处理冲突", group: "relate" , requires: ["takingheat", "listening"] },
-  { key: "introducing", name: "介绍自己", group: "relate" },
-  { key: "keepingup", name: "维系旧关系", group: "relate" , requires: ["trustbuilding"] },
+  { key: "trustbuilding", name: "立信", group: "relate", main: "CHA" , requires: ["listening", "introducing"] },
+  { key: "askinghelp", name: "求援", group: "relate", main: "RES" , requires: ["introducing"] },
+  { key: "feedback", name: "直言", group: "relate", main: "CHA" , requires: ["explaining", "trustbuilding"] },
+  { key: "takingheat", name: "受谏", group: "relate", main: "WIL" },
+  { key: "conflict", name: "调停", group: "relate", main: "CHA" , requires: ["takingheat", "listening"] },
+  { key: "introducing", name: "报名号", group: "relate", main: "LCK" },
+  { key: "keepingup", name: "续缘", group: "relate", main: "LCK" , requires: ["trustbuilding"] },
 ];
 
 
