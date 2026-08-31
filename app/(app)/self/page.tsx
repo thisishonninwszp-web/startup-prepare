@@ -1007,12 +1007,10 @@ export default async function SelfPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {titles.map((title) => (
+          {earnedTitles.map((title) => (
             <span
               key={title.def.key}
-              className={`self-panel px-2.5 py-1 text-[13px] ${
-                title.earned ? "" : "border-dashed text-muted-foreground"
-              }`}
+              className="self-card self-card--rare px-2.5 py-1 text-[13px]"
               title={title.def.requirement}
             >
               <b className="font-semibold">{title.def.name}</b>{" "}
@@ -1021,7 +1019,32 @@ export default async function SelfPage() {
               </span>
             </span>
           ))}
+          {earnedTitles.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              一个都还没解锁。最容易拿的是「开口」—— 打掉任意一只 BOSS。
+            </p>
+          )}
         </div>
+        {titles.length > earnedTitles.length && (
+          <details>
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              还没拿到的（{titles.length - earnedTitles.length}）
+            </summary>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {titles
+                .filter((title) => !title.earned)
+                .map((title) => (
+                  <span
+                    key={title.def.key}
+                    className="self-panel border-dashed px-2.5 py-1 text-[13px] text-muted-foreground"
+                  >
+                    <b className="font-semibold">{title.def.name}</b>{" "}
+                    <span className="text-xs">{title.def.requirement}</span>
+                  </span>
+                ))}
+            </div>
+          </details>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -1232,16 +1255,11 @@ export default async function SelfPage() {
 
         <div className="grid gap-3 lg:grid-cols-2">
           {featPaths(skillState.feats).map((path) => (
-            <div key={path.line} className="self-panel">
-              <div className="self-panel__head">
+            <details key={path.line} className="self-panel">
+              <summary className="self-panel__head cursor-pointer">
                 <span className="self-label">{path.line}</span>
                 <span className="text-sm font-medium">{path.name}</span>
-                <span className="ml-auto font-mono text-xs tabular-nums">
-                  {path.reached}/{path.steps.length}
-                </span>
-              </div>
-              <div className="self-panel__body">
-                <div className="mb-2 flex items-center gap-1 font-mono text-sm">
+                <span className="ml-2 flex items-center gap-1 font-mono text-sm">
                   {path.steps.map((step, index) => (
                     <span key={step.def.key} className="flex items-center gap-1">
                       {index > 0 && (
@@ -1261,9 +1279,27 @@ export default async function SelfPage() {
                       </span>
                     </span>
                   ))}
-                </div>
+                </span>
+                <span className="ml-auto font-mono text-xs tabular-nums">
+                  {path.reached}/{path.steps.length}
+                </span>
+              </summary>
 
-                <div className="space-y-1">
+              <div className="self-panel__body">
+                {path.next ? (
+                  <p className="font-mono text-[11px] text-primary">
+                    下一格「{path.next.def.name}」
+                    {path.next.missing.length > 0
+                      ? ` 差 ${path.next.missing.join(" · ")}`
+                      : " 已经可以点了"}
+                  </p>
+                ) : (
+                  <p className="font-mono text-[11px] text-muted-foreground">
+                    这条线走到底了
+                  </p>
+                )}
+
+                <div className="mt-2 space-y-1">
                   {path.steps.map((step) => (
                     <div
                       key={step.def.key}
@@ -1271,11 +1307,9 @@ export default async function SelfPage() {
                     >
                       <span
                         className={
-                          step.taken
+                          step.taken || step.unlocked
                             ? "font-medium"
-                            : step.unlocked
-                              ? "font-medium"
-                              : "text-muted-foreground"
+                            : "text-muted-foreground"
                         }
                       >
                         {step.def.name}
@@ -1299,22 +1333,8 @@ export default async function SelfPage() {
                     </div>
                   ))}
                 </div>
-
-                {path.next && (
-                  <p className="mt-2 border-t pt-2 font-mono text-[11px] text-primary">
-                    下一格「{path.next.def.name}」
-                    {path.next.missing.length > 0
-                      ? ` 差 ${path.next.missing.join(" · ")}`
-                      : " 已经可以点了"}
-                  </p>
-                )}
-                {!path.next && (
-                  <p className="mt-2 border-t pt-2 font-mono text-[11px] text-muted-foreground">
-                    这条线走到底了
-                  </p>
-                )}
               </div>
-            </div>
+            </details>
           ))}
         </div>
 
