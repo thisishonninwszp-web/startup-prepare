@@ -31,8 +31,8 @@ function panelWith(values: Record<string, number | null>): Panel {
 
 describe("catalogue", () => {
   it("ships one spectrum per sub attribute, two poles each", () => {
-    expect(SPECTRUM_TOTAL).toBe(26);
-    expect(LIBRARY_TOTAL).toBe(52);
+    expect(SPECTRUM_TOTAL).toBe(29);
+    expect(LIBRARY_TOTAL).toBe(58);
   });
 
   it("gives every entry a unique key and a real sub attribute", () => {

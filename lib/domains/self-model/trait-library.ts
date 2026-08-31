@@ -300,6 +300,26 @@ export const TRAIT_LIBRARY: LibraryTrait[] = [
     { name: "无自留地", gloss: "一周没几个钟头是自己的", modifiers: [minus("res.time", "可支配时间少")] },
     { name: "闲庭", gloss: "有整块属于自己的时间", modifiers: [plus("res.time", "可支配时间多")] }
   ),
+
+  // ---------------- 项目内部其它模块接进来的 ----------------
+  ...pair(
+    "识破",
+    "int.decoy",
+    { name: "照单全收", gloss: "埋好的坑都踩了", modifiers: [minus("int.decoy", "识破率低")] },
+    { name: "挑刺的眼", gloss: "一眼看出哪里不对", modifiers: [plus("int.decoy", "识破率高")] }
+  ),
+  ...pair(
+    "对账",
+    "wil.precommit",
+    { name: "翻篇", gloss: "事前写的条件事后不看", modifiers: [minus("wil.precommit", "很少回头对照")] },
+    { name: "照单核对", gloss: "写下的条件逐条兑现", modifiers: [plus("wil.precommit", "都回头对照过")] }
+  ),
+  ...pair(
+    "灰色",
+    "res.gray",
+    { name: "雾里的钟点", gloss: "一周有大段说不清去哪了", modifiers: [minus("res.gray", "灰色时间多")] },
+    { name: "账目清楚", gloss: "时间去哪了说得出来", modifiers: [plus("res.gray", "灰色时间少")] }
+  ),
 ];
 
 

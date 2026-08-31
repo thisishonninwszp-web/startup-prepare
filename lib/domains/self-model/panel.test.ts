@@ -49,6 +49,12 @@ const EMPTY: PanelInput = {
   runwayMonths: null,
   allies: null,
   weeklyFreeHours: null,
+  decoyCaught: 0,
+  decoyMissed: 0,
+  exitCriteriaTotal: 0,
+  exitCriteriaReviewed: 0,
+  timeBlocksTotal: 0,
+  timeBlocksGray: 0,
 };
 
 function full(over: Partial<PanelInput> = {}): PanelInput {
@@ -91,6 +97,12 @@ function full(over: Partial<PanelInput> = {}): PanelInput {
     runwayMonths: 8,
     allies: 2,
     weeklyFreeHours: 10,
+    decoyCaught: 3,
+    decoyMissed: 2,
+    exitCriteriaTotal: 4,
+    exitCriteriaReviewed: 3,
+    timeBlocksTotal: 20,
+    timeBlocksGray: 4,
     ...over,
   };
 }
@@ -103,11 +115,11 @@ function subs(input: PanelInput): Record<string, SubAttribute> {
 }
 
 describe("panel shape", () => {
-  it("keeps nine main attributes and twenty-six sub attributes", () => {
+  it("keeps nine main attributes and twenty-nine sub attributes", () => {
     const panel = buildPanel(EMPTY);
     expect(panel.mains.map((m) => m.key)).toEqual([...MAIN_KEYS]);
     expect(panel.total).toBe(SUB_TOTAL);
-    expect(SUB_TOTAL).toBe(26);
+    expect(SUB_TOTAL).toBe(29);
   });
 
   it("gives every sub attribute a domain, and covers all four", () => {
@@ -195,7 +207,14 @@ describe("sub attributes", () => {
   });
 
   it("leaves the resource stats dark until a snapshot exists", () => {
-    const none = subs(full({ runwayMonths: null, allies: null, weeklyFreeHours: null }));
+    const none = subs(
+      full({
+        runwayMonths: null,
+        allies: null,
+        weeklyFreeHours: null,
+        timeBlocksTotal: 0,
+      })
+    );
     expect(none["res.runway"].value).toBeNull();
     expect(none["res.allies"].value).toBeNull();
     expect(none["res.time"].value).toBeNull();
@@ -312,5 +331,35 @@ describe("specialization", () => {
     expect(result.strongest?.level).toBeGreaterThanOrEqual(
       result.weakest?.level as number
     );
+  });
+});
+
+describe("connections to the rest of the project", () => {
+  it("reads the decoy sessions as a designed denominator", () => {
+    const thin = subs(full({ decoyCaught: 1, decoyMissed: 1 }))["int.decoy"];
+    expect(thin.value).toBeNull();
+    const enough = subs(full({ decoyCaught: 3, decoyMissed: 1 }))["int.decoy"];
+    expect(enough.value).toBe(15);
+    expect(enough.basis).toContain("3/4");
+  });
+
+  it("scores pre-commitments by whether they were reviewed afterwards", () => {
+    const kept = subs(full({ exitCriteriaTotal: 4, exitCriteriaReviewed: 4 }));
+    const ignored = subs(full({ exitCriteriaTotal: 4, exitCriteriaReviewed: 0 }));
+    expect(kept["wil.precommit"].value).toBe(20);
+    expect(ignored["wil.precommit"].value).toBe(0);
+  });
+
+  it("gives a better 说不清的时间 score when less time is grey", () => {
+    const foggy = subs(full({ timeBlocksTotal: 20, timeBlocksGray: 12 }))["res.gray"];
+    const clear = subs(full({ timeBlocksTotal: 20, timeBlocksGray: 1 }))["res.gray"];
+    expect(clear.value).toBeGreaterThan(foggy.value as number);
+    expect(foggy.basis).toContain("12/20");
+  });
+
+  it("keeps 自己的时间 declared and 说不清的时间 observed — they can disagree", () => {
+    const both = subs(full({ weeklyFreeHours: 10, timeBlocksTotal: 20, timeBlocksGray: 12 }));
+    expect(both["res.time"].basis).toContain("10 小时");
+    expect(both["res.gray"].basis).toContain("12/20");
   });
 });

@@ -135,6 +135,17 @@ export type PanelInput = {
   runwayMonths: number | null;
   allies: number | null;
   weeklyFreeHours: number | null;
+
+  // --- 项目内部其它模块接进来的（全部零新输入）---
+  /** 诱饵测试：识破的与漏掉的。 */
+  decoyCaught: number;
+  decoyMissed: number;
+  /** 退出条件：写下的总数，以及事后真的逐条对照过的。 */
+  exitCriteriaTotal: number;
+  exitCriteriaReviewed: number;
+  /** 时间块：总数、灰色的、属于自己的。 */
+  timeBlocksTotal: number;
+  timeBlocksGray: number;
 };
 
 /** 全空的输入。用来取子属性清单，或者给测试当底座。 */
@@ -176,6 +187,12 @@ export const EMPTY_PANEL_INPUT: PanelInput = {
   runwayMonths: null,
   allies: null,
   weeklyFreeHours: null,
+  decoyCaught: 0,
+  decoyMissed: 0,
+  exitCriteriaTotal: 0,
+  exitCriteriaReviewed: 0,
+  timeBlocksTotal: 0,
+  timeBlocksGray: 0,
 };
 
 const MIN_SAMPLE = 5;
@@ -493,7 +510,7 @@ const SUB_SPECS: SubSpec[] = [
     main: "INT",
     domain: "work",
     name: "学以致用",
-    build: () => notCollected("需要在用到某条知识时回标一次"),
+    build: () => notCollected("知识卡还没有「用过」标记，回标一次才算得出来"),
   },
   {
     key: "int.repeat",
@@ -837,8 +854,9 @@ const SUB_SPECS: SubSpec[] = [
     main: "RES",
     domain: "self",
     name: "自己的时间",
-    // daily_time_blocks 已经在记时间，但它的 category_key 没有区分
-    // "自主 / 被占用"。在给出这个区分之前，宁可空着，也不拿一个猜的映射充数。
+    // 这一项是**你自己填的**（底牌快照里的每周可支配小时）。
+    // 时间块那边算的是「说不清的时间」——一个声明、一个观测，
+    // 两者对不上时，对不上本身就是信息。
     build: (input) => ({
       value:
         input.weeklyFreeHours === null
@@ -856,6 +874,71 @@ const SUB_SPECS: SubSpec[] = [
       sample: input.weeklyFreeHours === null ? 0 : 1,
       basis: `每周 ${input.weeklyFreeHours ?? 0} 小时属于自己`,
       need: "填一次底牌快照",
+    }),
+  },
+
+  // ---------------- 项目内部接进来的 ----------------
+  {
+    key: "int.decoy",
+    main: "INT",
+    domain: "work",
+    name: "挑得出刺",
+    // 诱饵测试是专门设计来让人上钩的：识破率不用推断，它是被设计出来的分母。
+    build: (input) => {
+      const total = input.decoyCaught + input.decoyMissed;
+      return {
+        value:
+          total >= MIN_SAMPLE_SMALL
+            ? ratioToScore(input.decoyCaught / total, 1)
+            : null,
+        sample: total,
+        basis: `识破 ${input.decoyCaught}/${total} 个埋好的坑`,
+        need: `还需 ${Math.max(0, MIN_SAMPLE_SMALL - total)} 次诱饵测试`,
+      };
+    },
+  },
+  {
+    key: "wil.precommit",
+    main: "WIL",
+    domain: "work",
+    name: "照单核对",
+    // 事前写下 Kill 条件不难，难的是事后真的逐条对照 —— 那才是预承诺的兑现。
+    build: (input) => ({
+      value:
+        input.exitCriteriaTotal >= MIN_SAMPLE_SMALL
+          ? ratioToScore(
+              input.exitCriteriaReviewed / input.exitCriteriaTotal,
+              1
+            )
+          : null,
+      sample: input.exitCriteriaTotal,
+      basis: `退出条件对照 ${input.exitCriteriaReviewed}/${input.exitCriteriaTotal}`,
+      need: `还需 ${Math.max(
+        0,
+        MIN_SAMPLE_SMALL - input.exitCriteriaTotal
+      )} 条事前写下的退出条件`,
+    }),
+  },
+  {
+    key: "res.gray",
+    main: "RES",
+    domain: "self",
+    name: "说不清的时间",
+    // 越低越好：一周有多少小时事后自己也说不清去哪了。
+    build: (input) => ({
+      value:
+        input.timeBlocksTotal >= MIN_SAMPLE
+          ? Math.max(
+              0,
+              20 - ratioToScore(input.timeBlocksGray / input.timeBlocksTotal, 0.4)
+            )
+          : null,
+      sample: input.timeBlocksTotal,
+      basis: `灰色时间 ${input.timeBlocksGray}/${input.timeBlocksTotal} 块`,
+      need: `还需 ${Math.max(
+        0,
+        MIN_SAMPLE - input.timeBlocksTotal
+      )} 条时间块记录`,
     }),
   },
 ];

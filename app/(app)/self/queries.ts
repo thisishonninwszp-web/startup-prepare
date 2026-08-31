@@ -361,6 +361,9 @@ export async function getSelfPanel(userId: string): Promise<SelfPanel> {
     battles,
     windows,
     bodyLogs,
+    decoys,
+    exitCriteria,
+    timeBlocks,
     daily,
     encounters,
     resources,
@@ -395,6 +398,18 @@ export async function getSelfPanel(userId: string): Promise<SelfPanel> {
       .select(BODY_LOG_COLUMNS)
       .eq("user_id", userId),
     supabaseAdmin
+      .from("decoy_sessions")
+      .select("reveal, status")
+      .eq("user_id", userId),
+    supabaseAdmin
+      .from("idea_exit_criteria")
+      .select("triggered, reviewed_at")
+      .eq("user_id", userId),
+    supabaseAdmin
+      .from("daily_time_blocks")
+      .select("category_key")
+      .eq("user_id", userId),
+    supabaseAdmin
       .from("self_daily")
       .select("logged_on, sleep_hours")
       .eq("user_id", userId),
@@ -419,12 +434,37 @@ export async function getSelfPanel(userId: string): Promise<SelfPanel> {
     battles,
     windows,
     bodyLogs,
+    decoys,
+    exitCriteria,
+    timeBlocks,
     daily,
     encounters,
     resources,
   ]) {
     if (result.error) throw new Error(result.error.message);
   }
+
+  // 诱饵测试：reveal 里 caught / missed 是被设计出来的分母 ——
+  // 那些坑是故意埋的，识破率不用推断。
+  const decoyRows = (decoys.data ?? []) as {
+    reveal: { caught?: unknown[]; missed?: unknown[] } | null;
+    status: string;
+  }[];
+  const decoyCaught = decoyRows.reduce(
+    (sum, row) => sum + (row.reveal?.caught?.length ?? 0),
+    0
+  );
+  const decoyMissed = decoyRows.reduce(
+    (sum, row) => sum + (row.reveal?.missed?.length ?? 0),
+    0
+  );
+
+  const exitRows = (exitCriteria.data ?? []) as {
+    triggered: string;
+    reviewed_at: string | null;
+  }[];
+
+  const blockRows = (timeBlocks.data ?? []) as { category_key: string }[];
 
   const dailyRows = (daily.data ?? []) as {
     logged_on: string;
@@ -537,6 +577,14 @@ export async function getSelfPanel(userId: string): Promise<SelfPanel> {
     weeklyFreeHours: latestResources
       ? Number(latestResources.weekly_free_hours)
       : null,
+    decoyCaught,
+    decoyMissed,
+    exitCriteriaTotal: exitRows.length,
+    exitCriteriaReviewed: exitRows.filter((row) => row.reviewed_at !== null)
+      .length,
+    timeBlocksTotal: blockRows.length,
+    timeBlocksGray: blockRows.filter((row) => row.category_key === "gray")
+      .length,
     ...summariseBody((bodyLogs.data ?? []) as BodyLogRow[]),
   };
 
