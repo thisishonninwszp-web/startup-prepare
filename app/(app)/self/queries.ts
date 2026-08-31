@@ -856,3 +856,89 @@ export async function getWeeklyReport(userId: string): Promise<WeeklyReport> {
 
   return report;
 }
+
+// ---------------------------------------------------------------------------
+// NPC 图鉴。
+//
+// self_encounters 里一直有 counterpart 字段，但从来没人看过它。
+// 按人聚合一下，"人际域"就从一个数字变成了几张具体的脸。
+//
+// 里面最扎的是**对某个人的采纳率**：你预判的从来不是"别人"，
+// 是某个具体的人 —— 那就该按人算账。分母不够时照例不给比率。
+// ---------------------------------------------------------------------------
+
+export type NpcRow = {
+  name: string;
+  encounters: number;
+  lastSeen: string;
+  exposures: number;
+  proposals: number;
+  accepted: number;
+  rejected: number;
+  pending: number;
+  /** 采纳率。已有结果的提议 <3 条时为 null。 */
+  adoptionRate: number | null;
+  firstMet: string;
+};
+
+const MIN_PROPOSALS_FOR_RATE = 3;
+
+export async function getNpcs(userId: string): Promise<NpcRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from("self_encounters")
+    .select("counterpart, kind, outcome, occurred_on")
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as {
+    counterpart: string;
+    kind: "exposure" | "new_face" | "proposal";
+    outcome: "accepted" | "rejected" | "pending" | null;
+    occurred_on: string;
+  }[];
+
+  const byName = new Map<string, NpcRow>();
+  for (const row of rows) {
+    const name = row.counterpart.trim();
+    if (!name) continue;
+    const entry =
+      byName.get(name) ??
+      ({
+        name,
+        encounters: 0,
+        lastSeen: row.occurred_on,
+        firstMet: row.occurred_on,
+        exposures: 0,
+        proposals: 0,
+        accepted: 0,
+        rejected: 0,
+        pending: 0,
+        adoptionRate: null,
+      } satisfies NpcRow);
+
+    entry.encounters += 1;
+    if (row.occurred_on > entry.lastSeen) entry.lastSeen = row.occurred_on;
+    if (row.occurred_on < entry.firstMet) entry.firstMet = row.occurred_on;
+    if (row.kind === "exposure") entry.exposures += 1;
+    if (row.kind === "proposal") {
+      entry.proposals += 1;
+      if (row.outcome === "accepted") entry.accepted += 1;
+      if (row.outcome === "rejected") entry.rejected += 1;
+      if (row.outcome === "pending") entry.pending += 1;
+    }
+    byName.set(name, entry);
+  }
+
+  return [...byName.values()]
+    .map((entry) => {
+      const settled = entry.accepted + entry.rejected;
+      return {
+        ...entry,
+        adoptionRate:
+          settled >= MIN_PROPOSALS_FOR_RATE
+            ? Math.round((entry.accepted / settled) * 100)
+            : null,
+      };
+    })
+    .sort((a, b) => b.encounters - a.encounters);
+}

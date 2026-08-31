@@ -53,6 +53,7 @@ import {
 import {
   getSelfLedger,
   getSelfPanel,
+  getNpcs,
   getSelfSkills,
   getSelfTraits,
   getWeeklyReport,
@@ -529,7 +530,10 @@ export default async function SelfPage() {
     getSelfPanel(user!.id),
   ]);
   const { traits, sets } = await getSelfTraits(user!.id, ledger);
-  const report = await getWeeklyReport(user!.id);
+  const [report, npcs] = await Promise.all([
+    getWeeklyReport(user!.id),
+    getNpcs(user!.id),
+  ]);
 
   const { calibration, entries, pending } = ledger;
   const active = entries.filter(
@@ -886,6 +890,55 @@ export default async function SelfPage() {
             </span>
           ))}
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">图鉴 · 人</h2>
+          <p className="text-sm text-muted-foreground">
+            你预判的从来不是「别人」，是某个具体的人 —— 那就该按人算账。
+          </p>
+        </div>
+        {npcs.length === 0 ? (
+          <EmptyState
+            title="还没有人"
+            description="去「记录」页签记一次与人的互动：给谁看了什么、提了什么、结果如何。"
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {npcs.map((npc) => (
+              <div key={npc.name} className="self-panel p-4">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-medium">{npc.name}</span>
+                  <span className="ml-auto font-mono text-xs text-muted-foreground">
+                    {npc.encounters} 次
+                  </span>
+                </div>
+                <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                  初见 {npc.firstMet} · 最近 {npc.lastSeen}
+                </p>
+                <div className="mt-2 space-y-0.5 text-[13px]">
+                  {npc.proposals > 0 && (
+                    <p>
+                      提议 {npc.proposals} 次 · 采纳 {npc.accepted} · 拒绝{" "}
+                      {npc.rejected}
+                      {npc.pending > 0 && ` · 没下文 ${npc.pending}`}
+                    </p>
+                  )}
+                  {npc.exposures > 0 && <p>给他看过 {npc.exposures} 次半成品</p>}
+                </div>
+                <p className="mt-2 font-mono text-xs">
+                  采纳率{" "}
+                  <span className="font-semibold">
+                    {npc.adoptionRate === null
+                      ? `样本 ${npc.accepted + npc.rejected}，暂不显示`
+                      : `${npc.adoptionRate}%`}
+                  </span>
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
       </TabsContent>
 
