@@ -776,3 +776,40 @@ export async function rollCallQuests(
   // 点名是旁路，失败不该影响任何事。
   if (error) console.error("quest roll call failed", error.message);
 }
+
+/**
+ * 补录一条事迹。
+ * class_key 必填 —— 进不了任何参照类的事迹，对基准率没有贡献，
+ * 那它就只是回忆，不该占这张表。
+ */
+export async function recordDeed(input: {
+  title: string;
+  classKey: string;
+  occurredOn: string;
+  outcome: "done" | "abandoned" | "ongoing";
+  domain?: "work" | "body" | "people" | "self";
+  adopted?: boolean | null;
+  durationDays?: number | null;
+  whatHappened?: string;
+  cost?: string;
+}): Promise<void> {
+  const userId = await requireUserId();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) {
+    throw new Error("日期格式不对（补录旧事可以只填到月初）");
+  }
+
+  const { error } = await supabaseAdmin.from("self_deeds").insert({
+    user_id: userId,
+    title: required(input.title, "标题"),
+    class_key: required(input.classKey, "参照类"),
+    occurred_on: input.occurredOn,
+    outcome: input.outcome,
+    domain: input.domain ?? "work",
+    adopted: input.adopted ?? null,
+    duration_days: input.durationDays ?? null,
+    what_happened: input.whatHappened?.trim() || null,
+    cost: input.cost?.trim() || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/self");
+}

@@ -51,11 +51,13 @@ import {
   evaluateTitles,
   matchBuild,
 } from "@/lib/domains/self-model/titles";
+import { priorFor } from "@/lib/domains/self-model/deeds";
 import {
   getSelfLedger,
   getSelfPanel,
   getNpcs,
   getQuestSightings,
+  getSelfDeeds,
   getSelfEvents,
   getSelfSkills,
   getSelfTraits,
@@ -65,6 +67,7 @@ import {
 } from "./queries";
 import {
   CharacterCreationForm,
+  DeedForm,
   QuestRollCall,
   ScanLibraryButton,
   SettleSkillsButton,
@@ -566,11 +569,12 @@ export default async function SelfPage() {
     getSelfPanel(user!.id),
   ]);
   const { traits, sets } = await getSelfTraits(user!.id, ledger);
-  const [report, npcs, events, sightings] = await Promise.all([
+  const [report, npcs, events, sightings, deedData] = await Promise.all([
     getWeeklyReport(user!.id),
     getNpcs(user!.id),
     getSelfEvents(user!.id),
     getQuestSightings(user!.id),
+    getSelfDeeds(user!.id),
   ]);
 
   const { calibration, entries, pending } = ledger;
@@ -835,6 +839,7 @@ export default async function SelfPage() {
           <TabsTrigger value="skills">技能</TabsTrigger>
           <TabsTrigger value="traits">特性</TabsTrigger>
           <TabsTrigger value="ledger">台账</TabsTrigger>
+          <TabsTrigger value="deeds">事迹</TabsTrigger>
           <TabsTrigger value="log">记录</TabsTrigger>
         </TabsList>
 
@@ -1422,6 +1427,95 @@ export default async function SelfPage() {
           </details>
         )}
       </section>
+      </TabsContent>
+
+      <TabsContent value="deeds" className="mt-6 space-y-8">
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold">参照类</h2>
+            <p className="text-sm text-muted-foreground">
+              要预想一件事要多久，可靠的做法不是想象，是看你自己过去同类的分布。
+            </p>
+          </div>
+
+          {deedData.classes.length === 0 ? (
+            <EmptyState
+              title="还没有历史"
+              description="补录二三十条 2018 年到现在的事迹，这个系统才第一次有了关于你的长期样本。"
+            />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {deedData.classes.map((cls) => {
+                const prior = priorFor(cls);
+                return (
+                  <div key={cls.key} className="self-panel p-4">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-medium">{cls.key}</span>
+                      <span className="ml-auto font-mono text-sm font-semibold tabular-nums">
+                        {cls.n} 件
+                      </span>
+                    </div>
+                    <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                      做完 {cls.done} · 放弃 {cls.abandoned} · 还在做 {cls.ongoing}
+                    </p>
+                    <p className="mt-2 text-[13px]">{prior.sentence}</p>
+                    {cls.medianDays !== null && (
+                      <p className="mt-1.5 font-mono text-[11px] text-primary">
+                        下次估工期时，先把你的估计和 {Math.round(cls.medianDays)} 天比一比
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">补录</h2>
+          <div className="self-panel p-5">
+            <DeedForm />
+          </div>
+        </section>
+
+        {deedData.deeds.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">
+              时间线（{deedData.deeds.length} 条）
+            </h2>
+            <div className="self-panel px-5 py-1">
+              {deedData.deeds.map((deed) => (
+                <div
+                  key={deed.id}
+                  className="self-row flex flex-wrap items-baseline gap-x-2 py-2 text-[13px]"
+                >
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {deed.occurredOn}
+                  </span>
+                  <span className="font-medium">{deed.title}</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {deed.classKey}
+                  </span>
+                  <span className="font-mono text-[11px]">
+                    {deed.outcome === "done"
+                      ? "做完了"
+                      : deed.outcome === "abandoned"
+                        ? "放弃了"
+                        : "还在做"}
+                    {deed.adopted !== null &&
+                      (deed.adopted ? " · 有人用" : " · 没人用")}
+                    {deed.durationDays !== null && ` · ${deed.durationDays} 天`}
+                  </span>
+                  {deed.cost && (
+                    <span className="w-full text-xs text-muted-foreground">
+                      代价：{deed.cost}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </TabsContent>
 
       <TabsContent value="log" className="mt-6 space-y-8">

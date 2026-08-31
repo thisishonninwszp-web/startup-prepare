@@ -12,6 +12,7 @@ import {
 } from "@/lib/domains/self-model/skills";
 import {
   createCharacter,
+  recordDeed,
   rollCallQuests,
   settleSkills,
   syncLibraryTraits,
@@ -316,4 +317,180 @@ export function QuestRollCall({
     void rollCallQuests(quests);
   }, [quests]);
   return null;
+}
+
+const DEED_CLASSES = [
+  "自发项目",
+  "外部委托",
+  "学一门新手艺",
+  "换环境",
+  "开口求助",
+  "身体计划",
+];
+
+/**
+ * 补录一条事迹。
+ * 参照类必填 —— 进不了任何参照类的事迹对基准率没有贡献，那它只是回忆。
+ */
+export function DeedForm() {
+  const [title, setTitle] = useState("");
+  const [classKey, setClassKey] = useState(DEED_CLASSES[0]);
+  const [occurredOn, setOccurredOn] = useState("");
+  const [outcome, setOutcome] = useState<"done" | "abandoned" | "ongoing">(
+    "done"
+  );
+  const [adopted, setAdopted] = useState<"yes" | "no" | "na">("na");
+  const [durationDays, setDurationDays] = useState("");
+  const [cost, setCost] = useState("");
+  const { pending, error, run } = useAction();
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        run(
+          () =>
+            recordDeed({
+              title,
+              classKey,
+              occurredOn,
+              outcome,
+              adopted:
+                adopted === "na" ? null : adopted === "yes" ? true : false,
+              durationDays: durationDays.trim() ? Number(durationDays) : null,
+              cost,
+            }),
+          () => {
+            setTitle("");
+            setDurationDays("");
+            setCost("");
+          }
+        );
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="deed-title">这件事叫什么</Label>
+          <Input
+            id="deed-title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="社長之旅 / 砍掉那部分广告"
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="deed-date">什么时候（旧事填到月初就行）</Label>
+          <Input
+            id="deed-date"
+            type="date"
+            value={occurredOn}
+            onChange={(event) => setOccurredOn(event.target.value)}
+            required
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>参照类</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {DEED_CLASSES.map((item) => (
+            <Button
+              key={item}
+              type="button"
+              size="sm"
+              variant={classKey === item ? "default" : "outline"}
+              onClick={() => setClassKey(item)}
+            >
+              {item}
+            </Button>
+          ))}
+        </div>
+        <Input
+          value={classKey}
+          onChange={(event) => setClassKey(event.target.value)}
+          placeholder="或者自己写一类"
+        />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label>结果</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ["done", "做完了"],
+                ["abandoned", "放弃了"],
+                ["ongoing", "还在做"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={outcome === value ? "default" : "outline"}
+                onClick={() => setOutcome(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>有人用吗</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ["yes", "有"],
+                ["no", "没有"],
+                ["na", "不适用"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={adopted === value ? "default" : "outline"}
+                onClick={() => setAdopted(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="deed-days">花了多少天</Label>
+          <Input
+            id="deed-days"
+            type="number"
+            min={0}
+            value={durationDays}
+            onChange={(event) => setDurationDays(event.target.value)}
+            placeholder="估个数就行"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="deed-cost">付出/放弃了什么（可空）</Label>
+        <Input
+          id="deed-cost"
+          value={cost}
+          onChange={(event) => setCost(event.target.value)}
+          placeholder="推掉了什么、少赚了多少、得罪了谁"
+        />
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        「结果 / 有人用 / 花了多久」这三项决定了基准率能不能算出来。
+        答不上这三项的事迹，进不了参照类。
+      </p>
+
+      <Err message={error} />
+      <Button type="submit" disabled={pending}>
+        {pending ? "记录中…" : "补录一条"}
+      </Button>
+    </form>
+  );
 }

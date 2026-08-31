@@ -16,6 +16,11 @@ import {
   type SkillGroup,
 } from "@/lib/domains/self-model/skills";
 import {
+  referenceClasses,
+  type Deed,
+  type ReferenceClass,
+} from "@/lib/domains/self-model/deeds";
+import {
   assignRarities,
   collectSets,
   type Trait,
@@ -1067,4 +1072,49 @@ export async function getQuestSightings(
     counts.set(row.quest_id, (counts.get(row.quest_id) ?? 0) + 1);
   }
   return counts;
+}
+
+// ---------------------------------------------------------------------------
+// 事迹与参照类。
+// 没有历史就没有参照类，没有参照类，"未来预想"永远只能靠想象。
+// ---------------------------------------------------------------------------
+
+export type SelfDeeds = {
+  deeds: Deed[];
+  classes: ReferenceClass[];
+};
+
+export async function getSelfDeeds(userId: string): Promise<SelfDeeds> {
+  const { data, error } = await supabaseAdmin
+    .from("self_deeds")
+    .select(
+      "id, occurred_on, title, class_key, outcome, adopted, duration_days, cost"
+    )
+    .eq("user_id", userId)
+    .order("occurred_on", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const deeds: Deed[] = (
+    (data ?? []) as {
+      id: string;
+      occurred_on: string;
+      title: string;
+      class_key: string;
+      outcome: "done" | "abandoned" | "ongoing";
+      adopted: boolean | null;
+      duration_days: number | null;
+      cost: string | null;
+    }[]
+  ).map((row) => ({
+    id: row.id,
+    occurredOn: row.occurred_on,
+    title: row.title,
+    classKey: row.class_key,
+    outcome: row.outcome,
+    adopted: row.adopted,
+    durationDays: row.duration_days,
+    cost: row.cost,
+  }));
+
+  return { deeds, classes: referenceClasses(deeds) };
 }

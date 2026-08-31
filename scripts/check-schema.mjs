@@ -40,6 +40,7 @@ const coreProbes = [
   ["self_feats", "id,user_id,feat_key,taken_on"],
   ["self_events", "id,user_id,occurred_at,kind,title,dedupe_key"],
   ["self_quest_sightings", "id,user_id,quest_id,week_key,tier,name"],
+  ["self_deeds", "id,user_id,occurred_on,title,class_key,outcome,adopted,duration_days"],
   ["reality_cases", "id,user_id,messages"],
   ["reality_versions", "id,case_id,version_no,focus_session_ids"],
   [
