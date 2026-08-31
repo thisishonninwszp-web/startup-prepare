@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_QUESTS,
   TIER_EXP,
   buildQuests,
   levelFromExp,
@@ -155,7 +156,7 @@ describe("buildQuests", () => {
     expect(quests[0]).toMatchObject({ id: "resolve:p1", tier: "elite" });
   });
 
-  it("puts bosses first and caps the list at eight", () => {
+  it("puts bosses first and caps the list", () => {
     const quests = buildQuests({
       hypotheses: Array.from({ length: 6 }, (_, index) => ({
         ...hypothesis,
@@ -171,9 +172,86 @@ describe("buildQuests", () => {
         { key: "con.sleep", name: "睡眠债", main: "CON", domain: "self" },
       ],
     });
-    expect(quests).toHaveLength(8);
+    expect(quests).toHaveLength(MAX_QUESTS);
     expect(quests.slice(0, 6).every((quest) => quest.tier === "boss")).toBe(true);
     // 小怪被挤出去了：怪太多的时候，先打你最想躲的那几只。
     expect(quests.some((quest) => quest.tier === "trash")).toBe(false);
+  });
+});
+
+describe("state quests", () => {
+  const base: QuestInput = {
+    hypotheses: [],
+    overduePredictions: [],
+    darkDomains: [],
+    uncollected: [],
+  };
+  const ids = (state: QuestInput["state"]) =>
+    buildQuests({ ...base, state }).map((quest) => quest.id);
+
+  it("stays quiet when no state is supplied at all", () => {
+    expect(buildQuests(base)).toEqual([]);
+  });
+
+  it("asks for the character sheet before anything else in the skill line", () => {
+    expect(ids({ hasCharacter: false })).toContain("state:character");
+    expect(ids({ hasCharacter: true })).not.toContain("state:character");
+  });
+
+  it("only nags about settling once a few ticks have piled up", () => {
+    expect(ids({ openTicks: 2 })).not.toContain("state:settle");
+    expect(ids({ openTicks: 3 })).toContain("state:settle");
+  });
+
+  it("names the rusting skill and how long it has been idle", () => {
+    const quests = buildQuests({
+      ...base,
+      state: {
+        rusting: [{ key: "coldopen", name: "冷启动开口", daysSinceTick: 170 }],
+      },
+    });
+    expect(quests[0].name).toContain("冷启动开口");
+    expect(quests[0].action).toContain("170");
+  });
+
+  it("offers a feat only when there is a point left to spend", () => {
+    const unlocked = [{ key: "coldread", name: "冷读" }];
+    expect(ids({ unlockedFeats: unlocked, featPointsLeft: 0 })).not.toContain(
+      "state:feat:coldread"
+    );
+    expect(ids({ unlockedFeats: unlocked, featPointsLeft: 1 })).toContain(
+      "state:feat:coldread"
+    );
+  });
+
+  it("makes never having been wrong a boss", () => {
+    expect(ids({ refuted: 0, loadBearing: 1 })).toContain("state:norefute");
+    expect(ids({ refuted: 1, loadBearing: 1 })).not.toContain("state:norefute");
+  });
+
+  it("calls out systematic overconfidence, not mere imprecision", () => {
+    expect(ids({ calibrationOffset: 10 })).not.toContain("state:overconfident");
+    expect(ids({ calibrationOffset: 22 })).toContain("state:overconfident");
+    expect(ids({ calibrationOffset: -30 })).not.toContain("state:overconfident");
+  });
+
+  it("turns a broken promise record into a boss, but only with a denominator", () => {
+    expect(ids({ commitments: { done: 0, total: 2 } })).not.toContain("state:debt");
+    expect(ids({ commitments: { done: 1, total: 4 } })).toContain("state:debt");
+    expect(ids({ commitments: { done: 3, total: 4 } })).not.toContain("state:debt");
+  });
+
+  it("demands a backfire condition for every unfinished double edge", () => {
+    const quests = buildQuests({
+      ...base,
+      state: { backfireMissing: [{ id: "t1", name: "塔中人" }] },
+    });
+    expect(quests[0].name).toContain("塔中人");
+    expect(quests[0].drop).toContain("暗金");
+  });
+
+  it("nudges the first feat once a skill is clearly good enough", () => {
+    expect(ids({ maxSkill: 60, takenFeats: 0 })).toContain("state:firstfeat");
+    expect(ids({ maxSkill: 60, takenFeats: 1 })).not.toContain("state:firstfeat");
   });
 });

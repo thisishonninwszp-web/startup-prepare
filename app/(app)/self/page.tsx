@@ -567,6 +567,68 @@ export default async function SelfPage() {
         main: sub.main,
         domain: sub.domain,
       })),
+    state: {
+      hasCharacter: skillState.started,
+      openTicks,
+      rusting: skillState.skills
+        .filter(
+          (skill) =>
+            skill.value >= 40 &&
+            skill.ticks === 0 &&
+            (skill.daysSinceTick ?? 0) >= 150
+        )
+        .map((skill) => ({
+          key: skill.key,
+          name: skill.name,
+          daysSinceTick: skill.daysSinceTick ?? 0,
+        })),
+      unlockedFeats: skillState.feats
+        .filter((feat) => feat.unlocked)
+        .map((feat) => ({ key: feat.def.key, name: feat.def.name })),
+      featPointsLeft: skillState.featPointsLeft,
+      nearFeats: skillState.feats
+        .filter((feat) => !feat.taken && feat.missing.length === 1)
+        .map((feat) => ({
+          key: feat.def.key,
+          name: feat.def.name,
+          missing: feat.missing[0],
+        })),
+      heldTraitCount: heldTraits.length,
+      backfireMissing: heldTraits
+        .filter((trait) => trait.polarity === "double" && !trait.backfire)
+        .map((trait) => ({ id: trait.id, name: trait.name })),
+      refuted: entries.filter((entry) => entry.hypothesis.tier === "refuted")
+        .length,
+      loadBearing: entries.filter(
+        (entry) => entry.hypothesis.tier === "load_bearing"
+      ).length,
+      calibrationOffset: calibration.offset,
+      missStreak: entries
+        .filter((entry) => {
+          const settled = entry.predictions
+            .filter((prediction) => prediction.outcome !== "pending")
+            .slice(-2);
+          return (
+            settled.length === 2 &&
+            settled.every((prediction) => prediction.outcome === "miss")
+          );
+        })
+        .map((entry) => ({
+          id: entry.hypothesis.id,
+          code: entry.hypothesis.code,
+        })),
+      looseSettled: ledger.looseSettled.length,
+      proposalsTotal: panel.raw.proposalsTotal,
+      commitments: {
+        done: panel.raw.commitmentsDone,
+        total: panel.raw.commitmentsTotal,
+      },
+      maxSkill:
+        skillState.skills.length > 0
+          ? Math.max(...skillState.skills.map((skill) => skill.value))
+          : 0,
+      takenFeats: skillState.feats.filter((feat) => feat.taken).length,
+    },
   });
 
   return (

@@ -128,9 +128,42 @@ export type QuestInput = {
   darkDomains: Domain[];
   /** 还没有采集口的子属性。 */
   uncollected: { key: string; name: string; main: MainKey; domain: Domain }[];
+  /** 其余状态。全部可选 —— 没喂进来的部分就不生成对应的怪。 */
+  state?: QuestState;
 };
 
-const MAX_QUESTS = 8;
+export type QuestState = {
+  /** 建过卡没有。没建卡时技能表整个是死的。 */
+  hasCharacter?: boolean;
+  /** 未结算的技能勾。 */
+  openTicks?: number;
+  /** 练过但快生锈的技能。 */
+  rusting?: { key: string; name: string; daysSinceTick: number }[];
+  /** 已解锁、可以点的专长。 */
+  unlockedFeats?: { key: string; name: string }[];
+  featPointsLeft?: number;
+  /** 只差一项前置的专长。 */
+  nearFeats?: { key: string; name: string; missing: string }[];
+  heldTraitCount?: number;
+  /** 双刃特性里还没写反噬条件的。 */
+  backfireMissing?: { id: string; name: string }[];
+  refuted?: number;
+  loadBearing?: number;
+  /** 平均把握度减实际命中率。正数=系统性高估。 */
+  calibrationOffset?: number | null;
+  /** 连续两次落空的假设。 */
+  missStreak?: { id: string; code: string }[];
+  /** 已结算但没挂到任何假设上的预测数。 */
+  looseSettled?: number;
+  /** 记录过结果的提议总数。 */
+  proposalsTotal?: number;
+  commitments?: { done: number; total: number };
+  /** 最高的一项技能值，以及已点的专长数。 */
+  maxSkill?: number;
+  takenFeats?: number;
+};
+
+export const MAX_QUESTS = 10;
 
 /** 点亮一个黑域最省力的那一下。 */
 const DOMAIN_OPENERS: Record<
@@ -166,6 +199,207 @@ const DOMAIN_OPENERS: Record<
     attribute: "WIS",
   },
 };
+
+
+/**
+ * 其余怪物。每一条都指向一个卡住的地方，而不是"再多做一点"。
+ * 顺序无所谓 —— 最后统一按档位排。
+ */
+function stateQuests(state: QuestState): Quest[] {
+  const quests: Quest[] = [];
+  const push = (quest: Quest) => quests.push(quest);
+
+  if (state.hasCharacter === false) {
+    push({
+      id: "state:character",
+      tier: "trash",
+      name: "建卡",
+      action: "45 项技能各给一个起始值，凭直觉，15 分钟",
+      drop: "技能表与专长树解锁 —— 在这之前它们整个是死的",
+      attribute: "INT",
+      domain: "self",
+      exp: TIER_EXP.trash,
+    });
+  }
+
+  if ((state.openTicks ?? 0) >= 3) {
+    push({
+      id: "state:settle",
+      tier: "trash",
+      name: `结算 ${state.openTicks} 个勾`,
+      action: "去技能页签点结算，看这一轮涨了什么",
+      drop: "技能成长入账",
+      attribute: "INT",
+      domain: "self",
+      exp: TIER_EXP.trash,
+    });
+  }
+
+  for (const skill of (state.rusting ?? []).slice(0, 2)) {
+    push({
+      id: `state:rust:${skill.key}`,
+      tier: "trash",
+      name: `「${skill.name}」快生锈了`,
+      action: `${skill.daysSinceTick} 天没用过。找一件真事用一次，然后打勾`,
+      drop: "止住生锈",
+      attribute: "INT",
+      domain: "work",
+      exp: TIER_EXP.trash,
+    });
+  }
+
+  if ((state.featPointsLeft ?? 0) > 0) {
+    for (const feat of (state.unlockedFeats ?? []).slice(0, 2)) {
+      push({
+        id: `state:feat:${feat.key}`,
+        tier: "elite",
+        name: `点上「${feat.name}」`,
+        action: "前置已经满了，专长点也还有 —— 点了才生效",
+        drop: "专长树往前走一格",
+        attribute: "INT",
+        domain: "self",
+        exp: TIER_EXP.elite,
+      });
+    }
+  }
+
+  for (const feat of (state.nearFeats ?? []).slice(0, 2)) {
+    push({
+      id: `state:near:${feat.key}`,
+      tier: "elite",
+      name: `「${feat.name}」只差一项`,
+      action: `差 ${feat.missing}`,
+      drop: "解锁一个专长",
+      attribute: "INT",
+      domain: "work",
+      exp: TIER_EXP.elite,
+    });
+  }
+
+  if (state.heldTraitCount === 0) {
+    push({
+      id: "state:scan",
+      tier: "trash",
+      name: "扫描特性库",
+      action: "去特性页签扫一遍，看现在的数值够到哪几条",
+      drop: "第一批特性",
+      attribute: "WIS",
+      domain: "self",
+      exp: TIER_EXP.trash,
+    });
+  }
+
+  for (const trait of (state.backfireMissing ?? []).slice(0, 2)) {
+    push({
+      id: `state:backfire:${trait.id}`,
+      tier: "elite",
+      name: `给「${trait.name}」写反噬条件`,
+      action: "什么情况下它会从资产变成负债",
+      drop: "它才拿得到暗金 —— 不写反噬的双刃只是一句夸奖",
+      attribute: "WIS",
+      domain: "self",
+      exp: TIER_EXP.elite,
+    });
+  }
+
+  if ((state.refuted ?? 0) === 0 && (state.loadBearing ?? 0) >= 1) {
+    push({
+      id: "state:norefute",
+      tier: "boss",
+      name: "一条都没被推翻过",
+      action: "挑手上最有把握的那条假设，专门去找它的反例",
+      drop: "「认栽」称号 · 而且这是整套系统里最难的一种击杀",
+      attribute: "WIS",
+      domain: "self",
+      exp: TIER_EXP.boss,
+    });
+  }
+
+  if ((state.calibrationOffset ?? 0) > 15) {
+    push({
+      id: "state:overconfident",
+      tier: "elite",
+      name: "把握度系统性偏高",
+      action: `平均把握度比实际命中率高 ${state.calibrationOffset} 个点。下一条押注往下压`,
+      drop: "校准偏移收窄",
+      attribute: "INT",
+      domain: "work",
+      exp: TIER_EXP.elite,
+    });
+  }
+
+  for (const hypothesis of (state.missStreak ?? []).slice(0, 2)) {
+    push({
+      id: `state:miss:${hypothesis.id}`,
+      tier: "boss",
+      name: `${hypothesis.code} 连续两次落空`,
+      action: "给它写三个替代解释，以及能区分它们的观察",
+      drop: "它已经掉回猜想 —— 现在要么换个说法，要么推翻它",
+      attribute: "WIS",
+      domain: "self",
+      exp: TIER_EXP.boss,
+    });
+  }
+
+  if ((state.looseSettled ?? 0) > 0) {
+    push({
+      id: "state:loose",
+      tier: "trash",
+      name: `${state.looseSettled} 条已结算的预测没挂假设`,
+      action: "挂上去，它们才算数",
+      drop: "升档只由挂在假设上的预测驱动",
+      attribute: "INT",
+      domain: "work",
+      exp: TIER_EXP.trash,
+    });
+  }
+
+  if (state.proposalsTotal === 0) {
+    push({
+      id: "state:proposal",
+      tier: "elite",
+      name: "记一次提议和它的下场",
+      action: "你提过什么、对方接没接。「还没下文」也要记",
+      drop: "「说话有人听」开张 —— 只记提了不记结果，采纳率没有分母",
+      attribute: "CHA",
+      domain: "work",
+      exp: TIER_EXP.elite,
+    });
+  }
+
+  const commitments = state.commitments;
+  if (
+    commitments &&
+    commitments.total >= 3 &&
+    commitments.done * 2 < commitments.total
+  ) {
+    push({
+      id: "state:debt",
+      tier: "boss",
+      name: "先还一条旧账",
+      action: `承诺兑现 ${commitments.done}/${commitments.total}。挑一条最早的，今天做完`,
+      drop: "「说到做到」往回走一步",
+      attribute: "CHA",
+      domain: "people",
+      exp: TIER_EXP.boss,
+    });
+  }
+
+  if ((state.maxSkill ?? 0) >= 60 && (state.takenFeats ?? 0) === 0) {
+    push({
+      id: "state:firstfeat",
+      tier: "elite",
+      name: "你已经够格点第一个专长",
+      action: "去专长树看看哪条前置已经满了",
+      drop: "「开枝」称号",
+      attribute: "INT",
+      domain: "self",
+      exp: TIER_EXP.elite,
+    });
+  }
+
+  return quests;
+}
 
 /**
  * 生成本周怪物。排序：BOSS 在前，因为它们是你最想躲的，
@@ -246,6 +480,8 @@ export function buildQuests(input: QuestInput): Quest[] {
       exp: TIER_EXP.trash,
     });
   }
+
+  if (input.state) quests.push(...stateQuests(input.state));
 
   const order: Record<QuestTier, number> = { boss: 0, elite: 1, trash: 2 };
   return quests
