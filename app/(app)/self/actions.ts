@@ -16,6 +16,7 @@ import {
   SKILL_DEFS,
   evaluateFeat,
   growthFor,
+  skillCeiling,
   isSkillKey,
   rustFor,
 } from "@/lib/domains/self-model/skills";
@@ -561,7 +562,13 @@ export async function settleSkills(): Promise<string[]> {
           )
         : null,
     };
-    const delta = growthFor(state) + rustFor(state);
+    const valueByKey: Record<string, number> = Object.fromEntries(
+      ((stored.data ?? []) as { skill_key: string; value: number }[]).map(
+        (item) => [item.skill_key, item.value]
+      )
+    );
+    const { ceiling } = skillCeiling(row.skill_key, valueByKey);
+    const delta = growthFor(state, ceiling) + rustFor(state);
     if (delta === 0) continue;
     const next = Math.max(0, Math.min(100, row.value + delta));
     const { error } = await supabaseAdmin

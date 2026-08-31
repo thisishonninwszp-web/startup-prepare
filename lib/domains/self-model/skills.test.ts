@@ -3,7 +3,11 @@ import {
   FEAT_DEFS,
   FEAT_LINES,
   FEAT_TOTAL,
+  MILESTONE_TIERS,
+  SKILL_HEADROOM,
   featPaths,
+  milestoneOf,
+  skillCeiling,
   LEVELS_PER_FEAT_POINT,
   MAX_TICKS_PER_SEASON,
   SKILL_DEFS,
@@ -230,5 +234,86 @@ describe("the tree", () => {
     expect(interview.reached).toBe(1);
     expect(interview.next?.def.name).toBe("深访");
     expect(interview.next?.missing.join(" ")).toContain("观察");
+  });
+});
+
+describe("skill prerequisites and milestones", () => {
+  const values = Object.fromEntries(SKILL_DEFS.map((def) => [def.key, 0]));
+
+  it("points every prerequisite at a real skill and never at itself", () => {
+    for (const def of SKILL_DEFS) {
+      for (const required of def.requires ?? []) {
+        expect(isSkillKey(required), `${def.name} → ${required}`).toBe(true);
+        expect(required).not.toBe(def.key);
+      }
+    }
+  });
+
+  it("has no cycles — every skill can be reached from the base", () => {
+    const byKey = new Map(SKILL_DEFS.map((def) => [def.key, def]));
+    const depth = new Map<string, number>();
+    const walk = (key: string, seen: Set<string>): number => {
+      if (seen.has(key)) throw new Error(`cycle at ${key}`);
+      const cached = depth.get(key);
+      if (cached !== undefined) return cached;
+      const def = byKey.get(key);
+      const own = def?.requires ?? [];
+      const value =
+        own.length === 0
+          ? 0
+          : 1 + Math.max(...own.map((item) => walk(item, new Set([...seen, key]))));
+      depth.set(key, value);
+      return value;
+    };
+    expect(() => SKILL_DEFS.forEach((def) => walk(def.key, new Set()))).not.toThrow();
+  });
+
+  it("caps a skill at its weakest foundation plus the headroom", () => {
+    const base = { ...values, listening: 20 };
+    const { ceiling, limitedBy } = skillCeiling("asking", base);
+    expect(ceiling).toBe(20 + SKILL_HEADROOM);
+    expect(limitedBy?.name).toBe("倾听");
+  });
+
+  it("lets a skill with no prerequisites go all the way", () => {
+    expect(skillCeiling("listening", values).ceiling).toBe(100);
+    expect(skillCeiling("listening", values).limitedBy).toBeNull();
+  });
+
+  it("picks the weakest of several foundations", () => {
+    const base = { ...values, persuading: 70, listening: 30 };
+    expect(skillCeiling("negotiating", base).limitedBy?.name).toBe("倾听");
+  });
+
+  it("stops growth at the ceiling — you must go back and fill the base", () => {
+    const state = {
+      key: "asking",
+      value: 40,
+      passion: 0,
+      ticks: 3,
+      daysSinceTick: 1,
+    };
+    expect(growthFor(state, 40)).toBe(0);
+    expect(growthFor(state, 100)).toBeGreaterThan(0);
+  });
+
+  it("gives every skill three milestones with a checkable test", () => {
+    for (const def of SKILL_DEFS) {
+      expect(def.milestones, def.name).toHaveLength(3);
+      for (const milestone of def.milestones ?? []) {
+        expect(milestone.test.length).toBeGreaterThan(4);
+      }
+      expect((def.milestones ?? []).map((item) => item.at)).toEqual([
+        ...MILESTONE_TIERS,
+      ]);
+    }
+  });
+
+  it("reports which milestone you are between", () => {
+    const def = SKILL_DEFS.find((item) => item.key === "negotiating")!;
+    expect(milestoneOf(def, 10).passed).toHaveLength(0);
+    expect(milestoneOf(def, 10).next?.name).toBe("敢开口");
+    expect(milestoneOf(def, 70).passed).toHaveLength(2);
+    expect(milestoneOf(def, 90).next).toBeNull();
   });
 });

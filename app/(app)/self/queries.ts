@@ -9,6 +9,8 @@ import {
 import {
   SKILL_DEFS,
   evaluateFeats,
+  milestoneOf,
+  skillCeiling,
   featPointsFor,
   growthFor,
   rustFor,
@@ -694,6 +696,12 @@ export type SkillRow = {
   /** 下次结算会涨多少（不含生锈）。 */
   pendingGrowth: number;
   rust: number;
+  /** 当前上限，以及被哪根地基拖着。 */
+  ceiling: number;
+  limitedBy: { key: string; name: string; value: number } | null;
+  /** 已跨过的里程碑与下一档。 */
+  passed: ReturnType<typeof milestoneOf>["passed"];
+  nextMilestone: ReturnType<typeof milestoneOf>["next"];
 };
 
 export type SelfSkills = {
@@ -736,6 +744,13 @@ export async function getSelfSkills(
   const byKey = new Map(storedRows.map((row) => [row.skill_key, row]));
   const today = new Date().toISOString().slice(0, 10);
 
+  const valueByKey: Record<string, number> = Object.fromEntries(
+    SKILL_DEFS.map((def) => [
+      def.key,
+      byKey.get(def.key)?.value ?? 0,
+    ])
+  );
+
   const skills: SkillRow[] = SKILL_DEFS.map((def) => {
     const row = byKey.get(def.key);
     const own = tickRows.filter((tick) => tick.skill_key === def.key);
@@ -751,14 +766,20 @@ export async function getSelfSkills(
       ticks: open,
       daysSinceTick: last ? Math.floor(daysApart(last, today)) : null,
     };
+    const { ceiling, limitedBy } = skillCeiling(def.key, valueByKey);
+    const { passed, next } = milestoneOf(def, state.value);
     return {
       ...def,
       value: state.value,
       passion: state.passion,
       ticks: state.ticks,
       daysSinceTick: state.daysSinceTick,
-      pendingGrowth: growthFor(state),
+      pendingGrowth: growthFor(state, ceiling),
       rust: rustFor(state),
+      ceiling,
+      limitedBy,
+      passed,
+      nextMilestone: next,
     };
   });
 

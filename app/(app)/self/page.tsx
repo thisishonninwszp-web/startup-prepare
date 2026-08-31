@@ -1111,7 +1111,14 @@ export default async function SelfPage() {
                           key={skill.key}
                           className="self-row flex flex-wrap items-center gap-2 py-1.5 text-[13px]"
                         >
-                          <span className="min-w-[7rem] flex-1">{skill.name}</span>
+                          <span className="min-w-[7rem] flex-1">
+                            {skill.name}
+                            {skill.passed.length > 0 && (
+                              <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                                {skill.passed[skill.passed.length - 1].name}
+                              </span>
+                            )}
+                          </span>
                           {skill.passion > 0 && (
                             <span aria-label="激情">
                               {"🔥".repeat(skill.passion)}
@@ -1127,13 +1134,33 @@ export default async function SelfPage() {
                               生锈 {skill.rust}
                             </span>
                           )}
-                          <span className="w-9 text-right font-mono text-xs font-semibold tabular-nums">
+                          <span className="w-14 text-right font-mono text-xs font-semibold tabular-nums">
                             {skill.value}
+                            <span className="text-[10px] font-normal text-muted-foreground">
+                              /{skill.ceiling}
+                            </span>
                           </span>
                           <TickControl
                             skillKey={skill.key}
                             skillName={skill.name}
                           />
+                          {(skill.limitedBy || skill.nextMilestone) && (
+                            <span className="w-full font-mono text-[11px] text-muted-foreground">
+                              {skill.limitedBy &&
+                                skill.value >= skill.ceiling - 2 && (
+                                  <span className="text-primary">
+                                    先补「{skill.limitedBy.name}」（{skill.limitedBy.value}）才能再往上{" "}
+                                  </span>
+                                )}
+                              {skill.nextMilestone && (
+                                <>
+                                  下一档 {skill.nextMilestone.at}「
+                                  {skill.nextMilestone.name}」：
+                                  {skill.nextMilestone.test}
+                                </>
+                              )}
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>

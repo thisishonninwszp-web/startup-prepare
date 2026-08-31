@@ -29,60 +29,157 @@ export const SKILL_GROUP_NAMES: Record<SkillGroup, string> = {
   relate: "关系",
 };
 
-export type SkillDef = { key: string; name: string; group: SkillGroup };
+export type SkillDef = {
+  key: string;
+  name: string;
+  group: SkillGroup;
+  /**
+   * 前置技能。不是硬锁 —— 你照样可以练，但**练不上去**：
+   * 一项技能的上限 = 所有前置里最低的那个 + HEADROOM。
+   *
+   * 硬锁不真实：现实里你当然可以硬着头皮去谈判，
+   * 只是倾听不行的话，谈判就是上不去。想再深必须回头补地基。
+   */
+  requires?: string[];
+  /**
+   * 里程碑：同一项技能，40 和 85 是完全不同的两件事。
+   * 每一档都必须是一句**能判定真假**的现实标准 —— 数字本身没有意义，
+   * 「已过『敢开口』，正在走向『敢等』」才有。
+   */
+  milestones?: SkillMilestone[];
+};
+
+export type SkillMilestone = {
+  /** 到这个值算跨过。 */
+  at: number;
+  name: string;
+  /** 一句能判真假的现实标准。 */
+  test: string;
+};
+
+export const MILESTONE_TIERS = [40, 65, 85] as const;
+
+/** 前置给的余量：地基之上还能往前探多少。 */
+export const SKILL_HEADROOM = 20;
 
 export const SKILL_DEFS: SkillDef[] = [
-  { key: "analysis", name: "数据分析", group: "info" },
+  { key: "analysis", name: "数据分析", group: "info" , requires: ["research"] },
   { key: "research", name: "查资料", group: "info" },
-  { key: "finstmt", name: "读财报", group: "info" },
-  { key: "recon", name: "竞品侦查", group: "info" },
-  { key: "asking", name: "提问", group: "info" },
+  { key: "finstmt", name: "读财报", group: "info" , requires: ["analysis"] },
+  { key: "recon", name: "竞品侦查", group: "info" , requires: ["research", "observing"] },
+  { key: "asking", name: "提问", group: "info" , requires: ["listening"] },
   { key: "listening", name: "倾听", group: "info" },
   { key: "observing", name: "观察", group: "info" },
-  { key: "experiment", name: "做实验", group: "info" },
+  { key: "experiment", name: "做实验", group: "info" , requires: ["asking", "analysis"] },
 
   { key: "writing", name: "写作", group: "express" },
-  { key: "presenting", name: "演示", group: "express" },
-  { key: "negotiating", name: "谈判", group: "express" },
-  { key: "persuading", name: "说服", group: "express" },
-  { key: "coldopen", name: "冷启动开口", group: "express" },
+  { key: "presenting", name: "演示", group: "express" , requires: ["explaining"] },
+  { key: "negotiating", name: "谈判", group: "express" , requires: ["persuading", "listening"] },
+  { key: "persuading", name: "说服", group: "express" , requires: ["explaining", "listening"] },
+  { key: "coldopen", name: "冷启动开口", group: "express" , requires: ["introducing"] },
   { key: "jpbiz", name: "商务日语", group: "express" },
-  { key: "explaining", name: "讲清楚一件事", group: "express" },
-  { key: "headline", name: "起标题", group: "express" },
+  { key: "explaining", name: "讲清楚一件事", group: "express" , requires: ["writing"] },
+  { key: "headline", name: "起标题", group: "express" , requires: ["writing"] },
 
   { key: "coding", name: "编程", group: "make" },
-  { key: "productdesign", name: "产品设计", group: "make" },
-  { key: "prototyping", name: "原型", group: "make" },
-  { key: "aiorchestration", name: "AI 编排", group: "make" },
-  { key: "automation", name: "自动化", group: "make" },
-  { key: "debugging", name: "调试", group: "make" },
-  { key: "testing", name: "测试", group: "make" },
+  { key: "productdesign", name: "产品设计", group: "make" , requires: ["prototyping", "observing"] },
+  { key: "prototyping", name: "原型", group: "make" , requires: ["coding"] },
+  { key: "aiorchestration", name: "AI 编排", group: "make" , requires: ["coding", "explaining"] },
+  { key: "automation", name: "自动化", group: "make" , requires: ["coding", "debugging"] },
+  { key: "debugging", name: "调试", group: "make" , requires: ["coding"] },
+  { key: "testing", name: "测试", group: "make" , requires: ["debugging"] },
 
-  { key: "pricing", name: "定价", group: "run" },
+  { key: "pricing", name: "定价", group: "run" , requires: ["finance", "analysis"] },
   { key: "finance", name: "财务", group: "run" },
-  { key: "hiring", name: "招人", group: "run" },
-  { key: "delegating", name: "分工", group: "run" },
-  { key: "processdesign", name: "流程设计", group: "run" },
-  { key: "support", name: "客服", group: "run" },
-  { key: "procurement", name: "采购", group: "run" },
-  { key: "partnering", name: "谈合作", group: "run" },
+  { key: "hiring", name: "招人", group: "run" , requires: ["asking", "trustbuilding"] },
+  { key: "delegating", name: "分工", group: "run" , requires: ["explaining"] },
+  { key: "processdesign", name: "流程设计", group: "run" , requires: ["delegating", "retro"] },
+  { key: "support", name: "客服", group: "run" , requires: ["listening"] },
+  { key: "procurement", name: "采购", group: "run" , requires: ["negotiating"] },
+  { key: "partnering", name: "谈合作", group: "run" , requires: ["negotiating", "trustbuilding"] },
 
   { key: "retro", name: "复盘", group: "self" },
-  { key: "forecasting", name: "预测", group: "self" },
+  { key: "forecasting", name: "预测", group: "self" , requires: ["retro", "analysis"] },
   { key: "scheduling", name: "时间安排", group: "self" },
   { key: "sleepcraft", name: "睡眠管理", group: "self" },
   { key: "training", name: "训练计划", group: "self" },
   { key: "recovery", name: "情绪回收", group: "self" },
   { key: "learning", name: "学新东西", group: "self" },
 
-  { key: "trustbuilding", name: "建立信任", group: "relate" },
-  { key: "askinghelp", name: "求助", group: "relate" },
-  { key: "feedback", name: "给反馈", group: "relate" },
+  { key: "trustbuilding", name: "建立信任", group: "relate" , requires: ["listening", "introducing"] },
+  { key: "askinghelp", name: "求助", group: "relate" , requires: ["introducing"] },
+  { key: "feedback", name: "给反馈", group: "relate" , requires: ["explaining", "trustbuilding"] },
   { key: "takingheat", name: "挨批评", group: "relate" },
-  { key: "conflict", name: "处理冲突", group: "relate" },
+  { key: "conflict", name: "处理冲突", group: "relate" , requires: ["takingheat", "listening"] },
   { key: "introducing", name: "介绍自己", group: "relate" },
-  { key: "keepingup", name: "维系旧关系", group: "relate" },
+  { key: "keepingup", name: "维系旧关系", group: "relate" , requires: ["trustbuilding"] },
 ];
+
+
+/** 每项技能的里程碑。数据大，单独放一张表，SKILL_DEFS 在构造时挂上去。 */
+const MILESTONES: Record<string, SkillMilestone[]> = {
+  analysis: [{ at: MILESTONE_TIERS[0], name: "会画图", test: "把一份原始数据画成一张说明问题的图" }, { at: MILESTONE_TIERS[1], name: "会问对问题", test: "先想清楚要回答什么，再决定跑什么" }, { at: MILESTONE_TIERS[2], name: "会说因果", test: "能说清相关与因果的差别在哪，并设计出区分它们的观察" }],
+  research: [{ at: MILESTONE_TIERS[0], name: "找得到", test: "半小时内找到一手资料而不是二手转述" }, { at: MILESTONE_TIERS[1], name: "辨得清", test: "能判断一份资料可不可信、谁出的钱" }, { at: MILESTONE_TIERS[2], name: "挖得深", test: "顺着引用往上翻到源头" }],
+  finstmt: [{ at: MILESTONE_TIERS[0], name: "看得懂", test: "读完一张损益表能说出公司靠什么赚钱" }, { at: MILESTONE_TIERS[1], name: "看得出异常", test: "发现一个和同行不一样的科目并说出为什么" }, { at: MILESTONE_TIERS[2], name: "能倒推", test: "从报表倒推出经营动作" }],
+  recon: [{ at: MILESTONE_TIERS[0], name: "列得出", test: "列出三家真实竞品和它们在卖什么" }, { at: MILESTONE_TIERS[1], name: "看得出打法", test: "说清对手靠什么活着" }, { at: MILESTONE_TIERS[2], name: "预判得到", test: "在对手动作之前说出他会做什么，并对账" }],
+  asking: [{ at: MILESTONE_TIERS[0], name: "敢问", test: "在会上问出一个别人没问的问题" }, { at: MILESTONE_TIERS[1], name: "问到具体", test: "把「怎么样」换成「上次是什么时候、怎么处理的」" }, { at: MILESTONE_TIERS[2], name: "问到痛处", test: "问出对方原本不打算说的那句" }],
+  listening: [{ at: MILESTONE_TIERS[0], name: "不打断", test: "一次对话里完整听完对方的三段话" }, { at: MILESTONE_TIERS[1], name: "听得出没说的", test: "复述出对方回避的那部分" }, { at: MILESTONE_TIERS[2], name: "听完能改", test: "因为听到的东西改掉自己的方案" }],
+  observing: [{ at: MILESTONE_TIERS[0], name: "记得住", test: "事后能白描出现场发生了什么" }, { at: MILESTONE_TIERS[1], name: "看得出不对劲", test: "指出一个和描述不符的细节" }, { at: MILESTONE_TIERS[2], name: "看得出模式", test: "从三次现场里抽出同一条规律" }],
+  experiment: [{ at: MILESTONE_TIERS[0], name: "会设条件", test: "写出一个能判真假的观察条件" }, { at: MILESTONE_TIERS[1], name: "会做对照", test: "设计出能区分两种解释的观察" }, { at: MILESTONE_TIERS[2], name: "会控变量", test: "在真实环境里排掉主要干扰" }],
+  writing: [{ at: MILESTONE_TIERS[0], name: "写得完", test: "连续四周每周一篇" }, { at: MILESTONE_TIERS[1], name: "写得清", test: "有人照着你写的做对了一件事" }, { at: MILESTONE_TIERS[2], name: "写得动人", test: "有人主动转发并说出被打动的点" }],
+  presenting: [{ at: MILESTONE_TIERS[0], name: "讲得完", test: "十分钟不看稿讲完一件事" }, { at: MILESTONE_TIERS[1], name: "讲得住", test: "被打断提问后还能回到主线" }, { at: MILESTONE_TIERS[2], name: "讲得服", test: "讲完当场有人改变决定" }],
+  negotiating: [{ at: MILESTONE_TIERS[0], name: "敢开口", test: "主动提出一个价格或条件" }, { at: MILESTONE_TIERS[1], name: "敢等", test: "在对方沉默时不先降价" }, { at: MILESTONE_TIERS[2], name: "能扩饼", test: "找到双方都更好的第三个选项" }],
+  persuading: [{ at: MILESTONE_TIERS[0], name: "说得出理由", test: "给出一条对方在意的理由，不是你在意的" }, { at: MILESTONE_TIERS[1], name: "换得动框架", test: "让对方接受一个新的衡量标准" }, { at: MILESTONE_TIERS[2], name: "留得下痕迹", test: "对方在你不在场时也照这个说" }],
+  coldopen: [{ at: MILESTONE_TIERS[0], name: "发得出去", test: "给一个陌生人发出第一条消息" }, { at: MILESTONE_TIERS[1], name: "有人回", test: "冷启动回复率过三成" }, { at: MILESTONE_TIERS[2], name: "约得到人", test: "从冷开口约到一次真实对话" }],
+  jpbiz: [{ at: MILESTONE_TIERS[0], name: "场面话过关", test: "邮件和会议不出失礼" }, { at: MILESTONE_TIERS[1], name: "能谈事", test: "用日语把一件复杂的事谈完" }, { at: MILESTONE_TIERS[2], name: "能谈钱", test: "用日语谈价格和条件" }],
+  explaining: [{ at: MILESTONE_TIERS[0], name: "说得完整", test: "一件事能说完不漏关键" }, { at: MILESTONE_TIERS[1], name: "三句说完", test: "同一件事能压到三句话" }, { at: MILESTONE_TIERS[2], name: "换人也懂", test: "换一个完全不同背景的人也听懂" }],
+  headline: [{ at: MILESTONE_TIERS[0], name: "能起", test: "给每篇东西起一个标题" }, { at: MILESTONE_TIERS[1], name: "有人点", test: "标题带来的打开率能被观测到" }, { at: MILESTONE_TIERS[2], name: "一句抓住", test: "标题本身被人引用" }],
+  coding: [{ at: MILESTONE_TIERS[0], name: "写得动", test: "独立做出一个能用的小东西" }, { at: MILESTONE_TIERS[1], name: "读得懂别人的", test: "接手别人的代码并改对" }, { at: MILESTONE_TIERS[2], name: "扛得住复杂", test: "结构撑得住第三次需求变化" }],
+  productdesign: [{ at: MILESTONE_TIERS[0], name: "画得出", test: "画出一个能让人看懂的流程" }, { at: MILESTONE_TIERS[1], name: "砍得掉", test: "主动删掉一个自己喜欢但没人用的功能" }, { at: MILESTONE_TIERS[2], name: "有人用", test: "设计的东西被真人反复使用" }],
+  prototyping: [{ at: MILESTONE_TIERS[0], name: "做得快", test: "一天内做出可点的原型" }, { at: MILESTONE_TIERS[1], name: "做得像", test: "原型能骗过真实用户测出反应" }, { at: MILESTONE_TIERS[2], name: "做得省", test: "用最少的东西验掉最大的未知" }],
+  aiorchestration: [{ at: MILESTONE_TIERS[0], name: "会指挥", test: "把一个任务拆给 AI 分步完成" }, { at: MILESTONE_TIERS[1], name: "会验收", test: "能判断 AI 的输出哪里不对" }, { at: MILESTONE_TIERS[2], name: "会搭系统", test: "串成一条不用你盯的流水" }],
+  automation: [{ at: MILESTONE_TIERS[0], name: "省一次", test: "把一件重复的事自动化一次" }, { at: MILESTONE_TIERS[1], name: "省一类", test: "一类事都不用手动了" }, { at: MILESTONE_TIERS[2], name: "无人值守", test: "东西在你不看的时候也在跑" }],
+  debugging: [{ at: MILESTONE_TIERS[0], name: "找得到", test: "能定位到出错的那一行" }, { at: MILESTONE_TIERS[1], name: "问得对", test: "先假设再验证，不靠乱改" }, { at: MILESTONE_TIERS[2], name: "防得住", test: "修完顺手加上防止复发的东西" }],
+  testing: [{ at: MILESTONE_TIERS[0], name: "会写", test: "关键路径有测试" }, { at: MILESTONE_TIERS[1], name: "会挑", test: "知道哪些该测哪些不必" }, { at: MILESTONE_TIERS[2], name: "拦得住", test: "测试真的挡下过一次事故" }],
+  pricing: [{ at: MILESTONE_TIERS[0], name: "定得出", test: "给一个东西定出价格并说出依据" }, { at: MILESTONE_TIERS[1], name: "敢涨", test: "涨过一次价并观察反应" }, { at: MILESTONE_TIERS[2], name: "按价值", test: "价格跟着客户拿到的价值走" }],
+  finance: [{ at: MILESTONE_TIERS[0], name: "算得清", test: "说得出这个月钱去哪了" }, { at: MILESTONE_TIERS[1], name: "看得远", test: "算得出跑道还有几个月" }, { at: MILESTONE_TIERS[2], name: "排得开", test: "在多个用途之间做出可辩护的取舍" }],
+  hiring: [{ at: MILESTONE_TIERS[0], name: "说得清要谁", test: "写出一条能筛人的岗位描述" }, { at: MILESTONE_TIERS[1], name: "面得出", test: "面试问出能预测表现的东西" }, { at: MILESTONE_TIERS[2], name: "留得住", test: "招进来的人待过一年" }],
+  delegating: [{ at: MILESTONE_TIERS[0], name: "交得出", test: "把一件完整的事交出去" }, { at: MILESTONE_TIERS[1], name: "忍得住", test: "交出去之后不半路收回" }, { at: MILESTONE_TIERS[2], name: "带得起", test: "对方做得比你预期好" }],
+  processdesign: [{ at: MILESTONE_TIERS[0], name: "写得下来", test: "把一件事的做法写成别人能照做的步骤" }, { at: MILESTONE_TIERS[1], name: "跑得起来", test: "别人照着做成功了" }, { at: MILESTONE_TIERS[2], name: "不用盯", test: "流程自己在转" }],
+  support: [{ at: MILESTONE_TIERS[0], name: "答得上", test: "回答客户的问题" }, { at: MILESTONE_TIERS[1], name: "听得出共性", test: "从多次咨询里抽出同一个问题" }, { at: MILESTONE_TIERS[2], name: "改得掉", test: "因为客服反馈改掉了产品" }],
+  procurement: [{ at: MILESTONE_TIERS[0], name: "买得到", test: "找到并买到需要的东西" }, { at: MILESTONE_TIERS[1], name: "比得出", test: "能说清三家的差别不只是价格" }, { at: MILESTONE_TIERS[2], name: "谈得下来", test: "拿到比标价更好的条件" }],
+  partnering: [{ at: MILESTONE_TIERS[0], name: "搭得上", test: "促成第一次合作对话" }, { at: MILESTONE_TIERS[1], name: "谈得成", test: "签下一个双方都投入的合作" }, { at: MILESTONE_TIERS[2], name: "经得起", test: "合作撑过一次冲突" }],
+  retro: [{ at: MILESTONE_TIERS[0], name: "写得下", test: "每周写下一条学到了" }, { at: MILESTONE_TIERS[1], name: "找得到根", test: "找到的不是表面原因" }, { at: MILESTONE_TIERS[2], name: "改得动", test: "复盘之后行为真的变了" }],
+  forecasting: [{ at: MILESTONE_TIERS[0], name: "敢押", test: "写下一条带日期的预测" }, { at: MILESTONE_TIERS[1], name: "对得上账", test: "十条以上已结算" }, { at: MILESTONE_TIERS[2], name: "押得准", test: "命中率稳定在你的把握度附近" }],
+  scheduling: [{ at: MILESTONE_TIERS[0], name: "排得下", test: "一周有计划" }, { at: MILESTONE_TIERS[1], name: "守得住", test: "计划和实际的偏差在可控范围" }, { at: MILESTONE_TIERS[2], name: "留得出", test: "主动留白并且没被占用" }],
+  sleepcraft: [{ at: MILESTONE_TIERS[0], name: "记得住", test: "连续两周记录睡眠" }, { at: MILESTONE_TIERS[1], name: "睡得够", test: "过半的夜晚睡够七小时" }, { at: MILESTONE_TIERS[2], name: "睡得稳", test: "作息波动小于一小时" }],
+  training: [{ at: MILESTONE_TIERS[0], name: "动起来", test: "连续四周有训练" }, { at: MILESTONE_TIERS[1], name: "有计划", test: "训练按计划推进而不是凭心情" }, { at: MILESTONE_TIERS[2], name: "练出来", test: "同一动作的重量确实在涨" }],
+  recovery: [{ at: MILESTONE_TIERS[0], name: "察觉得到", test: "能说出自己现在状态不好" }, { at: MILESTONE_TIERS[1], name: "停得下", test: "在崩之前主动停" }, { at: MILESTONE_TIERS[2], name: "回得快", test: "挫折后回到基线的天数缩短" }],
+  learning: [{ at: MILESTONE_TIERS[0], name: "学得进", test: "学完能复述" }, { at: MILESTONE_TIERS[1], name: "用得上", test: "学完两周内用在真事上" }, { at: MILESTONE_TIERS[2], name: "学得快", test: "从不会到能用的时间在缩短" }],
+  trustbuilding: [{ at: MILESTONE_TIERS[0], name: "说到做到", test: "小事上兑现" }, { at: MILESTONE_TIERS[1], name: "给得出", test: "先给出价值而不是先要" }, { at: MILESTONE_TIERS[2], name: "被托付", test: "有人把重要的事交给你" }],
+  askinghelp: [{ at: MILESTONE_TIERS[0], name: "开得了口", test: "卡住时向人求助一次" }, { at: MILESTONE_TIERS[1], name: "问得准", test: "把问题问到对方能答的粒度" }, { at: MILESTONE_TIERS[2], name: "有来有往", test: "求助之后关系更近而不是更远" }],
+  feedback: [{ at: MILESTONE_TIERS[0], name: "给得出", test: "指出一个具体问题而不是感受" }, { at: MILESTONE_TIERS[1], name: "给得中", test: "对方听完知道该改什么" }, { at: MILESTONE_TIERS[2], name: "给得受", test: "对方谢你而不是躲你" }],
+  takingheat: [{ at: MILESTONE_TIERS[0], name: "受得住", test: "被批评后不当场反驳" }, { at: MILESTONE_TIERS[1], name: "分得清", test: "能分出哪部分对哪部分不对" }, { at: MILESTONE_TIERS[2], name: "用得上", test: "因为批评改掉了一件事" }],
+  conflict: [{ at: MILESTONE_TIERS[0], name: "不逃", test: "把冲突摆到桌面上" }, { at: MILESTONE_TIERS[1], name: "对事", test: "冲突里不攻击人" }, { at: MILESTONE_TIERS[2], name: "修得回", test: "冲突之后关系还在" }],
+  introducing: [{ at: MILESTONE_TIERS[0], name: "说得出", test: "三十秒说清自己在做什么" }, { at: MILESTONE_TIERS[1], name: "对方记得住", test: "对方能复述你在做什么" }, { at: MILESTONE_TIERS[2], name: "对方想知道更多", test: "介绍完对方主动追问" }],
+  keepingup: [{ at: MILESTONE_TIERS[0], name: "记得住人", test: "记得对方上次说过什么" }, { at: MILESTONE_TIERS[1], name: "有来往", test: "不只在有事时才联系" }, { at: MILESTONE_TIERS[2], name: "久了还在", test: "两年以上的关系还活着" }],
+};
+
+for (const def of SKILL_DEFS) {
+  def.milestones = MILESTONES[def.key];
+}
+
+/** 这项技能现在处在哪一档，下一档是什么。 */
+export function milestoneOf(def: SkillDef, value: number): {
+  passed: SkillMilestone[];
+  next: SkillMilestone | null;
+} {
+  const all = def.milestones ?? [];
+  return {
+    passed: all.filter((item) => value >= item.at),
+    next: all.find((item) => value < item.at) ?? null,
+  };
+}
 
 export const SKILL_TOTAL = SKILL_DEFS.length;
 export const SKILL_MAX = 100;
@@ -111,10 +208,38 @@ export type SkillState = {
  */
 export const MAX_TICKS_PER_SEASON = 3;
 
-export function growthFor(state: SkillState): number {
+/**
+ * 一项技能现在最高能到多少。
+ * 没有前置的技能顶到 100；有前置的，被最弱的那根地基拖着。
+ */
+export function skillCeiling(
+  key: string,
+  values: Record<string, number>
+): { ceiling: number; limitedBy: { key: string; name: string; value: number } | null } {
+  const def = SKILL_DEFS.find((item) => item.key === key);
+  if (!def?.requires || def.requires.length === 0) {
+    return { ceiling: SKILL_MAX, limitedBy: null };
+  }
+  let weakest: { key: string; name: string; value: number } | null = null;
+  for (const required of def.requires) {
+    const value = values[required] ?? 0;
+    if (!weakest || value < weakest.value) {
+      weakest = {
+        key: required,
+        name: SKILL_DEFS.find((item) => item.key === required)?.name ?? required,
+        value,
+      };
+    }
+  }
+  if (!weakest) return { ceiling: SKILL_MAX, limitedBy: null };
+  const ceiling = Math.min(SKILL_MAX, weakest.value + SKILL_HEADROOM);
+  return { ceiling, limitedBy: weakest };
+}
+
+export function growthFor(state: SkillState, ceiling = SKILL_MAX): number {
   const ticks = Math.min(state.ticks, MAX_TICKS_PER_SEASON);
   if (ticks <= 0) return 0;
-  const room = SKILL_MAX - state.value;
+  const room = Math.min(SKILL_MAX, ceiling) - state.value;
   if (room <= 0) return 0;
   const perTick = Math.max(1, Math.ceil(room / 20));
   // 激情不是加成的借口，只在同样打了勾时略微加快。
