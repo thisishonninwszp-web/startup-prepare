@@ -54,9 +54,11 @@ import {
   getSelfLedger,
   getSelfPanel,
   getNpcs,
+  getSelfEvents,
   getSelfSkills,
   getSelfTraits,
   getWeeklyReport,
+  recordDerivedEvents,
   type SelfLedgerEntry,
 } from "./queries";
 import {
@@ -211,6 +213,19 @@ function MainCard({ main }: { main: MainAttribute }) {
     </div>
   );
 }
+
+
+const EVENT_MARKS: Record<string, string> = {
+  trait_granted: "🟢",
+  trait_faded: "⚪",
+  skill_up: "⬆",
+  skill_rust: "⬇",
+  feat_taken: "⚔",
+  title_earned: "🏅",
+  build_changed: "🔀",
+  hypothesis_refuted: "🔴",
+  tier_changed: "▲",
+};
 
 const QUEST_MARKS: Record<Quest["tier"], string> = {
   boss: "🐉",
@@ -530,9 +545,10 @@ export default async function SelfPage() {
     getSelfPanel(user!.id),
   ]);
   const { traits, sets } = await getSelfTraits(user!.id, ledger);
-  const [report, npcs] = await Promise.all([
+  const [report, npcs, events] = await Promise.all([
     getWeeklyReport(user!.id),
     getNpcs(user!.id),
+    getSelfEvents(user!.id),
   ]);
 
   const { calibration, entries, pending } = ledger;
@@ -633,6 +649,13 @@ export default async function SelfPage() {
     sleepEnoughDays: panel.raw.sleepEnoughDays,
   });
   const earnedTitles = titles.filter((title) => title.earned);
+  // 称号与转职是派生的，没有天然的写入时机：算完之后补记一次，
+  // 唯一索引保证同一个称号只会留下一条。
+  await recordDerivedEvents(user!.id, {
+    earnedTitleKeys: earnedTitles.map((title) => title.def.name),
+    buildKey: build?.def.key ?? null,
+    buildName: build?.def.name ?? null,
+  });
 
   const quests = buildQuests({
     hypotheses: entries.map((entry) => ({
@@ -795,6 +818,45 @@ export default async function SelfPage() {
 
       <TabsContent value="overview" className="mt-6 space-y-8">
         <WeeklyReport report={report} />
+
+
+        <div className="self-panel">
+          <div className="self-panel__head">
+            <span className="self-label">changelog</span>
+            <span className="text-sm font-medium">最近的变化</span>
+            <span className="ml-auto text-xs text-muted-foreground">
+              其余所有东西都是「现在的状态」，只有这里记得什么时候变的
+            </span>
+          </div>
+          <div className="self-panel__body">
+            {events.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                还没有变化。解锁一条特性、结算一次技能、推翻一条假设 ——
+                任何一样发生了，这里就会留下时间。
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {events.map((event) => (
+                  <div
+                    key={event.id}
+                    className="self-row flex flex-wrap items-baseline gap-x-2 py-1.5 text-[13px]"
+                  >
+                    <span className="w-5 shrink-0">
+                      {EVENT_MARKS[event.kind] ?? "·"}
+                    </span>
+                    <span className="font-medium">{event.title}</span>
+                    {event.detail && (
+                      <span className="text-muted-foreground">{event.detail}</span>
+                    )}
+                    <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
+                      {event.occurred_at.slice(0, 10)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
       <section className="mb-8 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

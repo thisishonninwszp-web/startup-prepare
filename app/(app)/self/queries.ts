@@ -990,3 +990,64 @@ export async function getNpcs(userId: string): Promise<NpcRow[]> {
     })
     .sort((a, b) => b.encounters - a.encounters);
 }
+
+// ---------------------------------------------------------------------------
+// 事件流：变化发生的那一刻。
+// 其余所有东西都是"现在的状态"，只有这里记得"什么时候变的"。
+// ---------------------------------------------------------------------------
+
+export type SelfEventRow = {
+  id: string;
+  occurred_at: string;
+  kind: string;
+  title: string;
+  detail: string | null;
+};
+
+export async function getSelfEvents(
+  userId: string,
+  limit = 12
+): Promise<SelfEventRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from("self_events")
+    .select("id, occurred_at, kind, title, detail")
+    .eq("user_id", userId)
+    .order("occurred_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SelfEventRow[];
+}
+
+/**
+ * 补记称号与转职。这两样是派生的，没有天然的写入时机 ——
+ * 每次扫描时把"现在满足条件的"和"已经记过的"一比，差值就是新解锁。
+ */
+export async function recordDerivedEvents(
+  userId: string,
+  input: { earnedTitleKeys: string[]; buildKey: string | null; buildName: string | null }
+): Promise<void> {
+  const rows = [
+    ...input.earnedTitleKeys.map((key) => ({
+      user_id: userId,
+      kind: "title_earned",
+      title: `获得称号「${key}」`,
+      dedupe_key: `title:${key}`,
+    })),
+    ...(input.buildKey && input.buildName
+      ? [
+          {
+            user_id: userId,
+            kind: "build_changed",
+            title: `转职：${input.buildName}`,
+            dedupe_key: `build:${input.buildKey}`,
+          },
+        ]
+      : []),
+  ];
+  if (rows.length === 0) return;
+  // 撞上唯一索引说明早就记过了，忽略即可。
+  await supabaseAdmin.from("self_events").upsert(rows, {
+    onConflict: "user_id,dedupe_key",
+    ignoreDuplicates: true,
+  });
+}

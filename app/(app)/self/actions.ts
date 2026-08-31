@@ -26,6 +26,42 @@ import {
 import { getSelfPanel, nextHypothesisCode } from "./queries";
 
 
+
+type SelfEventKind =
+  | "trait_granted"
+  | "trait_faded"
+  | "skill_up"
+  | "skill_rust"
+  | "feat_taken"
+  | "title_earned"
+  | "build_changed"
+  | "hypothesis_refuted"
+  | "tier_changed";
+
+/**
+ * 记一条事件。
+ * dedupe_key 非空时靠唯一索引保证只记一次（称号、转职这种一次性的）；
+ * 撞上重复直接吞掉 —— 事件流是旁路，永远不该因为它让主动作失败。
+ */
+async function recordEvent(
+  userId: string,
+  kind: SelfEventKind,
+  title: string,
+  detail?: string,
+  dedupeKey?: string
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("self_events").insert({
+    user_id: userId,
+    kind,
+    title,
+    detail: detail ?? null,
+    dedupe_key: dedupeKey ?? null,
+  });
+  if (error && error.code !== "23505") {
+    console.error("self_events insert failed", error.message);
+  }
+}
+
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
   const {
@@ -227,6 +263,12 @@ export async function refuteSelfHypothesis(input: {
     .eq("id", input.id)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
+  await recordEvent(
+    userId,
+    "hypothesis_refuted",
+    "推翻了一条自己写下的判断",
+    input.reason
+  );
   revalidatePath("/self");
 }
 
@@ -528,6 +570,14 @@ export async function settleSkills(): Promise<string[]> {
     if (error) throw new Error(error.message);
     const name = SKILL_DEFS.find((def) => def.key === row.skill_key)?.name;
     changes.push(`${name ?? row.skill_key} ${row.value} → ${next}`);
+    await recordEvent(
+      userId,
+      delta > 0 ? "skill_up" : "skill_rust",
+      delta > 0
+        ? `「${name ?? row.skill_key}」涨到 ${next}`
+        : `「${name ?? row.skill_key}」生锈到 ${next}`,
+      delta > 0 ? `打了 ${state.ticks} 个勾` : "久未使用"
+    );
   }
 
   const openIds = tickRows
@@ -589,6 +639,13 @@ export async function takeFeat(featKey: string): Promise<void> {
     if (error.code === "23505") throw new Error("这个专长已经点过了");
     throw new Error(error.message);
   }
+  await recordEvent(
+    userId,
+    "feat_taken",
+    `点上专长「${def.name}」`,
+    def.effect,
+    `feat:${featKey}`
+  );
   revalidatePath("/self");
 }
 
@@ -639,6 +696,9 @@ export async function syncLibraryTraits(): Promise<{
         }))
       );
     if (insertError) throw new Error(insertError.message);
+    for (const def of result.grant) {
+      await recordEvent(userId, "trait_granted", `解锁「${def.name}」`, def.gloss);
+    }
   }
 
   if (result.combos.length > 0) {
@@ -657,6 +717,14 @@ export async function syncLibraryTraits(): Promise<{
         }))
       );
     if (comboError) throw new Error(comboError.message);
+    for (const combo of result.combos) {
+      await recordEvent(
+        userId,
+        "trait_granted",
+        `${combo.alarm ? "⚠️ " : ""}解锁组合「${combo.name}」`,
+        combo.gloss
+      );
+    }
   }
 
   for (const item of result.fade) {
@@ -667,6 +735,7 @@ export async function syncLibraryTraits(): Promise<{
       .update({ status: "faded", faded_at: new Date().toISOString() })
       .eq("id", row.id);
     if (fadeError) throw new Error(fadeError.message);
+    await recordEvent(userId, "trait_faded", `「${item.name}」褪色`, item.reason);
   }
 
   revalidatePath("/self");

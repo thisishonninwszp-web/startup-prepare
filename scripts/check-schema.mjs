@@ -38,6 +38,7 @@ const coreProbes = [
   ["self_skills", "id,user_id,skill_key,value,passion"],
   ["self_skill_ticks", "id,user_id,skill_key,occurred_on,note,settled_at"],
   ["self_feats", "id,user_id,feat_key,taken_on"],
+  ["self_events", "id,user_id,occurred_at,kind,title,dedupe_key"],
   ["reality_cases", "id,user_id,messages"],
   ["reality_versions", "id,case_id,version_no,focus_session_ids"],
   [
