@@ -179,8 +179,8 @@ describe("featPointsFor", () => {
 });
 
 describe("the tree", () => {
-  it("ships ten lines four deep plus the crossovers", () => {
-    expect(FEAT_TOTAL).toBe(48);
+  it("ships fourteen lines four deep plus the crossovers", () => {
+    expect(FEAT_TOTAL).toBe(68);
     const byLine = new Map<string, number>();
     for (const def of FEAT_DEFS) {
       byLine.set(def.line, (byLine.get(def.line) ?? 0) + 1);
@@ -189,7 +189,7 @@ describe("the tree", () => {
       if (line === "capstone") continue;
       expect(byLine.get(line), line).toBe(4);
     }
-    expect(byLine.get("capstone")).toBe(8);
+    expect(byLine.get("capstone")).toBe(12);
   });
 
   it("chains each line so you cannot skip a step", () => {

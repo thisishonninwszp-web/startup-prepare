@@ -1248,13 +1248,13 @@ export default async function SelfPage() {
                         <span className="text-muted-foreground">━</span>
                       )}
                       <span
-                        className={
+                        className={`self-node ${
                           step.taken
-                            ? "text-primary"
+                            ? "self-node--taken"
                             : step.unlocked
-                              ? "text-foreground"
-                              : "text-muted-foreground"
-                        }
+                              ? "self-node--open"
+                              : "self-node--locked"
+                        }`}
                         title={step.def.name}
                       >
                         {step.taken ? "●" : step.unlocked ? "◐" : "○"}

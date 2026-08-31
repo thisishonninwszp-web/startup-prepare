@@ -281,6 +281,10 @@ export const FEAT_LINES = [
   "body",
   "learning",
   "writing",
+  "scouting",
+  "compounding",
+  "craft",
+  "grit",
   "capstone",
 ] as const;
 export type FeatLine = (typeof FEAT_LINES)[number];
@@ -296,6 +300,10 @@ export const FEAT_LINE_NAMES: Record<FeatLine, string> = {
   body: "体魄线",
   learning: "学习线",
   writing: "写作线",
+  scouting: "侦查线",
+  compounding: "复利线",
+  craft: "匠心线",
+  grit: "心力线",
   capstone: "组合专长",
 };
 
@@ -409,6 +417,31 @@ export const FEAT_DEFS: FeatDef[] = [
     ["有人付费", { writing: 75, pricing: 50 }, "因文字产生第一笔收入"],
   ]),
 
+  ...lineOf("scouting", [
+    ["摸底", { recon: 30 }, "列得出三家真实竞品在卖什么"],
+    ["拼图", { recon: 45, research: 40 }, "从零散信息里拼出对手的处境"],
+    ["看穿打法", { recon: 60, analysis: 50 }, "说清对手靠什么活着"],
+    ["预判动作", { recon: 75, forecasting: 55 }, "在对手动作之前押注，并且对账"],
+  ]),
+  ...lineOf("compounding", [
+    ["记得住人", { keepingup: 30 }, "记得对方上次说过什么"],
+    ["有来往", { keepingup: 45, trustbuilding: 40 }, "不只在有事时才联系"],
+    ["被想起", { trustbuilding: 60, keepingup: 55 }, "别人遇到相关的事会想到你"],
+    ["被推荐", { trustbuilding: 75, introducing: 60 }, "有人替你把你介绍出去"],
+  ]),
+  ...lineOf("craft", [
+    ["做得像", { prototyping: 30 }, "原型能骗过真实用户测出反应"],
+    ["做得省", { prototyping: 45, productdesign: 40 }, "用最少的东西验掉最大的未知"],
+    ["做得稳", { testing: 60, debugging: 50 }, "测试真的挡下过一次事故"],
+    ["做得久", { productdesign: 75, testing: 65 }, "东西撑过第三次需求变化"],
+  ]),
+  ...lineOf("grit", [
+    ["撑得住", { takingheat: 30 }, "被批评后不当场反驳"],
+    ["缓得过来", { recovery: 45, takingheat: 40 }, "挫折后能说出自己现在状态不好"],
+    ["不怕难看", { takingheat: 60, feedback: 50 }, "主动去找对自己不利的评价"],
+    ["越挫越准", { recovery: 75, retro: 65 }, "每次挫折都换回一条能用的判断"],
+  ]),
+
   // ---------------- 组合专长 ----------------
   // 比较优势不在任何单一一条线上，它长在两条线的交叉处。
   capstone(
@@ -466,6 +499,34 @@ export const FEAT_DEFS: FeatDef[] = [
     ["interview3", "opening2"],
     { asking: 60, trustbuilding: 45 },
     "别人替你去接触，情报照样回来"
+  ),
+  capstone(
+    "情报官",
+    "情报官",
+    ["scouting3", "calibration2"],
+    { recon: 60, forecasting: 45 },
+    "看清对手之后先押注再验证，情报变成可对账的判断"
+  ),
+  capstone(
+    "老友",
+    "老友",
+    ["compounding3", "opening2"],
+    { keepingup: 60, coldopen: 45 },
+    "新认识的人会留下来，旧关系会带来新的人"
+  ),
+  capstone(
+    "工头",
+    "工头",
+    ["craft3", "organizing2"],
+    { testing: 60, delegating: 45 },
+    "做得稳的东西可以交出去，交出去之后还稳"
+  ),
+  capstone(
+    "不倒翁",
+    "不倒翁",
+    ["grit3", "body2"],
+    { recovery: 60, training: 45 },
+    "身体和心力互相兜底，长周期项目不因为任何一边掉线"
   ),
 ];
 

@@ -250,3 +250,111 @@
     transform: rotate(-3deg);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   稀有度的质感。
+   不引入新色相 —— 全部用已有的 --rarity-* 与前景/朱砂，
+   差别做在**材质**上：边框粗细、内圈、压印、骑缝章。
+   这和整套「田野笔记」的逻辑一致：结构靠线，不靠阴影和渐变。
+--------------------------------------------------------------------------- */
+@layer components {
+  .self-card {
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    border-radius: var(--radius);
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+
+  /* 普通：铅笔稿，最轻 */
+  .self-card--common {
+    border-color: hsl(var(--rarity-common) / 0.4);
+  }
+  /* 魔法：墨线 */
+  .self-card--magic {
+    border-color: hsl(var(--rarity-magic) / 0.55);
+  }
+  /* 稀有：墨线加重 */
+  .self-card--rare {
+    border-color: hsl(var(--rarity-rare) / 0.7);
+    border-width: 1.5px;
+  }
+  /* 史诗：双线 —— 外一道，内一道发丝 */
+  .self-card--epic {
+    border-color: hsl(var(--rarity-epic) / 0.8);
+    border-width: 1.5px;
+    box-shadow: inset 0 0 0 1px hsl(var(--rarity-epic) / 0.25);
+  }
+  /* 传说：烫金压印。底色极淡，压两道内圈 */
+  .self-card--legend {
+    border-color: hsl(var(--rarity-legend));
+    border-width: 2px;
+    background-color: hsl(var(--rarity-legend) / 0.06);
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--card)),
+      inset 0 0 0 2.5px hsl(var(--rarity-legend) / 0.35);
+  }
+  /* 套装：虚线，未集齐时它自己就是个缺口 */
+  .self-card--set {
+    border-color: hsl(var(--rarity-set) / 0.8);
+    border-style: dashed;
+    border-width: 1.5px;
+  }
+  /* 暗金：双刃。左侧一道厚边，像刃口 */
+  .self-card--unique {
+    border-color: hsl(var(--rarity-unique) / 0.75);
+    border-width: 1.5px;
+    border-left-width: 4px;
+    background-color: hsl(var(--rarity-unique) / 0.05);
+  }
+
+  /* 品级角标：右上角一小块，只在史诗以上出现 */
+  .self-card--epic,
+  .self-card--legend,
+  .self-card--unique {
+    position: relative;
+    overflow: hidden;
+  }
+  .self-card--epic::after,
+  .self-card--legend::after,
+  .self-card--unique::after {
+    content: "";
+    position: absolute;
+    top: -14px;
+    right: -14px;
+    width: 28px;
+    height: 28px;
+    transform: rotate(45deg);
+    background-color: currentColor;
+    opacity: 0.18;
+    pointer-events: none;
+  }
+  .self-card--epic::after {
+    color: hsl(var(--rarity-epic));
+  }
+  .self-card--legend::after {
+    color: hsl(var(--rarity-legend));
+  }
+  .self-card--unique::after {
+    color: hsl(var(--rarity-unique));
+  }
+
+  /* 已褪色：整张压暗，不删除 —— 曾经持有过什么本身就是记录 */
+  .self-card--faded {
+    opacity: 0.55;
+    border-style: dotted;
+  }
+
+  /* 专长树的节点 */
+  .self-node {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+  }
+  .self-node--taken {
+    color: hsl(var(--primary));
+  }
+  .self-node--open {
+    color: hsl(var(--foreground));
+  }
+  .self-node--locked {
+    color: hsl(var(--muted-foreground));
+  }
+}
