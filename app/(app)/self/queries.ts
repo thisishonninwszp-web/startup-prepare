@@ -223,6 +223,8 @@ export type SelfPanel = {
   /** 击杀换算需要的原始计数（都是已经发生过的动作，不额外记账）。 */
   bodyLogs: number;
   concludedBattles: number;
+  /** 原始聚合。称号与流派要用到面板没有暴露的那些计数。 */
+  raw: PanelInput;
 };
 
 export type BodyLogRow = {
@@ -544,6 +546,7 @@ export async function getSelfPanel(userId: string): Promise<SelfPanel> {
     spread: specialization(panel),
     bodyLogs: input.trainingLogs,
     concludedBattles: concludedBattles.length,
+    raw: input,
   };
 }
 

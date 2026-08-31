@@ -46,6 +46,11 @@ import {
   SKILL_GROUP_NAMES,
 } from "@/lib/domains/self-model/skills";
 import {
+  buildProgress,
+  evaluateTitles,
+  matchBuild,
+} from "@/lib/domains/self-model/titles";
+import {
   getSelfLedger,
   getSelfPanel,
   getSelfSkills,
@@ -475,6 +480,64 @@ export default async function SelfPage() {
     0
   );
 
+  const heldTraitNames = heldTraits.map((trait) => trait.name);
+  const build = matchBuild(heldTraitNames);
+  const nextBuilds = buildProgress(heldTraitNames).slice(0, 3);
+
+  // 最长连续命中：按结算时间排序后数一遍。
+  const settledInOrder = entries
+    .flatMap((entry) => entry.predictions)
+    .concat(ledger.looseSettled)
+    .filter((prediction) => prediction.outcome !== "pending")
+    .sort(
+      (a, b) =>
+        Date.parse(a.resolved_at ?? a.due_at) -
+        Date.parse(b.resolved_at ?? b.due_at)
+    );
+  let streak = 0;
+  let longestHitStreak = 0;
+  for (const prediction of settledInOrder) {
+    streak = prediction.outcome === "hit" ? streak + 1 : 0;
+    longestHitStreak = Math.max(longestHitStreak, streak);
+  }
+
+  const skillValues = skillState.skills.map((skill) => skill.value);
+  const titles = evaluateTitles({
+    level: progress.level,
+    kills,
+    refuted: entries.filter((entry) => entry.hypothesis.tier === "refuted").length,
+    loadBearing: entries.filter(
+      (entry) => entry.hypothesis.tier === "load_bearing"
+    ).length,
+    settledForecasts: calibration.settled,
+    hitForecasts: calibration.hits,
+    longestHitStreak,
+    litDomains: panel.panel.domains.filter((domain) => domain.lit > 0).length,
+    coverage: { lit: panel.panel.lit, total: panel.panel.total },
+    distinctContexts: panel.raw.distinctContexts,
+    windows: windows.length,
+    contraryWindows: panel.raw.painNo,
+    heldTraits: heldTraitNames,
+    uniqueTraits: heldTraits.filter((trait) => trait.rarity === "unique").length,
+    completeSets: sets.filter((set) => set.complete).length,
+    skillTicks: openTicks,
+    maxSkill: skillValues.length > 0 ? Math.max(...skillValues) : 0,
+    skillsAbove: (threshold) =>
+      skillValues.filter((value) => value >= threshold).length,
+    feats: skillState.feats.filter((feat) => feat.taken).length,
+    trainingDays: panel.raw.trainingDays,
+    longestSpanDays: panel.raw.longestSpanDays,
+    exposures: panel.raw.exposures,
+    newFaces: panel.raw.newFaces,
+    acceptedProposals: panel.raw.proposalsAccepted,
+    commitments: {
+      done: panel.raw.commitmentsDone,
+      total: panel.raw.commitmentsTotal,
+    },
+    sleepEnoughDays: panel.raw.sleepEnoughDays,
+  });
+  const earnedTitles = titles.filter((title) => title.earned);
+
   const quests = buildQuests({
     hypotheses: entries.map((entry) => ({
       id: entry.hypothesis.id,
@@ -513,6 +576,36 @@ export default async function SelfPage() {
         title="自我"
         description="关于自己的判断，只有先押注、再挨打，才算数。这里不给人格标签，只记可证伪的条件命题。"
       />
+
+      <section className="mb-6">
+        <div className="self-frame flex flex-wrap items-end gap-x-6 gap-y-3 p-5">
+          <div>
+            <p className="self-label">流派 · 由持有的特性推出</p>
+            <p className="text-2xl font-semibold">
+              {build ? `${build.def.mark} ${build.def.name}` : "🚶 游民"}
+            </p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {build
+                ? `${build.def.play} · 天然弱点：${build.def.weakness}`
+                : "还没有两条特性对上同一种打法。流派不是选的，是长出来的。"}
+            </p>
+          </div>
+          <div className="ml-auto min-w-[14rem]">
+            <p className="self-label">离最近的几派还差</p>
+            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+              {nextBuilds.map((item) => (
+                <li key={item.def.key}>
+                  {item.def.mark} {item.def.name} {item.matched.length}/
+                  {item.def.traits.length}
+                  {item.missing.length > 0 && (
+                    <span> · 差 {item.missing.slice(0, 2).join(" · ")}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
 
       <section className="mb-8 grid gap-3 sm:grid-cols-3">
         <Stat
@@ -612,6 +705,31 @@ export default async function SelfPage() {
             只有工作这一个域亮着的时候，台账里没有任何一条能升上去。
           </span>
         </p>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">称号</h2>
+          <p className="text-sm text-muted-foreground">
+            已获 {earnedTitles.length}/{titles.length} · 不参与任何计算，纯粹是记下来
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {titles.map((title) => (
+            <span
+              key={title.def.key}
+              className={`self-panel px-2.5 py-1 text-[13px] ${
+                title.earned ? "" : "border-dashed text-muted-foreground"
+              }`}
+              title={title.def.requirement}
+            >
+              <b className="font-semibold">{title.def.name}</b>{" "}
+              <span className="text-xs text-muted-foreground">
+                {title.def.requirement}
+              </span>
+            </span>
+          ))}
+        </div>
       </section>
       </TabsContent>
 
