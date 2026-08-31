@@ -28,10 +28,10 @@ import {
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
 import { isoWeekKey } from "@/lib/domains/self-model/quests";
 import {
-  comboSpectrumKey,
-  scanLibrary,
-} from "@/lib/domains/self-model/trait-library";
-import { getSelfPanel, nextHypothesisCode } from "./queries";
+  scanCatalog,
+  spectrumKeyOf,
+} from "@/lib/domains/self-model/catalog";
+import { getSelfPanel, getTraitCatalog, nextHypothesisCode } from "./queries";
 
 
 
@@ -673,7 +673,10 @@ export async function syncLibraryTraits(): Promise<{
   faded: string[];
 }> {
   const userId = await requireUserId();
-  const { panel } = await getSelfPanel(userId);
+  const [{ panel }, catalog] = await Promise.all([
+    getSelfPanel(userId),
+    getTraitCatalog(),
+  ]);
 
   const { data, error } = await supabaseAdmin
     .from("self_traits")
@@ -692,51 +695,33 @@ export async function syncLibraryTraits(): Promise<{
     spectrumKey: row.spectrum_key,
   }));
 
-  const result = scanLibrary(panel, held);
+  const result = scanCatalog(panel, catalog, held);
 
   if (result.grant.length > 0) {
     const { error: insertError } = await supabaseAdmin
       .from("self_traits")
       .insert(
-        result.grant.map((def) => ({
+        result.grant.map((entry) => ({
           user_id: userId,
-          spectrum_key: def.spectrumKey,
-          name: def.name,
-          modifiers: def.modifiers,
-          backfire: def.backfire ?? null,
-          equip_note: def.equipNote ?? null,
+          spectrum_key: spectrumKeyOf(entry),
+          name: entry.name,
+          modifiers: entry.modifiers,
+          backfire: entry.backfire,
+          equip_note: entry.alarm
+            ? "⚠️ 报警型：集齐不是奖励，是提醒"
+            : entry.equipNote,
+          set_key: entry.setKey,
           source: "library",
-          library_key: def.key,
+          library_key: entry.key,
         }))
       );
     if (insertError) throw new Error(insertError.message);
-    for (const def of result.grant) {
-      await recordEvent(userId, "trait_granted", `解锁「${def.name}」`, def.gloss);
-    }
-  }
-
-  if (result.combos.length > 0) {
-    const { error: comboError } = await supabaseAdmin
-      .from("self_traits")
-      .insert(
-        result.combos.map((combo) => ({
-          user_id: userId,
-          spectrum_key: comboSpectrumKey(combo),
-          name: combo.name,
-          modifiers: combo.modifiers,
-          backfire: combo.backfire ?? null,
-          equip_note: combo.alarm ? "⚠️ 报警型：集齐不是奖励，是提醒" : null,
-          source: "library",
-          library_key: combo.key,
-        }))
-      );
-    if (comboError) throw new Error(comboError.message);
-    for (const combo of result.combos) {
+    for (const entry of result.grant) {
       await recordEvent(
         userId,
         "trait_granted",
-        `${combo.alarm ? "⚠️ " : ""}解锁组合「${combo.name}」`,
-        combo.gloss
+        `${entry.alarm ? "⚠️ " : ""}解锁「${entry.name}」`,
+        entry.gloss
       );
     }
   }
@@ -754,12 +739,9 @@ export async function syncLibraryTraits(): Promise<{
 
   revalidatePath("/self");
   return {
-    granted: [
-      ...result.grant.map((def) => `${def.name} —— ${def.gloss}`),
-      ...result.combos.map(
-        (combo) => `${combo.alarm ? "⚠️ " : ""}${combo.name} —— ${combo.gloss}`
-      ),
-    ],
+    granted: result.grant.map(
+      (entry) => `${entry.alarm ? "⚠️ " : ""}${entry.name} —— ${entry.gloss}`
+    ),
     faded: result.fade.map((item) => `${item.name}：${item.reason}`),
   };
 }

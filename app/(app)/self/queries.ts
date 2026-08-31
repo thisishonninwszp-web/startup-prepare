@@ -19,6 +19,9 @@ import {
   type SkillGroup,
 } from "@/lib/domains/self-model/skills";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
+import {
+  type CatalogEntry,
+} from "@/lib/domains/self-model/catalog";
 import { traitStrength } from "@/lib/domains/self-model/trait-library";
 import {
   referenceClasses,
@@ -1187,4 +1190,36 @@ export async function getDispositions(
     result[key] = { claimed: true, tier: linked?.hypothesis.tier ?? null };
   }
   return result;
+}
+
+
+// ---------------------------------------------------------------------------
+// 特性目录：定义在表里，判定仍然在代码里。
+// 加到 300、500 条都只是灌数据，不用改代码。
+// ---------------------------------------------------------------------------
+
+export async function getTraitCatalog(): Promise<CatalogEntry[]> {
+  const { data, error } = await supabaseAdmin
+    .from("trait_catalog")
+    .select(
+      "key, name, gloss, family, spectrum_key, pole, conditions, modifiers, backfire, equip_note, set_key, rarity_hint, alarm, neutral"
+    );
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    key: row.key as string,
+    name: row.name as string,
+    gloss: row.gloss as string,
+    family: row.family as CatalogEntry["family"],
+    spectrumKey: (row.spectrum_key as string | null) ?? null,
+    pole: (row.pole as CatalogEntry["pole"]) ?? null,
+    conditions: (row.conditions ?? []) as CatalogEntry["conditions"],
+    modifiers: (row.modifiers ?? []) as CatalogEntry["modifiers"],
+    backfire: (row.backfire as string | null) ?? null,
+    equipNote: (row.equip_note as string | null) ?? null,
+    setKey: (row.set_key as string | null) ?? null,
+    rarityHint: (row.rarity_hint as string) ?? "common",
+    alarm: Boolean(row.alarm),
+    neutral: Boolean(row.neutral),
+  }));
 }
