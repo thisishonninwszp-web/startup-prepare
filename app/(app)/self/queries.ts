@@ -18,6 +18,7 @@ import {
   type FeatAvailability,
   type SkillGroup,
 } from "@/lib/domains/self-model/skills";
+import { findDisposition } from "@/lib/domains/self-model/dispositions";
 import { traitStrength } from "@/lib/domains/self-model/trait-library";
 import {
   referenceClasses,
@@ -701,6 +702,7 @@ export async function getSelfTraits(
 export type SkillRow = {
   key: string;
   name: string;
+  gloss: string;
   group: SkillGroup;
   main: MainKey;
   value: number;
@@ -1153,4 +1155,36 @@ export async function getSelfDeeds(userId: string): Promise<SelfDeeds> {
   }));
 
   return { deeds, classes: referenceClasses(deeds) };
+}
+
+
+/** 已认领的气质，以及各自有没有被假设撑住。 */
+export async function getDispositions(
+  userId: string,
+  ledger: SelfLedger
+): Promise<Record<string, { claimed: boolean; tier: string | null }>> {
+  const { data, error } = await supabaseAdmin
+    .from("self_declarations")
+    .select("text")
+    .eq("user_id", userId)
+    .like("text", "disposition:%");
+  if (error) throw new Error(error.message);
+
+  const claimed = new Set(
+    ((data ?? []) as { text: string }[]).map((row) =>
+      row.text.replace("disposition:", "")
+    )
+  );
+
+  const result: Record<string, { claimed: boolean; tier: string | null }> = {};
+  for (const key of claimed) {
+    const def = findDisposition(key);
+    const linked = def
+      ? ledger.entries.find((entry) =>
+          (entry.hypothesis.scope_note ?? "").includes(def.name)
+        )
+      : undefined;
+    result[key] = { claimed: true, tier: linked?.hypothesis.tier ?? null };
+  }
+  return result;
 }

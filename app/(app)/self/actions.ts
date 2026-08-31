@@ -20,6 +20,7 @@ import {
   isSkillKey,
   rustFor,
 } from "@/lib/domains/self-model/skills";
+import { findDisposition } from "@/lib/domains/self-model/dispositions";
 import { isoWeekKey } from "@/lib/domains/self-model/quests";
 import {
   comboSpectrumKey,
@@ -818,5 +819,63 @@ export async function recordDeed(input: {
     cost: input.cost?.trim() || null,
   });
   if (error) throw new Error(error.message);
+  revalidatePath("/self");
+}
+
+/**
+ * 认领 / 取消一条气质。
+ * 气质进 self_declarations —— 它没有分母，所以不进任何计算：
+ * 不影响属性、不参与品级、不喂怪物清单。它唯一的去处是被翻译成
+ * 一条可证伪的假设，然后走和别的特性一样的路。
+ */
+export async function claimDisposition(key: string): Promise<void> {
+  const userId = await requireUserId();
+  const def = findDisposition(key);
+  if (!def) throw new Error("未知的气质");
+
+  const { data } = await supabaseAdmin
+    .from("self_declarations")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("text", `disposition:${key}`)
+    .maybeSingle();
+
+  if (data) {
+    const { error } = await supabaseAdmin
+      .from("self_declarations")
+      .delete()
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabaseAdmin.from("self_declarations").insert({
+      user_id: userId,
+      text: `disposition:${key}`,
+    });
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath("/self");
+}
+
+/** 把一条气质翻成可证伪的假设。翻完它就不再只是自述了。 */
+export async function promoteDisposition(key: string): Promise<void> {
+  const userId = await requireUserId();
+  const def = findDisposition(key);
+  if (!def) throw new Error("未知的气质");
+
+  const code = await nextHypothesisCode(userId);
+  const { error } = await supabaseAdmin.from("self_hypotheses").insert({
+    user_id: userId,
+    code,
+    kind: "context_behavior",
+    statement: `${def.claim}——${def.test}`,
+    scope_note: `由气质「${def.name}」翻译而来`,
+  });
+  if (error) throw new Error(error.message);
+  await recordEvent(
+    userId,
+    "tier_changed",
+    `气质「${def.name}」立成了假设 ${code}`,
+    def.test
+  );
   revalidatePath("/self");
 }

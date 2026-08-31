@@ -56,6 +56,7 @@ import { priorFor } from "@/lib/domains/self-model/deeds";
 import {
   getSelfLedger,
   getSelfPanel,
+  getDispositions,
   getNpcs,
   getQuestSightings,
   getSelfDeeds,
@@ -66,9 +67,12 @@ import {
   recordDerivedEvents,
   type SelfLedgerEntry,
 } from "./queries";
+import { byAxis, stateOf } from "@/lib/domains/self-model/dispositions";
 import {
   CharacterCreationForm,
   DeedForm,
+  DispositionToggle,
+  PromoteDispositionButton,
   QuestRollCall,
   ScanLibraryButton,
   SettleSkillsButton,
@@ -621,12 +625,14 @@ export default async function SelfPage() {
       )
     )
   );
-  const [report, npcs, events, sightings, deedData] = await Promise.all([
+  const [report, npcs, events, sightings, deedData, dispositions] =
+    await Promise.all([
     getWeeklyReport(user!.id),
     getNpcs(user!.id),
     getSelfEvents(user!.id),
     getQuestSightings(user!.id),
     getSelfDeeds(user!.id),
+    getDispositions(user!.id, ledger),
   ]);
 
   const { calibration, entries, pending } = ledger;
@@ -1195,7 +1201,10 @@ export default async function SelfPage() {
                           key={skill.key}
                           className="self-row flex flex-wrap items-center gap-2 py-1.5 text-[13px]"
                         >
-                          <span className="min-w-[7rem] flex-1">
+                          <span
+                            className="min-w-[7rem] flex-1 cursor-help decoration-dotted underline-offset-4 hover:underline"
+                            title={`${skill.name} —— ${skill.gloss}`}
+                          >
                             {skill.name}
                             {skill.passed.length > 0 && (
                               <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
@@ -1466,6 +1475,77 @@ export default async function SelfPage() {
           </details>
         )}
       </section>
+
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold">气质</h2>
+            <p className="text-sm text-muted-foreground">
+              INTP 那一类的标签。它没有分母，所以单独放 ——
+              声明归声明，不进任何计算。
+            </p>
+          </div>
+
+          {byAxis().map((group) => (
+            <div key={group.axis} className="self-panel">
+              <div className="self-panel__head">
+                <span className="self-label">{group.axis}</span>
+                <span className="text-sm font-medium">{group.name}</span>
+              </div>
+              <div className="self-panel__body">
+                {group.items.map((item) => {
+                  const own = dispositions[item.key];
+                  const state = stateOf({
+                    claimed: Boolean(own?.claimed),
+                    linkedHypothesisTier: own?.tier ?? null,
+                  });
+                  return (
+                    <div
+                      key={item.key}
+                      className="self-row flex flex-wrap items-baseline gap-x-2 py-2 text-[13px]"
+                    >
+                      <span
+                        className={
+                          state === "unclaimed"
+                            ? "text-muted-foreground"
+                            : "font-medium"
+                        }
+                      >
+                        {item.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        「{item.claim}」
+                      </span>
+                      {state === "declared" && (
+                        <span className="self-rarity self-rarity--common">
+                          声明 · 未验证
+                        </span>
+                      )}
+                      {state === "supported" && (
+                        <span className="self-rarity self-rarity--rare">
+                          有证据撑着
+                        </span>
+                      )}
+                      <span className="ml-auto flex shrink-0 items-center gap-2">
+                        <DispositionToggle
+                          dispositionKey={item.key}
+                          claimed={Boolean(own?.claimed)}
+                        />
+                        {state === "declared" && !own?.tier && (
+                          <PromoteDispositionButton dispositionKey={item.key} />
+                        )}
+                      </span>
+                      {state !== "unclaimed" && (
+                        <span className="w-full font-mono text-[11px] text-muted-foreground">
+                          怎么验：{item.test}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </section>
       </TabsContent>
 
       <TabsContent value="ledger" className="mt-6 space-y-8">

@@ -11,7 +11,9 @@ import {
   SKILL_GROUP_NAMES,
 } from "@/lib/domains/self-model/skills";
 import {
+  claimDisposition,
   createCharacter,
+  promoteDisposition,
   recordDeed,
   rollCallQuests,
   settleSkills,
@@ -92,7 +94,11 @@ export function CharacterCreationForm() {
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {SKILL_DEFS.filter((def) => def.group === group).map((def) => (
               <div key={def.key} className="flex items-center gap-2">
-                <Label htmlFor={`skill-${def.key}`} className="flex-1 truncate">
+                <Label
+                  htmlFor={`skill-${def.key}`}
+                  className="flex-1 cursor-help truncate decoration-dotted underline-offset-4 hover:underline"
+                  title={`${def.name} —— ${def.gloss}`}
+                >
                   {def.name}
                 </Label>
                 <Input
@@ -515,5 +521,51 @@ export function DeedForm() {
         {pending ? "记录中…" : "补录一条"}
       </Button>
     </form>
+  );
+}
+
+export function DispositionToggle({
+  dispositionKey,
+  claimed,
+}: {
+  dispositionKey: string;
+  claimed: boolean;
+}) {
+  const { pending, error, run } = useAction();
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant={claimed ? "default" : "outline"}
+        disabled={pending}
+        onClick={() => run(() => claimDisposition(dispositionKey))}
+      >
+        {claimed ? "✓ 像我" : "像我"}
+      </Button>
+      <Err message={error} />
+    </>
+  );
+}
+
+export function PromoteDispositionButton({
+  dispositionKey,
+}: {
+  dispositionKey: string;
+}) {
+  const { pending, error, run } = useAction();
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={() => run(() => promoteDisposition(dispositionKey))}
+      >
+        立成假设去验
+      </Button>
+      <Err message={error} />
+    </>
   );
 }
