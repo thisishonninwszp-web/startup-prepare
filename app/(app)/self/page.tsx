@@ -31,6 +31,7 @@ import type {
 import {
   TIER_LABELS as QUEST_TIER_LABELS,
   buildQuests,
+  fleeAdjustedExp,
   levelFromExp,
   tallyKills,
   type Quest,
@@ -54,6 +55,7 @@ import {
   getSelfLedger,
   getSelfPanel,
   getNpcs,
+  getQuestSightings,
   getSelfEvents,
   getSelfSkills,
   getSelfTraits,
@@ -63,6 +65,7 @@ import {
 } from "./queries";
 import {
   CharacterCreationForm,
+  QuestRollCall,
   ScanLibraryButton,
   SettleSkillsButton,
   TakeFeatButton,
@@ -318,7 +321,15 @@ function WeeklyReport({
   );
 }
 
-function QuestRow({ quest }: { quest: Quest }) {
+function QuestRow({
+  quest,
+  weeksSeen,
+}: {
+  quest: Quest;
+  weeksSeen: number;
+}) {
+  const fled = Math.max(0, weeksSeen - 1);
+  const exp = fleeAdjustedExp(quest.exp, weeksSeen);
   return (
     <div className="flex gap-3 border-b py-3 last:border-b-0">
       <span className="w-6 shrink-0 text-center text-base leading-6">
@@ -341,9 +352,19 @@ function QuestRow({ quest }: { quest: Quest }) {
         <p className="mt-1 font-mono text-[11px] text-muted-foreground">
           掉落 ▸ {quest.drop}
         </p>
+        {fled > 0 && (
+          <p className="mt-1 font-mono text-[11px] text-primary">
+            已出现 {weeksSeen} 周 · 你从它面前走开过 {fled} 次
+          </p>
+        )}
       </div>
-      <span className="shrink-0 whitespace-nowrap font-mono text-xs font-semibold text-primary">
-        {quest.attribute} +{quest.exp}
+      <span className="shrink-0 whitespace-nowrap text-right font-mono text-xs font-semibold text-primary">
+        {quest.attribute} +{exp}
+        {exp !== quest.exp && (
+          <span className="block text-[10px] font-normal text-muted-foreground">
+            逃跑加成 ×{(exp / quest.exp).toFixed(2)}
+          </span>
+        )}
       </span>
     </div>
   );
@@ -545,10 +566,11 @@ export default async function SelfPage() {
     getSelfPanel(user!.id),
   ]);
   const { traits, sets } = await getSelfTraits(user!.id, ledger);
-  const [report, npcs, events] = await Promise.all([
+  const [report, npcs, events, sightings] = await Promise.all([
     getWeeklyReport(user!.id),
     getNpcs(user!.id),
     getSelfEvents(user!.id),
+    getQuestSightings(user!.id),
   ]);
 
   const { calibration, entries, pending } = ledger;
@@ -872,8 +894,19 @@ export default async function SelfPage() {
           />
         ) : (
           <div className="self-panel px-5 py-1">
+            <QuestRollCall
+              quests={quests.map((quest) => ({
+                id: quest.id,
+                tier: quest.tier,
+                name: quest.name,
+              }))}
+            />
             {quests.map((quest) => (
-              <QuestRow key={quest.id} quest={quest} />
+              <QuestRow
+                key={quest.id}
+                quest={quest}
+                weeksSeen={sightings.get(quest.id) ?? 0}
+              />
             ))}
           </div>
         )}

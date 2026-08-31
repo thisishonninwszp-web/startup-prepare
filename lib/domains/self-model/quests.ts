@@ -48,6 +48,35 @@ export type Quest = {
   taunt?: string;
 };
 
+/** ISO 周编号，例 2026-W35。一周只点一次名。 */
+export function isoWeekKey(date: Date): string {
+  const target = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+  // ISO：周四决定这一周属于哪一年。
+  const day = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(
+    ((target.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7
+  );
+  return `${target.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/**
+ * 逃跑加成：一只怪每被躲开一周，掉落经验上浮。
+ * 躲得越久越难开口，所以回报也该越高 —— 这是这套系统里唯一一处
+ * "拖延反而给更多"，而它成立的理由是：拖延本身已经付过代价了。
+ */
+export const FLEE_BONUS_PER_WEEK = 0.25;
+export const FLEE_BONUS_CAP = 2;
+
+export function fleeAdjustedExp(baseExp: number, weeksSeen: number): number {
+  const fled = Math.max(0, weeksSeen - 1);
+  const multiplier = Math.min(1 + fled * FLEE_BONUS_PER_WEEK, 1 + FLEE_BONUS_CAP);
+  return Math.round(baseExp * multiplier);
+}
+
 export type KillTally = {
   trash: number;
   elite: number;

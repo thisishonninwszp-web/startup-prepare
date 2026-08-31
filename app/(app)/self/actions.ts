@@ -19,6 +19,7 @@ import {
   isSkillKey,
   rustFor,
 } from "@/lib/domains/self-model/skills";
+import { isoWeekKey } from "@/lib/domains/self-model/quests";
 import {
   comboSpectrumKey,
   scanLibrary,
@@ -748,4 +749,30 @@ export async function syncLibraryTraits(): Promise<{
     ],
     faded: result.fade.map((item) => `${item.name}：${item.reason}`),
   };
+}
+
+/**
+ * 点名：把这一周出现过的怪记一笔。
+ * 一周只记一次（数据库唯一索引挡住），所以刷新页面不会把"出现周数"刷高。
+ * 由客户端在页面挂载后调用一次 —— 渲染时写库会在每次预取时重复触发。
+ */
+export async function rollCallQuests(
+  quests: { id: string; tier: "trash" | "elite" | "boss"; name: string }[]
+): Promise<void> {
+  if (quests.length === 0) return;
+  const userId = await requireUserId();
+  const weekKey = isoWeekKey(new Date());
+
+  const { error } = await supabaseAdmin.from("self_quest_sightings").upsert(
+    quests.map((quest) => ({
+      user_id: userId,
+      quest_id: quest.id,
+      week_key: weekKey,
+      tier: quest.tier,
+      name: quest.name,
+    })),
+    { onConflict: "user_id,quest_id,week_key", ignoreDuplicates: true }
+  );
+  // 点名是旁路，失败不该影响任何事。
+  if (error) console.error("quest roll call failed", error.message);
 }

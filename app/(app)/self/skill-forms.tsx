@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import {
 } from "@/lib/domains/self-model/skills";
 import {
   createCharacter,
+  rollCallQuests,
   settleSkills,
   syncLibraryTraits,
   takeFeat,
@@ -297,4 +298,22 @@ export function ScanLibraryButton() {
       )}
     </div>
   );
+}
+
+/**
+ * 页面挂载后点一次名，把这一周出现过的怪记上。
+ * 放在客户端而不是渲染时：渲染时写库会在每次预取、每次刷新时重复触发。
+ */
+export function QuestRollCall({
+  quests,
+}: {
+  quests: { id: string; tier: "trash" | "elite" | "boss"; name: string }[];
+}) {
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current || quests.length === 0) return;
+    done.current = true;
+    void rollCallQuests(quests);
+  }, [quests]);
+  return null;
 }

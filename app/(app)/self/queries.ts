@@ -1051,3 +1051,20 @@ export async function recordDerivedEvents(
     ignoreDuplicates: true,
   });
 }
+
+/** 每只怪出现过多少周。用来算"你从它面前走开过几次"。 */
+export async function getQuestSightings(
+  userId: string
+): Promise<Map<string, number>> {
+  const { data, error } = await supabaseAdmin
+    .from("self_quest_sightings")
+    .select("quest_id")
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+
+  const counts = new Map<string, number>();
+  for (const row of (data ?? []) as { quest_id: string }[]) {
+    counts.set(row.quest_id, (counts.get(row.quest_id) ?? 0) + 1);
+  }
+  return counts;
+}

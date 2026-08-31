@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_QUESTS,
+  fleeAdjustedExp,
+  isoWeekKey,
   TIER_EXP,
   buildQuests,
   levelFromExp,
@@ -253,5 +255,30 @@ describe("state quests", () => {
   it("nudges the first feat once a skill is clearly good enough", () => {
     expect(ids({ maxSkill: 60, takenFeats: 0 })).toContain("state:firstfeat");
     expect(ids({ maxSkill: 60, takenFeats: 1 })).not.toContain("state:firstfeat");
+  });
+});
+
+describe("sightings", () => {
+  it("numbers ISO weeks so a refresh cannot inflate the count", () => {
+    expect(isoWeekKey(new Date("2026-08-31T00:00:00Z"))).toBe(
+      isoWeekKey(new Date("2026-09-04T23:00:00Z"))
+    );
+    expect(isoWeekKey(new Date("2026-08-31T00:00:00Z"))).not.toBe(
+      isoWeekKey(new Date("2026-09-08T00:00:00Z"))
+    );
+  });
+
+  it("pays nothing extra the first week a monster shows up", () => {
+    expect(fleeAdjustedExp(200, 1)).toBe(200);
+    expect(fleeAdjustedExp(200, 0)).toBe(200);
+  });
+
+  it("raises the drop for every week you walked away", () => {
+    expect(fleeAdjustedExp(200, 3)).toBe(300);
+    expect(fleeAdjustedExp(200, 5)).toBe(400);
+  });
+
+  it("caps the bonus so an old monster cannot become the whole game", () => {
+    expect(fleeAdjustedExp(200, 40)).toBe(600);
   });
 });
