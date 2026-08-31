@@ -404,60 +404,70 @@ export const FEAT_DEFS: FeatDef[] = [
     ["深访", { asking: 45, observing: 40 }, "访谈记录自动生成一条候选假设"],
     ["顾客侧写", { observing: 60, analysis: 50 }, "顾客域的怪物经验 ×1.5"],
     ["需求考古", { asking: 75, research: 60 }, "从旧对话里翻出被忽略的需求线索"],
+    ["问出真相", { asking: 90, observing: 75 }, "别人愿意对你说他没对别人说过的话"],
   ]),
   ...lineOf("delivery", [
     ["独狼工坊", { coding: 30, prototyping: 30 }, "无搭档时「半座桥」的惩罚减半"],
     ["一人交付", { automation: 45, testing: 40 }, "收敛率按交付物计，不按项目数计"],
     ["自动流水线", { automation: 60, debugging: 55 }, "重复工作转成脚本，节省的时间进「自己的时间」"],
     ["无人值守", { automation: 75, testing: 65 }, "东西在你不看的时候也在跑"],
+    ["一个人成军", { automation: 90, testing: 75 }, "一个人的产出看起来像一个小团队"],
   ]),
   ...lineOf("opening", [
     ["破冰", { coldopen: 30 }, "新面孔类怪物经验 ×1.5"],
     ["陌生局", { coldopen: 45, trustbuilding: 40 }, "进新场子额外记一条情境，加速特质举证"],
     ["引荐人", { trustbuilding: 60, keepingup: 45 }, "别人开始替你介绍人"],
     ["自来客", { trustbuilding: 75, introducing: 60 }, "有人主动找上门"],
+    ["门被敲开", { coldopen: 90, trustbuilding: 75 }, "你想认识的人，基本都能认识到"],
   ]),
   ...lineOf("calibration", [
     ["铁口", { forecasting: 30 }, "押注时显示你在该领域的历史命中率"],
     ["赔率盘", { forecasting: 45, analysis: 40 }, "把握度自动按你的历史偏移校正"],
     ["预案", { forecasting: 60, retro: 50 }, "押注时同时写下「如果错了就做什么」"],
     ["先手", { forecasting: 75, observing: 60 }, "在事情发生前就摆好对账条件"],
+    ["说了算", { forecasting: 90, analysis: 70 }, "你的判断被当成基准线，包括被你自己"],
   ]),
   ...lineOf("persuasion", [
     ["讲得清", { explaining: 30 }, "同一件事能用三句话说完"],
     ["带得动", { persuading: 45, presenting: 40 }, "提议被采纳率进入「说话有人听」的加成"],
     ["定调", { persuading: 60, negotiating: 50 }, "在别人还没定调时先给出框架"],
     ["背书", { persuading: 75, trustbuilding: 60 }, "你说的话本身成为理由"],
+    ["一句定调", { persuading: 90, presenting: 75 }, "你开口之后，讨论的框架就变了"],
   ]),
   ...lineOf("business", [
     ["会算账", { finance: 30 }, "底牌快照自动提醒，跑道变化进事迹"],
     ["定得出价", { pricing: 45, finance: 40 }, "价格不再靠猜，有可复算的依据"],
     ["谈得成", { negotiating: 60, partnering: 50 }, "谈判类记录自动生成一条参照类"],
     ["拿得到钱", { pricing: 75, negotiating: 65 }, "从「有人用」走到「有人付钱」"],
+    ["自己养活自己", { pricing: 90, finance: 75 }, "收入覆盖成本，且知道为什么"],
   ]),
   ...lineOf("organizing", [
     ["交得出去", { delegating: 30 }, "把一件事完整地交给别人，而不是分一半"],
     ["带得动人", { delegating: 45, feedback: 40 }, "给反馈之后对方真的改了"],
     ["立得住规矩", { processdesign: 60, delegating: 55 }, "流程写下来之后不用你盯"],
     ["不在也转", { processdesign: 75, hiring: 55 }, "你休假一周，东西照样在走"],
+    ["组织自转", { processdesign: 90, hiring: 70 }, "你离开一个月，东西照样长"],
   ]),
   ...lineOf("body", [
     ["有日课", { training: 30 }, "训练类怪物经验 ×1.5"],
     ["抗得住", { training: 45, recovery: 40 }, "高压期的状态波动幅度变小"],
     ["恢复快", { sleepcraft: 60, recovery: 55 }, "挫折后回到基线的天数缩短"],
     ["常年在线", { training: 75, sleepcraft: 65 }, "身体不再是任何计划的变量"],
+    ["身体不再是变量", { training: 90, sleepcraft: 75 }, "任何计划都不用再为身体留余量"],
   ]),
   ...lineOf("learning", [
     ["现学现卖", { learning: 30 }, "先做后补的学习方式获得加成"],
     ["拆得开", { research: 45, analysis: 40 }, "把一个大问题拆成能各自验证的小问题"],
     ["做实验", { experiment: 60, analysis: 55 }, "设计出能区分两种解释的观察"],
     ["自建方法", { experiment: 75, explaining: 60 }, "总结出别人也能照着做的做法"],
+    ["自成一派", { experiment: 90, explaining: 75 }, "你的做法被别人当方法学"],
   ]),
   ...lineOf("writing", [
     ["写得完", { writing: 30 }, "连续四周每周产出一篇"],
     ["有人读", { writing: 45, headline: 40 }, "单篇触达 100 人"],
     ["有人转", { writing: 60, headline: 55 }, "写作类曝光进入「敢给人看」的加成"],
     ["有人付费", { writing: 75, pricing: 50 }, "因文字产生第一笔收入"],
+    ["有人等你写", { writing: 90, headline: 75 }, "你不写的时候有人问你什么时候写"],
   ]),
 
   ...lineOf("scouting", [
@@ -465,24 +475,28 @@ export const FEAT_DEFS: FeatDef[] = [
     ["拼图", { recon: 45, research: 40 }, "从零散信息里拼出对手的处境"],
     ["看穿打法", { recon: 60, analysis: 50 }, "说清对手靠什么活着"],
     ["预判动作", { recon: 75, forecasting: 55 }, "在对手动作之前押注，并且对账"],
+    ["先知道", { recon: 90, forecasting: 70 }, "对手的动作你比大多数人早知道一步"],
   ]),
   ...lineOf("compounding", [
     ["记得住人", { keepingup: 30 }, "记得对方上次说过什么"],
     ["有来往", { keepingup: 45, trustbuilding: 40 }, "不只在有事时才联系"],
     ["被想起", { trustbuilding: 60, keepingup: 55 }, "别人遇到相关的事会想到你"],
     ["被推荐", { trustbuilding: 75, introducing: 60 }, "有人替你把你介绍出去"],
+    ["人找上门", { trustbuilding: 90, keepingup: 75 }, "机会通过老关系自己找过来"],
   ]),
   ...lineOf("craft", [
     ["做得像", { prototyping: 30 }, "原型能骗过真实用户测出反应"],
     ["做得省", { prototyping: 45, productdesign: 40 }, "用最少的东西验掉最大的未知"],
     ["做得稳", { testing: 60, debugging: 50 }, "测试真的挡下过一次事故"],
     ["做得久", { productdesign: 75, testing: 65 }, "东西撑过第三次需求变化"],
+    ["做的东西留得住", { productdesign: 90, testing: 75 }, "东西过了三年还有人在用"],
   ]),
   ...lineOf("grit", [
     ["撑得住", { takingheat: 30 }, "被批评后不当场反驳"],
     ["缓得过来", { recovery: 45, takingheat: 40 }, "挫折后能说出自己现在状态不好"],
     ["不怕难看", { takingheat: 60, feedback: 50 }, "主动去找对自己不利的评价"],
     ["越挫越准", { recovery: 75, retro: 65 }, "每次挫折都换回一条能用的判断"],
+    ["摔不散", { recovery: 90, retro: 75 }, "再难看的一次也能拆出能用的东西"],
   ]),
 
   // ---------------- 组合专长 ----------------
@@ -570,6 +584,132 @@ export const FEAT_DEFS: FeatDef[] = [
     ["grit3", "body2"],
     { recovery: 60, training: 45 },
     "身体和心力互相兜底，长周期项目不因为任何一边掉线"
+  ),
+  capstone(
+    "独行作坊",
+    "独行作坊",
+    ["craft4", "delivery3"],
+    { testing: 70, automation: 65 },
+    "做得稳的东西自己也能一个人交付"
+  ),
+  capstone(
+    "门客",
+    "门客",
+    ["compounding4", "persuasion3"],
+    { keepingup: 70, persuading: 65 },
+    "老关系里说得上话"
+  ),
+  capstone(
+    "斥候",
+    "斥候",
+    ["scouting4", "interview3"],
+    { recon: 70, asking: 65 },
+    "情报既来自公开信息也来自人"
+  ),
+  capstone(
+    "守夜人",
+    "守夜人",
+    ["grit4", "organizing3"],
+    { recovery: 70, processdesign: 65 },
+    "扛得住的人才立得住规矩"
+  ),
+  capstone(
+    "说书匠",
+    "说书匠",
+    ["writing4", "persuasion3"],
+    { writing: 70, persuading: 65 },
+    "写的和讲的是同一套东西"
+  ),
+  capstone(
+    "账房",
+    "账房",
+    ["business4", "calibration3"],
+    { finance: 70, forecasting: 65 },
+    "钱的判断也进对账"
+  ),
+  capstone(
+    "试炼场",
+    "试炼场",
+    ["learning4", "craft3"],
+    { experiment: 70, prototyping: 65 },
+    "做实验和做东西是同一件事"
+  ),
+  capstone(
+    "老兵",
+    "老兵",
+    ["body4", "grit3"],
+    { training: 70, takingheat: 65 },
+    "身体和心力互相兜底"
+  ),
+  capstone(
+    "引路人",
+    "引路人",
+    ["opening4", "compounding3"],
+    { coldopen: 70, keepingup: 65 },
+    "新认识的人会留下来"
+  ),
+  capstone(
+    "庖丁",
+    "庖丁",
+    ["craft4", "learning3"],
+    { productdesign: 70, experiment: 65 },
+    "做之前先知道要验什么"
+  ),
+  capstone(
+    "掌柜",
+    "掌柜",
+    ["business4", "organizing3"],
+    { pricing: 70, delegating: 65 },
+    "赚钱的事有人接得住"
+  ),
+  capstone(
+    "测风人",
+    "测风人",
+    ["calibration4", "scouting3"],
+    { forecasting: 70, recon: 65 },
+    "押注之前先看清对手"
+  ),
+  capstone(
+    "传薪",
+    "传薪",
+    ["learning4", "writing3"],
+    { explaining: 70, writing: 65 },
+    "方法写下来别人能照做"
+  ),
+  capstone(
+    "坐堂",
+    "坐堂",
+    ["interview4", "business3"],
+    { asking: 70, pricing: 65 },
+    "访谈能直接谈成一笔"
+  ),
+  capstone(
+    "修桥人",
+    "修桥人",
+    ["organizing4", "compounding3"],
+    { delegating: 70, trustbuilding: 65 },
+    "把人和事都接起来"
+  ),
+  capstone(
+    "铁砧心",
+    "铁砧心",
+    ["grit4", "body3"],
+    { takingheat: 70, training: 65 },
+    "挨得住也练得动"
+  ),
+  capstone(
+    "走线人",
+    "走线人",
+    ["scouting4", "opening3"],
+    { recon: 70, coldopen: 65 },
+    "情报和人脉同时往前推"
+  ),
+  capstone(
+    "定盘星",
+    "定盘星",
+    ["calibration4", "persuasion3"],
+    { forecasting: 70, persuading: 65 },
+    "算得准而且说得动"
   ),
 ];
 

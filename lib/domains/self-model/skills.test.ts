@@ -187,17 +187,17 @@ describe("featPointsFor", () => {
 });
 
 describe("the tree", () => {
-  it("ships fourteen lines four deep plus the crossovers", () => {
-    expect(FEAT_TOTAL).toBe(68);
+  it("ships fourteen lines five deep plus thirty crossovers", () => {
+    expect(FEAT_TOTAL).toBe(100);
     const byLine = new Map<string, number>();
     for (const def of FEAT_DEFS) {
       byLine.set(def.line, (byLine.get(def.line) ?? 0) + 1);
     }
     for (const line of FEAT_LINES) {
       if (line === "capstone") continue;
-      expect(byLine.get(line), line).toBe(4);
+      expect(byLine.get(line), line).toBe(5);
     }
-    expect(byLine.get("capstone")).toBe(12);
+    expect(byLine.get("capstone")).toBe(30);
   });
 
   it("chains each line so you cannot skip a step", () => {
@@ -217,6 +217,18 @@ describe("the tree", () => {
       for (let i = 1; i < peaks.length; i += 1) {
         expect(peaks[i], `${line}${i + 1}`).toBeGreaterThan(peaks[i - 1]);
       }
+    }
+  });
+
+  it("gives every line a named endpoint at depth five", () => {
+    for (const line of FEAT_LINES) {
+      if (line === "capstone") continue;
+      const end = FEAT_DEFS.find(
+        (def) => def.line === line && def.depth === 5
+      );
+      expect(end, line).toBeTruthy();
+      // 终点必须是一句"走到底长什么样"，不是又一个技能门槛。
+      expect(end!.effect.length).toBeGreaterThan(8);
     }
   });
 
