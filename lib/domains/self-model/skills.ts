@@ -137,101 +137,206 @@ export function rustFor(state: SkillState): number {
 // 专长
 // ---------------------------------------------------------------------------
 
+export const FEAT_LINES = [
+  "interview",
+  "delivery",
+  "opening",
+  "calibration",
+  "persuasion",
+  "business",
+  "organizing",
+  "body",
+  "learning",
+  "writing",
+  "capstone",
+] as const;
+export type FeatLine = (typeof FEAT_LINES)[number];
+
+export const FEAT_LINE_NAMES: Record<FeatLine, string> = {
+  interview: "访谈线",
+  delivery: "交付线",
+  opening: "开口线",
+  calibration: "校准线",
+  persuasion: "说服线",
+  business: "经营线",
+  organizing: "组织线",
+  body: "体魄线",
+  learning: "学习线",
+  writing: "写作线",
+  capstone: "组合专长",
+};
+
 export type FeatDef = {
   key: string;
   name: string;
+  line: FeatLine;
+  /** 这条线上的第几格，从 1 开始。组合专长固定为 5。 */
+  depth: number;
   /** 需要的技能门槛。 */
   skills: Record<string, number>;
   /** 需要持有的特性（光谱端点名）。 */
   traits?: string[];
-  /** 需要的其它计数条件，由调用方喂进来。 */
+  /** 其它计数条件。 */
   counters?: Partial<Record<"settledForecasts" | "litDomains", number>>;
   effect: string;
-  /** 前置的专长。构成树。 */
+  /** 前置的专长。同一条线自动串起来，跨线的手写。 */
   requires?: string[];
 };
 
+/**
+ * 一条路线：四格，从浅到深，自动串前置。
+ * 门槛按 30 / 45 / 60 / 75 递增 —— 越往里越要真手艺，
+ * 所以一条线点到底本身就是一次长期投入的证明。
+ */
+function lineOf(
+  line: FeatLine,
+  steps: [name: string, skills: Record<string, number>, effect: string][]
+): FeatDef[] {
+  return steps.map(([name, skills, effect], index) => ({
+    key: `${line}${index + 1}`,
+    name,
+    line,
+    depth: index + 1,
+    skills,
+    effect,
+    requires: index === 0 ? undefined : [`${line}${index}`],
+  }));
+}
+
+/** 组合专长：必须同时点到两条线的一定深度，是比较优势真正长出来的地方。 */
+function capstone(
+  key: string,
+  name: string,
+  requires: string[],
+  skills: Record<string, number>,
+  effect: string
+): FeatDef {
+  return { key, name, line: "capstone", depth: 5, skills, effect, requires };
+}
+
 export const FEAT_DEFS: FeatDef[] = [
-  {
-    key: "coldread",
-    name: "冷读",
-    skills: { asking: 40, listening: 40 },
-    effect: "一次访谈产出双倍证据：一条触发窗口可同时挂两条假设",
-  },
-  {
-    key: "deepinterview",
-    name: "深访",
-    skills: { asking: 55, observing: 45 },
-    requires: ["coldread"],
-    effect: "访谈记录自动生成一条候选假设",
-  },
-  {
-    key: "customerprofile",
-    name: "顾客侧写",
-    skills: { observing: 60, analysis: 50 },
-    requires: ["deepinterview"],
-    effect: "顾客域的怪物经验 ×1.5",
-  },
-  {
-    key: "icebreaker",
-    name: "破冰",
-    skills: { coldopen: 30 },
-    effect: "新面孔类怪物经验 ×1.5",
-  },
-  {
-    key: "strangerroom",
-    name: "陌生局",
-    skills: { coldopen: 50, trustbuilding: 40 },
-    requires: ["icebreaker"],
-    effect: "进新场子时额外记一条情境，加速特质举证",
-  },
-  {
-    key: "lonesmith",
-    name: "独狼工坊",
-    skills: { coding: 60, writing: 40 },
-    traits: ["掘井人"],
-    effect: "无搭档时「半座桥」的惩罚减半",
-  },
-  {
-    key: "soloship",
-    name: "一人交付",
-    skills: { automation: 50, testing: 40 },
-    requires: ["lonesmith"],
-    effect: "收敛率按交付物计，不按项目数计",
-  },
-  {
-    key: "ironmouth",
-    name: "铁口",
-    skills: { forecasting: 50 },
-    counters: { settledForecasts: 10 },
-    effect: "押注时显示你在该领域的历史命中率",
-  },
-  {
-    key: "coroner",
-    name: "验尸",
-    skills: { retro: 45, analysis: 40 },
-    effect: "每条 Kill 决策自动进入事迹与参照类",
-  },
-  {
-    key: "mapmaker",
-    name: "制图",
-    skills: { experiment: 40, scheduling: 35 },
-    counters: { litDomains: 3 },
-    effect: "怪物清单每周多给一只，优先指向最暗的域",
-  },
-  {
-    key: "quartermaster",
-    name: "粮草官",
-    skills: { finance: 40, pricing: 35 },
-    effect: "底牌快照到期自动提醒，跑道变化进事迹",
-  },
-  {
-    key: "sparring",
-    name: "对练",
-    skills: { takingheat: 40, feedback: 35 },
-    effect: "「听得进反话」的样本按对战与真人反馈合并计算",
-  },
+  ...lineOf("interview", [
+    ["冷读", { asking: 30, listening: 30 }, "一次访谈的记录可同时挂两条假设"],
+    ["深访", { asking: 45, observing: 40 }, "访谈记录自动生成一条候选假设"],
+    ["顾客侧写", { observing: 60, analysis: 50 }, "顾客域的怪物经验 ×1.5"],
+    ["需求考古", { asking: 75, research: 60 }, "从旧对话里翻出被忽略的需求线索"],
+  ]),
+  ...lineOf("delivery", [
+    ["独狼工坊", { coding: 30, prototyping: 30 }, "无搭档时「半座桥」的惩罚减半"],
+    ["一人交付", { automation: 45, testing: 40 }, "收敛率按交付物计，不按项目数计"],
+    ["自动流水线", { automation: 60, debugging: 55 }, "重复工作转成脚本，节省的时间进「自己的时间」"],
+    ["无人值守", { automation: 75, testing: 65 }, "东西在你不看的时候也在跑"],
+  ]),
+  ...lineOf("opening", [
+    ["破冰", { coldopen: 30 }, "新面孔类怪物经验 ×1.5"],
+    ["陌生局", { coldopen: 45, trustbuilding: 40 }, "进新场子额外记一条情境，加速特质举证"],
+    ["引荐人", { trustbuilding: 60, keepingup: 45 }, "别人开始替你介绍人"],
+    ["自来客", { trustbuilding: 75, introducing: 60 }, "有人主动找上门"],
+  ]),
+  ...lineOf("calibration", [
+    ["铁口", { forecasting: 30 }, "押注时显示你在该领域的历史命中率"],
+    ["赔率盘", { forecasting: 45, analysis: 40 }, "把握度自动按你的历史偏移校正"],
+    ["预案", { forecasting: 60, retro: 50 }, "押注时同时写下「如果错了就做什么」"],
+    ["先手", { forecasting: 75, observing: 60 }, "在事情发生前就摆好对账条件"],
+  ]),
+  ...lineOf("persuasion", [
+    ["讲得清", { explaining: 30 }, "同一件事能用三句话说完"],
+    ["带得动", { persuading: 45, presenting: 40 }, "提议被采纳率进入「说话有人听」的加成"],
+    ["定调", { persuading: 60, negotiating: 50 }, "在别人还没定调时先给出框架"],
+    ["背书", { persuading: 75, trustbuilding: 60 }, "你说的话本身成为理由"],
+  ]),
+  ...lineOf("business", [
+    ["会算账", { finance: 30 }, "底牌快照自动提醒，跑道变化进事迹"],
+    ["定得出价", { pricing: 45, finance: 40 }, "价格不再靠猜，有可复算的依据"],
+    ["谈得成", { negotiating: 60, partnering: 50 }, "谈判类记录自动生成一条参照类"],
+    ["拿得到钱", { pricing: 75, negotiating: 65 }, "从「有人用」走到「有人付钱」"],
+  ]),
+  ...lineOf("organizing", [
+    ["交得出去", { delegating: 30 }, "把一件事完整地交给别人，而不是分一半"],
+    ["带得动人", { delegating: 45, feedback: 40 }, "给反馈之后对方真的改了"],
+    ["立得住规矩", { processdesign: 60, delegating: 55 }, "流程写下来之后不用你盯"],
+    ["不在也转", { processdesign: 75, hiring: 55 }, "你休假一周，东西照样在走"],
+  ]),
+  ...lineOf("body", [
+    ["有日课", { training: 30 }, "训练类怪物经验 ×1.5"],
+    ["抗得住", { training: 45, recovery: 40 }, "高压期的状态波动幅度变小"],
+    ["恢复快", { sleepcraft: 60, recovery: 55 }, "挫折后回到基线的天数缩短"],
+    ["常年在线", { training: 75, sleepcraft: 65 }, "身体不再是任何计划的变量"],
+  ]),
+  ...lineOf("learning", [
+    ["现学现卖", { learning: 30 }, "先做后补的学习方式获得加成"],
+    ["拆得开", { research: 45, analysis: 40 }, "把一个大问题拆成能各自验证的小问题"],
+    ["做实验", { experiment: 60, analysis: 55 }, "设计出能区分两种解释的观察"],
+    ["自建方法", { experiment: 75, explaining: 60 }, "总结出别人也能照着做的做法"],
+  ]),
+  ...lineOf("writing", [
+    ["写得完", { writing: 30 }, "连续四周每周产出一篇"],
+    ["有人读", { writing: 45, headline: 40 }, "单篇触达 100 人"],
+    ["有人转", { writing: 60, headline: 55 }, "写作类曝光进入「敢给人看」的加成"],
+    ["有人付费", { writing: 75, pricing: 50 }, "因文字产生第一笔收入"],
+  ]),
+
+  // ---------------- 组合专长 ----------------
+  // 比较优势不在任何单一一条线上，它长在两条线的交叉处。
+  capstone(
+    "独立作者",
+    "独立作者",
+    ["writing3", "delivery2"],
+    { writing: 60, coding: 45 },
+    "写作与交付互相供料：写的东西自己能做出来，做的东西自己能讲清楚"
+  ),
+  capstone(
+    "一人公司",
+    "一人公司",
+    ["delivery3", "business2"],
+    { automation: 60, pricing: 45 },
+    "无搭档时的全部惩罚减半，收敛率按收入计"
+  ),
+  capstone(
+    "顾问",
+    "顾问",
+    ["interview3", "persuasion2"],
+    { observing: 60, persuading: 45 },
+    "访谈直接产出对方肯照做的结论"
+  ),
+  capstone(
+    "猎手",
+    "猎手",
+    ["opening3", "calibration2"],
+    { coldopen: 60, forecasting: 45 },
+    "接触前先押注，命中率进入「押注准头」"
+  ),
+  capstone(
+    "教练",
+    "教练",
+    ["learning3", "persuasion2"],
+    { experiment: 60, explaining: 45 },
+    "你的方法别人照着做也成立"
+  ),
+  capstone(
+    "铁人",
+    "铁人",
+    ["body3", "delivery2"],
+    { training: 60, automation: 45 },
+    "长周期项目不再因为身体掉线"
+  ),
+  capstone(
+    "操盘手",
+    "操盘手",
+    ["business3", "organizing2"],
+    { negotiating: 60, delegating: 45 },
+    "谈成的事有人接得住"
+  ),
+  capstone(
+    "斥候队长",
+    "斥候队长",
+    ["interview3", "opening2"],
+    { asking: 60, trustbuilding: 45 },
+    "别人替你去接触，情报照样回来"
+  ),
 ];
+
+export const FEAT_TOTAL = FEAT_DEFS.length;
 
 export type FeatAvailability = {
   def: FeatDef;
@@ -286,6 +391,31 @@ export function evaluateFeat(def: FeatDef, ctx: FeatContext): FeatAvailability {
 
 export function evaluateFeats(ctx: FeatContext): FeatAvailability[] {
   return FEAT_DEFS.map((def) => evaluateFeat(def, ctx));
+}
+
+export type FeatPath = {
+  line: FeatLine;
+  name: string;
+  steps: FeatAvailability[];
+  /** 这条线上你走到第几格。 */
+  reached: number;
+  /** 下一格，以及它差什么。全点满时为 null。 */
+  next: FeatAvailability | null;
+};
+
+/**
+ * 把专长排成路线。散着一堆卡片看不出方向，
+ * 排成线之后"下一步往哪走"才是一眼能看见的东西。
+ */
+export function featPaths(availability: FeatAvailability[]): FeatPath[] {
+  return FEAT_LINES.map((line) => {
+    const steps = availability
+      .filter((item) => item.def.line === line)
+      .sort((a, b) => a.def.depth - b.def.depth);
+    const reached = steps.filter((step) => step.taken).length;
+    const next = steps.find((step) => !step.taken) ?? null;
+    return { line, name: FEAT_LINE_NAMES[line], steps, reached, next };
+  }).filter((path) => path.steps.length > 0);
 }
 
 /** 角色每升 2 级给 1 点专长点。稀缺是刻意的：稀缺才需要选。 */

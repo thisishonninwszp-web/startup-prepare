@@ -45,6 +45,7 @@ import {
 import {
   SKILL_GROUPS,
   SKILL_GROUP_NAMES,
+  featPaths,
 } from "@/lib/domains/self-model/skills";
 import {
   buildProgress,
@@ -1151,49 +1152,108 @@ export default async function SelfPage() {
 
       <section className="mb-8 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold">专长</h2>
+          <h2 className="text-lg font-semibold">专长树</h2>
           <p className="text-sm text-muted-foreground">
-            每升 2 级给 1 点 · 剩余{" "}
+            十条路线 × 四格 + 八个跨线组合 · 每升 2 级 1 点 · 剩余{" "}
             <span className="font-mono font-semibold text-foreground">
               {skillState.featPointsLeft}
             </span>{" "}
             点
           </p>
         </div>
+
         <div className="grid gap-3 lg:grid-cols-2">
-          {skillState.feats.map((feat) => (
-            <div
-              key={feat.def.key}
-              className={`self-panel p-4 ${feat.taken ? "" : feat.unlocked ? "" : "opacity-70"}`}
-            >
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="font-mono text-xs text-muted-foreground">
-                  {feat.taken ? "●" : feat.unlocked ? "◐" : "○"}
+          {featPaths(skillState.feats).map((path) => (
+            <div key={path.line} className="self-panel">
+              <div className="self-panel__head">
+                <span className="self-label">{path.line}</span>
+                <span className="text-sm font-medium">{path.name}</span>
+                <span className="ml-auto font-mono text-xs tabular-nums">
+                  {path.reached}/{path.steps.length}
                 </span>
-                <span className="font-medium">{feat.def.name}</span>
-                {feat.taken && (
-                  <span className="self-label">已点</span>
+              </div>
+              <div className="self-panel__body">
+                <div className="mb-2 flex items-center gap-1 font-mono text-sm">
+                  {path.steps.map((step, index) => (
+                    <span key={step.def.key} className="flex items-center gap-1">
+                      {index > 0 && (
+                        <span className="text-muted-foreground">━</span>
+                      )}
+                      <span
+                        className={
+                          step.taken
+                            ? "text-primary"
+                            : step.unlocked
+                              ? "text-foreground"
+                              : "text-muted-foreground"
+                        }
+                        title={step.def.name}
+                      >
+                        {step.taken ? "●" : step.unlocked ? "◐" : "○"}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+
+                <div className="space-y-1">
+                  {path.steps.map((step) => (
+                    <div
+                      key={step.def.key}
+                      className="self-row flex flex-wrap items-baseline gap-x-2 py-1.5 text-[13px]"
+                    >
+                      <span
+                        className={
+                          step.taken
+                            ? "font-medium"
+                            : step.unlocked
+                              ? "font-medium"
+                              : "text-muted-foreground"
+                        }
+                      >
+                        {step.def.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {step.def.effect}
+                      </span>
+                      {step.missing.length > 0 && (
+                        <span className="w-full font-mono text-[11px] text-muted-foreground">
+                          差：{step.missing.join(" · ")}
+                        </span>
+                      )}
+                      {step.unlocked && (
+                        <span className="w-full">
+                          <TakeFeatButton
+                            featKey={step.def.key}
+                            disabled={skillState.featPointsLeft <= 0}
+                          />
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {path.next && (
+                  <p className="mt-2 border-t pt-2 font-mono text-[11px] text-primary">
+                    下一格「{path.next.def.name}」
+                    {path.next.missing.length > 0
+                      ? ` 差 ${path.next.missing.join(" · ")}`
+                      : " 已经可以点了"}
+                  </p>
+                )}
+                {!path.next && (
+                  <p className="mt-2 border-t pt-2 font-mono text-[11px] text-muted-foreground">
+                    这条线走到底了
+                  </p>
                 )}
               </div>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                {feat.def.effect}
-              </p>
-              {feat.missing.length > 0 && (
-                <p className="mt-1.5 font-mono text-[11px] text-muted-foreground">
-                  差：{feat.missing.join(" · ")}
-                </p>
-              )}
-              {feat.unlocked && (
-                <div className="mt-2">
-                  <TakeFeatButton
-                    featKey={feat.def.key}
-                    disabled={skillState.featPointsLeft <= 0}
-                  />
-                </div>
-              )}
             </div>
           ))}
         </div>
+
+        <p className="text-xs text-muted-foreground">
+          比较优势不在任何单一一条线上，它长在两条线的交叉处 ——
+          组合专长要求你同时点到两条线的一定深度。
+        </p>
       </section>
       </TabsContent>
 
