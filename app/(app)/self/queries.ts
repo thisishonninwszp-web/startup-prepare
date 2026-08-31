@@ -728,3 +728,131 @@ export async function getSelfSkills(
     }),
   };
 }
+
+// ---------------------------------------------------------------------------
+// 周战报：同一批数据，换个语气。
+// 不新增任何采集 —— 只把最近 7 天已经发生过的事捞出来重讲一遍。
+// 它的全部作用是让人愿意每周打开这一页，所以只统计"你做了什么"，
+// 不统计"你还差什么"（那是怪物清单的活）。
+// ---------------------------------------------------------------------------
+
+export type WeeklyReport = {
+  from: string;
+  contacts: number;
+  contactHits: number;
+  windows: number;
+  windowMisses: number;
+  serendipities: number;
+  settled: number;
+  settledHits: number;
+  ticks: number;
+  lifts: number;
+  cardioMinutes: number;
+  encounters: number;
+  sleepNights: number;
+  sleepEnough: number;
+  /** 这一周一件事都没发生。 */
+  quiet: boolean;
+};
+
+export async function getWeeklyReport(userId: string): Promise<WeeklyReport> {
+  const from = new Date(Date.now() - 7 * DAY_MS).toISOString().slice(0, 10);
+  const fromTs = `${from}T00:00:00Z`;
+
+  const [windows, predictions, ticks, body, encounters, daily, validations] =
+    await Promise.all([
+      supabaseAdmin
+        .from("self_windows")
+        .select("outcome, serendipity")
+        .eq("user_id", userId)
+        .gte("occurred_on", from),
+      supabaseAdmin
+        .from("predictions")
+        .select("outcome")
+        .eq("user_id", userId)
+        .eq("source_type", "self")
+        .not("resolved_at", "is", null)
+        .gte("resolved_at", fromTs),
+      supabaseAdmin
+        .from("self_skill_ticks")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("occurred_on", from),
+      supabaseAdmin
+        .from("self_body_logs")
+        .select("kind, duration_min")
+        .eq("user_id", userId)
+        .gte("logged_on", from),
+      supabaseAdmin
+        .from("self_encounters")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("occurred_on", from),
+      supabaseAdmin
+        .from("self_daily")
+        .select("sleep_hours")
+        .eq("user_id", userId)
+        .gte("logged_on", from),
+      supabaseAdmin
+        .from("validations")
+        .select("has_pain, ideas!inner(user_id)")
+        .eq("ideas.user_id", userId)
+        .gte("contacted_at", fromTs),
+    ]);
+
+  for (const result of [
+    windows,
+    predictions,
+    ticks,
+    body,
+    encounters,
+    daily,
+    validations,
+  ]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  const windowRows = (windows.data ?? []) as {
+    outcome: string;
+    serendipity: boolean;
+  }[];
+  const predictionRows = (predictions.data ?? []) as { outcome: string }[];
+  const bodyRows = (body.data ?? []) as {
+    kind: string;
+    duration_min: number | null;
+  }[];
+  const dailyRows = (daily.data ?? []) as { sleep_hours: number }[];
+  const validationRows = (validations.data ?? []) as { has_pain: string }[];
+
+  const report: WeeklyReport = {
+    from,
+    contacts: validationRows.length,
+    contactHits: validationRows.filter((row) => row.has_pain === "yes").length,
+    windows: windowRows.length,
+    windowMisses: windowRows.filter((row) => row.outcome === "miss").length,
+    serendipities: windowRows.filter((row) => row.serendipity).length,
+    settled: predictionRows.length,
+    settledHits: predictionRows.filter((row) => row.outcome === "hit").length,
+    ticks: (ticks.data ?? []).length,
+    lifts: bodyRows.filter((row) => row.kind === "lift").length,
+    cardioMinutes: bodyRows
+      .filter((row) => row.kind === "cardio")
+      .reduce((sum, row) => sum + (row.duration_min ?? 0), 0),
+    encounters: (encounters.data ?? []).length,
+    sleepNights: dailyRows.length,
+    sleepEnough: dailyRows.filter((row) => row.sleep_hours >= 7).length,
+    quiet: false,
+  };
+
+  report.quiet =
+    report.contacts === 0 &&
+    report.windows === 0 &&
+    report.settled === 0 &&
+    report.ticks === 0 &&
+    report.lifts === 0 &&
+    report.cardioMinutes === 0 &&
+    report.encounters === 0 &&
+    report.sleepNights === 0;
+
+  return report;
+}

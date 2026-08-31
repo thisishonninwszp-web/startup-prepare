@@ -55,6 +55,7 @@ import {
   getSelfPanel,
   getSelfSkills,
   getSelfTraits,
+  getWeeklyReport,
   type SelfLedgerEntry,
 } from "./queries";
 import {
@@ -216,6 +217,91 @@ const QUEST_MARKS: Record<Quest["tier"], string> = {
   trash: "🐀",
 };
 
+
+/**
+ * 周战报。同一批数据，换个语气 —— 它的全部作用是让人愿意每周打开这一页。
+ * 只讲"你做了什么"，不讲"你还差什么"：后者是怪物清单的活。
+ */
+function WeeklyReport({
+  report,
+}: {
+  report: Awaited<ReturnType<typeof getWeeklyReport>>;
+}) {
+  const lines: { mark: string; text: string }[] = [];
+
+  if (report.contacts > 0) {
+    lines.push({
+      mark: "›",
+      text: `对真人发起 ${report.contacts} 次接触，命中 ${report.contactHits}`,
+    });
+  }
+  if (report.serendipities > 0) {
+    lines.push({
+      mark: "💥",
+      text: `暴击 ${report.serendipities} 次 —— 意料之外的收获`,
+    });
+  }
+  if (report.windows > 0) {
+    lines.push({
+      mark: "›",
+      text: `记下 ${report.windows} 个触发窗口，其中 ${report.windowMisses} 次「符合条件但没那么做」`,
+    });
+  }
+  if (report.settled > 0) {
+    lines.push({
+      mark: report.settledHits >= report.settled - report.settledHits ? "🎯" : "🩸",
+      text: `对账 ${report.settled} 条预测，命中 ${report.settledHits}`,
+    });
+  }
+  if (report.ticks > 0) {
+    lines.push({ mark: "✓", text: `技能打勾 ${report.ticks} 次` });
+  }
+  if (report.lifts > 0 || report.cardioMinutes > 0) {
+    lines.push({
+      mark: "🏋",
+      text: `举铁 ${report.lifts} 组 · 有氧 ${Math.round(report.cardioMinutes)} 分钟`,
+    });
+  }
+  if (report.encounters > 0) {
+    lines.push({ mark: "🤝", text: `与人的记录 ${report.encounters} 条` });
+  }
+  if (report.sleepNights > 0) {
+    lines.push({
+      mark: "🌙",
+      text: `记了 ${report.sleepNights} 夜睡眠，睡够 7 小时 ${report.sleepEnough} 夜`,
+    });
+  }
+
+  return (
+    <div className="self-panel">
+      <div className="self-panel__head">
+        <span className="self-label">weekly</span>
+        <span className="text-sm font-medium">上一周</span>
+        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+          {report.from} 起
+        </span>
+      </div>
+      <div className="self-panel__body space-y-1 font-mono text-[13px]">
+        {report.quiet ? (
+          <p className="text-muted-foreground">
+            这一周什么都没发生。不是坏事，但也别假装它发生过 ——
+            战报只写真的做过的事。
+          </p>
+        ) : (
+          lines.map((line) => (
+            <p key={line.text} className="flex gap-2">
+              <span className="w-4 shrink-0 text-muted-foreground">
+                {line.mark}
+              </span>
+              <span>{line.text}</span>
+            </p>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function QuestRow({ quest }: { quest: Quest }) {
   return (
     <div className="flex gap-3 border-b py-3 last:border-b-0">
@@ -230,6 +316,11 @@ function QuestRow({ quest }: { quest: Quest }) {
           </span>
           <DomainChip domain={quest.domain} />
         </div>
+        {quest.taunt && (
+          <p className="mt-0.5 border-l-2 border-primary pl-2.5 text-sm italic text-primary">
+            {quest.taunt}
+          </p>
+        )}
         <p className="mt-0.5 text-sm text-muted-foreground">{quest.action}</p>
         <p className="mt-1 font-mono text-[11px] text-muted-foreground">
           掉落 ▸ {quest.drop}
@@ -438,6 +529,7 @@ export default async function SelfPage() {
     getSelfPanel(user!.id),
   ]);
   const { traits, sets } = await getSelfTraits(user!.id, ledger);
+  const report = await getWeeklyReport(user!.id);
 
   const { calibration, entries, pending } = ledger;
   const active = entries.filter(
@@ -698,6 +790,8 @@ export default async function SelfPage() {
         </TabsList>
 
       <TabsContent value="overview" className="mt-6 space-y-8">
+        <WeeklyReport report={report} />
+
       <section className="mb-8 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">本周怪物</h2>

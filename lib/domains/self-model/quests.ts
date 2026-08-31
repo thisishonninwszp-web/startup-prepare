@@ -40,6 +40,12 @@ export type Quest = {
   attribute: MainKey;
   domain: Domain;
   exp: number;
+  /**
+   * BOSS 的台词。它不是提示语，是**你脑子里的那句原话** ——
+   * BOSS 的定义就是"你会预判它的答案然后跳过它"，
+   * 所以把那句预判原样摆出来，是最省事也最难受的提醒。
+   */
+  taunt?: string;
 };
 
 export type KillTally = {
@@ -307,6 +313,7 @@ function stateQuests(state: QuestState): Quest[] {
       id: "state:norefute",
       tier: "boss",
       name: "一条都没被推翻过",
+      taunt: "「这条我很确定，不用查了。」",
       action: "挑手上最有把握的那条假设，专门去找它的反例",
       drop: "「认栽」称号 · 而且这是整套系统里最难的一种击杀",
       attribute: "WIS",
@@ -333,6 +340,7 @@ function stateQuests(state: QuestState): Quest[] {
       id: `state:miss:${hypothesis.id}`,
       tier: "boss",
       name: `${hypothesis.code} 连续两次落空`,
+      taunt: "「只是运气不好，再看看。」",
       action: "给它写三个替代解释，以及能区分它们的观察",
       drop: "它已经掉回猜想 —— 现在要么换个说法，要么推翻它",
       attribute: "WIS",
@@ -377,6 +385,7 @@ function stateQuests(state: QuestState): Quest[] {
       id: "state:debt",
       tier: "boss",
       name: "先还一条旧账",
+      taunt: "「那件事对方应该早忘了。」",
       action: `承诺兑现 ${commitments.done}/${commitments.total}。挑一条最早的，今天做完`,
       drop: "「说到做到」往回走一步",
       attribute: "CHA",
@@ -415,6 +424,7 @@ export function buildQuests(input: QuestInput): Quest[] {
       id: `context:${hypothesis.id}`,
       tier: "boss",
       name: `换个场子验 ${hypothesis.code}`,
+      taunt: "「在别的地方应该也一样吧。」",
       action: `在工作之外的场合，找一次「${hypothesis.statement}」会不会同样发生`,
       drop: `情境数 ${hypothesis.contexts} → ${hypothesis.contexts + 1}（升「特质」需要 3）`,
       attribute: "WIS",
