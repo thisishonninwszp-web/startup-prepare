@@ -20,6 +20,11 @@ import {
   isSkillKey,
   rustFor,
 } from "@/lib/domains/self-model/skills";
+import {
+  existingDispositionNames,
+  nominateDispositions,
+  type DispositionNomination,
+} from "@/lib/ai";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
 import { isoWeekKey } from "@/lib/domains/self-model/quests";
 import {
@@ -877,5 +882,60 @@ export async function promoteDisposition(key: string): Promise<void> {
     `气质「${def.name}」立成了假设 ${code}`,
     def.test
   );
+  revalidatePath("/self");
+}
+
+/**
+ * 让 AI 提名几条你可能漏掉的气质。
+ *
+ * 这是整个 /self 里唯一一处 AI 参与的地方，能开这个口子是因为
+ * 气质本来就没有分母 —— 它不进任何计算。属性、特性、档位、品级
+ * 一律由代码算，AI 碰不到。
+ *
+ * 提名一律是候选：不写库，只返回给页面，你点了「认领」才算数。
+ */
+export async function suggestDispositions(): Promise<DispositionNomination[]> {
+  const userId = await requireUserId();
+
+  const { data, error } = await supabaseAdmin
+    .from("self_declarations")
+    .select("text")
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+
+  const rows = ((data ?? []) as { text: string }[]).map((row) => row.text);
+  const claimedKeys = rows
+    .filter((text) => text.startsWith("disposition:"))
+    .map((text) => text.replace("disposition:", ""));
+
+  return nominateDispositions({
+    claimed: claimedKeys
+      .map((key) => findDisposition(key))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .map((item) => ({ name: item.name, claim: item.claim })),
+    declarations: rows.filter((text) => !text.startsWith("disposition:")),
+    existingNames: existingDispositionNames(),
+  });
+}
+
+/**
+ * 收下一条 AI 提名的气质。
+ * 它进 self_declarations，和自己认领的走同一条路 ——
+ * 来源是 AI 不改变它的性质：它仍然是一句没有分母的自述。
+ */
+export async function acceptNomination(input: {
+  name: string;
+  claim: string;
+  test: string;
+}): Promise<void> {
+  const userId = await requireUserId();
+  const name = required(input.name, "名字");
+  const test = required(input.test, "怎么验");
+
+  const { error } = await supabaseAdmin.from("self_declarations").insert({
+    user_id: userId,
+    text: `custom:${name}｜${input.claim.trim()}｜${test}`,
+  });
+  if (error) throw new Error(error.message);
   revalidatePath("/self");
 }

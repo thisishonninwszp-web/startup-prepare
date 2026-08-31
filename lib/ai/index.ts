@@ -16,3 +16,4 @@ export * from "./outreach";
 export * from "./patterns";
 export * from "./profile";
 export { MODEL } from "./shared";
+export * from "./self-model";

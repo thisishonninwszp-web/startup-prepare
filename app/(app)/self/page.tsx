@@ -75,6 +75,7 @@ import {
 import {
   CharacterCreationForm,
   DeedForm,
+  DispositionSuggest,
   DispositionToggle,
   PromoteDispositionButton,
   QuestRollCall,
@@ -1522,6 +1523,16 @@ export default async function SelfPage() {
               </div>
             );
           })()}
+
+          <div className="self-panel p-4">
+            <p className="self-label mb-2">AI 提名</p>
+            <DispositionSuggest />
+            <p className="mt-2 text-xs text-muted-foreground">
+              这是整个自我页里唯一一处 AI 参与的地方 —— 能开这个口子，
+              是因为气质本来就没有分母。属性、特性、档位、品级一律由代码算，
+              AI 碰不到。
+            </p>
+          </div>
 
           {byAxis().map((group) => (
             <div key={group.axis} className="self-panel">

@@ -11,12 +11,14 @@ import {
   SKILL_GROUP_NAMES,
 } from "@/lib/domains/self-model/skills";
 import {
+  acceptNomination,
   claimDisposition,
   createCharacter,
   promoteDisposition,
   recordDeed,
   rollCallQuests,
   settleSkills,
+  suggestDispositions,
   syncLibraryTraits,
   takeFeat,
   tickSkill,
@@ -567,5 +569,91 @@ export function PromoteDispositionButton({
       </Button>
       <Err message={error} />
     </>
+  );
+}
+
+type Nomination = { name: string; axis: string; claim: string; test: string; because: string };
+
+/**
+ * AI 提名的气质。提名一律是候选 —— 不写库，点了「收下」才算数。
+ */
+export function DispositionSuggest() {
+  const [items, setItems] = useState<Nomination[] | null>(null);
+  const [taken, setTaken] = useState<string[]>([]);
+  const { pending, error, run } = useAction();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          disabled={pending}
+          onClick={() =>
+            run(async () => {
+              setItems(await suggestDispositions());
+            })
+          }
+        >
+          {pending ? "想中…" : "让 AI 提几条我可能漏掉的"}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          提名一律是候选，点「收下」才进你的档案
+        </span>
+      </div>
+      <Err message={error} />
+
+      {items && items.length === 0 && (
+        <p className="animate-self-reveal text-sm text-muted-foreground">
+          这一轮没提出新的。已认领的那些已经覆盖了它想到的角度。
+        </p>
+      )}
+
+      {items?.map((item, index) => (
+        <div
+          key={item.name}
+          className="animate-self-reveal self-panel p-4"
+          style={{ animationDelay: `${index * 80}ms` }}
+        >
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="font-medium">{item.name}</span>
+            <span className="text-xs text-muted-foreground">「{item.claim}」</span>
+            <span className="self-rarity self-rarity--common ml-auto">
+              AI 提名 · 候选
+            </span>
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+            怎么验：{item.test}
+          </p>
+          {item.because && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              为什么提：{item.because}
+            </p>
+          )}
+          <div className="mt-2">
+            {taken.includes(item.name) ? (
+              <span className="font-mono text-[11px] text-primary">已收下</span>
+            ) : (
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () =>
+                      acceptNomination({
+                        name: item.name,
+                        claim: item.claim,
+                        test: item.test,
+                      }),
+                    () => setTaken((current) => [...current, item.name])
+                  )
+                }
+              >
+                收下
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
