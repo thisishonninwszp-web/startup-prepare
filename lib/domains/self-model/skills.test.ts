@@ -29,9 +29,17 @@ function skill(over: Partial<SkillState> = {}): SkillState {
 }
 
 describe("skill catalogue", () => {
-  it("ships forty-five skills with unique keys", () => {
-    expect(SKILL_TOTAL).toBe(45);
-    expect(new Set(SKILL_DEFS.map((item) => item.key)).size).toBe(45);
+  it("ships sixty-three skills with unique keys", () => {
+    expect(SKILL_TOTAL).toBe(63);
+    expect(new Set(SKILL_DEFS.map((item) => item.key)).size).toBe(63);
+  });
+
+  it("stacks advanced skills on top of base ones", () => {
+    const advanced = SKILL_DEFS.filter((def) => (def.requires ?? []).length > 0);
+    // 一半以上的技能有地基，树才是树，不是一张平表。
+    expect(advanced.length).toBeGreaterThan(SKILL_DEFS.length / 2);
+    const narrative = SKILL_DEFS.find((def) => def.key === "narrative")!;
+    expect(narrative.requires).toEqual(["rhetoric", "structure"]);
   });
 
   it("puts every skill in one of the six groups", () => {

@@ -561,6 +561,25 @@ export function findLibraryTrait(key: string): LibraryTrait | undefined {
   return TRAIT_LIBRARY.find((item) => item.key === key);
 }
 
+/**
+ * 一条特性的强度：它绑定的那个子属性现在是多少。
+ * 特性本来就有数值 —— 它就是把一个带分母的数字换成一个能记住的名字。
+ * 「塔中人 3」和「接触密度 3」是同一件事，但前者你说得出口。
+ */
+export function traitStrength(
+  libraryKey: string,
+  subValues: Record<string, number | null>
+): number | null {
+  const dial = TRAIT_LIBRARY.find((item) => item.key === libraryKey);
+  if (dial) return subValues[dial.reads] ?? null;
+  const combo = COMBO_LIBRARY.find((item) => item.key === libraryKey);
+  if (!combo) return null;
+  // 组合的强度取决于最弱的那个条件 —— 木桶原理，短板决定它成不成立。
+  const values = combo.conditions.map((condition) => subValues[condition.sub]);
+  if (values.some((value) => value === null || value === undefined)) return null;
+  return Math.min(...(values as number[]));
+}
+
 export type ScanGrant =
   | { kind: "dial"; def: LibraryTrait }
   | { kind: "combo"; def: ComboTrait };

@@ -18,6 +18,7 @@ import {
   type FeatAvailability,
   type SkillGroup,
 } from "@/lib/domains/self-model/skills";
+import { traitStrength } from "@/lib/domains/self-model/trait-library";
 import {
   referenceClasses,
   type Deed,
@@ -625,19 +626,21 @@ type TraitRow = {
   hypothesis_id: string | null;
   status: "held" | "faded";
   first_held_on: string;
+  library_key: string | null;
 };
 
 export type SelfTraits = {
-  traits: Trait[];
+  traits: (Trait & { strength: number | null; libraryKey: string | null })[];
   sets: ReturnType<typeof collectSets>;
 };
 
 const TRAIT_COLUMNS =
-  "id, spectrum_key, name, modifiers, backfire, equip_note, set_key, set_effect, refused_offer, hypothesis_id, status, first_held_on";
+  "id, spectrum_key, name, modifiers, backfire, equip_note, set_key, set_effect, refused_offer, hypothesis_id, status, first_held_on, library_key";
 
 export async function getSelfTraits(
   userId: string,
-  ledger: SelfLedger
+  ledger: SelfLedger,
+  subValues: Record<string, number | null> = {}
 ): Promise<SelfTraits> {
   const { data, error } = await supabaseAdmin
     .from("self_traits")
@@ -676,7 +679,17 @@ export async function getSelfTraits(
     })
   );
 
-  return { traits, sets: collectSets(traits) };
+  const withStrength = traits.map((trait) => {
+    const row = ((data ?? []) as TraitRow[]).find((item) => item.id === trait.id);
+    return {
+      ...trait,
+      libraryKey: row?.library_key ?? null,
+      strength: row?.library_key
+        ? traitStrength(row.library_key, subValues)
+        : null,
+    };
+  });
+  return { traits: withStrength, sets: collectSets(traits) };
 }
 
 // ---------------------------------------------------------------------------

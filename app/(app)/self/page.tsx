@@ -417,12 +417,24 @@ const RARITY_CLASS: Record<Rarity, string> = {
   unique: "self-rarity--unique",
 };
 
-function TraitCard({ trait }: { trait: Trait }) {
+function TraitCard({
+  trait,
+}: {
+  trait: Trait & { strength: number | null };
+}) {
   const faded = trait.status === "faded";
   return (
     <div className={`self-panel space-y-2 p-5 ${faded ? "opacity-60" : ""}`}>
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-medium">{trait.name}</span>
+        {trait.strength !== null && (
+          <span className="font-mono text-lg font-semibold tabular-nums">
+            {trait.strength}
+            <span className="text-[10px] font-normal text-muted-foreground">
+              /20
+            </span>
+          </span>
+        )}
         <span className={`self-rarity ${RARITY_CLASS[trait.rarity]}`}>
           {RARITY_LABELS[trait.rarity]} · {POLARITY_LABELS[trait.polarity]}
         </span>
@@ -600,7 +612,15 @@ export default async function SelfPage() {
     getSelfLedger(user!.id),
     getSelfPanel(user!.id),
   ]);
-  const { traits, sets } = await getSelfTraits(user!.id, ledger);
+  const { traits, sets } = await getSelfTraits(
+    user!.id,
+    ledger,
+    Object.fromEntries(
+      panel.panel.mains.flatMap((main) =>
+        main.subs.map((sub) => [sub.key, sub.value])
+      )
+    )
+  );
   const [report, npcs, events, sightings, deedData] = await Promise.all([
     getWeeklyReport(user!.id),
     getNpcs(user!.id),
