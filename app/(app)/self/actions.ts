@@ -19,7 +19,10 @@ import {
   isSkillKey,
   rustFor,
 } from "@/lib/domains/self-model/skills";
-import { scanLibrary } from "@/lib/domains/self-model/trait-library";
+import {
+  comboSpectrumKey,
+  scanLibrary,
+} from "@/lib/domains/self-model/trait-library";
 import { getSelfPanel, nextHypothesisCode } from "./queries";
 
 
@@ -638,6 +641,24 @@ export async function syncLibraryTraits(): Promise<{
     if (insertError) throw new Error(insertError.message);
   }
 
+  if (result.combos.length > 0) {
+    const { error: comboError } = await supabaseAdmin
+      .from("self_traits")
+      .insert(
+        result.combos.map((combo) => ({
+          user_id: userId,
+          spectrum_key: comboSpectrumKey(combo),
+          name: combo.name,
+          modifiers: combo.modifiers,
+          backfire: combo.backfire ?? null,
+          equip_note: combo.alarm ? "⚠️ 报警型：集齐不是奖励，是提醒" : null,
+          source: "library",
+          library_key: combo.key,
+        }))
+      );
+    if (comboError) throw new Error(comboError.message);
+  }
+
   for (const item of result.fade) {
     const row = held.find((entry) => entry.libraryKey === item.key);
     if (!row) continue;
@@ -650,7 +671,12 @@ export async function syncLibraryTraits(): Promise<{
 
   revalidatePath("/self");
   return {
-    granted: result.grant.map((def) => `${def.name} —— ${def.gloss}`),
+    granted: [
+      ...result.grant.map((def) => `${def.name} —— ${def.gloss}`),
+      ...result.combos.map(
+        (combo) => `${combo.alarm ? "⚠️ " : ""}${combo.name} —— ${combo.gloss}`
+      ),
+    ],
     faded: result.fade.map((item) => `${item.name}：${item.reason}`),
   };
 }

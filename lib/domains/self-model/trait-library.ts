@@ -302,6 +302,236 @@ export const TRAIT_LIBRARY: LibraryTrait[] = [
   ),
 ];
 
+
+// ---------------------------------------------------------------------------
+// 组合特性
+//
+// 拨杆那 52 条只能说"某项高/某项低"。真正有意思的关于一个人的话，
+// 几乎都是两三项**同时成立**才成立的 —— 熬功高本身没什么，
+// 熬功高加上接触低，才是「地窖酿酒师」。
+//
+// 组合不占光谱，所以不受互斥限制；它们靠条件本身自限：
+// 要两三个子属性同时踩到端点，本来就不容易。
+// ---------------------------------------------------------------------------
+
+export type ComboCondition = {
+  sub: string;
+  op: "gte" | "lte";
+  value: number;
+};
+
+export type ComboTrait = {
+  key: string;
+  name: string;
+  gloss: string;
+  conditions: ComboCondition[];
+  modifiers: TraitModifier[];
+  backfire?: string;
+  /** ⚠️ 报警型：集齐不是奖励，是提醒。 */
+  alarm?: boolean;
+};
+
+const hi = (sub: string): ComboCondition => ({ sub, op: "gte", value: HIGH });
+const lo = (sub: string): ComboCondition => ({ sub, op: "lte", value: LOW });
+
+export const COMBO_LIBRARY: ComboTrait[] = [
+  {
+    key: "combo.cellar",
+    name: "地窖酿酒师",
+    gloss: "埋头酿得很深，没人尝过",
+    conditions: [hi("wil.span"), lo("wis.contact")],
+    modifiers: [plus("wil.span", "深度"), minus("cha.exposure", "无人品尝")],
+    backfire: "酿到一半发现没人喝时，最难放手",
+  },
+  {
+    key: "combo.fivewells",
+    name: "同时挖五口井",
+    gloss: "每口都按 180 天的方式挖",
+    conditions: [hi("dex.parallel"), hi("wil.span")],
+    modifiers: [plus("dex.parallel", "并行"), minus("wil.closure", "全是半成品")],
+    backfire: "并行数超过 3 时，每口井都挖不到水",
+    alarm: true,
+  },
+  {
+    key: "combo.lightnocook",
+    name: "起灶不掌勺",
+    gloss: "点火极快，收尾没有",
+    conditions: [hi("dex.ignition"), lo("wil.closure")],
+    modifiers: [plus("dex.ignition", "起手快"), minus("wil.closure", "收不了尾")],
+    backfire: "需要交付的环境里，点得越快亏得越多",
+    alarm: true,
+  },
+  {
+    key: "combo.clearvoiceless",
+    name: "看得清喊不动",
+    gloss: "判断准，推不动人",
+    conditions: [hi("wis.candor"), lo("cha.adoption")],
+    modifiers: [plus("wis.candor", "看得清"), minus("cha.adoption", "没人动")],
+  },
+  {
+    key: "combo.loudwrong",
+    name: "嗓门大过准头",
+    gloss: "说服力强，但估不准 —— 最危险的一种",
+    conditions: [hi("cha.adoption"), lo("int.calibration")],
+    modifiers: [plus("cha.adoption", "推得动"), minus("int.calibration", "押不准")],
+    backfire: "别人照你说的做了，而你算错了",
+    alarm: true,
+  },
+  {
+    key: "combo.millstone",
+    name: "空转的磨盘",
+    gloss: "一直在转，没磨出面",
+    conditions: [hi("dex.iteration"), lo("wil.closure")],
+    modifiers: [plus("dex.iteration", "转得快"), minus("wil.closure", "没出成品")],
+    alarm: true,
+  },
+  {
+    key: "combo.emptygranary",
+    name: "守着空粮仓",
+    gloss: "很能忍，但仓里没粮",
+    conditions: [hi("wil.restraint"), lo("res.runway")],
+    modifiers: [plus("wil.restraint", "按得住"), minus("res.runway", "跑道短")],
+    alarm: true,
+  },
+  {
+    key: "combo.onearmed",
+    name: "独臂铁匠",
+    gloss: "全靠自己一双手",
+    conditions: [hi("wil.span"), lo("res.allies")],
+    modifiers: [plus("wil.span", "自己扛"), minus("res.allies", "没人可叫")],
+    backfire: "一病就全停",
+  },
+  {
+    key: "combo.nightlamp",
+    name: "夜里的灯",
+    gloss: "进度是熬出来的",
+    conditions: [hi("wil.span"), lo("con.sleep")],
+    modifiers: [plus("wil.span", "熬得住"), minus("con.sleep", "睡眠债")],
+    backfire: "债总要还，而且是连本带利",
+    alarm: true,
+  },
+  {
+    key: "combo.allplans",
+    name: "满手计划",
+    gloss: "开得多，结的少",
+    conditions: [hi("dex.parallel"), lo("wil.closure")],
+    modifiers: [plus("dex.parallel", "并行"), minus("wil.closure", "收敛低")],
+    alarm: true,
+  },
+  {
+    key: "combo.knocknodoor",
+    name: "走遍全城不敲门",
+    gloss: "认识很多人，没人替你办事",
+    conditions: [hi("lck.newfaces"), lo("cha.adoption")],
+    modifiers: [plus("lck.newfaces", "面孔多"), minus("cha.adoption", "没人动")],
+  },
+  {
+    key: "combo.hoardnomarch",
+    name: "屯粮不出兵",
+    gloss: "粮草足，就是不发兵",
+    conditions: [hi("res.runway"), lo("dex.ignition")],
+    modifiers: [plus("res.runway", "余裕"), minus("dex.ignition", "不动手")],
+    backfire: "跑道最长的时候不动，等短了更不敢动",
+  },
+  {
+    key: "combo.seesnocount",
+    name: "会看不会算",
+    gloss: "敢看坏消息，但估不准",
+    conditions: [hi("wis.candor"), lo("int.calibration")],
+    modifiers: [plus("wis.candor", "敢看"), minus("int.calibration", "算不准")],
+  },
+  {
+    key: "combo.emptyhammer",
+    name: "铁砧上的空锤",
+    gloss: "练得很多，力气没长",
+    conditions: [hi("str.volume"), lo("str.absolute")],
+    modifiers: [plus("str.volume", "量够"), minus("str.absolute", "没进步")],
+    alarm: true,
+  },
+  {
+    key: "combo.nomap",
+    name: "跑得快没带地图",
+    gloss: "动手极快，场子只有那几个",
+    conditions: [hi("dex.ignition"), lo("lck.newcontext")],
+    modifiers: [plus("dex.ignition", "起手快"), minus("lck.newcontext", "情境少")],
+  },
+  {
+    key: "combo.debtor",
+    name: "债主的常客",
+    gloss: "认识越多，欠得越多",
+    conditions: [hi("lck.newfaces"), lo("cha.commitment")],
+    modifiers: [plus("lck.newfaces", "面孔多"), minus("cha.commitment", "兑现低")],
+    backfire: "圈子越大，欠账被看见得越快",
+    alarm: true,
+  },
+  {
+    key: "combo.wellbooks",
+    name: "井底的藏书",
+    gloss: "读了很多，用在同一口井里",
+    conditions: [hi("wil.span"), lo("int.transfer")],
+    modifiers: [plus("wil.span", "钻得深"), minus("int.transfer", "学了不用")],
+  },
+  {
+    key: "combo.unheardbell",
+    name: "无人应答的钟",
+    gloss: "一直在敲，没人来",
+    conditions: [hi("cha.exposure"), lo("cha.adoption")],
+    modifiers: [plus("cha.exposure", "敢给人看"), minus("cha.adoption", "没人接")],
+  },
+  {
+    key: "combo.veteranmap",
+    name: "熟地图上的老兵",
+    gloss: "在同一张图上打了很久",
+    conditions: [hi("wil.span"), lo("lck.newcontext")],
+    modifiers: [plus("wil.span", "耐得住"), minus("lck.newcontext", "没换过场子")],
+    backfire: "这张图打完之后，没有第二张",
+  },
+  {
+    key: "combo.scavenger",
+    name: "拾荒者的仓库",
+    gloss: "什么都捡，什么都不用",
+    conditions: [lo("wil.restraint"), lo("int.transfer")],
+    modifiers: [minus("wil.restraint", "见亮就捡"), minus("int.transfer", "捡了不用")],
+    alarm: true,
+  },
+  {
+    key: "combo.rightunheard",
+    name: "铁口无人听",
+    gloss: "算得准，没人听",
+    conditions: [hi("int.calibration"), lo("cha.adoption")],
+    modifiers: [plus("int.calibration", "押得准"), minus("cha.adoption", "推不动")],
+  },
+  {
+    key: "combo.deafsmith",
+    name: "闭耳的铁匠",
+    gloss: "手艺在长，反话进不来",
+    conditions: [hi("wil.span"), lo("wis.persuadable")],
+    modifiers: [plus("wil.span", "沉得住"), minus("wis.persuadable", "听不进")],
+    backfire: "方向错的时候，越沉得住亏得越大",
+    alarm: true,
+  },
+];
+
+export const COMBO_TOTAL = COMBO_LIBRARY.length;
+
+/** 组合不占光谱，用一个带前缀的假光谱名，避开互斥索引。 */
+export function comboSpectrumKey(combo: ComboTrait): string {
+  return `组合·${combo.name}`;
+}
+
+function comboQualifies(
+  combo: ComboTrait,
+  subs: Map<string, { value: number | null }>
+): boolean {
+  return combo.conditions.every((condition) => {
+    const sub = subs.get(condition.sub);
+    if (!sub || sub.value === null) return false;
+    return condition.op === "gte"
+      ? sub.value >= condition.value
+      : sub.value <= condition.value;
+  });
+}
+
 export const LIBRARY_TOTAL = TRAIT_LIBRARY.length;
 export const SPECTRUM_TOTAL = new Set(
   TRAIT_LIBRARY.map((item) => item.spectrumKey)
@@ -311,9 +541,15 @@ export function findLibraryTrait(key: string): LibraryTrait | undefined {
   return TRAIT_LIBRARY.find((item) => item.key === key);
 }
 
+export type ScanGrant =
+  | { kind: "dial"; def: LibraryTrait }
+  | { kind: "combo"; def: ComboTrait };
+
 export type ScanResult = {
   /** 该发但还没持有的。 */
   grant: LibraryTrait[];
+  /** 该发的组合特性。 */
+  combos: ComboTrait[];
   /** 已持有但数值掉回中间区、该褪色的。 */
   fade: { key: string; name: string; reason: string }[];
   /** 已经对上、不用动的。 */
@@ -339,6 +575,7 @@ export function scanLibrary(
   const occupiedSpectra = new Set(held.map((item) => item.spectrumKey));
 
   const grant: LibraryTrait[] = [];
+  const combos: ComboTrait[] = [];
   const fade: ScanResult["fade"] = [];
   const keep: string[] = [];
 
@@ -374,5 +611,22 @@ export function scanLibrary(
     }
   }
 
-  return { grant, fade, keep };
+  for (const combo of COMBO_LIBRARY) {
+    const isHeld = heldByKey.has(combo.key);
+    const qualifies = comboQualifies(combo, subs);
+    if (qualifies) {
+      if (isHeld) keep.push(combo.key);
+      else combos.push(combo);
+      continue;
+    }
+    if (isHeld) {
+      fade.push({
+        key: combo.key,
+        name: combo.name,
+        reason: "组合条件已经不同时成立",
+      });
+    }
+  }
+
+  return { grant, combos, fade, keep };
 }

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_PANEL_INPUT, buildPanel, type Panel } from "./panel";
 import {
+  COMBO_LIBRARY,
+  COMBO_TOTAL,
   LIBRARY_TOTAL,
   SPECTRUM_TOTAL,
   TRAIT_LIBRARY,
   TRAIT_THRESHOLDS,
   findLibraryTrait,
+  comboSpectrumKey,
   scanLibrary,
 } from "./trait-library";
 import { assignRarities, polarityOf } from "./traits";
@@ -179,5 +182,69 @@ describe("library entries survive the rarity rules", () => {
     ]);
     expect(trait.polarity).toBe("double");
     expect(trait.rarity).toBe("unique");
+  });
+});
+
+describe("combo traits", () => {
+  it("ships a couple dozen combos with unique keys", () => {
+    expect(COMBO_TOTAL).toBeGreaterThanOrEqual(20);
+    expect(new Set(COMBO_LIBRARY.map((item) => item.key)).size).toBe(COMBO_TOTAL);
+  });
+
+  it("needs at least two conditions — one dial is not a combo", () => {
+    for (const combo of COMBO_LIBRARY) {
+      expect(combo.conditions.length).toBeGreaterThanOrEqual(2);
+      expect(combo.modifiers.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("points every condition and modifier at a real sub attribute", () => {
+    const panel = buildPanel(EMPTY_PANEL_INPUT);
+    const subKeys = new Set(
+      panel.mains.flatMap((main) => main.subs.map((sub) => sub.key))
+    );
+    for (const combo of COMBO_LIBRARY) {
+      for (const condition of combo.conditions) {
+        expect(subKeys.has(condition.sub), combo.name).toBe(true);
+      }
+      for (const modifier of combo.modifiers) {
+        expect(subKeys.has(modifier.sub), combo.name).toBe(true);
+      }
+    }
+  });
+
+  it("keeps combos off the mutual-exclusion spectra", () => {
+    const spectra = new Set(TRAIT_LIBRARY.map((item) => item.spectrumKey));
+    for (const combo of COMBO_LIBRARY) {
+      expect(spectra.has(comboSpectrumKey(combo))).toBe(false);
+    }
+  });
+
+  it("grants only when every condition holds at once", () => {
+    const deep = scanLibrary(panelWith({ "wil.span": 18 }), []);
+    expect(deep.combos.map((item) => item.name)).not.toContain("地窖酿酒师");
+
+    const both = scanLibrary(
+      panelWith({ "wil.span": 18, "wis.contact": 3 }),
+      []
+    );
+    expect(both.combos.map((item) => item.name)).toContain("地窖酿酒师");
+  });
+
+  it("fades a combo once the conditions stop holding together", () => {
+    const result = scanLibrary(panelWith({ "wil.span": 18, "wis.contact": 12 }), [
+      { libraryKey: "combo.cellar", spectrumKey: "组合·地窖酿酒师" },
+    ]);
+    expect(result.fade.map((item) => item.name)).toContain("地窖酿酒师");
+    expect(result.fade[0].reason).toContain("不同时成立");
+  });
+
+  it("marks the alarm combos so they never read as a reward", () => {
+    const alarms = COMBO_LIBRARY.filter((combo) => combo.alarm);
+    expect(alarms.length).toBeGreaterThan(0);
+    for (const combo of alarms) {
+      // 报警型至少有一条负修正，否则它就是在夸人。
+      expect(combo.modifiers.some((m) => m.sign === "minus")).toBe(true);
+    }
   });
 });
