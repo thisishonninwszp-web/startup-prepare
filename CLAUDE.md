@@ -88,6 +88,11 @@ components/ui/       共享原子组件(shadcn 模式);页面禁止手搓 button
 6. **中文排版**:正文行高 1.75;CJK 文本禁止 `tracking-*`(仅 ASCII mono 小标签可用);
    标题只有 3 级。数据/编号用 Geist Mono。
 7. **动效**:首屏 `animate-fade-up` 一次 + 交互 `transition-colors duration-150`,仅此两种。
+   **例外(`/self` 揭晓时刻)**:`animate-self-reveal` / `animate-self-stamp` /
+   `animate-self-sheen` 三个只在 `.self-sheet` 作用域内可用,且只允许挂在
+   **一次性的揭晓结果**上(扫出新特性、结算涨档、盖修订章),
+   禁止用于常驻状态 —— 一直在闪的东西两天就看不见了。
+   全部包在 `prefers-reduced-motion: no-preference` 里。
 8. **暂不支持暗色模式**:禁止写 `dark:` 类(待正式接入主题切换后再启用)。
 
 ## 技术栈(不要替换)

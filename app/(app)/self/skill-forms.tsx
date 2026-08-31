@@ -221,9 +221,19 @@ export function SettleSkillsButton({ pendingTicks }: { pendingTicks: number }) {
       {changes && (
         <ul className="space-y-0.5 font-mono text-xs">
           {changes.length === 0 ? (
-            <li className="text-muted-foreground">这一轮没有技能变化</li>
+            <li className="animate-self-reveal text-muted-foreground">
+              这一轮没有技能变化
+            </li>
           ) : (
-            changes.map((line) => <li key={line}>{line}</li>)
+            changes.map((line, index) => (
+              <li
+                key={line}
+                className="animate-self-reveal"
+                style={{ animationDelay: `${index * 70}ms` }}
+              >
+                {line}
+              </li>
+            ))
           )}
         </ul>
       )}
@@ -281,17 +291,30 @@ export function ScanLibraryButton() {
       {result && (
         <div className="space-y-1 text-sm">
           {result.granted.length === 0 && result.faded.length === 0 && (
-            <p className="text-muted-foreground">
+            <p className="animate-self-reveal text-muted-foreground">
               这一轮没有变化。数值还在常人区，或者样本不够 —— 空着才是常态。
             </p>
           )}
-          {result.granted.map((line) => (
-            <p key={line}>
-              <span className="text-primary">解锁</span> {line}
+          {result.granted.map((line, index) => (
+            <p
+              key={line}
+              className="animate-self-reveal self-card animate-self-sheen px-3 py-1.5"
+              style={{ animationDelay: `${index * 90}ms` }}
+            >
+              <span className="animate-self-stamp mr-1.5 inline-block font-mono text-[10px] font-bold tracking-[0.12em] text-primary">
+                解锁
+              </span>
+              {line}
             </p>
           ))}
-          {result.faded.map((line) => (
-            <p key={line} className="text-muted-foreground">
+          {result.faded.map((line, index) => (
+            <p
+              key={line}
+              className="animate-self-reveal text-muted-foreground"
+              style={{
+                animationDelay: `${(result.granted.length + index) * 90}ms`,
+              }}
+            >
               褪色 {line}
             </p>
           ))}
