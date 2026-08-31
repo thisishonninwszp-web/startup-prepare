@@ -429,3 +429,108 @@
     animation: self-sheen 1.1s ease-out 0.15s both;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   品级标签本身的特效。
+   只给史诗以上 —— 普通到稀有保持安静，不然满屏都在动，稀有就不稀有了。
+   动画一律做慢（4–7 秒）、低幅度：这一页是每周要看的东西，不是抽卡界面。
+   全部只在 .self-sheet 内，并且包在 prefers-reduced-motion 里。
+--------------------------------------------------------------------------- */
+@layer components {
+  /* 渐变文字：史诗以上的标签用流动的字色，而不是死的单色 */
+  .self-sheet .self-rarity--epic,
+  .self-sheet .self-rarity--legend,
+  .self-sheet .self-rarity--unique,
+  .self-sheet .self-rarity--set {
+    background-clip: text;
+    -webkit-background-clip: text;
+    background-size: 220% 100%;
+  }
+  .self-sheet .self-rarity--epic {
+    background-image: linear-gradient(
+      100deg,
+      hsl(var(--rarity-epic)) 20%,
+      hsl(var(--rarity-epic) / 0.5) 45%,
+      hsl(var(--rarity-epic)) 70%
+    );
+    -webkit-text-fill-color: transparent;
+  }
+  .self-sheet .self-rarity--legend {
+    background-image: linear-gradient(
+      100deg,
+      hsl(var(--rarity-legend)) 18%,
+      hsl(45 85% 62%) 42%,
+      hsl(var(--rarity-legend)) 66%
+    );
+    -webkit-text-fill-color: transparent;
+    border-color: hsl(var(--rarity-legend));
+  }
+  .self-sheet .self-rarity--unique {
+    background-image: linear-gradient(
+      100deg,
+      hsl(var(--rarity-unique)) 18%,
+      hsl(42 78% 55%) 42%,
+      hsl(var(--rarity-unique)) 66%
+    );
+    -webkit-text-fill-color: transparent;
+  }
+  .self-sheet .self-rarity--set {
+    background-image: linear-gradient(
+      100deg,
+      hsl(var(--rarity-set)) 20%,
+      hsl(var(--rarity-set) / 0.45) 45%,
+      hsl(var(--rarity-set)) 70%
+    );
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes self-flow {
+    from {
+      background-position: 180% 0;
+    }
+    to {
+      background-position: -60% 0;
+    }
+  }
+  @keyframes self-breathe {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 hsl(var(--rarity-legend) / 0);
+    }
+    50% {
+      box-shadow: 0 0 6px 0 hsl(var(--rarity-legend) / 0.45);
+    }
+  }
+  @keyframes self-edge {
+    0%,
+    100% {
+      box-shadow: inset 2px 0 0 0 hsl(var(--rarity-unique) / 0.5);
+    }
+    50% {
+      box-shadow: inset 2px 0 0 0 hsl(var(--rarity-unique) / 0.95);
+    }
+  }
+
+  /* 字色缓慢流动：越稀有越慢，慢到你不会烦 */
+  .self-sheet .self-rarity--epic {
+    animation: self-flow 7s linear infinite;
+  }
+  .self-sheet .self-rarity--set {
+    animation: self-flow 6.5s linear infinite;
+  }
+  .self-sheet .self-rarity--unique {
+    animation: self-flow 5.5s linear infinite;
+  }
+  .self-sheet .self-rarity--legend {
+    animation:
+      self-flow 4.5s linear infinite,
+      self-breathe 4.5s ease-in-out infinite;
+  }
+
+  /* 暗金卡的刃口会呼吸 —— 双刃这件事本身就该让人有点不安 */
+  .self-sheet .self-card--unique {
+    animation: self-edge 5s ease-in-out infinite;
+  }
+}
