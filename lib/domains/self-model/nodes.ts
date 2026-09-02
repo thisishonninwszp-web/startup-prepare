@@ -88,7 +88,7 @@ export function buildNodes(
     skillName: def.name,
     tier: index + 1,
     stageName: FALLBACK_STAGE_NAMES[index] ?? "进阶",
-    standard: "这项还没拆成小技能",
+    standard: "",
     name: milestone.name,
     test: milestone.test,
   }));

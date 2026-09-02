@@ -56,7 +56,7 @@ export const TITLE_DEFS: TitleDef[] = [
   { key: "firstblood", name: "开口", requirement: "击败第一只 BOSS", earned: (c) => c.kills.boss >= 1 },
   { key: "firstbet", name: "下注", requirement: "对账第一条预测", earned: (c) => c.settledForecasts >= 1 },
   { key: "firstiron", name: "举铁", requirement: "记下第一条训练", earned: (c) => c.trainingDays >= 1 },
-  { key: "firsttick", name: "开工", requirement: "打第一个技能勾", earned: (c) => c.skillTicks >= 1 },
+  { key: "firsttick", name: "开工", requirement: "点亮第一个小技能", earned: (c) => c.skillTicks >= 1 },
 
   // ---- 最难也最该奖励的：承认自己错了 ----
   { key: "slapped", name: "打脸王", requirement: "推翻 3 条自己写下的判断", earned: (c) => c.refuted >= 3 },
@@ -82,10 +82,10 @@ export const TITLE_DEFS: TitleDef[] = [
   { key: "sixfaces", name: "六面", requirement: "同时持有 6 条特性", earned: (c) => c.heldTraits.length >= 6 },
 
   // ---- 技能与专长 ----
-  { key: "journeyman", name: "出师", requirement: "任意一项技能达到 60", earned: (c) => c.maxSkill >= 60 },
-  { key: "master", name: "登堂", requirement: "任意一项技能达到 80", earned: (c) => c.maxSkill >= 80 },
-  { key: "broadhand", name: "多面手", requirement: "5 项技能同时达到 40", earned: (c) => c.skillsAbove(40) >= 5 },
-  { key: "hundredticks", name: "百勾", requirement: "累计打 100 个技能勾", earned: (c) => c.skillTicks >= 100 },
+  { key: "journeyman", name: "出师", requirement: "任意一项技能走到精通", earned: (c) => c.maxSkill >= 60 },
+  { key: "master", name: "登堂", requirement: "任意一项技能走到专家", earned: (c) => c.maxSkill >= 80 },
+  { key: "broadhand", name: "多面手", requirement: "5 项技能同时入了门", earned: (c) => c.skillsAbove(40) >= 5 },
+  { key: "hundredticks", name: "百灯", requirement: "累计点亮 100 个小技能", earned: (c) => c.skillTicks >= 100 },
   { key: "firstfeat", name: "开枝", requirement: "点上第一个专长", earned: (c) => c.feats >= 1 },
   { key: "treeup", name: "成树", requirement: "点上 5 个专长", earned: (c) => c.feats >= 5 },
 

@@ -1206,13 +1206,14 @@ export default async function SelfPage() {
       <TabsContent value="skills" className="mt-6 space-y-8">
       <section className="mb-8 space-y-3">
         <div className="self-rule">
-          <h2 className="text-lg font-semibold">技能</h2>
+          <h2 className="shrink-0 text-lg font-semibold">技能</h2>
+        </div>
           <p className="text-sm text-muted-foreground">
             纵轴是层（元件→回路→模组→内核→印记），横轴是领域，
             每项技能自己再分入门/基础/精通/专家四级。
             点亮的唯一条件是写得出哪一次用它做成了什么。
           </p>
-        </div>
+
 
         <div className="space-y-3">
           {[...SKILL_LAYERS].reverse().map((layer) => {
@@ -1302,9 +1303,11 @@ export default async function SelfPage() {
                           <div key={stage.tier}>
                             <p className="flex flex-wrap items-baseline gap-2">
                               <span className="self-label">{stage.name}</span>
-                              <span className="text-[12px]">
-                                {stage.standard}
-                              </span>
+                              {stage.standard && (
+                                <span className="text-[12px]">
+                                  {stage.standard}
+                                </span>
+                              )}
                               {stage.blockedBy && (
                                 <span className="font-mono text-[11px] text-muted-foreground">
                                   {stage.blockedBy}
@@ -1381,25 +1384,19 @@ export default async function SelfPage() {
               <summary className="self-panel__head cursor-pointer">
                 <span className="self-label">{path.line}</span>
                 <span className="text-sm font-medium">{path.name}</span>
-                <span className="ml-2 flex items-center gap-1 font-mono text-sm">
-                  {path.steps.map((step, index) => (
-                    <span key={step.def.key} className="flex items-center gap-1">
-                      {index > 0 && (
-                        <span className="text-muted-foreground">━</span>
-                      )}
-                      <span
-                        className={`self-node ${
-                          step.taken
-                            ? "self-node--taken"
-                            : step.unlocked
-                              ? "self-node--open"
-                              : "self-node--locked"
-                        }`}
-                        title={step.def.name}
-                      >
-                        {step.taken ? "●" : step.unlocked ? "◐" : "○"}
-                      </span>
-                    </span>
+                <span className="ml-2 flex min-w-0 flex-wrap items-center gap-1">
+                  {path.steps.map((step) => (
+                    <span
+                      key={step.def.key}
+                      className={`self-pip ${
+                        step.taken
+                          ? "self-pip--lit"
+                          : step.unlocked
+                            ? "self-pip--open"
+                            : "self-pip--locked"
+                      }`}
+                      title={step.def.name}
+                    />
                   ))}
                 </span>
                 <span className="ml-auto font-mono text-xs tabular-nums">
@@ -1471,12 +1468,13 @@ export default async function SelfPage() {
       <TabsContent value="classes" className="mt-6 space-y-8">
       <section className="mb-8 space-y-3">
         <div className="self-rule">
-          <h2 className="text-lg font-semibold">职业</h2>
+          <h2 className="shrink-0 text-lg font-semibold">职业</h2>
+        </div>
           <p className="text-sm text-muted-foreground">
             没有「选择职业」这个动作 —— 选了就变成一句自述，而自述没有分母。
             契合度只由你点亮的节点算出来。
           </p>
-        </div>
+
 
         <div className="grid gap-3 lg:grid-cols-2">
           {fits.map((fit) => (
