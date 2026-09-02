@@ -43,10 +43,6 @@ import {
   type Trait,
 } from "@/lib/domains/self-model/traits";
 import {
-  SKILL_GROUP_NAMES,
-  SKILL_LAYERS,
-  SKILL_LAYER_GLOSS,
-  SKILL_LAYER_NAMES,
   featPaths,
 } from "@/lib/domains/self-model/skills";
 import {
@@ -76,12 +72,10 @@ import {
   stateOf,
 } from "@/lib/domains/self-model/dispositions";
 import { classFits } from "@/lib/domains/self-model/classes";
+import { SkillTree } from "./skill-tree";
 import {
   DeedForm,
-  DecomposeSkillControl,
   DispositionSuggest,
-  RelockNodeControl,
-  UnlockNodeControl,
   DispositionToggle,
   PromoteDispositionButton,
   QuestRollCall,
@@ -693,7 +687,6 @@ export default async function SelfPage() {
     litDomains: panel.panel.domains.filter((domain) => domain.lit > 0).length,
   });
   const skillTree = await getSkillTree(user!.id);
-  const customisedSkills = new Set(skillTree.customised ?? []);
   const reachedBySkill = new Map(
     skillTree.entries.map((entry) => [entry.def.key, entry.reached])
   );
@@ -1215,155 +1208,10 @@ export default async function SelfPage() {
           </p>
 
 
-        <div className="space-y-3">
-          {[...SKILL_LAYERS].reverse().map((layer) => {
-            const rows = skillTree.entries.filter(
-              (entry) => entry.def.layer === layer
-            );
-            return (
-              <details
-                key={layer}
-                className="self-panel self-corners"
-                open={layer === "component" || layer === "circuit"}
-              >
-                <summary className="self-panel__head cursor-pointer">
-                  <span className="self-label">
-                    {SKILL_LAYER_NAMES[layer]}
-                  </span>
-                  <span className="flex-1 text-[12px] text-muted-foreground">
-                    {SKILL_LAYER_GLOSS[layer]}
-                  </span>
-                  <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
-                    {rows.filter((entry) => entry.reached > 0).length}/
-                    {rows.length}
-                  </span>
-                </summary>
-                <div className="self-panel__body self-spine pt-1">
-                  {rows.map((entry) => (
-                    <details key={entry.def.key} className="self-row py-1.5">
-                      <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-[13px]">
-                        <span
-                          className="min-w-[7rem] flex-1 cursor-help decoration-dotted underline-offset-4 hover:underline"
-                          title={`${entry.def.name} —— ${entry.def.gloss}`}
-                        >
-                          {entry.def.name}
-                          <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-                            {SKILL_GROUP_NAMES[entry.def.group]}
-                          </span>
-                          {(entry.def.requires ?? []).length > 0 && (
-                            <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-                              ←{" "}
-                              {(entry.def.requires ?? [])
-                                .map(skillNameOf)
-                                .join(" ")}
-                            </span>
-                          )}
-                        </span>
-                        <span className="self-track">
-                          {entry.stages.map((stage) => (
-                            <span
-                              key={stage.tier}
-                              title={`${stage.name}：${stage.standard}`}
-                            >
-                              <span
-                                className={`self-pip ${
-                                  stage.cleared
-                                    ? "self-pip--lit"
-                                    : stage.open
-                                      ? "self-pip--open"
-                                      : "self-pip--locked"
-                                }`}
-                              />
-                            </span>
-                          ))}
-                        </span>
-                        <span className="w-24 text-right font-mono text-xs tabular-nums">
-                          <span className="font-semibold">
-                            {STAGE_LABELS[entry.reached] ?? "未开"}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {" "}
-                            {entry.unlocked}/{entry.total}
-                          </span>
-                        </span>
-                      </summary>
-
-                      <div className="mt-2 space-y-3 pl-1">
-                        {entry.rough && (
-                          <p className="font-mono text-[11px] text-muted-foreground">
-                            这项还没拆成小技能，先按三档粗着走。
-                          </p>
-                        )}
-                        <DecomposeSkillControl
-                          skillKey={entry.def.key}
-                          skillName={entry.def.name}
-                          customised={customisedSkills.has(entry.def.key)}
-                        />
-                        {entry.stages.map((stage) => (
-                          <div key={stage.tier}>
-                            <p className="flex flex-wrap items-baseline gap-2">
-                              <span className="self-label">{stage.name}</span>
-                              {stage.standard && (
-                                <span className="text-[12px]">
-                                  {stage.standard}
-                                </span>
-                              )}
-                              {stage.blockedBy && (
-                                <span className="font-mono text-[11px] text-muted-foreground">
-                                  {stage.blockedBy}
-                                </span>
-                              )}
-                            </p>
-                            <ul className="mt-1 space-y-1">
-                              {stage.nodes.map((item) => (
-                                <li
-                                  key={item.node.key}
-                                  className="flex flex-wrap items-start gap-2 text-[12px]"
-                                >
-                                  <span
-                                    className={`self-pip self-pip--sm mt-1 ${
-                                      item.unlocked
-                                        ? "self-pip--lit"
-                                        : item.available
-                                          ? "self-pip--open"
-                                          : "self-pip--locked"
-                                    }`}
-                                  />
-                                  <span className="min-w-[6rem] font-medium">
-                                    {item.node.name}
-                                  </span>
-                                  <span className="flex-1 text-muted-foreground">
-                                    {item.node.test}
-                                  </span>
-                                  {item.unlocked ? (
-                                    <span className="flex items-center gap-2">
-                                      <span className="font-mono text-[11px] text-muted-foreground">
-                                        {item.unlockedOn} · {item.proof}
-                                      </span>
-                                      <RelockNodeControl
-                                        nodeKey={item.node.key}
-                                      />
-                                    </span>
-                                  ) : item.available ? (
-                                    <UnlockNodeControl
-                                      nodeKey={item.node.key}
-                                      nodeName={item.node.name}
-                                      test={item.node.test}
-                                    />
-                                  ) : null}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </details>
-            );
-          })}
-        </div>
+        <SkillTree
+          entries={skillTree.entries}
+          customised={skillTree.customised ?? []}
+        />
       </section>
 
       <section className="mb-8 space-y-3">
