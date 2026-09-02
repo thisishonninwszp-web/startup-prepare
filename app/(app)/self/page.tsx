@@ -136,7 +136,7 @@ function Stat({
   sub?: string;
 }) {
   return (
-    <div className="self-panel space-y-0.5 px-4 py-3">
+    <div className="self-panel self-corners space-y-0.5 px-4 py-3">
       <p className="self-label">{label}</p>
       <p className="text-xl font-semibold tabular-nums">{value}</p>
       {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
@@ -865,7 +865,7 @@ export default async function SelfPage() {
       />
 
       <section className="mb-6">
-        <div className="self-frame flex flex-wrap items-end gap-x-6 gap-y-3 p-5">
+        <div className="self-plate self-corners flex flex-wrap items-end gap-x-6 gap-y-3 p-5">
           <div>
             <p className="self-label">流派 · 由持有的特性推出</p>
             <p className="text-2xl font-semibold">
@@ -875,6 +875,19 @@ export default async function SelfPage() {
               {build
                 ? `${build.def.play} · 天然弱点：${build.def.weakness}`
                 : "还没有两条特性对上同一种打法。流派不是选的，是长出来的。"}
+            </p>
+          </div>
+          <div className="min-w-[12rem]">
+            <p className="self-label">形状 · 由点亮的节点推出</p>
+            <p className="text-2xl font-semibold">
+              {fits[0].started > 0 ? fits[0].def.name : "未成形"}
+            </p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {fits[0].started > 0
+                ? `${fits[0].def.skills.length} 门里入门 ${fits[0].started} 门${
+                    fits[0].deep > 0 ? ` · 精通 ${fits[0].deep}` : ""
+                  }`
+                : "还没有点亮任何小技能。形状不是选的，是走出来的。"}
             </p>
           </div>
           <div className="ml-auto min-w-[14rem]">
@@ -1192,7 +1205,7 @@ export default async function SelfPage() {
 
       <TabsContent value="skills" className="mt-6 space-y-8">
       <section className="mb-8 space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="self-rule">
           <h2 className="text-lg font-semibold">技能</h2>
           <p className="text-sm text-muted-foreground">
             纵轴是层（元件→回路→模组→内核→印记），横轴是领域，
@@ -1209,7 +1222,7 @@ export default async function SelfPage() {
             return (
               <details
                 key={layer}
-                className="self-panel"
+                className="self-panel self-corners"
                 open={layer === "component" || layer === "circuit"}
               >
                 <summary className="self-panel__head cursor-pointer">
@@ -1224,7 +1237,7 @@ export default async function SelfPage() {
                     {rows.length}
                   </span>
                 </summary>
-                <div className="self-panel__body pt-1">
+                <div className="self-panel__body self-spine pt-1">
                   {rows.map((entry) => (
                     <details key={entry.def.key} className="self-row py-1.5">
                       <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-[13px]">
@@ -1245,20 +1258,21 @@ export default async function SelfPage() {
                             </span>
                           )}
                         </span>
-                        <span className="flex items-center gap-1 font-mono text-sm">
+                        <span className="self-track">
                           {entry.stages.map((stage) => (
                             <span
                               key={stage.tier}
-                              className={`self-node ${
-                                stage.cleared
-                                  ? "self-node--taken"
-                                  : stage.open
-                                    ? "self-node--open"
-                                    : "self-node--locked"
-                              }`}
                               title={`${stage.name}：${stage.standard}`}
                             >
-                              {stage.cleared ? "●" : stage.open ? "◐" : "○"}
+                              <span
+                                className={`self-pip ${
+                                  stage.cleared
+                                    ? "self-pip--lit"
+                                    : stage.open
+                                      ? "self-pip--open"
+                                      : "self-pip--locked"
+                                }`}
+                              />
                             </span>
                           ))}
                         </span>
@@ -1304,14 +1318,14 @@ export default async function SelfPage() {
                                   className="flex flex-wrap items-start gap-2 text-[12px]"
                                 >
                                   <span
-                                    className={`font-mono ${
+                                    className={`self-pip self-pip--sm mt-1 ${
                                       item.unlocked
-                                        ? "text-primary"
-                                        : "text-muted-foreground"
+                                        ? "self-pip--lit"
+                                        : item.available
+                                          ? "self-pip--open"
+                                          : "self-pip--locked"
                                     }`}
-                                  >
-                                    {item.unlocked ? "●" : "○"}
-                                  </span>
+                                  />
                                   <span className="min-w-[6rem] font-medium">
                                     {item.node.name}
                                   </span>
@@ -1456,7 +1470,7 @@ export default async function SelfPage() {
 
       <TabsContent value="classes" className="mt-6 space-y-8">
       <section className="mb-8 space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="self-rule">
           <h2 className="text-lg font-semibold">职业</h2>
           <p className="text-sm text-muted-foreground">
             没有「选择职业」这个动作 —— 选了就变成一句自述，而自述没有分母。
@@ -1466,22 +1480,30 @@ export default async function SelfPage() {
 
         <div className="grid gap-3 lg:grid-cols-2">
           {fits.map((fit) => (
-            <details key={fit.def.key} className="self-panel">
+            <details key={fit.def.key} className="self-panel self-corners">
               <summary className="self-panel__head cursor-pointer">
                 <span className="text-sm font-medium">{fit.def.name}</span>
                 <span className="flex-1 text-[12px] text-muted-foreground">
                   {fit.def.gloss}
                 </span>
-                <span className="ml-auto font-mono text-xs tabular-nums">
+                <span className="ml-auto flex items-center gap-2 font-mono text-xs tabular-nums">
+                  <span
+                    className="self-meter"
+                    title={`${fit.def.skills.length} 门里入门了 ${fit.started} 门`}
+                  >
+                    {fit.def.skills.map((key, index) => (
+                      <i key={key} data-on={index < fit.started ? "1" : "0"} />
+                    ))}
+                  </span>
                   {fit.started > 0 ? (
-                    <>
-                      入门 {fit.started}/{fit.total}
+                    <span>
+                      {fit.started}/{fit.total}
                       {fit.deep > 0 && (
                         <span className="ml-1.5 text-primary">
                           精通 {fit.deep}
                         </span>
                       )}
-                    </>
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">未涉足</span>
                   )}
@@ -1498,11 +1520,16 @@ export default async function SelfPage() {
                     return (
                       <span
                         key={key}
-                        className={
+                        className={`inline-flex items-center gap-1 ${
                           reached > 0 ? "text-foreground" : "text-muted-foreground"
-                        }
+                        }`}
                       >
-                        {reached > 0 ? "●" : "○"} {skillNameOf(key)}
+                        <span
+                          className={`self-pip self-pip--sm ${
+                            reached > 0 ? "self-pip--lit" : "self-pip--locked"
+                          }`}
+                        />
+                        {skillNameOf(key)}
                         {reached > 0 && (
                           <span className="text-muted-foreground">
                             {" "}
@@ -1516,11 +1543,16 @@ export default async function SelfPage() {
                 <p className="border-t pt-2 font-mono text-[11px]">
                   <span className="self-label mr-2">印记</span>
                   <span
-                    className={
+                    className={`inline-flex items-center gap-1 ${
                       fit.signatureLit ? "text-primary" : "text-muted-foreground"
-                    }
+                    }`}
                   >
-                    {fit.signatureLit ? "●" : "○"} {skillNameOf(fit.def.signature)}
+                    <span
+                      className={`self-pip self-pip--sm ${
+                        fit.signatureLit ? "self-pip--lit" : "self-pip--locked"
+                      }`}
+                    />
+                    {skillNameOf(fit.def.signature)}
                   </span>
                 </p>
                 {fit.nextSkill && (
