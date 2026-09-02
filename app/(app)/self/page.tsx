@@ -43,8 +43,10 @@ import {
   type Trait,
 } from "@/lib/domains/self-model/traits";
 import {
-  SKILL_GROUPS,
   SKILL_GROUP_NAMES,
+  SKILL_LAYERS,
+  SKILL_LAYER_GLOSS,
+  SKILL_LAYER_NAMES,
   featPaths,
 } from "@/lib/domains/self-model/skills";
 import {
@@ -73,8 +75,8 @@ import {
   matchTypes,
   stateOf,
 } from "@/lib/domains/self-model/dispositions";
+import { classFits } from "@/lib/domains/self-model/classes";
 import {
-  CharacterCreationForm,
   DeedForm,
   DecomposeSkillControl,
   DispositionSuggest,
@@ -692,6 +694,12 @@ export default async function SelfPage() {
   });
   const skillTree = await getSkillTree(user!.id);
   const customisedSkills = new Set(skillTree.customised ?? []);
+  const reachedBySkill = new Map(
+    skillTree.entries.map((entry) => [entry.def.key, entry.reached])
+  );
+  const fits = classFits(reachedBySkill);
+  const skillNameOf = (key: string) =>
+    skillTree.entries.find((entry) => entry.def.key === key)?.def.name ?? key;
 
   const heldTraitNames = heldTraits.map((trait) => trait.name);
   const build = matchBuild(heldTraitNames);
@@ -791,7 +799,7 @@ export default async function SelfPage() {
         domain: sub.domain,
       })),
     state: {
-      hasCharacter: skillState.started,
+      hasCharacter: skillTree.unlockedCount > 0,
       openTicks: skillTree.unlockedCount,
       stalled: skillTree.entries
         .filter((entry) => entry.reached >= 1 && entry.next === null)
@@ -909,6 +917,7 @@ export default async function SelfPage() {
           <TabsTrigger value="overview">总览</TabsTrigger>
           <TabsTrigger value="attributes">属性</TabsTrigger>
           <TabsTrigger value="skills">技能</TabsTrigger>
+          <TabsTrigger value="classes">职业</TabsTrigger>
           <TabsTrigger value="traits">特性</TabsTrigger>
           <TabsTrigger value="ledger">台账</TabsTrigger>
           <TabsTrigger value="deeds">事迹</TabsTrigger>
@@ -1186,35 +1195,35 @@ export default async function SelfPage() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">技能</h2>
           <p className="text-sm text-muted-foreground">
-            不打分。一项技能拆成入门 / 基础 / 精通 / 专家四级，每级下面几个小技能；
-            小技能点齐才算过这一级。点亮的唯一条件是写得出哪一次用它做成了什么。
+            纵轴是层（元件→回路→模组→内核→印记），横轴是领域，
+            每项技能自己再分入门/基础/精通/专家四级。
+            点亮的唯一条件是写得出哪一次用它做成了什么。
           </p>
         </div>
 
-        {!skillState.started && (
-          <div className="self-panel p-5">
-            <h3 className="mb-3 text-sm font-medium">建卡</h3>
-            <CharacterCreationForm />
-          </div>
-        )}
-
-        <div className="grid gap-3 lg:grid-cols-2">
-          {SKILL_GROUPS.map((group) => {
+        <div className="space-y-3">
+          {[...SKILL_LAYERS].reverse().map((layer) => {
             const rows = skillTree.entries.filter(
-              (entry) => entry.def.group === group
+              (entry) => entry.def.layer === layer
             );
             return (
-              <div key={group} className="self-panel">
-                <div className="self-panel__head">
-                  <span className="self-label">{group}</span>
-                  <span className="text-sm font-medium">
-                    {SKILL_GROUP_NAMES[group]}
+              <details
+                key={layer}
+                className="self-panel"
+                open={layer === "component" || layer === "circuit"}
+              >
+                <summary className="self-panel__head cursor-pointer">
+                  <span className="self-label">
+                    {SKILL_LAYER_NAMES[layer]}
+                  </span>
+                  <span className="flex-1 text-[12px] text-muted-foreground">
+                    {SKILL_LAYER_GLOSS[layer]}
                   </span>
                   <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
                     {rows.filter((entry) => entry.reached > 0).length}/
                     {rows.length}
                   </span>
-                </div>
+                </summary>
                 <div className="self-panel__body pt-1">
                   {rows.map((entry) => (
                     <details key={entry.def.key} className="self-row py-1.5">
@@ -1224,6 +1233,17 @@ export default async function SelfPage() {
                           title={`${entry.def.name} —— ${entry.def.gloss}`}
                         >
                           {entry.def.name}
+                          <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                            {SKILL_GROUP_NAMES[entry.def.group]}
+                          </span>
+                          {(entry.def.requires ?? []).length > 0 && (
+                            <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                              ←{" "}
+                              {(entry.def.requires ?? [])
+                                .map(skillNameOf)
+                                .join(" ")}
+                            </span>
+                          )}
                         </span>
                         <span className="flex items-center gap-1 font-mono text-sm">
                           {entry.stages.map((stage) => (
@@ -1323,7 +1343,7 @@ export default async function SelfPage() {
                     </details>
                   ))}
                 </div>
-              </div>
+              </details>
             );
           })}
         </div>
@@ -1429,6 +1449,94 @@ export default async function SelfPage() {
         <p className="text-xs text-muted-foreground">
           比较优势不在任何单一一条线上，它长在两条线的交叉处 ——
           组合专长要求你同时点到两条线的一定深度。
+        </p>
+      </section>
+      </TabsContent>
+
+
+      <TabsContent value="classes" className="mt-6 space-y-8">
+      <section className="mb-8 space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">职业</h2>
+          <p className="text-sm text-muted-foreground">
+            没有「选择职业」这个动作 —— 选了就变成一句自述，而自述没有分母。
+            契合度只由你点亮的节点算出来。
+          </p>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          {fits.map((fit) => (
+            <details key={fit.def.key} className="self-panel">
+              <summary className="self-panel__head cursor-pointer">
+                <span className="text-sm font-medium">{fit.def.name}</span>
+                <span className="flex-1 text-[12px] text-muted-foreground">
+                  {fit.def.gloss}
+                </span>
+                <span className="ml-auto font-mono text-xs tabular-nums">
+                  {fit.started > 0 ? (
+                    <>
+                      入门 {fit.started}/{fit.total}
+                      {fit.deep > 0 && (
+                        <span className="ml-1.5 text-primary">
+                          精通 {fit.deep}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">未涉足</span>
+                  )}
+                </span>
+              </summary>
+
+              <div className="self-panel__body space-y-2 pt-2">
+                <p className="text-[12px] text-muted-foreground">
+                  {fit.def.why}
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]">
+                  {fit.def.skills.map((key) => {
+                    const reached = reachedBySkill.get(key) ?? 0;
+                    return (
+                      <span
+                        key={key}
+                        className={
+                          reached > 0 ? "text-foreground" : "text-muted-foreground"
+                        }
+                      >
+                        {reached > 0 ? "●" : "○"} {skillNameOf(key)}
+                        {reached > 0 && (
+                          <span className="text-muted-foreground">
+                            {" "}
+                            {STAGE_LABELS[reached]}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+                <p className="border-t pt-2 font-mono text-[11px]">
+                  <span className="self-label mr-2">印记</span>
+                  <span
+                    className={
+                      fit.signatureLit ? "text-primary" : "text-muted-foreground"
+                    }
+                  >
+                    {fit.signatureLit ? "●" : "○"} {skillNameOf(fit.def.signature)}
+                  </span>
+                </p>
+                {fit.nextSkill && (
+                  <p className="font-mono text-[11px] text-primary">
+                    离它最近的一步：「{skillNameOf(fit.nextSkill)}」还没入门
+                  </p>
+                )}
+              </div>
+            </details>
+          ))}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          这十一个不是让你挑一个。它们是用来看你无意中长成了什么形状的 ——
+          你多半会发现自己以为在走的那条，和实际点亮的那条不是同一条。
+          印记层这辈子点亮两三个就够，点满不是目标。
         </p>
       </section>
       </TabsContent>

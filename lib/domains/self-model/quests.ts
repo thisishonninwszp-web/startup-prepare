@@ -251,9 +251,9 @@ function stateQuests(state: QuestState): Quest[] {
     push({
       id: "state:character",
       tier: "trash",
-      name: "建卡",
-      action: "45 项技能各给一个起始值，凭直觉，15 分钟",
-      drop: "技能表与专长树解锁 —— 在这之前它们整个是死的",
+      name: "走进技能树",
+      action: "从元件层挑一个你已经做到过的小技能，写下那一次",
+      drop: "整棵树开始有形状 —— 在这之前它是一张平表",
       attribute: "INT",
       domain: "self",
       exp: TIER_EXP.trash,

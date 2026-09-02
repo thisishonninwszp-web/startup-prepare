@@ -16,6 +16,13 @@ function unlocked(...keys: string[]) {
   );
 }
 
+/** 一项技能第一级的全部小技能。 */
+function tierOne(key: string) {
+  return ALL_NODES.filter((node) => node.skillKey === key && node.tier === 1).map(
+    (node) => node.key
+  );
+}
+
 /** listening 第一级的全部小技能。 */
 const LISTEN_1 = SKILL_STAGES.listening[0].nodes.map((_, index) =>
   nodeKey("listening", 1, index)
@@ -63,7 +70,7 @@ describe("buildSkillTree", () => {
     const tree = buildSkillTree(unlocked());
     const asking = tree.find((entry) => entry.def.key === "asking")!;
     expect(asking.stages[0].open).toBe(false);
-    expect(asking.stages[0].blockedBy).toContain("听风");
+    expect(asking.stages[0].blockedBy).toContain("倾听");
   });
 
   it("needs the whole foundation tier, not just one node, to open the next", () => {
@@ -72,7 +79,7 @@ describe("buildSkillTree", () => {
       partial.find((entry) => entry.def.key === "asking")!.stages[0].open
     ).toBe(false);
 
-    const full = buildSkillTree(unlocked(...LISTEN_1));
+    const full = buildSkillTree(unlocked(...LISTEN_1, ...tierOne("askbasic")));
     expect(
       full.find((entry) => entry.def.key === "asking")!.stages[0].open
     ).toBe(true);
@@ -134,12 +141,17 @@ describe("canUnlock", () => {
   it("refuses an advanced skill with no foundation, and names what is missing", () => {
     const result = canUnlock(nodeKey("asking", 1, 0), new Set());
     expect(result.ok).toBe(false);
-    expect(result.reason).toContain("听风");
+    expect(result.reason).toContain("倾听");
   });
 
   it("allows it once the path is clear", () => {
     expect(canUnlock(LISTEN_1[0], new Set()).ok).toBe(true);
-    expect(canUnlock(nodeKey("asking", 1, 0), new Set(LISTEN_1)).ok).toBe(true);
+    expect(
+      canUnlock(
+        nodeKey("asking", 1, 0),
+        new Set([...LISTEN_1, ...tierOne("askbasic")])
+      ).ok
+    ).toBe(true);
   });
 });
 
@@ -154,7 +166,7 @@ describe("startedSkills", () => {
 describe("stage overrides", () => {
   const custom = new Map([
     [
-      "finance",
+      "observing",
       [1, 2, 3, 4].map((tier) => ({
         tier,
         name: ["入门", "基础", "精通", "专家"][tier - 1],
@@ -169,7 +181,7 @@ describe("stage overrides", () => {
 
   it("replaces the built-in decomposition for that skill only", () => {
     const tree = buildSkillTree(unlocked(), custom);
-    const finance = tree.find((entry) => entry.def.key === "finance")!;
+    const finance = tree.find((entry) => entry.def.key === "observing")!;
     expect(finance.total).toBe(8);
     expect(finance.rough).toBe(false);
     expect(finance.stages[0].nodes[0].node.name).toBe("动作1A");
@@ -181,14 +193,14 @@ describe("stage overrides", () => {
   });
 
   it("keys a custom node by its stable id, not its position", () => {
-    expect(nodeKey("finance", 2, "n21")).toBe("finance:2:n21");
-    expect(canUnlock("finance:1:n11", new Set(), custom).ok).toBe(true);
-    expect(canUnlock("finance:2:n21", new Set(), custom).reason).toContain(
+    expect(nodeKey("observing", 2, "n21")).toBe("observing:2:n21");
+    expect(canUnlock("observing:1:n11", new Set(), custom).ok).toBe(true);
+    expect(canUnlock("observing:2:n21", new Set(), custom).reason).toContain(
       "点齐"
     );
   });
 
   it("does not know a custom node without the override", () => {
-    expect(canUnlock("finance:1:n11", new Set()).ok).toBe(false);
+    expect(canUnlock("observing:1:n11", new Set()).ok).toBe(false);
   });
 });

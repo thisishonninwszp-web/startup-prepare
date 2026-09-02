@@ -12,6 +12,7 @@ import {
   MAX_TICKS_PER_SEASON,
   SKILL_DEFS,
   SKILL_GROUPS,
+  SKILL_LAYERS,
   SKILL_TOTAL,
   evaluateFeat,
   evaluateFeats,
@@ -29,9 +30,76 @@ function skill(over: Partial<SkillState> = {}): SkillState {
 }
 
 describe("skill catalogue", () => {
-  it("ships sixty-three skills with unique keys", () => {
-    expect(SKILL_TOTAL).toBe(63);
-    expect(new Set(SKILL_DEFS.map((item) => item.key)).size).toBe(63);
+  it("ships a hundred-odd skills with unique keys", () => {
+    expect(SKILL_TOTAL).toBe(SKILL_DEFS.length);
+    expect(new Set(SKILL_DEFS.map((item) => item.key)).size).toBe(SKILL_TOTAL);
+  });
+
+  it("keeps the bottom layer the widest — a tree you cannot start is useless", () => {
+    const count = (layer: string) =>
+      SKILL_DEFS.filter((def) => def.layer === layer).length;
+    expect(count("component")).toBeGreaterThan(12);
+    expect(count("signature")).toBeLessThan(count("core"));
+  });
+
+  it("never lets a skill rest on something above it", () => {
+    // 同层互搭是允许的（谈判确实建在说服旁边），往上搭不行 —— 那是循环。
+    const rank = (key: string) =>
+      SKILL_LAYERS.indexOf(SKILL_DEFS.find((def) => def.key === key)!.layer);
+    for (const def of SKILL_DEFS) {
+      for (const required of def.requires ?? []) {
+        expect(
+          SKILL_DEFS.some((item) => item.key === required),
+          `${def.key} 的前置 ${required} 不存在`
+        ).toBe(true);
+        expect(rank(required), `${def.key} → ${required}`).toBeLessThanOrEqual(
+          rank(def.key)
+        );
+      }
+    }
+  });
+
+  it("makes every deep skill actually stand on the layers below it", () => {
+    const rank = (key: string) =>
+      SKILL_LAYERS.indexOf(SKILL_DEFS.find((def) => def.key === key)!.layer);
+    for (const def of SKILL_DEFS) {
+      if (def.layer !== "core" && def.layer !== "signature") continue;
+      const below = (def.requires ?? []).filter(
+        (required) => rank(required) < rank(def.key)
+      );
+      expect(below.length, `${def.key} 没有踩在下面任何一层上`).toBeGreaterThan(
+        0
+      );
+    }
+  });
+
+  it("has no cycles — you can always start somewhere", () => {
+    const byKey = new Map(SKILL_DEFS.map((def) => [def.key, def]));
+    const state = new Map<string, number>();
+    const walk = (key: string, trail: string[]): void => {
+      if (state.get(key) === 2) return;
+      expect(state.get(key), `环：${[...trail, key].join(" → ")}`).not.toBe(1);
+      state.set(key, 1);
+      for (const required of byKey.get(key)?.requires ?? []) {
+        walk(required, [...trail, key]);
+      }
+      state.set(key, 2);
+    };
+    for (const def of SKILL_DEFS) walk(def.key, []);
+  });
+
+  it("makes the deep layers reach across domains — that is what deep means", () => {
+    const groupOf = (key: string) =>
+      SKILL_DEFS.find((def) => def.key === key)!.group;
+    const deep = SKILL_DEFS.filter(
+      (def) => def.layer === "core" || def.layer === "signature"
+    );
+    const crossing = deep.filter((def) => {
+      const groups = new Set((def.requires ?? []).map(groupOf));
+      groups.add(def.group);
+      return groups.size > 1;
+    });
+    expect(crossing.length).toBeGreaterThan(deep.length * 0.6);
   });
 
   it("stacks advanced skills on top of base ones", () => {
@@ -39,7 +107,7 @@ describe("skill catalogue", () => {
     // 一半以上的技能有地基，树才是树，不是一张平表。
     expect(advanced.length).toBeGreaterThan(SKILL_DEFS.length / 2);
     const narrative = SKILL_DEFS.find((def) => def.key === "narrative")!;
-    expect(narrative.requires).toEqual(["rhetoric", "structure"]);
+    expect(narrative.requires).toEqual(["structure", "writing"]);
   });
 
   it("puts every skill in one of the six groups", () => {
@@ -121,7 +189,7 @@ describe("feats", () => {
   it("spells out exactly which skill is short and by how much", () => {
     const result = evaluateFeat(coldread, ctx({ skills: { asking: 20, listening: 40 } }));
     expect(result.unlocked).toBe(false);
-    expect(result.missing).toEqual(["叩问 20/30"]);
+    expect(result.missing).toEqual(["质询 20/30"]);
   });
 
   it("unlocks once every prerequisite is met", () => {
@@ -254,7 +322,7 @@ describe("the tree", () => {
     const interview = paths.find((path) => path.line === "interview")!;
     expect(interview.reached).toBe(1);
     expect(interview.next?.def.name).toBe("深访");
-    expect(interview.next?.missing.join(" ")).toContain("明眼");
+    expect(interview.next?.missing.join(" ")).toContain("观察");
   });
 });
 
@@ -290,10 +358,10 @@ describe("skill prerequisites and milestones", () => {
   });
 
   it("caps a skill at its weakest foundation plus the headroom", () => {
-    const base = { ...values, listening: 20 };
+    const base = { ...values, listening: 20, askbasic: 90 };
     const { ceiling, limitedBy } = skillCeiling("asking", base);
     expect(ceiling).toBe(20 + SKILL_HEADROOM);
-    expect(limitedBy?.name).toBe("听风");
+    expect(limitedBy?.name).toBe("倾听");
   });
 
   it("lets a skill with no prerequisites go all the way", () => {
@@ -302,8 +370,8 @@ describe("skill prerequisites and milestones", () => {
   });
 
   it("picks the weakest of several foundations", () => {
-    const base = { ...values, persuading: 70, listening: 30 };
-    expect(skillCeiling("negotiating", base).limitedBy?.name).toBe("听风");
+    const base = { ...values, probing: 70, arithmetic: 70, listening: 30 };
+    expect(skillCeiling("negotiating", base).limitedBy?.name).toBe("倾听");
   });
 
   it("stops growth at the ceiling — you must go back and fill the base", () => {
