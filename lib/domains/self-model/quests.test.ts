@@ -200,20 +200,21 @@ describe("state quests", () => {
     expect(ids({ hasCharacter: true })).not.toContain("state:character");
   });
 
-  it("only nags about settling once a few ticks have piled up", () => {
-    expect(ids({ openTicks: 2 })).not.toContain("state:settle");
-    expect(ids({ openTicks: 3 })).toContain("state:settle");
+  it("nudges the very first node, then stops", () => {
+    expect(ids({ openTicks: 0 })).toContain("state:firstnode");
+    expect(ids({ openTicks: 1 })).not.toContain("state:firstnode");
   });
 
-  it("names the rusting skill and how long it has been idle", () => {
+  it("names the stalled skill and where it stopped", () => {
     const quests = buildQuests({
       ...base,
       state: {
-        rusting: [{ key: "coldopen", name: "冷启动开口", daysSinceTick: 170 }],
+        openTicks: 4,
+        stalled: [{ key: "coldopen", name: "冷启动开口", stage: "基础" }],
       },
     });
     expect(quests[0].name).toContain("冷启动开口");
-    expect(quests[0].action).toContain("170");
+    expect(quests[0].name).toContain("基础");
   });
 
   it("offers a feat only when there is a point left to spend", () => {

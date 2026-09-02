@@ -26,6 +26,7 @@ import {
   type DispositionNomination,
 } from "@/lib/ai";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
+import { ALL_NODES, canUnlock } from "@/lib/domains/self-model/nodes";
 import { isoWeekKey } from "@/lib/domains/self-model/quests";
 import {
   scanCatalog,
@@ -918,6 +919,75 @@ export async function acceptNomination(input: {
     user_id: userId,
     text: `custom:${name}｜${input.claim.trim()}｜${test}`,
   });
+  if (error) throw new Error(error.message);
+  revalidatePath("/self");
+}
+
+/**
+ * 点亮一个技能节点。
+ *
+ * proof 必填：写不出"什么时候、用它做成了什么"，这个节点就不该亮。
+ * 这跟别处那条规矩是同一条 —— 看教程不算，读书不算，想明白了不算。
+ */
+export async function unlockSkillNode(input: {
+  nodeKey: string;
+  proof: string;
+}): Promise<void> {
+  const userId = await requireUserId();
+  const proof = required(input.proof, "证据");
+
+  const { data, error: readError } = await supabaseAdmin
+    .from("self_skill_nodes")
+    .select("node_key")
+    .eq("user_id", userId);
+  if (readError) throw new Error(readError.message);
+
+  const unlockedKeys = new Set(
+    ((data ?? []) as { node_key: string }[]).map((row) => row.node_key)
+  );
+  const check = canUnlock(input.nodeKey, unlockedKeys);
+  if (!check.ok) throw new Error(check.reason ?? "现在还点不了");
+
+  const node = ALL_NODES.find((item) => item.key === input.nodeKey)!;
+  const { error } = await supabaseAdmin.from("self_skill_nodes").insert({
+    user_id: userId,
+    node_key: node.key,
+    skill_key: node.skillKey,
+    tier: node.tier,
+    proof,
+  });
+  if (error) throw new Error(error.message);
+
+  await recordEvent(
+    userId,
+    "skill_up",
+    `点亮「${node.skillName} · ${node.name}」`,
+    proof
+  );
+  revalidatePath("/self");
+}
+
+/** 点错了可以熄掉。上层已经亮着的时候不许熄，否则树就断了。 */
+export async function relockSkillNode(nodeKey: string): Promise<void> {
+  const userId = await requireUserId();
+  const node = ALL_NODES.find((item) => item.key === nodeKey);
+  if (!node) throw new Error("没有这个节点");
+
+  const { data } = await supabaseAdmin
+    .from("self_skill_nodes")
+    .select("node_key, skill_key, tier")
+    .eq("user_id", userId);
+  const rows = (data ?? []) as { skill_key: string; tier: number }[];
+  const higher = rows.some(
+    (row) => row.skill_key === node.skillKey && row.tier > node.tier
+  );
+  if (higher) throw new Error("上面还亮着，先熄掉上一档");
+
+  const { error } = await supabaseAdmin
+    .from("self_skill_nodes")
+    .delete()
+    .eq("user_id", userId)
+    .eq("node_key", nodeKey);
   if (error) throw new Error(error.message);
   revalidatePath("/self");
 }

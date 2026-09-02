@@ -20,6 +20,11 @@ import {
 } from "@/lib/domains/self-model/skills";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
 import {
+  NODE_TOTAL,
+  buildSkillTree,
+  startedSkills,
+} from "@/lib/domains/self-model/nodes";
+import {
   type CatalogEntry,
 } from "@/lib/domains/self-model/catalog";
 import { traitStrength } from "@/lib/domains/self-model/trait-library";
@@ -1222,4 +1227,42 @@ export async function getTraitCatalog(): Promise<CatalogEntry[]> {
     alarm: Boolean(row.alarm),
     neutral: Boolean(row.neutral),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// 技能树：点亮的节点，不是分数。
+// ---------------------------------------------------------------------------
+
+export type SelfSkillTree = {
+  entries: ReturnType<typeof buildSkillTree>;
+  unlockedCount: number;
+  total: number;
+  started: number;
+};
+
+export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
+  const { data, error } = await supabaseAdmin
+    .from("self_skill_nodes")
+    .select("node_key, proof, unlocked_on")
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as {
+    node_key: string;
+    proof: string;
+    unlocked_on: string;
+  }[];
+  const map = new Map(
+    rows.map((row) => [
+      row.node_key,
+      { proof: row.proof, unlockedOn: row.unlocked_on },
+    ])
+  );
+
+  return {
+    entries: buildSkillTree(map),
+    unlockedCount: map.size,
+    total: NODE_TOTAL,
+    started: startedSkills(new Set(map.keys())),
+  };
 }

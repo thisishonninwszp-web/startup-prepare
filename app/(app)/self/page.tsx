@@ -62,6 +62,7 @@ import {
   getSelfDeeds,
   getSelfEvents,
   getSelfSkills,
+  getSkillTree,
   getSelfTraits,
   getWeeklyReport,
   recordDerivedEvents,
@@ -76,13 +77,13 @@ import {
   CharacterCreationForm,
   DeedForm,
   DispositionSuggest,
+  RelockNodeControl,
+  UnlockNodeControl,
   DispositionToggle,
   PromoteDispositionButton,
   QuestRollCall,
   ScanLibraryButton,
-  SettleSkillsButton,
   TakeFeatButton,
-  TickControl,
 } from "./skill-forms";
 import {
   BodyLogForm,
@@ -195,15 +196,15 @@ function MainCard({
   crafts,
 }: {
   main: MainAttribute;
-  crafts: { name: string; value: number; ceiling: number }[];
+  crafts: { name: string; reached: number; unlocked: number; total: number }[];
 }) {
   const Icon = MAIN_ICONS[main.key];
   const known = main.level !== null;
-  const top = [...crafts].sort((a, b) => b.value - a.value).slice(0, 3);
-  const craftAverage =
-    crafts.length > 0
-      ? Math.round(crafts.reduce((sum, item) => sum + item.value, 0) / crafts.length)
-      : null;
+  const top = [...crafts]
+    .sort((a, b) => b.unlocked - a.unlocked)
+    .filter((craft) => craft.unlocked > 0)
+    .slice(0, 3);
+  const startedCrafts = crafts.filter((craft) => craft.reached > 0).length;
   return (
     <div className="self-panel">
       <div className="self-panel__head">
@@ -239,20 +240,29 @@ function MainCard({
 
         {crafts.length > 0 && (
           <div className="mt-3 border-t pt-2">
-            <p className="self-label mb-1">手艺 {crafts.length} 门 · 均 {craftAverage}</p>
+            <p className="self-label mb-1">
+              手艺 {crafts.length} 门 · 开了 {startedCrafts} 门
+            </p>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px]">
-              {top.map((craft) => (
-                <span key={craft.name}>
-                  {craft.name}{" "}
-                  <span className="font-semibold text-foreground">
-                    {craft.value}
+              {top.length > 0 ? (
+                top.map((craft) => (
+                  <span key={craft.name}>
+                    {craft.name}{" "}
+                    <span className="font-semibold text-foreground">
+                      {STAGE_LABELS[craft.reached] ?? "—"}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      {craft.unlocked}/{craft.total}
+                    </span>
                   </span>
-                  <span className="text-muted-foreground">/{craft.ceiling}</span>
-                </span>
-              ))}
+                ))
+              ) : (
+                <span className="text-muted-foreground">一个小技能都还没点</span>
+              )}
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              手艺不加成属性：属性是行为算出来的，手艺的起点是你自己填的。
+              手艺不加成属性：属性是行为算出来的，手艺是你自己一格格点亮的。
             </p>
           </div>
         )}
@@ -261,6 +271,9 @@ function MainCard({
   );
 }
 
+
+/** 0 = 还没过任何一级。 */
+const STAGE_LABELS = ["未开", "入门", "基础", "精通", "专家"];
 
 const EVENT_MARKS: Record<string, string> = {
   trait_granted: "🟢",
@@ -676,10 +689,7 @@ export default async function SelfPage() {
     settledForecasts: calibration.settled,
     litDomains: panel.panel.domains.filter((domain) => domain.lit > 0).length,
   });
-  const openTicks = skillState.skills.reduce(
-    (sum, skill) => sum + skill.ticks,
-    0
-  );
+  const skillTree = await getSkillTree(user!.id);
 
   const heldTraitNames = heldTraits.map((trait) => trait.name);
   const build = matchBuild(heldTraitNames);
@@ -702,7 +712,10 @@ export default async function SelfPage() {
     longestHitStreak = Math.max(longestHitStreak, streak);
   }
 
-  const skillValues = skillState.skills.map((skill) => skill.value);
+  // 称号那套阈值原本读 0–100 的技能值。分数没了，改成把"走到第几级"
+  // 换算成同一把尺子：入门 25 / 基础 50 / 精通 75 / 专家 100。
+  // 换算只服务于称号判定，界面上不出现这个数。
+  const skillValues = skillTree.entries.map((entry) => entry.reached * 25);
   const titles = evaluateTitles({
     level: progress.level,
     kills,
@@ -721,7 +734,7 @@ export default async function SelfPage() {
     heldTraits: heldTraitNames,
     uniqueTraits: heldTraits.filter((trait) => trait.rarity === "unique").length,
     completeSets: sets.filter((set) => set.complete).length,
-    skillTicks: openTicks,
+    skillTicks: skillTree.unlockedCount,
     maxSkill: skillValues.length > 0 ? Math.max(...skillValues) : 0,
     skillsAbove: (threshold) =>
       skillValues.filter((value) => value >= threshold).length,
@@ -777,18 +790,13 @@ export default async function SelfPage() {
       })),
     state: {
       hasCharacter: skillState.started,
-      openTicks,
-      rusting: skillState.skills
-        .filter(
-          (skill) =>
-            skill.value >= 40 &&
-            skill.ticks === 0 &&
-            (skill.daysSinceTick ?? 0) >= 150
-        )
-        .map((skill) => ({
-          key: skill.key,
-          name: skill.name,
-          daysSinceTick: skill.daysSinceTick ?? 0,
+      openTicks: skillTree.unlockedCount,
+      stalled: skillTree.entries
+        .filter((entry) => entry.reached >= 1 && entry.next === null)
+        .map((entry) => ({
+          key: entry.def.key,
+          name: entry.def.name,
+          stage: STAGE_LABELS[entry.reached] ?? "未开",
         })),
       unlockedFeats: skillState.feats
         .filter((feat) => feat.unlocked)
@@ -831,10 +839,9 @@ export default async function SelfPage() {
         done: panel.raw.commitmentsDone,
         total: panel.raw.commitmentsTotal,
       },
-      maxSkill:
-        skillState.skills.length > 0
-          ? Math.max(...skillState.skills.map((skill) => skill.value))
-          : 0,
+      litNodes: skillTree.unlockedCount,
+      nodeTotal: skillTree.total,
+      startedSkills: skillTree.started,
       takenFeats: skillState.feats.filter((feat) => feat.taken).length,
     },
   });
@@ -1141,12 +1148,13 @@ export default async function SelfPage() {
             <MainCard
               key={main.key}
               main={main}
-              crafts={skillState.skills
-                .filter((skill) => skill.main === main.key)
-                .map((skill) => ({
-                  name: skill.name,
-                  value: skill.value,
-                  ceiling: skill.ceiling,
+              crafts={skillTree.entries
+                .filter((entry) => entry.def.main === main.key)
+                .map((entry) => ({
+                  name: entry.def.name,
+                  reached: entry.reached,
+                  unlocked: entry.unlocked,
+                  total: entry.total,
                 }))}
             />
           ))}
@@ -1176,103 +1184,142 @@ export default async function SelfPage() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">技能</h2>
           <p className="text-sm text-muted-foreground">
-            只有实际用过、并且有结果，才打一个勾。看教程不算。
+            不打分。一项技能拆成入门 / 基础 / 精通 / 专家四级，每级下面几个小技能；
+            小技能点齐才算过这一级。点亮的唯一条件是写得出哪一次用它做成了什么。
           </p>
         </div>
 
-        {!skillState.started ? (
+        {!skillState.started && (
           <div className="self-panel p-5">
             <h3 className="mb-3 text-sm font-medium">建卡</h3>
             <CharacterCreationForm />
           </div>
-        ) : (
-          <>
-            <div className="grid gap-3 lg:grid-cols-2">
-              {SKILL_GROUPS.map((group) => {
-                const rows = skillState.skills.filter(
-                  (skill) => skill.group === group
-                );
-                return (
-                  <div key={group} className="self-panel">
-                    <div className="self-panel__head">
-                      <span className="self-label">{group}</span>
-                      <span className="text-sm font-medium">
-                        {SKILL_GROUP_NAMES[group]}
-                      </span>
-                    </div>
-                    <div className="self-panel__body pt-1">
-                      {rows.map((skill) => (
-                        <div
-                          key={skill.key}
-                          className="self-row flex flex-wrap items-center gap-2 py-1.5 text-[13px]"
-                        >
-                          <span
-                            className="min-w-[7rem] flex-1 cursor-help decoration-dotted underline-offset-4 hover:underline"
-                            title={`${skill.name} —— ${skill.gloss}`}
-                          >
-                            {skill.name}
-                            {skill.passed.length > 0 && (
-                              <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-                                {skill.passed[skill.passed.length - 1].name}
-                              </span>
-                            )}
-                          </span>
-                          {skill.passion > 0 && (
-                            <span aria-label="激情">
-                              {"🔥".repeat(skill.passion)}
-                            </span>
-                          )}
-                          {skill.ticks > 0 && (
-                            <span className="font-mono text-[11px] text-primary">
-                              ✓{skill.ticks} → +{skill.pendingGrowth}
-                            </span>
-                          )}
-                          {skill.rust < 0 && (
-                            <span className="font-mono text-[11px] text-muted-foreground">
-                              生锈 {skill.rust}
-                            </span>
-                          )}
-                          <span className="w-14 text-right font-mono text-xs font-semibold tabular-nums">
-                            {skill.value}
-                            <span className="text-[10px] font-normal text-muted-foreground">
-                              /{skill.ceiling}
-                            </span>
-                          </span>
-                          <TickControl
-                            skillKey={skill.key}
-                            skillName={skill.name}
-                          />
-                          {(skill.limitedBy || skill.nextMilestone) && (
-                            <span className="w-full font-mono text-[11px] text-muted-foreground">
-                              {skill.limitedBy &&
-                                skill.value >= skill.ceiling - 2 && (
-                                  <span className="text-primary">
-                                    先补「{skill.limitedBy.name}」（{skill.limitedBy.value}）才能再往上{" "}
-                                  </span>
-                                )}
-                              {skill.nextMilestone && (
-                                <>
-                                  下一档 {skill.nextMilestone.at}「
-                                  {skill.nextMilestone.name}」：
-                                  {skill.nextMilestone.test}
-                                </>
-                              )}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="self-panel p-5">
-              <h3 className="mb-2 text-sm font-medium">结算</h3>
-              <SettleSkillsButton pendingTicks={openTicks} />
-            </div>
-          </>
         )}
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          {SKILL_GROUPS.map((group) => {
+            const rows = skillTree.entries.filter(
+              (entry) => entry.def.group === group
+            );
+            return (
+              <div key={group} className="self-panel">
+                <div className="self-panel__head">
+                  <span className="self-label">{group}</span>
+                  <span className="text-sm font-medium">
+                    {SKILL_GROUP_NAMES[group]}
+                  </span>
+                  <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
+                    {rows.filter((entry) => entry.reached > 0).length}/
+                    {rows.length}
+                  </span>
+                </div>
+                <div className="self-panel__body pt-1">
+                  {rows.map((entry) => (
+                    <details key={entry.def.key} className="self-row py-1.5">
+                      <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-[13px]">
+                        <span
+                          className="min-w-[7rem] flex-1 cursor-help decoration-dotted underline-offset-4 hover:underline"
+                          title={`${entry.def.name} —— ${entry.def.gloss}`}
+                        >
+                          {entry.def.name}
+                        </span>
+                        <span className="flex items-center gap-1 font-mono text-sm">
+                          {entry.stages.map((stage) => (
+                            <span
+                              key={stage.tier}
+                              className={`self-node ${
+                                stage.cleared
+                                  ? "self-node--taken"
+                                  : stage.open
+                                    ? "self-node--open"
+                                    : "self-node--locked"
+                              }`}
+                              title={`${stage.name}：${stage.standard}`}
+                            >
+                              {stage.cleared ? "●" : stage.open ? "◐" : "○"}
+                            </span>
+                          ))}
+                        </span>
+                        <span className="w-24 text-right font-mono text-xs tabular-nums">
+                          <span className="font-semibold">
+                            {STAGE_LABELS[entry.reached] ?? "未开"}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            {entry.unlocked}/{entry.total}
+                          </span>
+                        </span>
+                      </summary>
+
+                      <div className="mt-2 space-y-3 pl-1">
+                        {entry.rough && (
+                          <p className="font-mono text-[11px] text-muted-foreground">
+                            这项还没拆成小技能，先按三档粗着走。
+                          </p>
+                        )}
+                        {entry.stages.map((stage) => (
+                          <div key={stage.tier}>
+                            <p className="flex flex-wrap items-baseline gap-2">
+                              <span className="self-label">{stage.name}</span>
+                              <span className="text-[12px]">
+                                {stage.standard}
+                              </span>
+                              {stage.blockedBy && (
+                                <span className="font-mono text-[11px] text-muted-foreground">
+                                  {stage.blockedBy}
+                                </span>
+                              )}
+                            </p>
+                            <ul className="mt-1 space-y-1">
+                              {stage.nodes.map((item) => (
+                                <li
+                                  key={item.node.key}
+                                  className="flex flex-wrap items-start gap-2 text-[12px]"
+                                >
+                                  <span
+                                    className={`font-mono ${
+                                      item.unlocked
+                                        ? "text-primary"
+                                        : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    {item.unlocked ? "●" : "○"}
+                                  </span>
+                                  <span className="min-w-[6rem] font-medium">
+                                    {item.node.name}
+                                  </span>
+                                  <span className="flex-1 text-muted-foreground">
+                                    {item.node.test}
+                                  </span>
+                                  {item.unlocked ? (
+                                    <span className="flex items-center gap-2">
+                                      <span className="font-mono text-[11px] text-muted-foreground">
+                                        {item.unlockedOn} · {item.proof}
+                                      </span>
+                                      <RelockNodeControl
+                                        nodeKey={item.node.key}
+                                      />
+                                    </span>
+                                  ) : item.available ? (
+                                    <UnlockNodeControl
+                                      nodeKey={item.node.key}
+                                      nodeName={item.node.name}
+                                      test={item.node.test}
+                                    />
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       <section className="mb-8 space-y-3">

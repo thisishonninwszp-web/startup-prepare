@@ -802,3 +802,101 @@ export function featPointsFor(level: number, taken: number): number {
   const earned = Math.floor(Math.max(1, level) / LEVELS_PER_FEAT_POINT);
   return Math.max(0, earned - taken);
 }
+
+export type SkillStage = {
+  tier: number;
+  /** 入门 / 基础 / 精通 / 专家 */
+  name: string;
+  /** 过了这一级算什么。 */
+  standard: string;
+  /** 这一级下面必须点齐的小技能。 */
+  nodes: { name: string; test: string }[];
+};
+
+/**
+ * 阶段拆解：技能 → 入门/基础/精通/专家，每一级挂几个小技能。
+ *
+ * 这才叫"拆成子技能"——把小技能点齐才算过了这一级，
+ * 而不是给同一件事分三档。
+ *
+ * 已拆开的先放这里；没拆的技能仍然退回到三档 milestones，
+ * 界面会标出来"这项还没拆"。逐项拆是慢工，一次拆不完六十三项。
+ */
+export const SKILL_STAGES: Record<string, SkillStage[]> = {
+  coding: [
+    { tier: 1, name: "入门", standard: "能把想法变成能跑的东西", nodes: [{ name: "跑通环境", test: "从零把开发环境搭起来并跑通一个 hello world" }, { name: "读懂报错", test: "看到报错能定位到是哪一行、哪个概念" }, { name: "改别人的代码", test: "在一份不是自己写的代码里改对一个地方" }] },
+    { tier: 2, name: "基础", standard: "能独立做出一个有人用的小东西", nodes: [{ name: "拆成函数", test: "把一坨代码拆成各自职责清楚的函数" }, { name: "接一个外部服务", test: "接通一个 API 并处理它的失败情况" }, { name: "存得住数据", test: "设计一张表并让数据正确读写" }, { name: "发出去", test: "把东西部署到别人能访问的地方" }] },
+    { tier: 3, name: "精通", standard: "代码能被别人接手", nodes: [{ name: "命名讲得清", test: "别人不问你就知道这个函数在干嘛" }, { name: "边界想清楚", test: "空值、超时、并发各写了怎么办" }, { name: "有测试兜底", test: "关键路径出错时测试先叫" }] },
+    { tier: 4, name: "专家", standard: "撑得住变化", nodes: [{ name: "扛过三次改需求", test: "同一份代码经历三次需求变化没有推倒重来" }, { name: "能拆能合", test: "把一个模块拆开或合并而不牵动其它地方" }, { name: "留得下文档", test: "半年后自己回来还看得懂为什么这么写" }] },
+  ],
+  aiorchestration: [
+    { tier: 1, name: "入门", standard: "能让 AI 完成一件具体的事", nodes: [{ name: "说得清任务", test: "一次把要什么、不要什么写清楚" }, { name: "给得出例子", test: "用一两个例子把标准定下来" }] },
+    { tier: 2, name: "基础", standard: "能把一件大事拆给 AI 分步做", nodes: [{ name: "拆步骤", test: "把一个大任务拆成能各自验收的小步" }, { name: "接得上下文", test: "让上一步的产出成为下一步的输入" }, { name: "会验收", test: "能指出它哪一步偷懒了" }] },
+    { tier: 3, name: "精通", standard: "能搭成不用你盯的流水", nodes: [{ name: "写死规则", test: "把判断标准写进代码而不是每次提醒它" }, { name: "兜底失败", test: "它答错时有人或代码接住" }, { name: "留证据", test: "每次产出能追到是哪一步出的" }] },
+    { tier: 4, name: "专家", standard: "能让别人也用得起来", nodes: [{ name: "别人照着能跑", test: "另一个人拿你的流程也能出结果" }, { name: "成本算得清", test: "知道一次跑下来花多少钱、多少时间" }] },
+  ],
+  analysis: [
+    { tier: 1, name: "入门", standard: "能把一堆数字变成一张图", nodes: [{ name: "洗得动数据", test: "把脏数据处理成能用的表" }, { name: "画得出图", test: "用一张图把一件事说清楚" }] },
+    { tier: 2, name: "基础", standard: "能回答一个有人问的问题", nodes: [{ name: "先定问题", test: "动手前写下要回答什么" }, { name: "选得对口径", test: "说得清分子分母各是什么" }, { name: "看得出异常", test: "发现一个和预期不符的地方并追下去" }] },
+    { tier: 3, name: "精通", standard: "能撑住一个决策", nodes: [{ name: "分得清相关与因果", test: "说得出为什么不能只看相关" }, { name: "找得到混淆", test: "指出一个可能同时影响两边的因素" }, { name: "给得出置信", test: "说得清这个结论在什么条件下不成立" }] },
+    { tier: 4, name: "专家", standard: "能设计出验证方式", nodes: [{ name: "设计对照", test: "设计一个能区分两种解释的观察" }, { name: "跑得起来", test: "在真实环境里做完并得出结论" }, { name: "结论被采纳", test: "有人因为这份分析改了做法" }] },
+  ],
+  asking: [
+    { tier: 1, name: "入门", standard: "敢在场面上开口问", nodes: [{ name: "问出第一句", test: "在会上问出一个别人没问的问题" }, { name: "不怕沉默", test: "问完等对方想，不急着自己补话" }] },
+    { tier: 2, name: "基础", standard: "问到具体的事实", nodes: [{ name: "换成具体", test: "把「怎么样」换成「上次是什么时候」" }, { name: "追一层", test: "对一个回答再追问一次为什么" }, { name: "不给答案", test: "不在问题里塞进自己想要的答案" }] },
+    { tier: 3, name: "精通", standard: "问出对方原本不打算说的", nodes: [{ name: "先给再要", test: "先给出对方在意的东西再提问" }, { name: "问代价", test: "问对方为此放弃过什么" }, { name: "敢问难堪的", test: "把不好问的那句真的问出口" }] },
+    { tier: 4, name: "专家", standard: "问题本身成为工具", nodes: [{ name: "设计问题组", test: "一组问题能区分两种可能" }, { name: "教得会别人问", test: "别人用你的问法也问出了东西" }] },
+  ],
+  writing: [
+    { tier: 1, name: "入门", standard: "能把一件事写完", nodes: [{ name: "写得完", test: "连续四周每周写完一篇" }, { name: "说清一件事", test: "一篇只讲一件事，讲完" }] },
+    { tier: 2, name: "基础", standard: "有人愿意读完", nodes: [{ name: "开头抓住", test: "前三句让人愿意往下读" }, { name: "有结构", test: "写之前列得出骨架" }, { name: "删得掉", test: "删掉自己喜欢但没用的那段" }] },
+    { tier: 3, name: "精通", standard: "读者会照着做", nodes: [{ name: "给得出步骤", test: "有人照你写的做成了一件事" }, { name: "举得出例子", test: "抽象的话后面跟着一个具体例子" }, { name: "留得下句子", test: "有人引用你的原句" }] },
+    { tier: 4, name: "专家", standard: "写作本身带来东西", nodes: [{ name: "有人等更", test: "有人问你什么时候写下一篇" }, { name: "换来机会", test: "因为写作带来一次合作或收入" }] },
+  ],
+  negotiating: [
+    { tier: 1, name: "入门", standard: "敢谈", nodes: [{ name: "先开口", test: "主动提出一个价格或条件" }, { name: "问清底细", test: "谈之前问清对方在意什么" }] },
+    { tier: 2, name: "基础", standard: "守得住底线", nodes: [{ name: "写下底线", test: "谈之前写下走开的条件" }, { name: "敢沉默", test: "对方不出声时不先降价" }, { name: "敢走开", test: "至少一次因为不合适而走开" }] },
+    { tier: 3, name: "精通", standard: "把饼做大", nodes: [{ name: "找第三选项", test: "提出一个双方都更好的方案" }, { name: "换而不让", test: "每次让步都换回一样东西" }] },
+    { tier: 4, name: "专家", standard: "谈完还是朋友", nodes: [{ name: "留后路", test: "谈崩之后关系还在" }, { name: "对方也满意", test: "对方事后主动再来找你" }] },
+  ],
+  forecasting: [
+    { tier: 1, name: "入门", standard: "敢押", nodes: [{ name: "写下预测", test: "写一条带日期、能判真假的预测" }, { name: "写把握度", test: "同时写下几成把握" }] },
+    { tier: 2, name: "基础", standard: "会对账", nodes: [{ name: "到期就结", test: "到期当天结算，不拖" }, { name: "认落空", test: "落空时写下哪里想错了" }, { name: "攒够十条", test: "累计对账十条以上" }] },
+    { tier: 3, name: "精通", standard: "押得准", nodes: [{ name: "看基准率", test: "押之前先看同类事情的历史比例" }, { name: "分开领域", test: "知道自己在哪类事上准、哪类不准" }, { name: "校准收窄", test: "把握度和实际命中率的差在缩小" }] },
+    { tier: 4, name: "专家", standard: "先手", nodes: [{ name: "事前定条件", test: "事情发生前就摆好对账标准" }, { name: "写预案", test: "同时写下「如果错了就做什么」" }] },
+  ],
+  listening: [
+    { tier: 1, name: "入门", standard: "能听完", nodes: [{ name: "不打断", test: "一次对话完整听完对方三段话" }, { name: "复述得出", test: "能把对方的意思复述一遍" }] },
+    { tier: 2, name: "基础", standard: "听得出没说的", nodes: [{ name: "听出回避", test: "指出对方绕开的那部分" }, { name: "听出情绪", test: "说得出对方此刻在意什么" }] },
+    { tier: 3, name: "精通", standard: "听完会改", nodes: [{ name: "改过方案", test: "因为听到的东西改掉自己的做法" }, { name: "记下反例", test: "把不利于自己的那句记下来" }] },
+    { tier: 4, name: "专家", standard: "让人愿意说", nodes: [{ name: "对方说更多", test: "对方主动说出原本不打算说的" }, { name: "被找来说", test: "有人专门来找你说事" }] },
+  ],
+  retro: [
+    { tier: 1, name: "入门", standard: "能回头看", nodes: [{ name: "每周写一条", test: "连续四周写下学到了什么" }, { name: "写具体", test: "写的是具体那一次，不是感想" }] },
+    { tier: 2, name: "基础", standard: "找得到真原因", nodes: [{ name: "追到根", test: "找到的不是「不够努力」这种表面原因" }, { name: "分开事实与解释", test: "把发生了什么和你怎么解释分开写" }] },
+    { tier: 3, name: "精通", standard: "复盘之后真的变了", nodes: [{ name: "改一条做法", test: "因为复盘改掉一个具体做法" }, { name: "不再重复", test: "同类错误没有再犯第三次" }] },
+    { tier: 4, name: "专家", standard: "复盘变成系统", nodes: [{ name: "定判断规则", test: "从复盘里立下一条可复用的规则" }, { name: "规则被推翻过", test: "后来有一条规则被自己推翻并替换" }] },
+  ],
+  coldopen: [
+    { tier: 1, name: "入门", standard: "发得出去", nodes: [{ name: "发出第一条", test: "给一个陌生人发出第一条消息" }, { name: "写清来意", test: "一句话说清你是谁、要什么" }] },
+    { tier: 2, name: "基础", standard: "有人回", nodes: [{ name: "先给价值", test: "开口前先给出对方用得上的东西" }, { name: "回复率过三成", test: "十条里有三条以上得到回复" }] },
+    { tier: 3, name: "精通", standard: "约得到人", nodes: [{ name: "约成一次", test: "从冷开口约到一次真实对话" }, { name: "准备好问题", test: "见面前写好三个具体问题" }] },
+    { tier: 4, name: "专家", standard: "不再需要冷开口", nodes: [{ name: "有人引荐", test: "别人主动替你介绍" }, { name: "有人找来", test: "有人主动找上门" }] },
+  ],
+  pricing: [
+    { tier: 1, name: "入门", standard: "敢报价", nodes: [{ name: "给出一个价", test: "对一件东西说出价格" }, { name: "说得出依据", test: "价格背后有一条能说清的理由" }] },
+    { tier: 2, name: "基础", standard: "算得清成本", nodes: [{ name: "拆得开成本", test: "说得出一单的成本由哪几块构成" }, { name: "算得出毛利", test: "一单赚多少说得清" }] },
+    { tier: 3, name: "精通", standard: "按价值定价", nodes: [{ name: "问出价值", test: "问清对方省了多少或多赚了多少" }, { name: "涨过一次", test: "涨价并观察了反应" }] },
+    { tier: 4, name: "专家", standard: "价格成为设计", nodes: [{ name: "改结构不改价", test: "通过改产品结构而不是降价来成交" }, { name: "有人照价买", test: "有人不还价直接买" }] },
+  ],
+  trustbuilding: [
+    { tier: 1, name: "入门", standard: "小事上兑现", nodes: [{ name: "说到做到一次", test: "答应的小事按时做到" }, { name: "不夸大", test: "介绍自己时不加水分" }] },
+    { tier: 2, name: "基础", standard: "先给出去", nodes: [{ name: "主动帮一次", test: "在没有回报预期时帮上一个人" }, { name: "介绍两个人", test: "把两个该认识的人介绍到一起" }] },
+    { tier: 3, name: "精通", standard: "被托付", nodes: [{ name: "有人交事给你", test: "有人把重要的事交给你办" }, { name: "坏消息先说", test: "出问题时你先开口" }] },
+    { tier: 4, name: "专家", standard: "被推荐", nodes: [{ name: "有人替你背书", test: "有人在你不在场时推荐你" }, { name: "旧关系还活着", test: "两年以上的关系仍在往来" }] },
+  ],
+};
+
+export function stagesOf(key: string): SkillStage[] | null {
+  return SKILL_STAGES[key] ?? null;
+}

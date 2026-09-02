@@ -15,11 +15,13 @@ import {
   claimDisposition,
   createCharacter,
   promoteDisposition,
+  relockSkillNode,
   recordDeed,
   rollCallQuests,
   settleSkills,
   suggestDispositions,
   syncLibraryTraits,
+  unlockSkillNode,
   takeFeat,
   tickSkill,
 } from "./actions";
@@ -655,5 +657,82 @@ export function DispositionSuggest() {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * 点亮一个技能节点。必须写下证据 ——
+ * 写不出"什么时候、用它做成了什么"，这个节点就不该亮。
+ */
+export function UnlockNodeControl({
+  nodeKey,
+  nodeName,
+  test,
+}: {
+  nodeKey: string;
+  nodeName: string;
+  test: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [proof, setProof] = useState("");
+  const { pending, error, run } = useAction();
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        点亮
+      </Button>
+    );
+  }
+
+  return (
+    <div className="w-full space-y-2">
+      <p className="font-mono text-[11px] text-muted-foreground">
+        判据：{test}
+      </p>
+      <Input
+        value={proof}
+        onChange={(event) => setProof(event.target.value)}
+        placeholder={`「${nodeName}」什么时候、用它做成了什么`}
+      />
+      <p className="text-xs text-muted-foreground">
+        写不出这一句就先别点。看教程、读书、想明白了，都不算。
+      </p>
+      <Err message={error} />
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          disabled={pending || !proof.trim()}
+          onClick={() =>
+            run(() => unlockSkillNode({ nodeKey, proof }), () => {
+              setProof("");
+              setOpen(false);
+            })
+          }
+        >
+          我做到过
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          取消
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function RelockNodeControl({ nodeKey }: { nodeKey: string }) {
+  const { pending, error, run } = useAction();
+  return (
+    <>
+      <ConfirmButton
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={() => run(() => relockSkillNode(nodeKey))}
+      >
+        熄掉
+      </ConfirmButton>
+      <Err message={error} />
+    </>
   );
 }

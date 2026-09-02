@@ -170,10 +170,13 @@ export type QuestInput = {
 export type QuestState = {
   /** 建过卡没有。没建卡时技能表整个是死的。 */
   hasCharacter?: boolean;
-  /** 未结算的技能勾。 */
+  /** 已点亮的小技能总数。 */
   openTicks?: number;
-  /** 练过但快生锈的技能。 */
-  rusting?: { key: string; name: string; daysSinceTick: number }[];
+  litNodes?: number;
+  nodeTotal?: number;
+  startedSkills?: number;
+  /** 卡在某一级、下一级又开不了的技能。 */
+  stalled?: { key: string; name: string; stage: string }[];
   /** 已解锁、可以点的专长。 */
   unlockedFeats?: { key: string; name: string }[];
   featPointsLeft?: number;
@@ -257,26 +260,26 @@ function stateQuests(state: QuestState): Quest[] {
     });
   }
 
-  if ((state.openTicks ?? 0) >= 3) {
+  if ((state.openTicks ?? 0) === 0) {
     push({
-      id: "state:settle",
+      id: "state:firstnode",
       tier: "trash",
-      name: `结算 ${state.openTicks} 个勾`,
-      action: "去技能页签点结算，看这一轮涨了什么",
-      drop: "技能成长入账",
+      name: "点亮第一个小技能",
+      action: "去技能页签，挑一个你已经做到过的小技能，写下那一次是什么时候",
+      drop: "技能树开始长",
       attribute: "INT",
       domain: "self",
       exp: TIER_EXP.trash,
     });
   }
 
-  for (const skill of (state.rusting ?? []).slice(0, 2)) {
+  for (const skill of (state.stalled ?? []).slice(0, 2)) {
     push({
-      id: `state:rust:${skill.key}`,
+      id: `state:stall:${skill.key}`,
       tier: "trash",
-      name: `「${skill.name}」快生锈了`,
-      action: `${skill.daysSinceTick} 天没用过。找一件真事用一次，然后打勾`,
-      drop: "止住生锈",
+      name: `「${skill.name}」卡在${skill.stage}`,
+      action: "下一级开不了：先把它的前置技能补到入门",
+      drop: "解开下一级",
       attribute: "INT",
       domain: "work",
       exp: TIER_EXP.trash,
