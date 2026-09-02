@@ -23,6 +23,7 @@ import {
   NODE_TOTAL,
   buildSkillTree,
   startedSkills,
+  type StageOverrides,
 } from "@/lib/domains/self-model/nodes";
 import {
   type CatalogEntry,
@@ -1234,17 +1235,62 @@ export async function getTraitCatalog(): Promise<CatalogEntry[]> {
 // ---------------------------------------------------------------------------
 
 export type SelfSkillTree = {
+  /** 哪些技能用的是自己收下的拆解。 */
+  customised?: string[];
   entries: ReturnType<typeof buildSkillTree>;
   unlockedCount: number;
   total: number;
   started: number;
 };
 
-export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
+/**
+ * 读用户自己收下的拆解。
+ * 有的技能覆盖内置那份，没有的仍走内置 —— 树因此能长到代码没写过的领域。
+ */
+export async function getStageOverrides(
+  userId: string
+): Promise<StageOverrides> {
   const { data, error } = await supabaseAdmin
-    .from("self_skill_nodes")
-    .select("node_key, proof, unlocked_on")
-    .eq("user_id", userId);
+    .from("self_skill_stages")
+    .select("skill_key, tier, stage_name, standard, nodes")
+    .eq("user_id", userId)
+    .order("tier");
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as {
+    skill_key: string;
+    tier: number;
+    stage_name: string;
+    standard: string;
+    nodes: { id: string; name: string; test: string }[];
+  }[];
+
+  const map: StageOverrides = new Map();
+  for (const row of rows) {
+    const stages = map.get(row.skill_key) ?? [];
+    stages.push({
+      tier: row.tier,
+      name: row.stage_name,
+      standard: row.standard,
+      nodes: row.nodes ?? [],
+    });
+    map.set(row.skill_key, stages);
+  }
+  // 只收下了一半的拆解会让树卡在中间：四级不齐的整份不用。
+  for (const [key, stages] of map) {
+    if (stages.length < 4) map.delete(key);
+  }
+  return map;
+}
+
+export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
+  const [{ data, error }, overrides] = await Promise.all([
+    supabaseAdmin
+      .from("self_skill_nodes")
+      .select("node_key, proof, unlocked_on")
+      .eq("user_id", userId),
+    getStageOverrides(userId),
+  ]);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as {
@@ -1260,9 +1306,10 @@ export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
   );
 
   return {
-    entries: buildSkillTree(map),
+    entries: buildSkillTree(map, overrides),
     unlockedCount: map.size,
     total: NODE_TOTAL,
-    started: startedSkills(new Set(map.keys())),
+    started: startedSkills(new Set(map.keys()), overrides),
+    customised: [...overrides.keys()],
   };
 }

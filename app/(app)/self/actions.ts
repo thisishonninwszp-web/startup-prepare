@@ -22,7 +22,9 @@ import {
 } from "@/lib/domains/self-model/skills";
 import {
   existingDispositionNames,
+  decomposeSkill,
   nominateDispositions,
+  type StageNomination,
   type DispositionNomination,
 } from "@/lib/ai";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
@@ -966,6 +968,112 @@ export async function unlockSkillNode(input: {
   );
   revalidatePath("/self");
 }
+
+
+/**
+ * 让 AI 拆开一项技能。**只提名，不写库。**
+ *
+ * 这一处放行 AI 的理由：用户说不出「要成为这个领域的专家，需要掌握哪些
+ * 小技能」—— 那是他没有的知识量，正是模型该出力的地方。
+ * 它给的是一张待办清单；哪一格亮、凭什么亮，仍然只由用户写下的 proof 决定。
+ */
+export async function proposeSkillStages(
+  skillKey: string
+): Promise<StageNomination[]> {
+  const userId = await requireUserId();
+  const def = SKILL_DEFS.find((item) => item.key === skillKey);
+  if (!def) throw new Error("没有这项技能");
+
+  // 拿他自己写下的自述当处境，让拆解落到他的行当里，而不是通用教科书。
+  const { data } = await supabaseAdmin
+    .from("self_declarations")
+    .select("text")
+    .eq("user_id", userId)
+    .order("stated_on", { ascending: false })
+    .limit(8);
+  const context = ((data ?? []) as { text: string }[])
+    .map((row) => row.text)
+    .filter((text) => !text.startsWith("disposition:"))
+    .join("；");
+
+  return decomposeSkill({
+    name: def.name,
+    gloss: def.gloss,
+    requires: (def.requires ?? [])
+      .map((key) => SKILL_DEFS.find((item) => item.key === key)?.name ?? key)
+      .filter(Boolean),
+    context,
+  });
+}
+
+/**
+ * 收下一份拆解。四级必须齐 —— 收一半会让树卡在中间。
+ *
+ * 每个小技能在这里拿到一个稳定 id：以后改名、增删同级的小技能，
+ * 已经点亮的证据不会跟着挪位。
+ */
+export async function acceptSkillStages(input: {
+  skillKey: string;
+  stages: { tier: number; standard: string; nodes: { name: string; test: string }[] }[];
+}): Promise<void> {
+  const userId = await requireUserId();
+  const def = SKILL_DEFS.find((item) => item.key === input.skillKey);
+  if (!def) throw new Error("没有这项技能");
+
+  const tiers = new Set(input.stages.map((stage) => stage.tier));
+  if (tiers.size !== 4) throw new Error("四级要齐：入门、基础、精通、专家");
+
+  const rows = input.stages.map((stage) => {
+    const nodes = stage.nodes
+      .map((node) => ({
+        name: node.name.trim(),
+        test: node.test.trim(),
+      }))
+      .filter((node) => node.name && node.test);
+    if (nodes.length === 0) {
+      throw new Error(`第 ${stage.tier} 级一个小技能都没留下`);
+    }
+    return {
+      user_id: userId,
+      skill_key: input.skillKey,
+      tier: stage.tier,
+      stage_name: STAGE_NAMES[stage.tier - 1],
+      standard: required(stage.standard, "这一级的标准"),
+      nodes: nodes.map((node, index) => ({
+        id: `n${stage.tier}${index + 1}`,
+        ...node,
+      })),
+      source: "ai_nominated",
+    };
+  });
+
+  const { error } = await supabaseAdmin
+    .from("self_skill_stages")
+    .upsert(rows, { onConflict: "user_id,skill_key,tier" });
+  if (error) throw new Error(error.message);
+
+  await recordEvent(
+    userId,
+    "skill_up",
+    `拆开「${def.name}」`,
+    `四级共 ${rows.reduce((sum, row) => sum + row.nodes.length, 0)} 个小技能`
+  );
+  revalidatePath("/self");
+}
+
+/** 拆得不对可以退回内置那份。已经点亮的节点不动 —— 证据不因换树而消失。 */
+export async function resetSkillStages(skillKey: string): Promise<void> {
+  const userId = await requireUserId();
+  const { error } = await supabaseAdmin
+    .from("self_skill_stages")
+    .delete()
+    .eq("user_id", userId)
+    .eq("skill_key", skillKey);
+  if (error) throw new Error(error.message);
+  revalidatePath("/self");
+}
+
+const STAGE_NAMES = ["入门", "基础", "精通", "专家"];
 
 /** 点错了可以熄掉。上层已经亮着的时候不许熄，否则树就断了。 */
 export async function relockSkillNode(nodeKey: string): Promise<void> {

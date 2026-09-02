@@ -150,3 +150,45 @@ describe("startedSkills", () => {
     expect(startedSkills(new Set(LISTEN_1))).toBe(1);
   });
 });
+
+describe("stage overrides", () => {
+  const custom = new Map([
+    [
+      "finance",
+      [1, 2, 3, 4].map((tier) => ({
+        tier,
+        name: ["入门", "基础", "精通", "专家"][tier - 1],
+        standard: `第 ${tier} 级的标准`,
+        nodes: [
+          { id: `n${tier}1`, name: `动作${tier}A`, test: "做成过一次" },
+          { id: `n${tier}2`, name: `动作${tier}B`, test: "做成过一次" },
+        ],
+      })),
+    ],
+  ]);
+
+  it("replaces the built-in decomposition for that skill only", () => {
+    const tree = buildSkillTree(unlocked(), custom);
+    const finance = tree.find((entry) => entry.def.key === "finance")!;
+    expect(finance.total).toBe(8);
+    expect(finance.rough).toBe(false);
+    expect(finance.stages[0].nodes[0].node.name).toBe("动作1A");
+
+    const listening = tree.find((entry) => entry.def.key === "listening")!;
+    expect(listening.stages[0].nodes[0].node.name).toBe(
+      SKILL_STAGES.listening[0].nodes[0].name
+    );
+  });
+
+  it("keys a custom node by its stable id, not its position", () => {
+    expect(nodeKey("finance", 2, "n21")).toBe("finance:2:n21");
+    expect(canUnlock("finance:1:n11", new Set(), custom).ok).toBe(true);
+    expect(canUnlock("finance:2:n21", new Set(), custom).reason).toContain(
+      "点齐"
+    );
+  });
+
+  it("does not know a custom node without the override", () => {
+    expect(canUnlock("finance:1:n11", new Set()).ok).toBe(false);
+  });
+});

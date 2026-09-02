@@ -5069,3 +5069,27 @@ alter table self_skill_nodes enable row level security;
 drop policy if exists "self_skill_nodes_owner" on self_skill_nodes;
 create policy "self_skill_nodes_owner" on self_skill_nodes
   for all using (auth.uid() = user_id);
+
+-- 045_skill_stages.sql
+create table if not exists self_skill_stages (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  skill_key  text not null,
+  tier       smallint not null check (tier between 1 and 4),
+  stage_name text not null,
+  standard   text not null,
+  nodes      jsonb not null default '[]'::jsonb,
+  source     text not null default 'ai_nominated',
+  created_at timestamptz not null default now(),
+  primary key (user_id, skill_key, tier)
+);
+
+alter table self_skill_stages enable row level security;
+
+drop policy if exists "self_skill_stages_owner" on self_skill_stages;
+create policy "self_skill_stages_owner" on self_skill_stages
+  for all using (auth.uid() = user_id);
+
+alter table self_skill_nodes
+  drop constraint if exists self_skill_nodes_tier_check;
+alter table self_skill_nodes
+  add constraint self_skill_nodes_tier_check check (tier between 1 and 4);

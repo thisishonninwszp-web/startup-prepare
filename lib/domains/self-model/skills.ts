@@ -803,6 +803,17 @@ export function featPointsFor(level: number, taken: number): number {
   return Math.max(0, earned - taken);
 }
 
+export type SkillStageNode = {
+  /**
+   * 稳定 id。用户自己收下的拆解带 id ——
+   * 有了它，以后改名、增删同级的小技能，已经点亮的证据不会挪位。
+   * 代码里内置的拆解不带 id，按下标定位。
+   */
+  id?: string;
+  name: string;
+  test: string;
+};
+
 export type SkillStage = {
   tier: number;
   /** 入门 / 基础 / 精通 / 专家 */
@@ -810,7 +821,7 @@ export type SkillStage = {
   /** 过了这一级算什么。 */
   standard: string;
   /** 这一级下面必须点齐的小技能。 */
-  nodes: { name: string; test: string }[];
+  nodes: SkillStageNode[];
 };
 
 /**

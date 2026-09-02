@@ -42,6 +42,7 @@ const coreProbes = [
   ["self_quest_sightings", "id,user_id,quest_id,week_key,tier,name"],
   ["self_deeds", "id,user_id,occurred_on,title,class_key,outcome,adopted,duration_days"],
   ["self_skill_nodes", "id,user_id,node_key,skill_key,tier,proof"],
+  ["self_skill_stages", "user_id,skill_key,tier,stage_name,standard,nodes,source"],
   ["trait_catalog", "key,name,family,conditions,modifiers,rarity_hint"],
   ["reality_cases", "id,user_id,messages"],
   ["reality_versions", "id,case_id,version_no,focus_session_ids"],

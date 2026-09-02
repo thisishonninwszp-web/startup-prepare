@@ -76,6 +76,7 @@ import {
 import {
   CharacterCreationForm,
   DeedForm,
+  DecomposeSkillControl,
   DispositionSuggest,
   RelockNodeControl,
   UnlockNodeControl,
@@ -690,6 +691,7 @@ export default async function SelfPage() {
     litDomains: panel.panel.domains.filter((domain) => domain.lit > 0).length,
   });
   const skillTree = await getSkillTree(user!.id);
+  const customisedSkills = new Set(skillTree.customised ?? []);
 
   const heldTraitNames = heldTraits.map((trait) => trait.name);
   const build = matchBuild(heldTraitNames);
@@ -1257,6 +1259,11 @@ export default async function SelfPage() {
                             这项还没拆成小技能，先按三档粗着走。
                           </p>
                         )}
+                        <DecomposeSkillControl
+                          skillKey={entry.def.key}
+                          skillName={entry.def.name}
+                          customised={customisedSkills.has(entry.def.key)}
+                        />
                         {entry.stages.map((stage) => (
                           <div key={stage.tier}>
                             <p className="flex flex-wrap items-baseline gap-2">

@@ -12,6 +12,9 @@ import {
 } from "@/lib/domains/self-model/skills";
 import {
   acceptNomination,
+  acceptSkillStages,
+  proposeSkillStages,
+  resetSkillStages,
   claimDisposition,
   createCharacter,
   promoteDisposition,
@@ -656,6 +659,180 @@ export function DispositionSuggest() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+
+type DraftNode = { name: string; test: string; keep: boolean };
+type DraftStage = { tier: number; name: string; standard: string; nodes: DraftNode[] };
+
+/**
+ * 让 AI 把一项技能拆成四级小技能。
+ *
+ * 这一处放 AI 进来，是因为「要成为这个领域的专家，需要掌握哪些小技能」
+ * 本来就是用户没有的知识量。但它给的只是一张待办清单：
+ * 提名不写库，逐条改过、收下的才存；哪一格亮仍然只由 proof 决定。
+ */
+export function DecomposeSkillControl({
+  skillKey,
+  skillName,
+  customised,
+}: {
+  skillKey: string;
+  skillName: string;
+  customised: boolean;
+}) {
+  const [draft, setDraft] = useState<DraftStage[] | null>(null);
+  const { pending, error, run } = useAction();
+
+  const edit = (tier: number, index: number, patch: Partial<DraftNode>) =>
+    setDraft((current) =>
+      current?.map((stage) =>
+        stage.tier === tier
+          ? {
+              ...stage,
+              nodes: stage.nodes.map((node, position) =>
+                position === index ? { ...node, ...patch } : node
+              ),
+            }
+          : stage
+      ) ?? null
+    );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() =>
+            run(async () => {
+              const stages = await proposeSkillStages(skillKey);
+              setDraft(
+                stages.map((stage) => ({
+                  tier: stage.tier,
+                  name: stage.name,
+                  standard: stage.standard,
+                  nodes: stage.nodes.map((node) => ({ ...node, keep: true })),
+                }))
+              );
+            })
+          }
+        >
+          {pending ? "拆中…" : customised ? "重新拆一次" : "让 AI 拆开它"}
+        </Button>
+        {customised && (
+          <ConfirmButton
+            size="sm"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => run(() => resetSkillStages(skillKey))}
+          >
+            退回默认拆解
+          </ConfirmButton>
+        )}
+        <span className="text-[11px] text-muted-foreground">
+          提名一律是候选，改过、收下才算数
+        </span>
+      </div>
+      <Err message={error} />
+
+      {draft && draft.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          这一轮没拆出四级齐全的结果。缺级的整份作废 ——
+          半棵树会让你卡在中间。再试一次。
+        </p>
+      )}
+
+      {draft && draft.length > 0 && (
+        <div className="animate-self-reveal space-y-3 border-l-2 border-primary/40 pl-3">
+          {draft.map((stage) => (
+            <div key={stage.tier}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="self-label">{stage.name}</span>
+                <Input
+                  value={stage.standard}
+                  className="h-7 flex-1 text-[12px]"
+                  onChange={(event) =>
+                    setDraft(
+                      (current) =>
+                        current?.map((item) =>
+                          item.tier === stage.tier
+                            ? { ...item, standard: event.target.value }
+                            : item
+                        ) ?? null
+                    )
+                  }
+                />
+              </div>
+              <ul className="mt-1 space-y-1">
+                {stage.nodes.map((node, index) => (
+                  <li key={index} className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={node.keep}
+                      aria-label={`留下 ${node.name}`}
+                      onChange={(event) =>
+                        edit(stage.tier, index, { keep: event.target.checked })
+                      }
+                    />
+                    <Input
+                      value={node.name}
+                      className="h-7 w-28 text-[12px]"
+                      onChange={(event) =>
+                        edit(stage.tier, index, { name: event.target.value })
+                      }
+                    />
+                    <Input
+                      value={node.test}
+                      className="h-7 flex-1 text-[12px]"
+                      onChange={(event) =>
+                        edit(stage.tier, index, { test: event.target.value })
+                      }
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    acceptSkillStages({
+                      skillKey,
+                      stages: draft.map((stage) => ({
+                        tier: stage.tier,
+                        standard: stage.standard,
+                        nodes: stage.nodes
+                          .filter((node) => node.keep)
+                          .map((node) => ({
+                            name: node.name,
+                            test: node.test,
+                          })),
+                      })),
+                    }),
+                  () => setDraft(null)
+                )
+              }
+            >
+              收下这份拆解
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+              丢掉
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            收下之后「{skillName}」按这份走。已经点亮的节点不会因为换树而消失。
+          </p>
+        </div>
+      )}
     </div>
   );
 }
