@@ -64,6 +64,7 @@ import {
   Repeat,
   Route,
   Ruler,
+  Rotate3d,
   Save,
   Scale,
   ScanEye,
@@ -187,6 +188,7 @@ export const SKILL_ICONS: Record<string, LucideIcon> = {
   redundancy: LifeBuoy,
   ship: Truck,
   oncall: Siren,
+  reverseeng: Rotate3d,
 
   // 内核
   systemcraft: Network,

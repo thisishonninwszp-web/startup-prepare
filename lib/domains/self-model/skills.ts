@@ -214,6 +214,7 @@ export const SKILL_DEFS: SkillDef[] = [
   { key: "refer", name: "引荐", gloss: "把该认识的两个人接上，事后两边都谢你", group: "relate", main: "CHA", layer: "module", requires: ["remembernames", "trustbuilding"] },
   { key: "redundancy", name: "冗余", gloss: "预设它会挂，并且挂了不出事", group: "make", main: "RES", layer: "module", requires: ["testing", "backup"] },
   { key: "ship", name: "发布", gloss: "把东西真的送到别人手上", group: "make", main: "WIL", layer: "module", requires: ["prototyping", "formatting"] },
+  { key: "reverseeng", name: "逆向", gloss: "看着一个成品，倒推它是怎么做出来的", group: "make", main: "INT", layer: "module", requires: ["observing", "debugging", "structure"] },
   { key: "oncall", name: "排障", gloss: "出事第一个到，并且能把它按下去", group: "make", main: "CON", layer: "module", requires: ["debugging", "redundancy"] },
 
   // —— 内核：前置跨领域，这才叫高级 ——
@@ -225,7 +226,7 @@ export const SKILL_DEFS: SkillDef[] = [
   { key: "managingup", name: "向上管理", gloss: "让上面的人做出更好的决定", group: "express", main: "CHA", layer: "core", requires: ["persuading", "profiling", "statusreport"] },
   { key: "revenue", name: "营收设计", gloss: "设计钱怎么进来，而不只是定一个价", group: "run", main: "RES", layer: "core", requires: ["uniteconomics", "channel", "pricing"] },
   { key: "crisis", name: "危机处理", gloss: "事情烧起来的时候把它按住", group: "run", main: "CON", layer: "core", requires: ["oncall", "conflict", "statusreport"] },
-  { key: "integration", name: "集成", gloss: "用现成零件拼出真能用的东西", group: "make", main: "DEX", layer: "core", requires: ["ship", "fleet", "architecture"] },
+  { key: "integration", name: "集成", gloss: "用现成零件拼出真能用的东西", group: "make", main: "DEX", layer: "core", requires: ["ship", "fleet", "architecture", "reverseeng"] },
   { key: "transcode", name: "转译", gloss: "在两个不互通的世界之间搬运意思，两边都不觉得被简化", group: "express", main: "WIS", layer: "core", requires: ["explaining", "narrative", "profiling"] },
   { key: "clone", name: "分身", gloss: "把自己的做法固化成机器能跑的东西", group: "make", main: "INT", layer: "core", requires: ["processdesign", "automation", "fleet"] },
   { key: "offline", name: "断网", gloss: "工具全挂那天，照样把事做完", group: "self", main: "CON", layer: "core", requires: ["arithmetic", "record", "learning"] },
@@ -250,6 +251,7 @@ export const SKILL_DEFS: SkillDef[] = [
 
 /** 每项技能的里程碑。数据大，单独放一张表，SKILL_DEFS 在构造时挂上去。 */
 const MILESTONES: Record<string, SkillMilestone[]> = {
+  reverseeng: [{ at: MILESTONE_TIERS[0], name: "拆得开", test: "把一个现成的东西拆开，说出它由哪几块组成" }, { at: MILESTONE_TIERS[1], name: "说得出为什么", test: "说清它为什么这么做，而不只是它做了什么" }, { at: MILESTONE_TIERS[2], name: "复刻得出", test: "照着倒推出的做法自己做出一个能用的" }],
   record: [{ at: MILESTONE_TIERS[0], name: "写下来", test: "连续七天每天写下一条发生了什么" }, { at: MILESTONE_TIERS[1], name: "写具体", test: "写的是那一次，不是感想" }, { at: MILESTONE_TIERS[2], name: "翻得到", test: "两周前的事能从记录里翻出来" }],
   search: [{ at: MILESTONE_TIERS[0], name: "找得到", test: "十分钟内找到一份一手资料" }, { at: MILESTONE_TIERS[1], name: "换得动词", test: "第一次搜不到时换一组词再搜到" }, { at: MILESTONE_TIERS[2], name: "绕得开", test: "在一个封闭的库里也找到了替代来源" }],
   skim: [{ at: MILESTONE_TIERS[0], name: "读得快", test: "十分钟读完一份长文并说出它在讲什么" }, { at: MILESTONE_TIERS[1], name: "挑得出", test: "从五份里挑出唯一值得细读的那份" }, { at: MILESTONE_TIERS[2], name: "放得下", test: "读了两页就放弃过一份没价值的东西" }],
