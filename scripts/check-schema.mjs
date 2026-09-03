@@ -43,6 +43,7 @@ const coreProbes = [
   ["self_deeds", "id,user_id,occurred_on,title,class_key,outcome,adopted,duration_days"],
   ["self_skill_nodes", "id,user_id,node_key,skill_key,tier,proof"],
   ["self_skill_stages", "user_id,skill_key,tier,stage_name,standard,nodes,source"],
+  ["self_custom_skills", "user_id,key,name,gloss,skill_group,main,layer,requires,milestones"],
   ["trait_catalog", "key,name,family,conditions,modifiers,rarity_hint"],
   ["reality_cases", "id,user_id,messages"],
   ["reality_versions", "id,case_id,version_no,focus_session_ids"],

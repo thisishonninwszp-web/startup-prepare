@@ -8,6 +8,7 @@ import {
   type PanelInput,
 } from "@/lib/domains/self-model/panel";
 import {
+  MILESTONE_TIERS,
   SKILL_DEFS,
   evaluateFeats,
   milestoneOf,
@@ -16,6 +17,7 @@ import {
   growthFor,
   rustFor,
   type FeatAvailability,
+  type SkillDef,
   type SkillGroup,
 } from "@/lib/domains/self-model/skills";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
@@ -1237,6 +1239,8 @@ export async function getTraitCatalog(): Promise<CatalogEntry[]> {
 export type SelfSkillTree = {
   /** 哪些技能用的是自己收下的拆解。 */
   customised?: string[];
+  /** 哪些技能是自己加进树的，代码里没有。 */
+  added?: string[];
   entries: ReturnType<typeof buildSkillTree>;
   unlockedCount: number;
   total: number;
@@ -1283,13 +1287,54 @@ export async function getStageOverrides(
   return map;
 }
 
+/** 用户自己收下的技能。它们和内置的走同一套规则。 */
+export async function getCustomSkills(userId: string): Promise<SkillDef[]> {
+  const { data, error } = await supabaseAdmin
+    .from("self_custom_skills")
+    .select("key, name, gloss, skill_group, main, layer, requires, milestones")
+    .eq("user_id", userId);
+  if (error) {
+    // 迁移 046 还没跑的时候，整页不该白 —— 树退回内置那部分照常用。
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      console.warn("self_custom_skills 还没建表，先按内置技能渲染", error.message);
+      return [];
+    }
+    throw new Error(error.message);
+  }
+
+  return ((data ?? []) as {
+    key: string;
+    name: string;
+    gloss: string;
+    skill_group: string;
+    main: string;
+    layer: string;
+    requires: string[];
+    milestones: { name: string; test: string }[];
+  }[]).map((row) => ({
+    key: row.key,
+    name: row.name,
+    gloss: row.gloss,
+    group: row.skill_group as SkillDef["group"],
+    main: row.main as SkillDef["main"],
+    layer: row.layer as SkillDef["layer"],
+    requires: row.requires ?? [],
+    milestones: (row.milestones ?? []).map((item, index) => ({
+      at: MILESTONE_TIERS[index] ?? MILESTONE_TIERS[2],
+      name: item.name,
+      test: item.test,
+    })),
+  }));
+}
+
 export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
-  const [{ data, error }, overrides] = await Promise.all([
+  const [{ data, error }, overrides, extra] = await Promise.all([
     supabaseAdmin
       .from("self_skill_nodes")
       .select("node_key, proof, unlocked_on")
       .eq("user_id", userId),
     getStageOverrides(userId),
+    getCustomSkills(userId),
   ]);
   if (error) throw new Error(error.message);
 
@@ -1305,11 +1350,14 @@ export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
     ])
   );
 
+  const entries = buildSkillTree(map, overrides, extra);
   return {
-    entries: buildSkillTree(map, overrides),
+    entries,
     unlockedCount: map.size,
-    total: NODE_TOTAL,
-    started: startedSkills(new Set(map.keys()), overrides),
+    // 自己加的技能也算进分母 —— 分母得跟着树一起长。
+    total: entries.reduce((sum, entry) => sum + entry.total, 0) || NODE_TOTAL,
+    started: startedSkills(new Set(map.keys()), overrides, extra),
     customised: [...overrides.keys()],
+    added: extra.map((def) => def.key),
   };
 }

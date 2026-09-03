@@ -5093,3 +5093,26 @@ alter table self_skill_nodes
   drop constraint if exists self_skill_nodes_tier_check;
 alter table self_skill_nodes
   add constraint self_skill_nodes_tier_check check (tier between 1 and 4);
+
+-- 046_custom_skills.sql
+create table if not exists self_custom_skills (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  key        text not null,
+  name       text not null,
+  gloss      text not null,
+  skill_group text not null,
+  main       text not null,
+  layer      text not null,
+  requires   jsonb not null default '[]'::jsonb,
+  milestones jsonb not null default '[]'::jsonb,
+  because    text,
+  source     text not null default 'ai_nominated',
+  created_at timestamptz not null default now(),
+  primary key (user_id, key)
+);
+
+alter table self_custom_skills enable row level security;
+
+drop policy if exists "self_custom_skills_owner" on self_custom_skills;
+create policy "self_custom_skills_owner" on self_custom_skills
+  for all using (auth.uid() = user_id);

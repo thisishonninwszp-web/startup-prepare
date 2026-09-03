@@ -71,3 +71,111 @@ describe("parseStages", () => {
     expect(parseStages({ stages: "nope" })).toEqual([]);
   });
 });
+
+import { parseSkillNominations } from "./self-model";
+
+const okMilestones = [
+  { name: "做过一次", test: "真的做成过一次，说得出是哪一次" },
+  { name: "做得稳", test: "连续三次都做成了" },
+  { name: "别人也行", test: "别人照你的做法也做成了" },
+];
+
+function skill(patch: Record<string, unknown> = {}) {
+  return {
+    key: "sourcing",
+    name: "布阵",
+    gloss: "判断一份资料该不该信",
+    group: "info",
+    main: "WIS",
+    layer: "circuit",
+    requires: ["trace", "skim"],
+    milestones: okMilestones,
+    because: "他的方向要判断材料",
+    ...patch,
+  };
+}
+
+describe("parseSkillNominations", () => {
+  it("takes a well-formed nomination", () => {
+    const [item] = parseSkillNominations({ skills: [skill()] });
+    expect(item).toMatchObject({ key: "sourcing", name: "布阵", layer: "circuit" });
+    expect(item.requires).toEqual(["trace", "skim"]);
+  });
+
+  it("refuses a name that is a phrase rather than a word", () => {
+    expect(parseSkillNominations({ skills: [skill({ name: "主动沟通能力" })] })).toEqual(
+      []
+    );
+  });
+
+  it("refuses a skill that already exists, or one a hair away from it", () => {
+    expect(parseSkillNominations({ skills: [skill({ key: "listening" })] })).toEqual(
+      []
+    );
+    expect(parseSkillNominations({ skills: [skill({ name: "倾听" })] })).toEqual([]);
+    // 「带人」离已有的「带教」只差一个字：同一门手艺不该占两格。
+    expect(
+      parseSkillNominations({
+        skills: [skill({ name: "带人", group: "relate", main: "CHA" })],
+      })
+    ).toEqual([]);
+    // 跨领域撞字是巧合，不拦。
+    expect(
+      parseSkillNominations({ skills: [skill({ name: "带钩", group: "make", main: "DEX" })] })
+    ).toHaveLength(1);
+  });
+
+  it("refuses a test that only claims a capability", () => {
+    expect(
+      parseSkillNominations({
+        skills: [
+          skill({
+            milestones: [
+              { name: "看得出", test: "能识别出团队成员的成长需求" },
+              ...okMilestones.slice(0, 2),
+            ],
+          }),
+        ],
+      })
+    ).toEqual([]);
+  });
+
+  it("drops a prerequisite that does not exist, and one that sits higher", () => {
+    const [item] = parseSkillNominations({
+      skills: [skill({ requires: ["trace", "nosuchskill", "judgement"] })],
+    });
+    // judgement 是印记层，比 circuit 高 —— 收进来树就会出环。
+    expect(item.requires).toEqual(["trace"]);
+  });
+
+  it("refuses a skill with no usable milestones — that is a shell you cannot light", () => {
+    expect(
+      parseSkillNominations({
+        skills: [
+          skill({
+            milestones: [
+              { name: "打基础", test: "熟悉这门手艺的常用做法" },
+              ...okMilestones.slice(0, 2),
+            ],
+          }),
+        ],
+      })
+    ).toEqual([]);
+  });
+
+  it("refuses an unknown layer, group or attribute", () => {
+    expect(parseSkillNominations({ skills: [skill({ layer: "epic" })] })).toEqual([]);
+    expect(parseSkillNominations({ skills: [skill({ group: "combat" })] })).toEqual([]);
+    expect(parseSkillNominations({ skills: [skill({ main: "MAG" })] })).toEqual([]);
+  });
+
+  it("keeps one of a duplicated key and caps the batch", () => {
+    const many = Array.from({ length: 8 }, (_, index) =>
+      skill({ key: `made${"abcdefgh"[index]}`, name: `阵${"甲乙丙丁戊己庚辛"[index]}` })
+    );
+    expect(parseSkillNominations({ skills: [...many, skill()] })).toHaveLength(5);
+    expect(
+      parseSkillNominations({ skills: [skill(), skill()] })
+    ).toHaveLength(1);
+  });
+});

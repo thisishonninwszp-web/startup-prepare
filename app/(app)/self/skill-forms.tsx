@@ -12,8 +12,11 @@ import {
 } from "@/lib/domains/self-model/skills";
 import {
   acceptNomination,
+  acceptSkill,
   acceptSkillStages,
   proposeSkillStages,
+  proposeSkills,
+  removeCustomSkill,
   resetSkillStages,
   claimDisposition,
   createCharacter,
@@ -663,6 +666,147 @@ export function DispositionSuggest() {
   );
 }
 
+
+type SkillCandidate = {
+  key: string;
+  name: string;
+  gloss: string;
+  group: string;
+  main: string;
+  layer: string;
+  requires: string[];
+  milestones: { name: string; test: string }[];
+  because: string;
+};
+
+const LAYER_LABELS: Record<string, string> = {
+  component: "元件",
+  circuit: "回路",
+  module: "模组",
+  core: "内核",
+  signature: "印记",
+};
+
+/**
+ * 让 AI 指出树上缺的技能。
+ *
+ * 「我该会哪些手艺」比「这门手艺怎么拆」更靠前，也更说不出口 ——
+ * 一个人本来就不知道自己不知道什么。但提名仍然只是候选：
+ * 收下才进树，进了树也一样要写 proof 才能点亮。
+ */
+export function NominateSkillsControl() {
+  const [direction, setDirection] = useState("");
+  const [items, setItems] = useState<SkillCandidate[] | null>(null);
+  const [taken, setTaken] = useState<string[]>([]);
+  const { pending, error, run } = useAction();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={direction}
+          onChange={(event) => setDirection(event.target.value)}
+          placeholder="你想往哪走？例：往经营层的 officer 方向"
+          className="h-8 min-w-[14rem] flex-1 text-[13px]"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending || !direction.trim()}
+          onClick={() =>
+            run(async () => {
+              setItems(await proposeSkills(direction));
+            })
+          }
+        >
+          {pending ? "想中…" : "看看树上少了什么"}
+        </Button>
+      </div>
+      <Err message={error} />
+
+      {items && items.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          这一轮没提出能用的。要么方向太泛，要么它提的都被闸门挡掉了 ——
+          名字不是词、前置不存在、或者三档标准写不出能判真假的。换个更具体的方向再试。
+        </p>
+      )}
+
+      {items?.map((item) => (
+        <div key={item.key} className="animate-self-reveal self-panel p-4">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="font-medium">{item.name}</span>
+            <span className="self-label">
+              {LAYER_LABELS[item.layer] ?? item.layer} · {item.main}
+            </span>
+            <span className="text-xs text-muted-foreground">{item.gloss}</span>
+            <span className="self-rarity self-rarity--common ml-auto">
+              AI 提名 · 候选
+            </span>
+          </div>
+
+          {item.requires.length > 0 && (
+            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+              建在：{item.requires.join(" · ")}
+            </p>
+          )}
+          {item.because && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              为什么缺它：{item.because}
+            </p>
+          )}
+
+          <ul className="mt-2 space-y-0.5 font-mono text-[11px]">
+            {item.milestones.map((milestone) => (
+              <li key={milestone.name}>
+                <span className="font-semibold">{milestone.name}</span>{" "}
+                <span className="text-muted-foreground">{milestone.test}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-2">
+            {taken.includes(item.key) ? (
+              <span className="font-mono text-[11px] text-primary">
+                已接进树里
+              </span>
+            ) : (
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () => acceptSkill(item),
+                    () => setTaken((current) => [...current, item.key])
+                  )
+                }
+              >
+                收进树里
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 加错了可以摘掉。 */
+export function RemoveCustomSkillControl({ skillKey }: { skillKey: string }) {
+  const { pending, error, run } = useAction();
+  return (
+    <>
+      <ConfirmButton
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={() => run(() => removeCustomSkill(skillKey))}
+      >
+        从树上摘掉
+      </ConfirmButton>
+      <Err message={error} />
+    </>
+  );
+}
 
 type DraftNode = { name: string; test: string; keep: boolean };
 type DraftStage = { tier: number; name: string; standard: string; nodes: DraftNode[] };

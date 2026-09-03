@@ -1,4 +1,15 @@
 import { generateRealityJson } from "./reality";
+import { MAIN_KEYS, type MainKey } from "@/lib/domains/self-model/panel";
+import {
+  SKILL_DEFS,
+  SKILL_GROUPS,
+  SKILL_GROUP_NAMES,
+  SKILL_LAYERS,
+  SKILL_LAYER_GLOSS,
+  SKILL_LAYER_NAMES,
+  type SkillGroup,
+  type SkillLayer,
+} from "@/lib/domains/self-model/skills";
 import {
   AXIS_NAMES,
   DISPOSITIONS,
@@ -173,6 +184,15 @@ test 的硬标准 —— 写不出就别写这条：
 
 const VAGUE = /熟悉|了解|理解|掌握[^，。]{0,6}原理|有意识|较好地|一定程度|水平|精通度|评分|打分|[0-9]{1,3}\s*[%分]/;
 
+/**
+ * 以「能…」「会…」开头的不是判据，是能力声明。
+ *
+ * 「能识别出团队成员的成长需求」——这句话没有哪一天为真、哪一天为假，
+ * 它永远可以被认领。判据要说的是**做到过一次是什么样子**：
+ * 「上周三谁跟你说了他想学什么，你记下来并给了一个具体资源」。
+ */
+const CLAIM = /^(能|会|可以|善于|懂得|应当|需要|具备)/;
+
 /** 导出只为测试：这些闸门比 prompt 硬。 */
 export function parseStages(value: unknown): StageNomination[] {
   const root = value as { stages?: unknown };
@@ -194,7 +214,7 @@ export function parseStages(value: unknown): StageNomination[] {
       }))
       // 没有验法、或者验法是个形容词的，直接丢。
       .filter((entry) => entry.name.length >= 2 && entry.test.length >= 6)
-      .filter((entry) => !VAGUE.test(entry.test))
+      .filter((entry) => !VAGUE.test(entry.test) && !CLAIM.test(entry.test))
       .slice(0, 4);
 
     if (nodes.length < 2) continue;
@@ -233,4 +253,189 @@ ${
 请把它拆成四级，每级带标准和 2–4 个小技能。`;
 
   return generateRealityJson(DECOMPOSE_SYSTEM, contents, parseStages);
+}
+
+// ---------------------------------------------------------------------------
+// 第三处 AI 调用：提名骨架上缺的技能。
+//
+// 拆解回答的是"这门手艺由哪些小技能构成"，这一处回答更前面的一个问题：
+// **我到底该会哪些手艺**。用户说不出来是正常的 —— 那是他没有的知识量。
+//
+// 危险在于模型会顺着方向硬凑一堆听着高级的名词。所以闸门比上一处更密：
+//   1. 名字必须是**朴素的双字或三字词**，不许是短语、不许带形容词。
+//   2. gloss 必须是一句能想象出画面的白话，不许是同义反复。
+//   3. requires 只能引用**已经存在**的技能 key，且层不能高于自己 ——
+//      写错一条就会让树出现环，所以这里直接丢，不做修正。
+//   4. 必须自带三档 milestones，每档一句能判真假的现实标准；
+//      没有它，这项技能落进树里就是个点不动的空壳。
+//   5. 已经存在的名字或近义重复不要 —— 树的价值不在多。
+// ---------------------------------------------------------------------------
+
+export type SkillNomination = {
+  key: string;
+  name: string;
+  gloss: string;
+  group: SkillGroup;
+  main: MainKey;
+  layer: SkillLayer;
+  requires: string[];
+  milestones: { name: string; test: string }[];
+  /** 为什么这一项该在树上，而现在没有。 */
+  because: string;
+};
+
+const GROUP_BLOCK = SKILL_GROUPS.map(
+  (group) => `- ${group}（${SKILL_GROUP_NAMES[group]}）`
+).join("\n");
+
+const LAYER_BLOCK = SKILL_LAYERS.map(
+  (layer) => `- ${layer}（${SKILL_LAYER_NAMES[layer]}）：${SKILL_LAYER_GLOSS[layer]}`
+).join("\n");
+
+const NOMINATE_SYSTEM = `你在替一个人补他的技能树。
+
+他给你一个方向，你的任务是：指出**这棵树上缺的、但那个方向真的需要的手艺**。
+他说不出这些名字是正常的 —— 一个人本来就不知道自己不知道什么。
+
+树的结构：
+- 层（纵轴，越往上越深）：
+${LAYER_BLOCK}
+- 领域（横轴）：
+${GROUP_BLOCK}
+- 主属性只能从这九个里选：STR CON DEX INT WIS CHA WIL LCK RES
+
+命名铁律：
+- 朴素的双字词，最多三字。像 D&D 的技能表：调查、洞悉、说服、医药。
+- 不许是短语（"主动沟通能力"）、不许带形容词、不许生造文言。
+- 一眼看不出意思没关系，gloss 会解释；但名字本身必须是个**现成的词**。
+
+每一项必须给出：
+- key：小写英文，一个词，和已有的不重复。
+- gloss：一句白话，说清这门手艺到底在干什么，要能想象出画面。
+- layer / group / main。
+- requires：它建在哪些**已有技能**之上。只能写下面给你的 key，
+  而且它们的层不能高于这一项。想不出合适前置就给空数组。
+- milestones：三档，从浅到深。每一档 name 两到四字，
+  test 是一句**到期能判真假**的现实标准 —— 说的是"做到过一次是什么样子"，
+  不是"熟悉""了解""掌握原理"。也不许以"能…""会…"开头：
+  那是能力声明，永远可以被认领，判不了真假。
+  禁止任何打分、百分比、程度词。
+- because：为什么这一项对他给的方向是必要的，一句话。
+
+其它：
+- 只提**真的缺**的。已有的名字、以及和它们只差一个字的说法，一律不要。
+- 宁可两条，不许凑六条。树的价值不在多。
+- 不许评价这个人，不许写"很有潜力"这类话。
+
+输出 JSON：
+{"skills":[{"key","name","gloss","group","main","layer","requires":[],"milestones":[{"name","test"}],"because"}]}
+最多 5 条。`;
+
+/** 导出只为测试。 */
+export function parseSkillNominations(value: unknown): SkillNomination[] {
+  const root = value as { skills?: unknown };
+  if (!Array.isArray(root?.skills)) return [];
+
+  const known = new Map(SKILL_DEFS.map((def) => [def.key, def]));
+  /**
+   * 近义重名：「带人」和已有的「带教」只差一个字，收进来就是同一门手艺占两格。
+   *
+   * 判定收窄到**同一个领域内**：中文两字词共用一个字太常见了
+   * （定价 / 定题、取舍 / 取证），跨领域撞字多半是巧合，同领域撞字多半是重复。
+   */
+  const tooClose = (name: string, group: string) =>
+    SKILL_DEFS.filter((def) => def.group === group).some((def) => {
+      const shared = [...name].filter((char) => def.name.includes(char)).length;
+      return shared * 2 >= Math.min(name.length, def.name.length);
+    });
+  const groups = new Set<string>(SKILL_GROUPS);
+  const layers = new Set<string>(SKILL_LAYERS);
+  const mains = new Set<string>(MAIN_KEYS);
+  const taken = new Set<string>();
+
+  return root.skills
+    .map((item) => item as Record<string, unknown>)
+    .map((item) => {
+      const key = String(item.key ?? "").trim().toLowerCase();
+      const name = String(item.name ?? "").trim();
+      const gloss = String(item.gloss ?? "").trim();
+      const group = String(item.group ?? "").trim();
+      const main = String(item.main ?? "").trim();
+      const layer = String(item.layer ?? "").trim();
+
+      if (!/^[a-z][a-z0-9]{1,20}$/.test(key)) return null;
+      if (known.has(key) || taken.has(key)) return null;
+      // 名字必须是个词，不是一句话。
+      if (name.length < 2 || name.length > 3) return null;
+      if (tooClose(name, group)) return null;
+      if (gloss.length < 6) return null;
+      if (!groups.has(group) || !layers.has(layer) || !mains.has(main)) {
+        return null;
+      }
+
+      const layerRank = SKILL_LAYERS.indexOf(layer as SkillLayer);
+      const requires = (Array.isArray(item.requires) ? item.requires : [])
+        .map((entry) => String(entry).trim())
+        // 前置必须真的存在，而且不能踩在比自己更高的层上 —— 否则树会出环。
+        .filter((entry) => {
+          const def = known.get(entry);
+          return (
+            def !== undefined &&
+            SKILL_LAYERS.indexOf(def.layer) <= layerRank
+          );
+        })
+        .slice(0, 4);
+
+      const milestones = (Array.isArray(item.milestones) ? item.milestones : [])
+        .map((entry) => entry as Record<string, unknown>)
+        .map((entry) => ({
+          name: String(entry.name ?? "").trim(),
+          test: String(entry.test ?? "").trim(),
+        }))
+        .filter((entry) => entry.name.length >= 2 && entry.test.length >= 6)
+        .filter((entry) => !VAGUE.test(entry.test) && !CLAIM.test(entry.test))
+        .slice(0, 3);
+      // 三档不齐就是个点不动的空壳。
+      if (milestones.length < 3) return null;
+
+      taken.add(key);
+      return {
+        key,
+        name,
+        gloss,
+        group: group as SkillGroup,
+        main: main as MainKey,
+        layer: layer as SkillLayer,
+        requires,
+        milestones,
+        because: String(item.because ?? "").trim(),
+      };
+    })
+    .filter((item): item is SkillNomination => item !== null)
+    .slice(0, 5);
+}
+
+export async function nominateSkills(input: {
+  /** 用户给的方向，一句话。 */
+  direction: string;
+  /** 他已经点亮到某一级的技能名，让模型知道他站在哪。 */
+  reached: string[];
+}): Promise<SkillNomination[]> {
+  const catalogue = SKILL_DEFS.map(
+    (def) => `${def.key}｜${def.name}｜${def.layer}｜${def.group}｜${def.gloss}`
+  ).join("\n");
+
+  const contents = `他给的方向：${input.direction}
+
+他已经走出来的技能：${
+    input.reached.length > 0 ? input.reached.join("、") : "（一项都还没有）"
+  }
+
+树上现有的全部技能（key｜名字｜层｜领域｜白话），
+前置只能从这些 key 里选，名字也不要和它们重复：
+${catalogue}
+
+请指出这棵树上缺的、而他给的方向真的需要的手艺。`;
+
+  return generateRealityJson(NOMINATE_SYSTEM, contents, parseSkillNominations);
 }

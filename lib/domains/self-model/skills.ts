@@ -987,6 +987,12 @@ export type SkillStage = {
  * 界面会标出来"这项还没拆"。逐项拆是慢工，一次拆不完六十三项。
  */
 export const SKILL_STAGES: Record<string, SkillStage[]> = {
+  reverseeng: [
+    { tier: 1, name: "入门", standard: "能说出它由哪几块组成", nodes: [{ name: "跑一遍", test: "先把这个东西自己完整用一遍、跑一遍" }, { name: "列零件", test: "拆出三块以上，说得出每块管什么" }, { name: "找入口", test: "指出它的起点：第一个被调用的地方、第一屏、第一句话" }] },
+    { tier: 2, name: "基础", standard: "能说出它为什么这么做", nodes: [{ name: "顺着走一条", test: "追一条数据或一个用户从进到出走完整条路" }, { name: "分主次", test: "说得出哪几块是核心，哪几块是装饰" }, { name: "看出取舍", test: "指出它在哪里放弃了一样东西来换另一样" }] },
+    { tier: 3, name: "精通", standard: "能复刻出其中一块", nodes: [{ name: "复刻一块", test: "照着倒推出的做法自己做出其中一块并跑通" }, { name: "说得出差在哪", test: "说清自己这块和原版的差别，以及为什么会差" }, { name: "猜中约束", test: "说出它为什么不能用更好的做法：成本、人手、还是历史包袱" }] },
+    { tier: 4, name: "专家", standard: "能倒推出方法，而不只是结构", nodes: [{ name: "倒推顺序", test: "说出它大概是按什么顺序长成今天这样的" }, { name: "迁得出去", test: "把倒推出的做法用到另一件不相干的事上，并且成了" }, { name: "预判下一版", test: "事前写下它下一版会改哪里，到期对账" }] },
+  ],
   coding: [
     { tier: 1, name: "入门", standard: "能把想法变成能跑的东西", nodes: [{ name: "跑通环境", test: "从零把开发环境搭起来并跑通一个 hello world" }, { name: "读懂报错", test: "看到报错能定位到是哪一行、哪个概念" }, { name: "改别人的代码", test: "在一份不是自己写的代码里改对一个地方" }] },
     { tier: 2, name: "基础", standard: "能独立做出一个有人用的小东西", nodes: [{ name: "拆成函数", test: "把一坨代码拆成各自职责清楚的函数" }, { name: "接一个外部服务", test: "接通一个 API 并处理它的失败情况" }, { name: "存得住数据", test: "设计一张表并让数据正确读写" }, { name: "发出去", test: "把东西部署到别人能访问的地方" }] },

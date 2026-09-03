@@ -21,7 +21,9 @@ import type { SkillTreeEntry } from "@/lib/domains/self-model/nodes";
 import { iconFor } from "./skill-icons";
 import {
   DecomposeSkillControl,
+  NominateSkillsControl,
   RelockNodeControl,
+  RemoveCustomSkillControl,
   UnlockNodeControl,
 } from "./skill-forms";
 
@@ -38,9 +40,11 @@ const MODES: { key: Mode; label: string }[] = [
 export function SkillTree({
   entries,
   customised,
+  added,
 }: {
   entries: SkillTreeEntry[];
   customised: string[];
+  added: string[];
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<SkillGroup | "all">("all");
@@ -48,6 +52,7 @@ export function SkillTree({
   const [selected, setSelected] = useState<string | null>(null);
 
   const custom = useMemo(() => new Set(customised), [customised]);
+  const mine = useMemo(() => new Set(added), [added]);
   const nameOf = useMemo(
     () => new Map(entries.map((entry) => [entry.def.key, entry.def.name])),
     [entries]
@@ -207,6 +212,7 @@ export function SkillTree({
                   <SkillDetail
                     entry={chosen}
                     customised={custom.has(chosen.def.key)}
+                    mine={mine.has(chosen.def.key)}
                     nameOf={nameOf}
                   />
                 </div>
@@ -215,6 +221,18 @@ export function SkillTree({
           </div>
         );
       })}
+
+      <div className="self-panel self-corners space-y-2 p-4">
+        <p className="self-rule">
+          <span className="self-label shrink-0">树上少了什么</span>
+        </p>
+        <p className="text-[12px] text-muted-foreground">
+          「我该会哪些手艺」比「这门手艺怎么拆」更靠前，也更说不出口 ——
+          一个人本来就不知道自己不知道什么。给一个方向，它指出骨架上缺的那几项；
+          收下才进树，进了树也一样要写下证据才能点亮。
+        </p>
+        <NominateSkillsControl />
+      </div>
     </div>
   );
 }
@@ -222,10 +240,12 @@ export function SkillTree({
 function SkillDetail({
   entry,
   customised,
+  mine,
   nameOf,
 }: {
   entry: SkillTreeEntry;
   customised: boolean;
+  mine: boolean;
   nameOf: Map<string, string>;
 }) {
   const Icon = iconFor(entry.def.key);
@@ -260,11 +280,14 @@ function SkillDetail({
         </p>
       )}
 
-      <DecomposeSkillControl
-        skillKey={entry.def.key}
-        skillName={entry.def.name}
-        customised={customised}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <DecomposeSkillControl
+          skillKey={entry.def.key}
+          skillName={entry.def.name}
+          customised={customised}
+        />
+        {mine && <RemoveCustomSkillControl skillKey={entry.def.key} />}
+      </div>
 
       {entry.stages.map((stage) => (
         <div key={stage.tier}>

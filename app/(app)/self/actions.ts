@@ -14,16 +14,20 @@ import { EMPTY_PANEL_INPUT, buildPanel } from "@/lib/domains/self-model/panel";
 import {
   FEAT_DEFS,
   SKILL_DEFS,
+  SKILL_LAYERS,
   evaluateFeat,
   growthFor,
   skillCeiling,
   isSkillKey,
   rustFor,
+  type SkillDef,
 } from "@/lib/domains/self-model/skills";
 import {
   existingDispositionNames,
   decomposeSkill,
+  nominateSkills,
   nominateDispositions,
+  type SkillNomination,
   type StageNomination,
   type DispositionNomination,
 } from "@/lib/ai";
@@ -34,7 +38,12 @@ import {
   scanCatalog,
   spectrumKeyOf,
 } from "@/lib/domains/self-model/catalog";
-import { getSelfPanel, getTraitCatalog, nextHypothesisCode } from "./queries";
+import {
+  getCustomSkills,
+  getSelfPanel,
+  getTraitCatalog,
+  nextHypothesisCode,
+} from "./queries";
 
 
 
@@ -969,6 +978,120 @@ export async function unlockSkillNode(input: {
   revalidatePath("/self");
 }
 
+
+
+/**
+ * 让 AI 指出树上缺的技能。**只提名，不写库。**
+ *
+ * 拆解回答"这门手艺由哪些小技能构成"，这一处回答更前面的问题：
+ * 我到底该会哪些手艺。用户说不出来是正常的 —— 那是他没有的知识量。
+ */
+export async function proposeSkills(
+  direction: string
+): Promise<SkillNomination[]> {
+  const userId = await requireUserId();
+  const text = required(direction, "方向");
+
+  const { data } = await supabaseAdmin
+    .from("self_skill_nodes")
+    .select("skill_key")
+    .eq("user_id", userId);
+  const reached = [
+    ...new Set(((data ?? []) as { skill_key: string }[]).map((row) => row.skill_key)),
+  ]
+    .map((key) => SKILL_DEFS.find((def) => def.key === key)?.name)
+    .filter((name): name is string => Boolean(name));
+
+  return nominateSkills({ direction: text, reached });
+}
+
+/**
+ * 收下一项 AI 提名的技能，接进树里。
+ *
+ * 服务端再校验一次前置：只能引用已经存在的技能，而且层不能高于自己。
+ * 这一条不是形式 —— 一条乱写的前置会让整棵树出现环，然后谁都点不动。
+ */
+export async function acceptSkill(input: {
+  key: string;
+  name: string;
+  gloss: string;
+  group: string;
+  main: string;
+  layer: string;
+  requires: string[];
+  milestones: { name: string; test: string }[];
+  because?: string;
+}): Promise<void> {
+  const userId = await requireUserId();
+  const key = input.key.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9]{1,20}$/.test(key)) throw new Error("key 不合法");
+  if (SKILL_DEFS.some((def) => def.key === key)) {
+    throw new Error("树上已经有这一项了");
+  }
+  if (!SKILL_LAYERS.includes(input.layer as (typeof SKILL_LAYERS)[number])) {
+    throw new Error("层不对");
+  }
+
+  const existing: SkillDef[] = await getCustomSkills(userId);
+  if (existing.some((def) => def.key === key)) {
+    throw new Error("你已经收下过这一项了");
+  }
+
+  const pool = [...SKILL_DEFS, ...existing];
+  const rank = (layer: string) =>
+    SKILL_LAYERS.indexOf(layer as (typeof SKILL_LAYERS)[number]);
+  const requires = input.requires.filter((required) => {
+    const def = pool.find((item) => item.key === required);
+    return def !== undefined && rank(def.layer) <= rank(input.layer);
+  });
+
+  const milestones = input.milestones
+    .map((item) => ({ name: item.name.trim(), test: item.test.trim() }))
+    .filter((item) => item.name && item.test)
+    .slice(0, 3);
+  if (milestones.length < 3) {
+    throw new Error("三档标准要齐 —— 少了这项技能在树上点不动");
+  }
+
+  const { error } = await supabaseAdmin.from("self_custom_skills").insert({
+    user_id: userId,
+    key,
+    name: required(input.name, "名字"),
+    gloss: required(input.gloss, "白话"),
+    skill_group: input.group,
+    main: input.main,
+    layer: input.layer,
+    requires,
+    milestones,
+    because: input.because ?? null,
+  });
+  if (error) throw new Error(error.message);
+
+  await recordEvent(
+    userId,
+    "skill_up",
+    `树上多了一项「${input.name}」`,
+    input.because ?? input.gloss
+  );
+  revalidatePath("/self");
+}
+
+/** 加错了可以摘掉。已经点亮的节点会跟着消失 —— 这项技能本来就不存在了。 */
+export async function removeCustomSkill(key: string): Promise<void> {
+  const userId = await requireUserId();
+  await supabaseAdmin
+    .from("self_skill_nodes")
+    .delete()
+    .eq("user_id", userId)
+    .eq("skill_key", key);
+  const { error } = await supabaseAdmin
+    .from("self_custom_skills")
+    .delete()
+    .eq("user_id", userId)
+    .eq("key", key);
+  if (error) throw new Error(error.message);
+  revalidatePath("/self");
+}
 
 /**
  * 让 AI 拆开一项技能。**只提名，不写库。**

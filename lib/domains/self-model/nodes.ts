@@ -52,6 +52,19 @@ export type StageOverrides = Map<string, SkillStage[]>;
 
 const NO_OVERRIDES: StageOverrides = new Map();
 
+/**
+ * 代码里没有、用户自己收下的技能。
+ *
+ * 骨架固定的时候，树长不到我没预先写下的领域去 —— 而"我该掌握哪些技能"
+ * 恰恰是用户没有的知识量。所以这一层允许 AI 提名骨架上缺的技能，
+ * 用户收下之后接在这里，和内置的那些走同一套前置规则、同一套点亮规则。
+ */
+const NO_EXTRA: SkillDef[] = [];
+
+function allDefs(extra: SkillDef[]): SkillDef[] {
+  return extra.length > 0 ? [...SKILL_DEFS, ...extra] : SKILL_DEFS;
+}
+
 function stagesFor(skillKey: string, overrides: StageOverrides) {
   return overrides.get(skillKey) ?? stagesOf(skillKey);
 }
@@ -64,9 +77,10 @@ const FALLBACK_STAGE_NAMES = ["入门", "基础", "精通", "专家"];
  * 还没拆的：退回三档 milestones，每档一个节点 —— 界面上会标出来。
  */
 export function buildNodes(
-  overrides: StageOverrides = NO_OVERRIDES
+  overrides: StageOverrides = NO_OVERRIDES,
+  extra: SkillDef[] = NO_EXTRA
 ): SkillNode[] {
-  return SKILL_DEFS.flatMap((def) => {
+  return allDefs(extra).flatMap((def) => {
   const stages = stagesFor(def.key, overrides);
   if (stages) {
     return stages.flatMap((stage) =>
@@ -159,7 +173,9 @@ export type SkillTreeEntry = {
   rough: boolean;
 };
 
-const BY_KEY = new Map(SKILL_DEFS.map((def) => [def.key, def]));
+function byKey(extra: SkillDef[]): Map<string, SkillDef> {
+  return new Map(allDefs(extra).map((def) => [def.key, def]));
+}
 
 /** 一项技能算不算「入了门」：第一级全点齐。 */
 function hasFoundation(
@@ -174,7 +190,8 @@ function blockReason(
   def: SkillDef,
   tier: number,
   unlockedKeys: Set<string>,
-  nodes: SkillNode[]
+  nodes: SkillNode[],
+  names: Map<string, SkillDef>
 ): string | null {
   if (tier > 1 && !stageCleared(def.key, tier - 1, unlockedKeys, nodes)) {
     const previous = nodesOf(nodes, def.key, tier - 1);
@@ -186,10 +203,10 @@ function blockReason(
       (required) => !hasFoundation(required, unlockedKeys, nodes)
     );
     if (missing.length > 0) {
-      const names = missing
-        .map((required) => BY_KEY.get(required)?.name ?? required)
+      const label = missing
+        .map((required) => names.get(required)?.name ?? required)
         .join(" · ");
-      return `先入门：${names}`;
+      return `先入门：${label}`;
     }
   }
   return null;
@@ -201,18 +218,20 @@ function blockReason(
  */
 export function buildSkillTree(
   unlockedMap: Map<string, { proof: string; unlockedOn: string }>,
-  overrides: StageOverrides = NO_OVERRIDES
+  overrides: StageOverrides = NO_OVERRIDES,
+  extra: SkillDef[] = NO_EXTRA
 ): SkillTreeEntry[] {
   const unlockedKeys = new Set(unlockedMap.keys());
-  const all = buildNodes(overrides);
+  const all = buildNodes(overrides, extra);
+  const names = byKey(extra);
 
-  return SKILL_DEFS.map((def) => {
+  return allDefs(extra).map((def) => {
     const tiers = [...new Set(
       all.filter((node) => node.skillKey === def.key).map((n) => n.tier)
     )].sort((a, b) => a - b);
 
     const stages: StageState[] = tiers.map((tier) => {
-      const blocked = blockReason(def, tier, unlockedKeys, all);
+      const blocked = blockReason(def, tier, unlockedKeys, all, names);
       const nodes: NodeState[] = nodesOf(all, def.key, tier).map((node) => {
         const record = unlockedMap.get(node.key);
         return {
@@ -252,16 +271,18 @@ export function buildSkillTree(
 export function canUnlock(
   key: string,
   unlockedKeys: Set<string>,
-  overrides: StageOverrides = NO_OVERRIDES
+  overrides: StageOverrides = NO_OVERRIDES,
+  extra: SkillDef[] = NO_EXTRA
 ): { ok: boolean; reason?: string } {
-  const all = buildNodes(overrides);
+  const all = buildNodes(overrides, extra);
   const node = all.find((item) => item.key === key);
   if (!node) return { ok: false, reason: "没有这个节点" };
   if (unlockedKeys.has(key)) return { ok: false, reason: "已经点亮了" };
 
-  const def = BY_KEY.get(node.skillKey);
+  const names = byKey(extra);
+  const def = names.get(node.skillKey);
   if (!def) return { ok: false, reason: "没有这项技能" };
-  const blocked = blockReason(def, node.tier, unlockedKeys, all);
+  const blocked = blockReason(def, node.tier, unlockedKeys, all, names);
   if (blocked) return { ok: false, reason: blocked };
   return { ok: true };
 }
@@ -269,9 +290,11 @@ export function canUnlock(
 /** 入门了多少项技能。 */
 export function startedSkills(
   unlockedKeys: Set<string>,
-  overrides: StageOverrides = NO_OVERRIDES
+  overrides: StageOverrides = NO_OVERRIDES,
+  extra: SkillDef[] = NO_EXTRA
 ): number {
-  const all = buildNodes(overrides);
-  return SKILL_DEFS.filter((def) => hasFoundation(def.key, unlockedKeys, all))
-    .length;
+  const all = buildNodes(overrides, extra);
+  return allDefs(extra).filter((def) =>
+    hasFoundation(def.key, unlockedKeys, all)
+  ).length;
 }

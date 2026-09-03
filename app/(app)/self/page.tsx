@@ -1211,6 +1211,7 @@ export default async function SelfPage() {
         <SkillTree
           entries={skillTree.entries}
           customised={skillTree.customised ?? []}
+          added={skillTree.added ?? []}
         />
       </section>
 
