@@ -296,8 +296,9 @@ export async function recordSelfDeclaration(text: string): Promise<void> {
   revalidatePath("/self");
 }
 
-/** 自述位上留多少字。再多就该去材料箱了。 */
-export const DECLARATION_DIGEST_CHARS = 190;
+// 自述位上留多少字。再多就该去材料箱了。
+// 不导出："use server" 文件只允许导出 async 函数，导出常量会让整个构建失败。
+const DECLARATION_DIGEST_CHARS = 190;
 
 /**
  * 把一条长自述的原文归档到材料箱，自述位只留开头一段。
