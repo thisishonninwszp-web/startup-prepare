@@ -700,6 +700,26 @@ export async function getSelfTraits(
 // 这里只取用户状态：当前值、未结算的勾、已点的专长。
 // ---------------------------------------------------------------------------
 
+/** 自述。倒序，只取最近几条 —— 它不进计算，只是给自己回头看。 */
+export async function getDeclarations(
+  userId: string,
+  limit = 6
+): Promise<{ text: string; statedOn: string }[]> {
+  const { data, error } = await supabaseAdmin
+    .from("self_declarations")
+    .select("text, stated_on")
+    .eq("user_id", userId)
+    .order("stated_on", { ascending: false })
+    .limit(40);
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as { text: string; stated_on: string }[])
+    // 气质认领也存在这张表里，用前缀区分；那些不算自述。
+    .filter((row) => !row.text.startsWith("disposition:"))
+    .slice(0, limit)
+    .map((row) => ({ text: row.text, statedOn: row.stated_on }));
+}
+
 // ---------------------------------------------------------------------------
 // 周战报：同一批数据，换个语气。
 // 不新增任何采集 —— 只把最近 7 天已经发生过的事捞出来重讲一遍。

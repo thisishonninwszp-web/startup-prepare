@@ -29,6 +29,7 @@ import {
   logResources,
   logSelfWindow,
   logSleep,
+  recordSelfDeclaration,
   refuteSelfHypothesis,
   resolveSelfPrediction,
 } from "./actions";
@@ -415,6 +416,45 @@ export function RefuteControl({ hypothesisId }: { hypothesisId: string }) {
         推翻这条
       </ConfirmButton>
     </div>
+  );
+}
+
+/**
+ * 自述。这一页唯一的自由文本口。
+ *
+ * 它明确**不进任何计算** —— 不影响属性、不参与档位、不算进任何分母。
+ * 留着它只有两个用处：
+ *   1. 半年后回头看，你会发现当时以为的自己和数据里的自己不是一个人；
+ *   2. AI 拆技能和提名技能时读它当处境，否则那两处只能给通用答案。
+ */
+export function DeclarationForm() {
+  const [text, setText] = useState("");
+  const { pending, error, run } = useAction();
+
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        run(() => recordSelfDeclaration(text), () => setText(""));
+      }}
+    >
+      <Textarea
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        rows={3}
+        placeholder="现在的处境、在纠结什么、想往哪走 —— 想到什么写什么"
+      />
+      <Err message={error} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" size="sm" disabled={pending || !text.trim()}>
+          记下
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          它不进任何计算，只作为处境留着
+        </span>
+      </div>
+    </form>
   );
 }
 

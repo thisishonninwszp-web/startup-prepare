@@ -58,6 +58,7 @@ import {
   getQuestSightings,
   getSelfDeeds,
   getSelfEvents,
+  getDeclarations,
   getSkillTree,
   getSelfTraits,
   getWeeklyReport,
@@ -81,6 +82,7 @@ import {
 } from "./skill-forms";
 import {
   BodyLogForm,
+  DeclarationForm,
   EncounterForm,
   KIND_LABELS,
   NewHypothesisForm,
@@ -676,6 +678,7 @@ export default async function SelfPage() {
   });
   const progress = levelFromExp(kills.exp);
   const skillTree = await getSkillTree(user!.id);
+  const declarations = await getDeclarations(user!.id);
   const reachedBySkill = new Map(
     skillTree.entries.map((entry) => [entry.def.key, entry.reached])
   );
@@ -1744,6 +1747,29 @@ export default async function SelfPage() {
             每一条都是分母的一部分。记录超过 20 秒就没人记了，所以字段刻意少。
           </p>
         </div>
+        <div className="self-panel self-corners p-5">
+          <h3 className="mb-1 text-sm font-medium">自述</h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            这一页唯一的自由文本口。它不进任何计算 ——
+            不影响属性、不参与档位、不算进任何分母。
+            留着它是为了半年后回头看，以及让 AI 拆技能时知道你的处境。
+          </p>
+          <DeclarationForm />
+
+          {declarations.length > 0 && (
+            <ul className="mt-4 space-y-1.5 border-t pt-3">
+              {declarations.map((item) => (
+                <li key={`${item.statedOn}-${item.text}`} className="text-xs">
+                  <span className="font-mono text-muted-foreground">
+                    {item.statedOn}
+                  </span>{" "}
+                  {item.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="self-panel p-5">
             <h3 className="mb-1 text-sm font-medium">记一条训练</h3>
