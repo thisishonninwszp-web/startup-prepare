@@ -742,7 +742,14 @@ export type SelfSkills = {
 
 export async function getSelfSkills(
   userId: string,
-  input: { level: number; traits: string[]; settledForecasts: number; litDomains: number }
+  input: {
+    level: number;
+    traits: string[];
+    settledForecasts: number;
+    litDomains: number;
+    /** 每项技能走到第几级（0–4），由点亮的节点算出来。专长的门槛读它。 */
+    reached?: Map<string, number>;
+  }
 ): Promise<SelfSkills> {
   const [stored, ticks, feats] = await Promise.all([
     supabaseAdmin
@@ -821,7 +828,12 @@ export async function getSelfSkills(
     started: storedRows.length > 0,
     featPointsLeft,
     feats: evaluateFeats({
-      skills: Object.fromEntries(skills.map((skill) => [skill.key, skill.value])),
+      // 专长的门槛现在读**节点**，不读那套已经死掉的 0–100：
+      // 走到第几级 × 25。不这样接的话，专长树永远解锁不了任何一格 ——
+      // 因为再没有任何地方会去写 self_skills.value 了。
+      skills: Object.fromEntries(
+        [...(input.reached ?? new Map())].map(([key, tier]) => [key, tier * 25])
+      ),
       traits: input.traits,
       taken: takenFeats,
       settledForecasts: input.settledForecasts,

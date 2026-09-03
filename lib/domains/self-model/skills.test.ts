@@ -186,10 +186,10 @@ describe("feats", () => {
   const coldread = FEAT_DEFS.find((def) => def.key === "interview1")!;
   const deep = FEAT_DEFS.find((def) => def.key === "interview2")!;
 
-  it("spells out exactly which skill is short and by how much", () => {
+  it("says which skill is short in stages, not in a dead 0-100 score", () => {
     const result = evaluateFeat(coldread, ctx({ skills: { asking: 20, listening: 40 } }));
     expect(result.unlocked).toBe(false);
-    expect(result.missing).toEqual(["质询 20/30"]);
+    expect(result.missing).toEqual(["质询 未开→基础"]);
   });
 
   it("unlocks once every prerequisite is met", () => {
@@ -323,6 +323,7 @@ describe("the tree", () => {
     expect(interview.reached).toBe(1);
     expect(interview.next?.def.name).toBe("深访");
     expect(interview.next?.missing.join(" ")).toContain("观察");
+    expect(interview.next?.missing.join(" ")).toContain("→");
   });
 });
 

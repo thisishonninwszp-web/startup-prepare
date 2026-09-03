@@ -886,6 +886,15 @@ export type FeatContext = {
 
 const SKILL_NAMES = new Map(SKILL_DEFS.map((skill) => [skill.key, skill.name]));
 
+const STAGE_WORDS = ["未开", "入门", "基础", "精通", "专家"];
+
+/** 把旧的 0–100 门槛翻成"第几级"。向上取整：33 分要求的是"到基础"。 */
+function stageOfValue(value: number, ceil = false): number {
+  const raw = value / 25;
+  const tier = ceil ? Math.ceil(raw) : Math.floor(raw);
+  return Math.max(0, Math.min(4, tier));
+}
+
 export function evaluateFeat(def: FeatDef, ctx: FeatContext): FeatAvailability {
   const taken = ctx.taken.includes(def.key);
   const missing: string[] = [];
@@ -893,7 +902,13 @@ export function evaluateFeat(def: FeatDef, ctx: FeatContext): FeatAvailability {
   for (const [key, min] of Object.entries(def.skills)) {
     const value = ctx.skills[key] ?? 0;
     if (value < min) {
-      missing.push(`${SKILL_NAMES.get(key) ?? key} ${value}/${min}`);
+      // 门槛原来写在 0–100 的尺子上；分数没了之后同一把尺子换成走到第几级：
+      // 入门 25 / 基础 50 / 精通 75 / 专家 100。界面上只出现级名。
+      missing.push(
+        `${SKILL_NAMES.get(key) ?? key} ${STAGE_WORDS[stageOfValue(value)]}→${
+          STAGE_WORDS[stageOfValue(min, true)]
+        }`
+      );
     }
   }
   for (const trait of def.traits ?? []) {

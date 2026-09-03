@@ -678,7 +678,12 @@ export default async function SelfPage() {
     litDomains: panel.panel.domains.filter((domain) => domain.lit > 0).length,
   });
   const progress = levelFromExp(kills.exp);
+  const skillTree = await getSkillTree(user!.id);
+  const reachedBySkill = new Map(
+    skillTree.entries.map((entry) => [entry.def.key, entry.reached])
+  );
   const skillState = await getSelfSkills(user!.id, {
+    reached: reachedBySkill,
     level: progress.level,
     traits: traits
       .filter((trait) => trait.status === "held")
@@ -686,10 +691,6 @@ export default async function SelfPage() {
     settledForecasts: calibration.settled,
     litDomains: panel.panel.domains.filter((domain) => domain.lit > 0).length,
   });
-  const skillTree = await getSkillTree(user!.id);
-  const reachedBySkill = new Map(
-    skillTree.entries.map((entry) => [entry.def.key, entry.reached])
-  );
   const fits = classFits(reachedBySkill);
   const skillNameOf = (key: string) =>
     skillTree.entries.find((entry) => entry.def.key === key)?.def.name ?? key;
