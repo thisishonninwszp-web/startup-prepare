@@ -493,6 +493,109 @@
 }
 
 /* ---------------------------------------------------------------------------
+   点亮：那一下的揭晓，和之后的常驻。
+
+   分两类，理由是同一条 ——「满屏都在动，稀有就不稀有了」：
+     · 揭晓（一次性）：任何一个节点被点亮的那一瞬间，只放一次。
+     · 常驻：只给内核和印记。它们的前置必须跨领域，天然就少；
+       元件和回路点亮之后就安静地待着，那才衬得出上面两层。
+
+   周期都 ≥5 秒、低幅度：这一页是每周要看的东西，不是抽卡界面。
+   全部包在 prefers-reduced-motion 里。
+--------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* 揭晓：灯亮起来，外圈的光晕推出去一次然后收住。 */
+  @keyframes self-lightup {
+    0% {
+      transform: scale(0.7);
+      box-shadow: 0 0 0 0 hsl(var(--primary) / 0.5);
+    }
+    45% {
+      transform: scale(1.25);
+      box-shadow: 0 0 0 7px hsl(var(--primary) / 0.22);
+    }
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 2px hsl(var(--primary) / 0.16);
+    }
+  }
+
+  /* 整行跟着亮一下，让眼睛知道是哪一条。 */
+  @keyframes self-rowflash {
+    0% {
+      background-color: hsl(var(--primary) / 0.16);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  /* 常驻：内核。极慢的呼吸，只动底色和边线，不动位置。 */
+  @keyframes self-emberbreathe {
+    0%,
+    100% {
+      background-color: hsl(var(--primary) / 0.05);
+      border-color: hsl(var(--primary) / 0.4);
+    }
+    50% {
+      background-color: hsl(var(--primary) / 0.11);
+      border-color: hsl(var(--primary) / 0.65);
+    }
+  }
+
+  /* 常驻：印记。呼吸之外再加一道很慢的扫光。 */
+  @keyframes self-tilesheen {
+    0% {
+      transform: translateX(-130%);
+    }
+    100% {
+      transform: translateX(230%);
+    }
+  }
+
+  /* 揭晓要盖过常驻：否则在内核/印记里点亮最后一格时，
+     那一下会被下面的呼吸吃掉。选择器写得比常驻那条更具体。 */
+  .self-sheet .animate-self-lightup,
+  .self-sheet .self-tile--lit[data-depth] .self-pip--lit.animate-self-lightup {
+    animation: self-lightup 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .self-sheet .animate-self-rowflash {
+    animation: self-rowflash 1.6s ease-out both;
+  }
+
+  /* 内核：5.5 秒一次呼吸。 */
+  .self-sheet .self-tile--lit[data-depth="core"] {
+    animation: self-emberbreathe 5.5s ease-in-out infinite;
+  }
+
+  /* 印记：呼吸慢一档，外加每 9 秒一道扫光。 */
+  .self-sheet .self-tile--lit[data-depth="signature"] {
+    animation: self-emberbreathe 7s ease-in-out infinite;
+    position: relative;
+    overflow: hidden;
+  }
+  .self-sheet .self-tile--lit[data-depth="signature"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      100deg,
+      transparent 42%,
+      hsl(var(--primary) / 0.16) 50%,
+      transparent 58%
+    );
+    animation: self-tilesheen 9s ease-in-out infinite;
+  }
+
+  /* 点亮的灯本身：内核和印记的那几盏跟着一起呼吸。 */
+  .self-sheet .self-tile--lit[data-depth="core"] .self-pip--lit,
+  .self-sheet .self-tile--lit[data-depth="signature"] .self-pip--lit {
+    animation: self-emberbreathe 5.5s ease-in-out infinite;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    稀有度的质感。
    不引入新色相 —— 全部用已有的 --rarity-* 与前景/朱砂，
    差别做在**材质**上：边框粗细、内圈、压印、骑缝章。

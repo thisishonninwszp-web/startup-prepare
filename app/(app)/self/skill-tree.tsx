@@ -50,6 +50,8 @@ export function SkillTree({
   const [group, setGroup] = useState<SkillGroup | "all">("all");
   const [mode, setMode] = useState<Mode>("open");
   const [selected, setSelected] = useState<string | null>(null);
+  /** 刚点亮的那个节点。只用来放一次揭晓，不进任何计算。 */
+  const [justLit, setJustLit] = useState<string | null>(null);
 
   const custom = useMemo(() => new Set(customised), [customised]);
   const mine = useMemo(() => new Set(added), [added]);
@@ -181,8 +183,13 @@ export function SkillTree({
                           current === entry.def.key ? null : entry.def.key
                         )
                       }
+                      data-depth={entry.def.layer}
                       className={`self-tile self-tile--${state} ${
                         selected === entry.def.key ? "self-tile--on" : ""
+                      } ${
+                        justLit?.startsWith(`${entry.def.key}:`)
+                          ? "animate-self-stamp"
+                          : ""
                       }`}
                     >
                       <Icon className="size-5" strokeWidth={1.7} aria-hidden />
@@ -214,6 +221,8 @@ export function SkillTree({
                     customised={custom.has(chosen.def.key)}
                     mine={mine.has(chosen.def.key)}
                     nameOf={nameOf}
+                    justLit={justLit}
+                    onLit={setJustLit}
                   />
                 </div>
               )}
@@ -242,11 +251,15 @@ function SkillDetail({
   customised,
   mine,
   nameOf,
+  justLit,
+  onLit,
 }: {
   entry: SkillTreeEntry;
   customised: boolean;
   mine: boolean;
   nameOf: Map<string, string>;
+  justLit: string | null;
+  onLit: (key: string) => void;
 }) {
   const Icon = iconFor(entry.def.key);
   return (
@@ -273,6 +286,12 @@ function SkillDetail({
           </>
         )}
       </p>
+
+      {justLit?.startsWith(`${entry.def.key}:`) && (
+        <p className="animate-self-reveal font-mono text-[11px] text-primary">
+          ▸ 点亮了。这一格从现在起有据可查。
+        </p>
+      )}
 
       {entry.rough && (
         <p className="font-mono text-[11px] text-muted-foreground">
@@ -306,7 +325,9 @@ function SkillDetail({
             {stage.nodes.map((item) => (
               <li
                 key={item.node.key}
-                className="flex flex-wrap items-start gap-2 text-[12px]"
+                className={`flex flex-wrap items-start gap-2 rounded-md px-1 text-[12px] ${
+                  justLit === item.node.key ? "animate-self-rowflash" : ""
+                }`}
               >
                 <span
                   className={`self-pip self-pip--sm mt-1 ${
@@ -315,6 +336,8 @@ function SkillDetail({
                       : item.available
                         ? "self-pip--open"
                         : "self-pip--locked"
+                  } ${
+                    justLit === item.node.key ? "animate-self-lightup" : ""
                   }`}
                 />
                 <span className="min-w-[6rem] font-medium">
@@ -335,6 +358,7 @@ function SkillDetail({
                     nodeKey={item.node.key}
                     nodeName={item.node.name}
                     test={item.node.test}
+                    onLit={onLit}
                   />
                 ) : null}
               </li>

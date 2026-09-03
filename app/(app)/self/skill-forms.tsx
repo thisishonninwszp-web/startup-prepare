@@ -747,10 +747,13 @@ export function UnlockNodeControl({
   nodeKey,
   nodeName,
   test,
+  onLit,
 }: {
   nodeKey: string;
   nodeName: string;
   test: string;
+  /** 点亮成功之后告诉上层是哪一个 —— 揭晓动效挂在那一格上。 */
+  onLit?: (key: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [proof, setProof] = useState("");
@@ -786,6 +789,7 @@ export function UnlockNodeControl({
             run(() => unlockSkillNode({ nodeKey, proof }), () => {
               setProof("");
               setOpen(false);
+              onLit?.(nodeKey);
             })
           }
         >
