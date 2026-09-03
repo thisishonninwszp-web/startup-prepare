@@ -30,7 +30,6 @@ const EMPTY: TitleContext = {
   skillTicks: 0,
   maxSkill: 0,
   skillsAbove: () => 0,
-  feats: 0,
   trainingDays: 0,
   longestSpanDays: 0,
   exposures: 0,

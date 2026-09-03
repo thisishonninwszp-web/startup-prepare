@@ -217,16 +217,6 @@ describe("state quests", () => {
     expect(quests[0].name).toContain("基础");
   });
 
-  it("offers a feat only when there is a point left to spend", () => {
-    const unlocked = [{ key: "coldread", name: "冷读" }];
-    expect(ids({ unlockedFeats: unlocked, featPointsLeft: 0 })).not.toContain(
-      "state:feat:coldread"
-    );
-    expect(ids({ unlockedFeats: unlocked, featPointsLeft: 1 })).toContain(
-      "state:feat:coldread"
-    );
-  });
-
   it("makes never having been wrong a boss", () => {
     expect(ids({ refuted: 0, loadBearing: 1 })).toContain("state:norefute");
     expect(ids({ refuted: 1, loadBearing: 1 })).not.toContain("state:norefute");
@@ -253,10 +243,6 @@ describe("state quests", () => {
     expect(quests[0].drop).toContain("暗金");
   });
 
-  it("nudges the first feat once a skill is clearly good enough", () => {
-    expect(ids({ maxSkill: 60, takenFeats: 0 })).toContain("state:firstfeat");
-    expect(ids({ maxSkill: 60, takenFeats: 1 })).not.toContain("state:firstfeat");
-  });
 });
 
 describe("sightings", () => {

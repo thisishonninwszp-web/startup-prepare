@@ -5256,3 +5256,8 @@ values
   ('l.rainmaker', '引风的人', '新面孔、意外之喜、被采纳、还有人可托付', 'combo', null, null, '[{"sub": "lck.newfaces", "op": "gte", "value": 14}, {"sub": "lck.serendipity", "op": "gte", "value": 14}, {"sub": "cha.adoption", "op": "gte", "value": 14}, {"sub": "res.allies", "op": "gte", "value": 12}]'::jsonb, '[{"sub": "lck.newfaces", "sign": "plus", "note": ""}, {"sub": "lck.serendipity", "sign": "plus", "note": ""}, {"sub": "cha.adoption", "sign": "plus", "note": ""}, {"sub": "res.allies", "sign": "plus", "note": ""}]'::jsonb, null, null, null, 'legend', false, false),
   ('l.firstlight', '初亮', '四格刚从零变成一：开始接触、开始露出、开始押注、开始记账', 'tempo', null, null, '[{"sub": "wis.contact", "op": "thin", "value": 3}, {"sub": "cha.exposure", "op": "thin", "value": 3}, {"sub": "int.calibration", "op": "thin", "value": 3}, {"sub": "wis.candor", "op": "thin", "value": 3}]'::jsonb, '[{"sub": "wis.contact", "sign": "minus", "note": "只发生过一两次"}, {"sub": "cha.exposure", "sign": "minus", "note": "只发生过一两次"}, {"sub": "int.calibration", "sign": "minus", "note": "只发生过一两次"}, {"sub": "wis.candor", "sign": "minus", "note": "只发生过一两次"}]'::jsonb, null, null, null, 'legend', false, true)
 on conflict (key) do nothing;
+
+-- 048_drop_feats.sql
+drop table if exists self_feats;
+drop table if exists self_skill_ticks;
+drop table if exists self_skills;

@@ -1,26 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  FEAT_DEFS,
-  FEAT_LINES,
-  FEAT_TOTAL,
   MILESTONE_TIERS,
   SKILL_HEADROOM,
-  featPaths,
   milestoneOf,
   skillCeiling,
-  LEVELS_PER_FEAT_POINT,
   MAX_TICKS_PER_SEASON,
   SKILL_DEFS,
   SKILL_GROUPS,
   SKILL_LAYERS,
   SKILL_TOTAL,
-  evaluateFeat,
-  evaluateFeats,
-  featPointsFor,
   growthFor,
   isSkillKey,
   rustFor,
-  type FeatContext,
   type SkillState,
 } from "./skills";
 import { MAIN_KEYS } from "./panel";
@@ -169,161 +160,6 @@ describe("rustFor", () => {
 
   it("never rusts below zero", () => {
     expect(rustFor(skill({ value: 1, ticks: 0, daysSinceTick: 2000 }))).toBe(-1);
-  });
-});
-
-describe("feats", () => {
-  const ctx = (over: Partial<FeatContext> = {}): FeatContext => ({
-    skills: {},
-    traits: [],
-    taken: [],
-    settledForecasts: 0,
-    litDomains: 1,
-    featPointsLeft: 1,
-    ...over,
-  });
-
-  const coldread = FEAT_DEFS.find((def) => def.key === "interview1")!;
-  const deep = FEAT_DEFS.find((def) => def.key === "interview2")!;
-
-  it("says which skill is short in stages, not in a dead 0-100 score", () => {
-    const result = evaluateFeat(coldread, ctx({ skills: { asking: 20, listening: 40 } }));
-    expect(result.unlocked).toBe(false);
-    expect(result.missing).toEqual(["质询 未开→基础"]);
-  });
-
-  it("unlocks once every prerequisite is met", () => {
-    const result = evaluateFeat(coldread, ctx({ skills: { asking: 30, listening: 45 } }));
-    expect(result).toMatchObject({ unlocked: true, missing: [] });
-  });
-
-  it("requires the feat below it on the tree first", () => {
-    const result = evaluateFeat(
-      deep,
-      ctx({ skills: { asking: 60, observing: 50 } })
-    );
-    expect(result.missing.join(" ")).toContain("冷读");
-    expect(
-      evaluateFeat(
-        deep,
-        ctx({ skills: { asking: 60, observing: 50 }, taken: ["interview1"] })
-      ).unlocked
-    ).toBe(true);
-  });
-
-  it("marks a feat already taken as neither unlocked nor missing anything", () => {
-    const result = evaluateFeat(
-      coldread,
-      ctx({ skills: { asking: 60, listening: 60 }, taken: ["interview1"] })
-    );
-    expect(result).toMatchObject({ taken: true, unlocked: false, missing: [] });
-  });
-
-  it("evaluates the whole tree at once", () => {
-    expect(evaluateFeats(ctx())).toHaveLength(FEAT_DEFS.length);
-  });
-
-  it("every prerequisite feat key actually exists", () => {
-    const keys = new Set(FEAT_DEFS.map((def) => def.key));
-    for (const def of FEAT_DEFS) {
-      for (const required of def.requires ?? []) {
-        expect(keys.has(required)).toBe(true);
-      }
-    }
-  });
-
-  it("every feat skill prerequisite points at a real skill", () => {
-    for (const def of FEAT_DEFS) {
-      for (const key of Object.keys(def.skills)) {
-        expect(isSkillKey(key)).toBe(true);
-      }
-    }
-  });
-});
-
-describe("featPointsFor", () => {
-  it("hands out one point every two levels", () => {
-    expect(featPointsFor(1, 0)).toBe(0);
-    expect(featPointsFor(LEVELS_PER_FEAT_POINT, 0)).toBe(1);
-    expect(featPointsFor(6, 0)).toBe(3);
-  });
-
-  it("subtracts what has already been spent and never goes negative", () => {
-    expect(featPointsFor(6, 2)).toBe(1);
-    expect(featPointsFor(2, 9)).toBe(0);
-  });
-});
-
-describe("the tree", () => {
-  it("ships fourteen lines five deep plus thirty crossovers", () => {
-    expect(FEAT_TOTAL).toBe(100);
-    const byLine = new Map<string, number>();
-    for (const def of FEAT_DEFS) {
-      byLine.set(def.line, (byLine.get(def.line) ?? 0) + 1);
-    }
-    for (const line of FEAT_LINES) {
-      if (line === "capstone") continue;
-      expect(byLine.get(line), line).toBe(5);
-    }
-    expect(byLine.get("capstone")).toBe(30);
-  });
-
-  it("chains each line so you cannot skip a step", () => {
-    for (const def of FEAT_DEFS) {
-      if (def.line === "capstone" || def.depth === 1) continue;
-      expect(def.requires, def.name).toContain(`${def.line}${def.depth - 1}`);
-    }
-  });
-
-  it("raises the skill bar as a line goes deeper", () => {
-    for (const line of FEAT_LINES) {
-      if (line === "capstone") continue;
-      const steps = FEAT_DEFS.filter((def) => def.line === line).sort(
-        (a, b) => a.depth - b.depth
-      );
-      const peaks = steps.map((step) => Math.max(...Object.values(step.skills)));
-      for (let i = 1; i < peaks.length; i += 1) {
-        expect(peaks[i], `${line}${i + 1}`).toBeGreaterThan(peaks[i - 1]);
-      }
-    }
-  });
-
-  it("gives every line a named endpoint at depth five", () => {
-    for (const line of FEAT_LINES) {
-      if (line === "capstone") continue;
-      const end = FEAT_DEFS.find(
-        (def) => def.line === line && def.depth === 5
-      );
-      expect(end, line).toBeTruthy();
-      // 终点必须是一句"走到底长什么样"，不是又一个技能门槛。
-      expect(end!.effect.length).toBeGreaterThan(8);
-    }
-  });
-
-  it("makes every capstone cross two different lines", () => {
-    const lineOfKey = new Map(FEAT_DEFS.map((def) => [def.key, def.line]));
-    for (const def of FEAT_DEFS.filter((item) => item.line === "capstone")) {
-      const lines = new Set((def.requires ?? []).map((key) => lineOfKey.get(key)));
-      expect(lines.size, def.name).toBe(2);
-    }
-  });
-
-  it("lays the paths out with the next step and what it needs", () => {
-    const paths = featPaths(
-      evaluateFeats({
-        skills: { asking: 30, listening: 30 },
-        traits: [],
-        taken: ["interview1"],
-        settledForecasts: 0,
-        litDomains: 0,
-        featPointsLeft: 1,
-      })
-    );
-    const interview = paths.find((path) => path.line === "interview")!;
-    expect(interview.reached).toBe(1);
-    expect(interview.next?.def.name).toBe("深访");
-    expect(interview.next?.missing.join(" ")).toContain("观察");
-    expect(interview.next?.missing.join(" ")).toContain("→");
   });
 });
 

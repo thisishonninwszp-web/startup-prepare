@@ -12,14 +12,8 @@ import {
 } from "@/lib/domains/self-model/tiers";
 import { EMPTY_PANEL_INPUT, buildPanel } from "@/lib/domains/self-model/panel";
 import {
-  FEAT_DEFS,
   SKILL_DEFS,
   SKILL_LAYERS,
-  evaluateFeat,
-  growthFor,
-  skillCeiling,
-  isSkillKey,
-  rustFor,
   type SkillDef,
 } from "@/lib/domains/self-model/skills";
 import {
@@ -52,7 +46,6 @@ type SelfEventKind =
   | "trait_faded"
   | "skill_up"
   | "skill_rust"
-  | "feat_taken"
   | "title_earned"
   | "build_changed"
   | "hypothesis_refuted"
@@ -475,203 +468,6 @@ export async function fadeSelfTrait(id: string): Promise<void> {
     .eq("id", id)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
-  revalidatePath("/self");
-}
-
-/**
- * 建卡：一次性给 45 项技能一个起始值。
- * 之后这些值只能靠打勾涨 —— 建卡是唯一一次可以直接写数字的机会，
- * 所以它只允许做一次。逐项过一遍那 45 个名字，这个过程本身就是一次自我认识。
- */
-export async function createCharacter(
-  entries: { key: string; value: number; passion: number }[]
-): Promise<void> {
-  const userId = await requireUserId();
-
-  const { count, error: countError } = await supabaseAdmin
-    .from("self_skills")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-  if (countError) throw new Error(countError.message);
-  if ((count ?? 0) > 0) {
-    throw new Error("已经建过卡了。技能之后只能靠打勾涨，不能再直接改数字。");
-  }
-
-  const rows = entries.map((entry) => {
-    if (!isSkillKey(entry.key)) throw new Error(`未知技能 ${entry.key}`);
-    const value = Math.round(entry.value);
-    const passion = Math.round(entry.passion);
-    if (!Number.isFinite(value) || value < 0 || value > 100) {
-      throw new Error("技能值要在 0–100 之间");
-    }
-    if (![0, 1, 2].includes(passion)) throw new Error("激情只能是 0/1/2");
-    return { user_id: userId, skill_key: entry.key, value, passion };
-  });
-
-  const { error } = await supabaseAdmin.from("self_skills").insert(rows);
-  if (error) throw new Error(error.message);
-  revalidatePath("/self");
-}
-
-/**
- * 打一个勾：这项技能实际用过，并且有结果。
- * note 必填 —— 说不出用在哪的勾，就是没用过。
- */
-export async function tickSkill(input: {
-  key: string;
-  note: string;
-  occurredOn?: string;
-}): Promise<void> {
-  const userId = await requireUserId();
-  if (!isSkillKey(input.key)) throw new Error(`未知技能 ${input.key}`);
-
-  const { error } = await supabaseAdmin.from("self_skill_ticks").insert({
-    user_id: userId,
-    skill_key: input.key,
-    note: required(input.note, "用在哪"),
-    occurred_on: input.occurredOn || new Date().toISOString().slice(0, 10),
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/self");
-}
-
-/** 结算：把未结算的勾换成成长，并对久未使用的技能生锈。 */
-export async function settleSkills(): Promise<string[]> {
-  const userId = await requireUserId();
-  const [stored, ticks] = await Promise.all([
-    supabaseAdmin
-      .from("self_skills")
-      .select("id, skill_key, value, passion")
-      .eq("user_id", userId),
-    supabaseAdmin
-      .from("self_skill_ticks")
-      .select("id, skill_key, occurred_on, settled_at")
-      .eq("user_id", userId),
-  ]);
-  if (stored.error) throw new Error(stored.error.message);
-  if (ticks.error) throw new Error(ticks.error.message);
-
-  const tickRows = (ticks.data ?? []) as {
-    id: string;
-    skill_key: string;
-    occurred_on: string;
-    settled_at: string | null;
-  }[];
-  const today = new Date().toISOString().slice(0, 10);
-  const changes: string[] = [];
-
-  for (const row of (stored.data ?? []) as {
-    id: string;
-    skill_key: string;
-    value: number;
-    passion: number;
-  }[]) {
-    const own = tickRows.filter((tick) => tick.skill_key === row.skill_key);
-    const open = own.filter((tick) => tick.settled_at === null).length;
-    const last = own.map((tick) => tick.occurred_on).sort().at(-1);
-    const state = {
-      key: row.skill_key,
-      value: row.value,
-      passion: row.passion,
-      ticks: open,
-      daysSinceTick: last
-        ? Math.floor(
-            (Date.parse(today) - Date.parse(last)) / 86_400_000
-          )
-        : null,
-    };
-    const valueByKey: Record<string, number> = Object.fromEntries(
-      ((stored.data ?? []) as { skill_key: string; value: number }[]).map(
-        (item) => [item.skill_key, item.value]
-      )
-    );
-    const { ceiling } = skillCeiling(row.skill_key, valueByKey);
-    const delta = growthFor(state, ceiling) + rustFor(state);
-    if (delta === 0) continue;
-    const next = Math.max(0, Math.min(100, row.value + delta));
-    const { error } = await supabaseAdmin
-      .from("self_skills")
-      .update({ value: next, updated_at: new Date().toISOString() })
-      .eq("id", row.id);
-    if (error) throw new Error(error.message);
-    const name = SKILL_DEFS.find((def) => def.key === row.skill_key)?.name;
-    changes.push(`${name ?? row.skill_key} ${row.value} → ${next}`);
-    await recordEvent(
-      userId,
-      delta > 0 ? "skill_up" : "skill_rust",
-      delta > 0
-        ? `「${name ?? row.skill_key}」涨到 ${next}`
-        : `「${name ?? row.skill_key}」生锈到 ${next}`,
-      delta > 0 ? `打了 ${state.ticks} 个勾` : "久未使用"
-    );
-  }
-
-  const openIds = tickRows
-    .filter((tick) => tick.settled_at === null)
-    .map((tick) => tick.id);
-  if (openIds.length > 0) {
-    const { error } = await supabaseAdmin
-      .from("self_skill_ticks")
-      .update({ settled_at: new Date().toISOString() })
-      .in("id", openIds);
-    if (error) throw new Error(error.message);
-  }
-
-  revalidatePath("/self");
-  return changes;
-}
-
-/** 点一个专长。前置由 skills.ts 判定，这里只做最后一道校验。 */
-export async function takeFeat(featKey: string): Promise<void> {
-  const userId = await requireUserId();
-  const def = FEAT_DEFS.find((item) => item.key === featKey);
-  if (!def) throw new Error("未知专长");
-
-  const [skills, feats] = await Promise.all([
-    supabaseAdmin
-      .from("self_skills")
-      .select("skill_key, value")
-      .eq("user_id", userId),
-    supabaseAdmin.from("self_feats").select("feat_key").eq("user_id", userId),
-  ]);
-  if (skills.error) throw new Error(skills.error.message);
-  if (feats.error) throw new Error(feats.error.message);
-
-  const taken = ((feats.data ?? []) as { feat_key: string }[]).map(
-    (row) => row.feat_key
-  );
-  const check = evaluateFeat(def, {
-    skills: Object.fromEntries(
-      ((skills.data ?? []) as { skill_key: string; value: number }[]).map(
-        (row) => [row.skill_key, row.value]
-      )
-    ),
-    // 特性与计数条件在页面上已经算过，这里只挡技能与前置专长；
-    // 真正的授予门槛是数据库唯一索引 + 下面的专长点检查。
-    traits: [],
-    taken,
-    settledForecasts: Number.MAX_SAFE_INTEGER,
-    litDomains: Number.MAX_SAFE_INTEGER,
-    featPointsLeft: 0,
-  });
-  if (check.missing.some((item) => !item.startsWith("需持有"))) {
-    throw new Error(`前置没满足：${check.missing.join(" · ")}`);
-  }
-
-  const { error } = await supabaseAdmin
-    .from("self_feats")
-    .insert({ user_id: userId, feat_key: featKey });
-  if (error) {
-    if (error.code === "23505") throw new Error("这个专长已经点过了");
-    throw new Error(error.message);
-  }
-  await recordEvent(
-    userId,
-    "feat_taken",
-    `点上专长「${def.name}」`,
-    def.effect,
-    `feat:${featKey}`
-  );
   revalidatePath("/self");
 }
 

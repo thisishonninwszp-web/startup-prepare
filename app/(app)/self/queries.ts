@@ -3,22 +3,12 @@ import {
   buildPanel,
   estimateOneRepMax,
   specialization,
-  type MainKey,
   type Panel,
   type PanelInput,
 } from "@/lib/domains/self-model/panel";
 import {
   MILESTONE_TIERS,
-  SKILL_DEFS,
-  evaluateFeats,
-  milestoneOf,
-  skillCeiling,
-  featPointsFor,
-  growthFor,
-  rustFor,
-  type FeatAvailability,
   type SkillDef,
-  type SkillGroup,
 } from "@/lib/domains/self-model/skills";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
 import {
@@ -709,139 +699,6 @@ export async function getSelfTraits(
 // 定义（45 项技能 / 12 个专长）在 lib/domains/self-model/skills.ts，
 // 这里只取用户状态：当前值、未结算的勾、已点的专长。
 // ---------------------------------------------------------------------------
-
-export type SkillRow = {
-  key: string;
-  name: string;
-  gloss: string;
-  group: SkillGroup;
-  main: MainKey;
-  value: number;
-  passion: number;
-  /** 本季未结算的勾。 */
-  ticks: number;
-  daysSinceTick: number | null;
-  /** 下次结算会涨多少（不含生锈）。 */
-  pendingGrowth: number;
-  rust: number;
-  /** 当前上限，以及被哪根地基拖着。 */
-  ceiling: number;
-  limitedBy: { key: string; name: string; value: number } | null;
-  /** 已跨过的里程碑与下一档。 */
-  passed: ReturnType<typeof milestoneOf>["passed"];
-  nextMilestone: ReturnType<typeof milestoneOf>["next"];
-};
-
-export type SelfSkills = {
-  skills: SkillRow[];
-  /** 有没有开过局。false 时页面只显示建卡。 */
-  started: boolean;
-  feats: FeatAvailability[];
-  featPointsLeft: number;
-};
-
-export async function getSelfSkills(
-  userId: string,
-  input: {
-    level: number;
-    traits: string[];
-    settledForecasts: number;
-    litDomains: number;
-    /** 每项技能走到第几级（0–4），由点亮的节点算出来。专长的门槛读它。 */
-    reached?: Map<string, number>;
-  }
-): Promise<SelfSkills> {
-  const [stored, ticks, feats] = await Promise.all([
-    supabaseAdmin
-      .from("self_skills")
-      .select("skill_key, value, passion")
-      .eq("user_id", userId),
-    supabaseAdmin
-      .from("self_skill_ticks")
-      .select("skill_key, occurred_on, settled_at")
-      .eq("user_id", userId),
-    supabaseAdmin.from("self_feats").select("feat_key").eq("user_id", userId),
-  ]);
-  if (stored.error) throw new Error(stored.error.message);
-  if (ticks.error) throw new Error(ticks.error.message);
-  if (feats.error) throw new Error(feats.error.message);
-
-  const storedRows = (stored.data ?? []) as {
-    skill_key: string;
-    value: number;
-    passion: number;
-  }[];
-  const tickRows = (ticks.data ?? []) as {
-    skill_key: string;
-    occurred_on: string;
-    settled_at: string | null;
-  }[];
-  const byKey = new Map(storedRows.map((row) => [row.skill_key, row]));
-  const today = new Date().toISOString().slice(0, 10);
-
-  const valueByKey: Record<string, number> = Object.fromEntries(
-    SKILL_DEFS.map((def) => [
-      def.key,
-      byKey.get(def.key)?.value ?? 0,
-    ])
-  );
-
-  const skills: SkillRow[] = SKILL_DEFS.map((def) => {
-    const row = byKey.get(def.key);
-    const own = tickRows.filter((tick) => tick.skill_key === def.key);
-    const open = own.filter((tick) => tick.settled_at === null).length;
-    const last = own
-      .map((tick) => tick.occurred_on)
-      .sort()
-      .at(-1);
-    const state = {
-      key: def.key,
-      value: row?.value ?? 0,
-      passion: row?.passion ?? 0,
-      ticks: open,
-      daysSinceTick: last ? Math.floor(daysApart(last, today)) : null,
-    };
-    const { ceiling, limitedBy } = skillCeiling(def.key, valueByKey);
-    const { passed, next } = milestoneOf(def, state.value);
-    return {
-      ...def,
-      value: state.value,
-      passion: state.passion,
-      ticks: state.ticks,
-      daysSinceTick: state.daysSinceTick,
-      pendingGrowth: growthFor(state, ceiling),
-      rust: rustFor(state),
-      ceiling,
-      limitedBy,
-      passed,
-      nextMilestone: next,
-    };
-  });
-
-  const takenFeats = ((feats.data ?? []) as { feat_key: string }[]).map(
-    (row) => row.feat_key
-  );
-  const featPointsLeft = featPointsFor(input.level, takenFeats.length);
-
-  return {
-    skills,
-    started: storedRows.length > 0,
-    featPointsLeft,
-    feats: evaluateFeats({
-      // 专长的门槛现在读**节点**，不读那套已经死掉的 0–100：
-      // 走到第几级 × 25。不这样接的话，专长树永远解锁不了任何一格 ——
-      // 因为再没有任何地方会去写 self_skills.value 了。
-      skills: Object.fromEntries(
-        [...(input.reached ?? new Map())].map(([key, tier]) => [key, tier * 25])
-      ),
-      traits: input.traits,
-      taken: takenFeats,
-      settledForecasts: input.settledForecasts,
-      litDomains: input.litDomains,
-      featPointsLeft,
-    }),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // 周战报：同一批数据，换个语气。

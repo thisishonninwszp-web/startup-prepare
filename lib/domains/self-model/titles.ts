@@ -33,7 +33,6 @@ export type TitleContext = {
   skillTicks: number;
   maxSkill: number;
   skillsAbove: (threshold: number) => number;
-  feats: number;
   trainingDays: number;
   longestSpanDays: number;
   exposures: number;
@@ -86,8 +85,8 @@ export const TITLE_DEFS: TitleDef[] = [
   { key: "master", name: "登堂", requirement: "任意一项技能走到专家", earned: (c) => c.maxSkill >= 80 },
   { key: "broadhand", name: "多面手", requirement: "5 项技能同时入了门", earned: (c) => c.skillsAbove(40) >= 5 },
   { key: "hundredticks", name: "百灯", requirement: "累计点亮 100 个小技能", earned: (c) => c.skillTicks >= 100 },
-  { key: "firstfeat", name: "开枝", requirement: "点上第一个专长", earned: (c) => c.feats >= 1 },
-  { key: "treeup", name: "成树", requirement: "点上 5 个专长", earned: (c) => c.feats >= 5 },
+  { key: "firstfeat", name: "开枝", requirement: "三项技能同时入了门", earned: (c) => c.skillsAbove(25) >= 3 },
+  { key: "treeup", name: "成树", requirement: "十项技能同时入了门", earned: (c) => c.skillsAbove(25) >= 10 },
 
   // ---- 与人 ----
   { key: "opened", name: "摆出来", requirement: "把没做完的东西给人看 10 次", earned: (c) => c.exposures >= 10 },

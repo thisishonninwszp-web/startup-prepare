@@ -177,11 +177,6 @@ export type QuestState = {
   startedSkills?: number;
   /** 卡在某一级、下一级又开不了的技能。 */
   stalled?: { key: string; name: string; stage: string }[];
-  /** 已解锁、可以点的专长。 */
-  unlockedFeats?: { key: string; name: string }[];
-  featPointsLeft?: number;
-  /** 只差一项前置的专长。 */
-  nearFeats?: { key: string; name: string; missing: string }[];
   heldTraitCount?: number;
   /** 双刃特性里还没写反噬条件的。 */
   backfireMissing?: { id: string; name: string }[];
@@ -198,7 +193,6 @@ export type QuestState = {
   commitments?: { done: number; total: number };
   /** 最高的一项技能值，以及已点的专长数。 */
   maxSkill?: number;
-  takenFeats?: number;
 };
 
 export const MAX_QUESTS = 10;
@@ -283,34 +277,6 @@ function stateQuests(state: QuestState): Quest[] {
       attribute: "INT",
       domain: "work",
       exp: TIER_EXP.trash,
-    });
-  }
-
-  if ((state.featPointsLeft ?? 0) > 0) {
-    for (const feat of (state.unlockedFeats ?? []).slice(0, 2)) {
-      push({
-        id: `state:feat:${feat.key}`,
-        tier: "elite",
-        name: `点上「${feat.name}」`,
-        action: "前置已经满了，专长点也还有 —— 点了才生效",
-        drop: "专长树往前走一格",
-        attribute: "INT",
-        domain: "self",
-        exp: TIER_EXP.elite,
-      });
-    }
-  }
-
-  for (const feat of (state.nearFeats ?? []).slice(0, 2)) {
-    push({
-      id: `state:near:${feat.key}`,
-      tier: "elite",
-      name: `「${feat.name}」只差一项`,
-      action: `差 ${feat.missing}`,
-      drop: "解锁一个专长",
-      attribute: "INT",
-      domain: "work",
-      exp: TIER_EXP.elite,
     });
   }
 
@@ -423,19 +389,6 @@ function stateQuests(state: QuestState): Quest[] {
       attribute: "CHA",
       domain: "people",
       exp: TIER_EXP.boss,
-    });
-  }
-
-  if ((state.maxSkill ?? 0) >= 60 && (state.takenFeats ?? 0) === 0) {
-    push({
-      id: "state:firstfeat",
-      tier: "elite",
-      name: "你已经够格点第一个专长",
-      action: "去专长树看看哪条前置已经满了",
-      drop: "「开枝」称号",
-      attribute: "INT",
-      domain: "self",
-      exp: TIER_EXP.elite,
     });
   }
 
