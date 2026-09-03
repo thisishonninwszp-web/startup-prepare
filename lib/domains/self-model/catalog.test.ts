@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_PANEL_INPUT, buildPanel, type Panel } from "./panel";
 import {
+  ABSENCE_GRANT_CAP,
+  qualifies,
   rarityFromConditions,
   scanCatalog,
   spectrumKeyOf,
@@ -147,5 +149,130 @@ describe("scanCatalog", () => {
     expect(
       spectrumKeyOf(entry({ family: "combo", spectrumKey: null, name: "空转的磨盘" }))
     ).toBe("组合·空转的磨盘");
+  });
+});
+
+describe("absence conditions", () => {
+  function subs(rows: [string, number | null, number][]) {
+    return new Map(
+      rows.map(([key, value, sample]) => [key, { value, name: key, sample }])
+    );
+  }
+
+  const entry = (op: "dark" | "thin" | "lte", value = 0) =>
+    ({
+      key: "x",
+      name: "x",
+      gloss: "",
+      family: "absence",
+      spectrumKey: null,
+      pole: null,
+      conditions: [{ sub: "wis.contact", op, value }],
+      modifiers: [],
+      backfire: null,
+      equipNote: null,
+      setKey: null,
+      rarityHint: "magic",
+      alarm: false,
+      neutral: false,
+    }) as CatalogEntry;
+
+  it("fires dark only when nothing was ever recorded", () => {
+    expect(qualifies(entry("dark"), subs([["wis.contact", null, 0]]))).toBe(true);
+    expect(qualifies(entry("dark"), subs([["wis.contact", null, 2]]))).toBe(
+      false
+    );
+    expect(qualifies(entry("dark"), subs([["wis.contact", 3, 40]]))).toBe(false);
+  });
+
+  it("keeps a low score and an empty ledger apart", () => {
+    // 分数低是"试过而且不行"；一条记录都没有是"还没开始"。
+    // 用 lte 表达缺席，就是拿沉默冒充证据。
+    const empty = subs([["wis.contact", null, 0]]);
+    expect(qualifies(entry("lte", 6), empty)).toBe(false);
+    expect(qualifies(entry("dark"), empty)).toBe(true);
+  });
+
+  it("fires thin for something started and dropped", () => {
+    expect(qualifies(entry("thin", 2), subs([["wis.contact", null, 2]]))).toBe(
+      true
+    );
+    expect(qualifies(entry("thin", 2), subs([["wis.contact", null, 0]]))).toBe(
+      false
+    );
+    expect(qualifies(entry("thin", 2), subs([["wis.contact", 9, 30]]))).toBe(
+      false
+    );
+  });
+
+  it("keeps absence-only entries cheap — everything is dark on day one", () => {
+    const dark = { sub: "a", op: "dark" as const, value: 0 };
+    expect(rarityFromConditions([dark])).toBe("magic");
+    expect(rarityFromConditions([dark, dark, dark])).toBe("rare");
+    expect(
+      rarityFromConditions([dark, { sub: "b", op: "gte", value: 18 }])
+    ).toBe("legend");
+  });
+});
+
+describe("absence flood control", () => {
+  it("does not read the whole empty table back at you on day one", () => {
+    const blank = buildPanel(EMPTY_PANEL_INPUT);
+    const catalogue: CatalogEntry[] = blank.mains
+      .flatMap((main) => main.subs)
+      .slice(0, 12)
+      .map((sub, index) => ({
+        key: `a.${index}`,
+        name: `空${index}`,
+        gloss: "",
+        family: "absence",
+        spectrumKey: null,
+        pole: null,
+        conditions: [{ sub: sub.key, op: "dark" as const, value: 0 }],
+        modifiers: [],
+        backfire: null,
+        equipNote: null,
+        setKey: null,
+        rarityHint: "magic",
+        alarm: false,
+        neutral: true,
+      }));
+
+    const scan = scanCatalog(blank, catalogue, []);
+    expect(scan.grant.length).toBe(ABSENCE_GRANT_CAP);
+  });
+
+  it("keeps the most specific absences", () => {
+    const blank = buildPanel(EMPTY_PANEL_INPUT);
+    const [one, two, three] = blank.mains.flatMap((main) => main.subs);
+    const make = (key: string, subs: string[]): CatalogEntry => ({
+      key,
+      name: key,
+      gloss: "",
+      family: "absence",
+      spectrumKey: null,
+      pole: null,
+      conditions: subs.map((sub) => ({ sub, op: "dark" as const, value: 0 })),
+      modifiers: [],
+      backfire: null,
+      equipNote: null,
+      setKey: null,
+      rarityHint: "magic",
+      alarm: false,
+      neutral: true,
+    });
+
+    const scan = scanCatalog(
+      blank,
+      [
+        make("thin1", [one.key]),
+        make("thin2", [two.key]),
+        make("thin3", [three.key]),
+        make("wide", [one.key, two.key, three.key]),
+      ],
+      []
+    );
+    expect(scan.grant.map((entry) => entry.key)).toContain("wide");
+    expect(scan.grant).toHaveLength(ABSENCE_GRANT_CAP);
   });
 });

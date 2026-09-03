@@ -29,7 +29,16 @@ export const FAMILY_NAMES: Record<CatalogFamily, string> = {
 
 export type CatalogCondition = {
   sub: string;
-  op: "gte" | "lte";
+  /**
+   * gte / lte 看**数值**：这一格算得出来，而且高于/低于某个线。
+   * dark 看**样本**：这一格一条记录都没有 —— 这是缺席，不是低分。
+   * thin 也看样本：动过，但只动过一两次就停了。
+   *
+   * 为什么必须分开：数值算不出来（样本不足）和数值确实很低，
+   * 是完全不同的两件事。前者是"你还没开始"，后者是"你试过而且不行"。
+   * 用同一个 lte 表达它们，就是拿沉默冒充证据。
+   */
+  op: "gte" | "lte" | "dark" | "thin";
   value: number;
 };
 
@@ -52,6 +61,10 @@ export type CatalogEntry = {
 
 /** 条件越多、越靠极值，越难同时成立。 */
 export function rarityFromConditions(conditions: CatalogCondition[]): string {
+  // 全靠"这一格是黑的"成立的条目最不稀有 —— 刚开始用的时候满盘皆黑。
+  if (conditions.length > 0 && conditions.every((item) => item.op === "dark")) {
+    return conditions.length >= 3 ? "rare" : "magic";
+  }
   const extreme = conditions.some(
     (item) =>
       (item.op === "gte" && item.value >= 18) ||
@@ -72,11 +85,17 @@ export type CatalogScan = {
 /** 一条目录条目现在成不成立。任一条件的样本缺失都算不成立。 */
 export function qualifies(
   entry: CatalogEntry,
-  subs: Map<string, { value: number | null; name: string }>
+  subs: Map<string, { value: number | null; name: string; sample: number }>
 ): boolean {
   return entry.conditions.every((condition) => {
     const sub = subs.get(condition.sub);
-    if (!sub || sub.value === null) return false;
+    if (!sub) return false;
+    // 缺席类只看样本，不看数值 —— 它们问的就是"这里有没有发生过事"。
+    if (condition.op === "dark") return sub.sample === 0;
+    if (condition.op === "thin") {
+      return sub.sample >= 1 && sub.sample <= condition.value;
+    }
+    if (sub.value === null) return false;
     return condition.op === "gte"
       ? sub.value >= condition.value
       : sub.value <= condition.value;
@@ -96,7 +115,11 @@ export function scanCatalog(
   const subs = new Map(
     panel.mains.flatMap((main) =>
       main.subs.map(
-        (sub) => [sub.key, { value: sub.value, name: sub.name }] as const
+        (sub) =>
+          [
+            sub.key,
+            { value: sub.value, name: sub.name, sample: sub.sample },
+          ] as const
       )
     )
   );
@@ -125,6 +148,7 @@ export function scanCatalog(
     // 样本没了和数值回到中间，是两件不同的事，理由要说清楚。
     const missing = entry.conditions.find((condition) => {
       const sub = subs.get(condition.sub);
+      if (condition.op === "dark" || condition.op === "thin") return false;
       return !sub || sub.value === null;
     });
     fade.push({
@@ -138,7 +162,28 @@ export function scanCatalog(
     });
   }
 
-  return { grant, fade, keep };
+  return { grant: capAbsence(grant), fade, keep };
+}
+
+/** 一次最多发几条缺席类。 */
+export const ABSENCE_GRANT_CAP = 3;
+
+/**
+ * 第一天满盘皆黑，几十条缺席同时成立 ——
+ * 一次性糊你一脸「还没接触过」「还没露出过」「还没押注过」，
+ * 那不是画像，那是把空表读了一遍。
+ *
+ * 所以缺席类一次只发最具体的几条：条件多的排前面，
+ * 「不接触 + 不露出 + 无人 + 不出门」比单独一条「还没接触过」有话说得多。
+ */
+function capAbsence(grant: CatalogEntry[]): CatalogEntry[] {
+  const absence = grant
+    .filter((entry) => entry.conditions.every((item) => item.op === "dark"))
+    .sort((a, b) => b.conditions.length - a.conditions.length);
+  if (absence.length <= ABSENCE_GRANT_CAP) return grant;
+
+  const dropped = new Set(absence.slice(ABSENCE_GRANT_CAP).map((e) => e.key));
+  return grant.filter((entry) => !dropped.has(entry.key));
 }
 
 /** 组合类没有光谱，用一个带前缀的假光谱名避开互斥索引。 */
