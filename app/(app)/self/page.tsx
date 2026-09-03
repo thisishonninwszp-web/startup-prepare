@@ -81,6 +81,7 @@ import {
   ScanLibraryButton,
 } from "./skill-forms";
 import {
+  ArchiveDeclarationControl,
   BodyLogForm,
   DeclarationForm,
   EncounterForm,
@@ -1759,7 +1760,7 @@ export default async function SelfPage() {
           {declarations.length > 0 && (
             <ul className="mt-4 space-y-2 border-t pt-3">
               {declarations.map((item) => (
-                <li key={`${item.statedOn}-${item.text}`}>
+                <li key={item.id}>
                   {item.text.length > 90 ? (
                     <details className="text-xs">
                       <summary className="cursor-pointer">
@@ -1774,6 +1775,11 @@ export default async function SelfPage() {
                       <p className="mt-1.5 whitespace-pre-wrap text-muted-foreground">
                         {item.text}
                       </p>
+                      {item.text.length > 300 && (
+                        <div className="mt-1">
+                          <ArchiveDeclarationControl id={item.id} />
+                        </div>
+                      )}
                     </details>
                   ) : (
                     <p className="text-xs">

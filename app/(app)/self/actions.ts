@@ -296,6 +296,61 @@ export async function recordSelfDeclaration(text: string): Promise<void> {
   revalidatePath("/self");
 }
 
+/** 自述位上留多少字。再多就该去材料箱了。 */
+export const DECLARATION_DIGEST_CHARS = 190;
+
+/**
+ * 把一条长自述的原文归档到材料箱，自述位只留开头一段。
+ *
+ * 为什么要有这个：自述是自由文本，一篇几千字的复盘完全可能出现。
+ * 但自述这一层的用处是"处境"—— 一句话说清你现在站在哪，
+ * 长文放在这里既挤爆界面，也会在喂给模型时淹掉别的几条。
+ * 而长文本身是有价值的，它属于材料箱：那是全项目唯一的自由输入口。
+ *
+ * 顺序是先写材料箱、确认拿到 id 再改自述 —— 反过来就有丢原文的风险。
+ */
+export async function archiveDeclaration(id: string): Promise<void> {
+  const userId = await requireUserId();
+
+  const { data, error: readError } = await supabaseAdmin
+    .from("self_declarations")
+    .select("id, text")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!data) throw new Error("找不到这条自述");
+
+  const row = data as { id: string; text: string };
+  if (row.text.length <= DECLARATION_DIGEST_CHARS) {
+    throw new Error("这条本来就不长，不用归档");
+  }
+
+  const { data: saved, error } = await supabaseAdmin
+    .from("observations")
+    .insert({
+      user_id: userId,
+      raw_text: row.text,
+      tags: ["self", "自述归档"],
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  if (!saved) throw new Error("写入材料箱失败，自述没有动");
+
+  const digest = `${row.text
+    .slice(0, DECLARATION_DIGEST_CHARS)
+    .replace(/\s+/g, " ")}…（原文 ${row.text.length} 字，已归档到材料箱）`;
+
+  const { error: patchError } = await supabaseAdmin
+    .from("self_declarations")
+    .update({ text: digest })
+    .eq("id", row.id);
+  if (patchError) throw new Error(patchError.message);
+
+  revalidatePath("/self");
+}
+
 /**
  * 记一条训练。刻意只要最少的字段：动作 + 重量 + 次数，或者时长。
  * 记录超过 20 秒就没人记了。

@@ -28,6 +28,7 @@ import {
   logEncounter,
   logResources,
   logSelfWindow,
+  archiveDeclaration,
   logSleep,
   recordSelfDeclaration,
   refuteSelfHypothesis,
@@ -455,6 +456,24 @@ export function DeclarationForm() {
         </span>
       </div>
     </form>
+  );
+}
+
+/** 长自述的原文搬去材料箱，自述位只留开头一段。 */
+export function ArchiveDeclarationControl({ id }: { id: string }) {
+  const { pending, error, run } = useAction();
+  return (
+    <>
+      <ConfirmButton
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={() => run(() => archiveDeclaration(id))}
+      >
+        原文归档到材料箱
+      </ConfirmButton>
+      <Err message={error} />
+    </>
   );
 }
 

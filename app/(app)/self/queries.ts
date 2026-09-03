@@ -704,16 +704,16 @@ export async function getSelfTraits(
 export async function getDeclarations(
   userId: string,
   limit = 6
-): Promise<{ text: string; statedOn: string }[]> {
+): Promise<{ id: string; text: string; statedOn: string }[]> {
   const { data, error } = await supabaseAdmin
     .from("self_declarations")
-    .select("text, stated_on")
+    .select("id, text, stated_on")
     .eq("user_id", userId)
     .order("stated_on", { ascending: false })
     .limit(40);
   if (error) throw new Error(error.message);
 
-  return ((data ?? []) as { text: string; stated_on: string }[])
+  return ((data ?? []) as { id: string; text: string; stated_on: string }[])
     // 这张表里塞了三种东西，靠前缀区分：
     //   disposition: 认领的库内气质 / custom: 收下的 AI 提名气质 / 无前缀才是自述。
     .filter(
@@ -721,7 +721,11 @@ export async function getDeclarations(
         !row.text.startsWith("disposition:") && !row.text.startsWith("custom:")
     )
     .slice(0, limit)
-    .map((row) => ({ text: row.text, statedOn: row.stated_on }));
+    .map((row) => ({
+      id: row.id,
+      text: row.text,
+      statedOn: row.stated_on,
+    }));
 }
 
 // ---------------------------------------------------------------------------
