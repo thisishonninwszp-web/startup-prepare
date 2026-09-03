@@ -714,8 +714,12 @@ export async function getDeclarations(
   if (error) throw new Error(error.message);
 
   return ((data ?? []) as { text: string; stated_on: string }[])
-    // 气质认领也存在这张表里，用前缀区分；那些不算自述。
-    .filter((row) => !row.text.startsWith("disposition:"))
+    // 这张表里塞了三种东西，靠前缀区分：
+    //   disposition: 认领的库内气质 / custom: 收下的 AI 提名气质 / 无前缀才是自述。
+    .filter(
+      (row) =>
+        !row.text.startsWith("disposition:") && !row.text.startsWith("custom:")
+    )
     .slice(0, limit)
     .map((row) => ({ text: row.text, statedOn: row.stated_on }));
 }

@@ -703,7 +703,12 @@ export async function suggestDispositions(): Promise<DispositionNomination[]> {
       .map((key) => findDisposition(key))
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .map((item) => ({ name: item.name, claim: item.claim })),
-    declarations: rows.filter((text) => !text.startsWith("disposition:")),
+    declarations: rows
+      .filter(
+        (text) =>
+          !text.startsWith("disposition:") && !text.startsWith("custom:")
+      )
+      .map((text) => text.slice(0, CONTEXT_PER_ITEM)),
     existingNames: existingDispositionNames(),
   });
 }
@@ -890,6 +895,31 @@ export async function removeCustomSkill(key: string): Promise<void> {
 }
 
 /**
+ * 把自述压成一段处境喂给模型。
+ *
+ * 自述是没有长度限制的自由文本 —— 一篇几千字的复盘完全可能出现，
+ * 原样拼进 prompt 会把上下文撑爆，而且越长的那篇越会淹掉别的几条。
+ * 所以每条各截一段、总量再封顶：处境要的是"他在什么处境里"，不是全文。
+ */
+const CONTEXT_PER_ITEM = 400;
+const CONTEXT_TOTAL = 1600;
+
+function buildContext(rows: { text: string }[]): string {
+  const parts: string[] = [];
+  let used = 0;
+  for (const row of rows) {
+    if (row.text.startsWith("disposition:") || row.text.startsWith("custom:")) {
+      continue;
+    }
+    const piece = row.text.slice(0, CONTEXT_PER_ITEM).replace(/\s+/g, " ");
+    if (used + piece.length > CONTEXT_TOTAL) break;
+    parts.push(piece);
+    used += piece.length;
+  }
+  return parts.join("；");
+}
+
+/**
  * 让 AI 拆开一项技能。**只提名，不写库。**
  *
  * 这一处放行 AI 的理由：用户说不出「要成为这个领域的专家，需要掌握哪些
@@ -910,10 +940,7 @@ export async function proposeSkillStages(
     .eq("user_id", userId)
     .order("stated_on", { ascending: false })
     .limit(8);
-  const context = ((data ?? []) as { text: string }[])
-    .map((row) => row.text)
-    .filter((text) => !text.startsWith("disposition:"))
-    .join("；");
+  const context = buildContext((data ?? []) as { text: string }[]);
 
   return decomposeSkill({
     name: def.name,

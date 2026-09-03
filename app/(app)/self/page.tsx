@@ -1757,13 +1757,32 @@ export default async function SelfPage() {
           <DeclarationForm />
 
           {declarations.length > 0 && (
-            <ul className="mt-4 space-y-1.5 border-t pt-3">
+            <ul className="mt-4 space-y-2 border-t pt-3">
               {declarations.map((item) => (
-                <li key={`${item.statedOn}-${item.text}`} className="text-xs">
-                  <span className="font-mono text-muted-foreground">
-                    {item.statedOn}
-                  </span>{" "}
-                  {item.text}
+                <li key={`${item.statedOn}-${item.text}`}>
+                  {item.text.length > 90 ? (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer">
+                        <span className="font-mono text-muted-foreground">
+                          {item.statedOn}
+                        </span>{" "}
+                        {item.text.slice(0, 60)}…
+                        <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                          {item.text.length} 字
+                        </span>
+                      </summary>
+                      <p className="mt-1.5 whitespace-pre-wrap text-muted-foreground">
+                        {item.text}
+                      </p>
+                    </details>
+                  ) : (
+                    <p className="text-xs">
+                      <span className="font-mono text-muted-foreground">
+                        {item.statedOn}
+                      </span>{" "}
+                      {item.text}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
