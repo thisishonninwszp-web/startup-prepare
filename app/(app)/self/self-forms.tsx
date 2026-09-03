@@ -461,19 +461,28 @@ export function DeclarationForm() {
 
 /** 长自述的原文搬去材料箱，自述位只留开头一段。 */
 export function ArchiveDeclarationControl({ id }: { id: string }) {
+  const [tags, setTags] = useState("");
   const { pending, error, run } = useAction();
   return (
-    <>
+    <div className="flex flex-wrap items-center gap-2">
+      <Input
+        value={tags}
+        onChange={(event) => setTags(event.target.value)}
+        placeholder="这篇是关于什么的，空格分开"
+        className="h-7 w-56 text-[12px]"
+      />
       <ConfirmButton
         size="sm"
         variant="ghost"
-        disabled={pending}
-        onClick={() => run(() => archiveDeclaration(id))}
+        disabled={pending || !tags.trim()}
+        onClick={() =>
+          run(() => archiveDeclaration(id, tags.split(/[\s,，、]+/)))
+        }
       >
         原文归档到材料箱
       </ConfirmButton>
       <Err message={error} />
-    </>
+    </div>
   );
 }
 

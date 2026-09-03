@@ -32,6 +32,7 @@ import {
   scanCatalog,
   spectrumKeyOf,
 } from "@/lib/domains/self-model/catalog";
+import { SELF_ARCHIVE_TAG, isSystemTag } from "../ideas/types";
 import {
   getCustomSkills,
   getSelfPanel,
@@ -310,7 +311,10 @@ const DECLARATION_DIGEST_CHARS = 190;
  *
  * 顺序是先写材料箱、确认拿到 id 再改自述 —— 反过来就有丢原文的风险。
  */
-export async function archiveDeclaration(id: string): Promise<void> {
+export async function archiveDeclaration(
+  id: string,
+  tags: string[]
+): Promise<void> {
   const userId = await requireUserId();
 
   const { data, error: readError } = await supabaseAdmin
@@ -327,12 +331,23 @@ export async function archiveDeclaration(id: string): Promise<void> {
     throw new Error("这条本来就不长，不用归档");
   }
 
+  // 内容标签必须由人来填。归档的时候顺手回答「这篇到底是关于什么的」，
+  // 否则它进了材料箱也找不回来 —— 一条没有内容标签的材料等于扔进抽屉。
+  const topics = tags
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0 && !isSystemTag(tag))
+    .slice(0, 6);
+  if (topics.length === 0) {
+    throw new Error("先给它一两个标签：这篇是关于什么的");
+  }
+
   const { data: saved, error } = await supabaseAdmin
     .from("observations")
     .insert({
       user_id: userId,
       raw_text: row.text,
-      tags: ["self", "自述归档"],
+      // 来源用系统标签记，它不显示也不参与聚类。
+      tags: [...topics, SELF_ARCHIVE_TAG],
     })
     .select("id")
     .single();

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { SELF_ARCHIVE_TAG } from "../ideas/types";
 import {
   runInquiry,
   clusterObservations,
@@ -122,10 +123,14 @@ export async function findRecurringSignals(): Promise<RecurringSignal[]> {
     .limit(80);
   if (error) throw new Error(error.message);
 
-  const items = (obs ?? []).map((o) => ({
-    id: o.id as string,
-    text: o.raw_text as string,
-  }));
+  const items = (obs ?? [])
+    // 自述归档过来的长文不参与聚类：它是关于自己的，不是外部信号。
+    // 让它进痛点雷达就是往雷达里加噪音。
+    .filter((o) => !((o.tags as string[]) ?? []).includes(SELF_ARCHIVE_TAG))
+    .map((o) => ({
+      id: o.id as string,
+      text: o.raw_text as string,
+    }));
   if (items.length < 3) return [];
 
   const clusters = await clusterObservations(items);

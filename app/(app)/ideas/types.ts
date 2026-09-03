@@ -23,6 +23,20 @@ export type Idea = {
 export const OBSERVATION_PROMOTED_TAG = "__ideaos_promoted__";
 const OBSERVATION_SOURCE_TAG_PREFIX = "__ideaos_observation__:";
 
+/**
+ * 系统标签一律用这个前缀。
+ * 它们记录**来源和状态**，不是内容 —— 所以既不该显示给人看，
+ * 也不该参与聚类：一堆同样的来源标记会被当成一个反复出现的主题。
+ */
+export const SYSTEM_TAG_PREFIX = "__ideaos_";
+
+/** 从 /self 的自述归档过来的原文。 */
+export const SELF_ARCHIVE_TAG = "__ideaos_self_archive__";
+
+export function isSystemTag(tag: string): boolean {
+  return tag.startsWith(SYSTEM_TAG_PREFIX);
+}
+
 export function observationSourceTag(observationId: string): string {
   return `${OBSERVATION_SOURCE_TAG_PREFIX}${observationId}`;
 }
@@ -32,11 +46,7 @@ export function isObservationPromoted(tags: string[]): boolean {
 }
 
 export function visibleTags(tags: string[]): string[] {
-  return tags.filter(
-    (tag) =>
-      tag !== OBSERVATION_PROMOTED_TAG &&
-      !tag.startsWith(OBSERVATION_SOURCE_TAG_PREFIX)
-  );
+  return tags.filter((tag) => !isSystemTag(tag));
 }
 
 /**
