@@ -487,11 +487,11 @@ export function ArchiveDeclarationControl({ id }: { id: string }) {
   );
 }
 
-type Sketch = { kind: string; text: string; evidence: string };
+type Sketch = { kind: string; text: string; evidence: string[] };
 
 const SKETCH_LABELS: Record<string, string> = {
-  behavior: "他会怎么做",
-  gain: "带来了什么",
+  pattern: "反复出现",
+  contrast: "反差",
   cost: "代价",
   limit: "边界",
   gap: "空缺",
@@ -537,9 +537,10 @@ export function SketchControl() {
 
       {lines && lines.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          写不出来 —— 库里还没有足够的记录可引。
-          先去点亮几个小技能，或者记几个触发窗口：
-          没有记录的时候，任何一句关于你的话都是编的。
+          还写不出人来 —— 记录太少。
+          一条记录只能说明一件事发生过，说一个人是什么样，每句最少要踩两条、
+          而且来自不同的日子。少于六条、跨不到三天，这里就只会挤出复述，
+          所以宁可不写。先去点亮几个小技能，或者补几条事迹和触发窗口。
         </p>
       )}
 
@@ -550,12 +551,27 @@ export function SketchControl() {
           style={{ animationDelay: `${index * 120}ms` }}
         >
           <p className="text-[15px] leading-relaxed">{line.text}</p>
-          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+          <p className="mt-0.5">
             <span className="self-label mr-1.5">
               {SKETCH_LABELS[line.kind] ?? line.kind}
             </span>
-            {line.evidence || "（没有记录可引，所以这一句只说明空缺）"}
           </p>
+          {line.evidence.length > 0 ? (
+            <ul className="mt-0.5 space-y-0.5">
+              {line.evidence.map((quote) => (
+                <li
+                  key={quote}
+                  className="font-mono text-[11px] text-muted-foreground"
+                >
+                  ▸ {quote}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="font-mono text-[11px] text-muted-foreground">
+              没有记录可引，所以这一句只说明空缺
+            </p>
+          )}
         </div>
       ))}
     </div>

@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   acceptNomination,
   acceptSkill,
   acceptSkillStages,
+  proposeEarnedNodes,
   proposeSkillStages,
   proposeSkills,
   removeCustomSkill,
@@ -563,6 +565,125 @@ export function RemoveCustomSkillControl({ skillKey }: { skillKey: string }) {
       </ConfirmButton>
       <Err message={error} />
     </>
+  );
+}
+
+type Earned = {
+  nodeKey: string;
+  skillName: string;
+  nodeName: string;
+  test: string;
+  proof: string;
+  because: string;
+};
+
+/**
+ * 从已有记录里认领节点。
+ *
+ * 树空着不是因为什么都没做，是因为入口太贵：要在一百多个格子里翻，
+ * 想哪个自己做到过。而证据早就在库里躺着。
+ *
+ * AI 只做两件事：指出哪个节点、原样引用他写过的那一句。
+ * 引不出原话的提名在解析器那层就没了 —— 那是它在替他编经历。
+ * 收下走的还是点亮那条路，同样过前置校验。
+ */
+export function ClaimEarnedControl() {
+  const [items, setItems] = useState<Earned[] | null>(null);
+  const [taken, setTaken] = useState<string[]>([]);
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const { pending, error, run } = useAction();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pending}
+          onClick={() =>
+            run(async () => {
+              setItems(await proposeEarnedNodes());
+            })
+          }
+        >
+          {pending ? "翻记录中…" : "从已有记录里找出我已经挣到的"}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          它只负责翻记录、引原话。判据满没满足只有你知道
+        </span>
+      </div>
+      <Err message={error} />
+
+      {items && items.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          没找出来。要么记录里确实还没有能对上判据的事，
+          要么它想提的那几条引不出你的原话 —— 引不出就不许提，
+          否则那不是认领，是替你编一段经历。
+        </p>
+      )}
+
+      {items?.map((item) => (
+        <div key={item.nodeKey} className="animate-self-reveal self-panel p-4">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="font-medium">
+              {item.skillName} · {item.nodeName}
+            </span>
+            <span className="self-rarity self-rarity--common ml-auto">
+              AI 提名 · 候选
+            </span>
+          </div>
+          <p className="mt-1 text-[13px]">
+            <span className="self-label mr-1.5">判据</span>
+            {item.test}
+          </p>
+          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+            它的理由：{item.because}
+          </p>
+
+          <Textarea
+            value={edited[item.nodeKey] ?? item.proof}
+            onChange={(event) =>
+              setEdited((current) => ({
+                ...current,
+                [item.nodeKey]: event.target.value,
+              }))
+            }
+            rows={2}
+            className="mt-2 text-[12px]"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            这是你自己写过的原话，可以改。
+            <span className="text-foreground">
+              但先对着上面那条判据看一眼：想不起具体是哪一次，就别点。
+            </span>
+            AI 翻得出原话，判不了那一次算不算数。
+          </p>
+
+          <div className="mt-2">
+            {taken.includes(item.nodeKey) ? (
+              <span className="font-mono text-[11px] text-primary">已点亮</span>
+            ) : (
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () =>
+                      unlockSkillNode({
+                        nodeKey: item.nodeKey,
+                        proof: edited[item.nodeKey] ?? item.proof,
+                      }),
+                    () => setTaken((current) => [...current, item.nodeKey])
+                  )
+                }
+              >
+                这个我做到过，点亮
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

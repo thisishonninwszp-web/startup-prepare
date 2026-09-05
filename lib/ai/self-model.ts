@@ -462,44 +462,69 @@ ${catalogue}
 // 又不承认自己没有证据的话。规则不是"必须有代价"，是"不许假装完整"。
 // ---------------------------------------------------------------------------
 
-export const SKETCH_KINDS = ["behavior", "gain", "cost", "limit", "gap"] as const;
+export const SKETCH_KINDS = ["pattern", "contrast", "cost", "limit", "gap"] as const;
 export type SketchKind = (typeof SKETCH_KINDS)[number];
 
 export type SketchLine = {
   kind: SketchKind;
   text: string;
-  /** 这句话靠的是哪一条记录。gap 之外必须非空。 */
-  evidence: string;
+  /**
+   * 这句话踩着的记录，**至少两条，来自不同的日子**。
+   * 一条记录只能证明一件事发生过；说一个人是什么样，最少要两次。
+   * gap 是唯一允许为空的。
+   */
+  evidence: string[];
 };
+
+/** 材料够不够写出一个人。 */
+export type SketchMaterial = {
+  rows: number;
+  days: number;
+};
+
+export const SKETCH_MIN_ROWS = 6;
+export const SKETCH_MIN_DAYS = 3;
 
 const SKETCH_SYSTEM = `你在用三句话描述一个人。材料是他自己写下的记录。
 
+**最重要的一条：你在描述人，不是描述事。**
+「他上周把监测数据接到了订单上」是一件事，不是一个人。
+「凡是没人要求的事，他都会做到底」才是人 —— 它说的是一类情况下的稳定倾向。
+所以每一句都必须**跨记录**：至少两条、来自不同日子的记录，说出它们的共同点。
+只能靠一条记录支撑的句子，不许写。
+
 三句，顺序固定：
-1. kind=behavior —— **在什么条件下，他会做什么**。
-   不许用形容词下结论。"他很谨慎"适用于一半的人，也无法被推翻；
-   "不确定的时候他会再等一周"能想象出画面，也能被反驳。写后者。
-2. kind=gain —— 这带来了什么。必须是记录里真的发生过的一件事。
+1. kind=pattern —— **反复出现的动作**。
+   格式是「在什么情况下，他会做什么」。不许用形容词下结论：
+   "他很谨慎"适用于一半的人也无法被推翻；
+   "不确定的时候他会再等一周"能想象出画面，也能被反驳。
+2. kind=contrast —— **反差**。同一个人在另一类场景里恰好相反，
+   或者这个动作在什么场合就是不出现。反差最能让人被认出来。
+   找不到真的反差就别硬凑，这一句可以退成另一个 pattern。
 3. 第三句是**另一面**，按材料里有什么选一种：
    - kind=cost：材料里确实记录到了它的代价。
    - kind=limit：写不出代价，但写得出边界 —— 它在什么条件下不成立。
-   - kind=gap：两样都没有。这时候 text 就写"还没有记录到它的另一面"
-     再加一句为什么（时间太短 / 这一面还没被记过），evidence 留空。
-   注意：cost 和 limit 只有在材料里**真的有一条记录了坏结果的行**时才允许 ——
-   「没做」「落空」「没被采纳」这类。材料里没有这种行就必须选 gap，
+   - kind=gap：两样都没有。text 写"还没有记录到它的另一面"加一句为什么，
+     evidence 留空数组。
+   cost 和 limit 只有在材料里**真的有记录了坏结果的行**时才允许 ——
+   「没做」「落空」「没被采纳」这类。没有这种行就必须选 gap，
    不许根据常识推测一个听起来合理的代价。
 
 铁律：
-- 每一句都要给 evidence：**原样引用材料里的一条记录**，不许改写成更好听的说法。
-  引不到就别写这一句 —— 引不到就是编的。kind=gap 是唯一允许 evidence 为空的。
+- evidence 是一个数组，每一项**原样引用材料里的一整行**，不许改写。
+  非 gap 的句子至少两项，且必须来自不同日期。引不满两条就别写这一句。
 - 禁止评价：不许出现"很强""优秀""有潜力""擅长""天赋"这类词。
 - 禁止任何分数、百分比、性格类型名（INTP、i人 之类）。
-- 三句话说的应该是**同一件事的三面**，不是三个不相干的优点。
-  最好的速写是：他做得最好的那件事，和它带来的麻烦，是同一件事。
 - 中文，每句不超过 60 字，口语。
 
-输出 JSON：{"lines":[{"kind","text","evidence"}]}，正好三条。`;
+输出 JSON：{"lines":[{"kind","text","evidence":[]}]}，正好三条。`;
 
 const PRAISE = /很强|优秀|不错|有潜力|擅长|天赋|出色|卓越|INTP|[0-9]{1,3}\s*[%分]/;
+
+/** 一行记录开头的日期，用来判断"来自不同的日子"。 */
+function dayOf(row: string): string {
+  return row.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? row.slice(0, 12);
+}
 
 /** 导出只为测试。 */
 export function parseSketch(value: unknown): SketchLine[] {
@@ -512,20 +537,22 @@ export function parseSketch(value: unknown): SketchLine[] {
     .map((item) => ({
       kind: String(item.kind ?? "").trim(),
       text: String(item.text ?? "").trim(),
-      evidence: String(item.evidence ?? "").trim(),
+      evidence: (Array.isArray(item.evidence) ? item.evidence : [])
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry.length > 3),
     }))
     .filter((item) => kinds.has(item.kind) && item.text.length >= 6)
     .filter((item) => !PRAISE.test(item.text));
 
   if (lines.length !== 3) return [];
-  if (lines[0].kind !== "behavior" || lines[1].kind !== "gain") return [];
+  if (lines[0].kind === "gap") return [];
   if (!["cost", "limit", "gap"].includes(lines[2].kind)) return [];
 
-  // 除了明写空缺的那一种，每句都必须挂得上一条记录。
-  // 一句既没有证据、又不承认自己没有证据的话，是这一处唯一不能出的错。
   for (const line of lines) {
     if (line.kind === "gap") continue;
-    if (line.evidence.length < 4) return [];
+    // 一条记录只能说明一件事发生过。两条不同日子的，才开始像一个人。
+    if (line.evidence.length < 2) return [];
+    if (new Set(line.evidence.map(dayOf)).size < 2) return [];
   }
   return lines as SketchLine[];
 }
@@ -556,6 +583,11 @@ export async function sketchPerson(input: {
     .join("\n\n");
 
   if (!contents.trim()) return [];
+  // 材料不够的时候，任何一句关于这个人的话都是从一条记录里挤出来的。
+  // 与其挤，不如说"还写不出"。
+  const depth = materialDepth(input);
+  if (depth.rows < SKETCH_MIN_ROWS || depth.days < SKETCH_MIN_DAYS) return [];
+
   const lines = await generateRealityJson(
     SKETCH_SYSTEM,
     `${contents}\n\n请写三句。`,
@@ -572,6 +604,22 @@ export async function sketchPerson(input: {
  * 然后在 text 里写一个听着合理、但库里根本没发生过的代价。
  * 这一层挡的就是这个：**没有负面记录，就不许出现代价**。
  */
+/** 材料有多少行、跨多少天。 */
+export function materialDepth(input: {
+  proofs: string[];
+  windows: string[];
+  forecasts: string[];
+  deeds: string[];
+}): SketchMaterial {
+  const rows = [
+    ...input.proofs,
+    ...input.windows,
+    ...input.forecasts,
+    ...input.deeds,
+  ];
+  return { rows: rows.length, days: new Set(rows.map(dayOf)).size };
+}
+
 function negatives(input: {
   windows: string[];
   forecasts: string[];
@@ -600,15 +648,118 @@ export function groundSketch(
   if (lines.length !== 3) return [];
   for (const line of lines) {
     if (line.kind === "gap") continue;
-    if (!material.includes(line.evidence)) return [];
+    // 改写过的引用一律不算 —— 改写就是在把记录说得更好听。
+    if (line.evidence.some((quote) => !material.includes(quote))) return [];
   }
 
   const last = lines[2];
   if (last.kind === "gap") return lines;
-  if (negativeRows.some((row) => row.includes(last.evidence))) return lines;
+  const grounded = last.evidence.some((quote) =>
+    negativeRows.some((row) => row.includes(quote))
+  );
+  if (grounded) return lines;
   return [
     lines[0],
     lines[1],
-    { kind: "gap", text: NO_OTHER_SIDE, evidence: "" },
+    { kind: "gap", text: NO_OTHER_SIDE, evidence: [] },
   ];
+}
+
+// ---------------------------------------------------------------------------
+// 第五处 AI 调用：从已有记录里认领节点。
+//
+// 树空着不是因为他什么都没做，是因为入口太贵：要在一百多个格子里翻，
+// 想哪个自己做到过。而证据早就在库里 —— 自述、材料箱里的长文、事迹。
+//
+// 边界比别处都紧，因为这一处直接产生**证据**：
+//   proof 必须是他自己写过的原话，逐字。模型只许**指出**和**引用**，
+//   不许总结、不许润色、不许"根据描述推断他应该做到了"。
+//   引不出原话的提名，在解析器那层就没了。
+// ---------------------------------------------------------------------------
+
+/**
+ * 需要靠推断才连得上的，不算指认。
+ * 「他提到原文在材料箱，表明他知道如何找到一手资料」—— 这不是证据，
+ * 这是替他圆一个故事。判据没被满足就该空着。
+ */
+const INFERENCE =
+  /表明|说明|可能|应该|大概|推测|想必|尽管|虽然|暗示|通常|往往|一般来说|意味着|涉及|作为一个例子|证明了他/;
+
+export type EarnedNomination = {
+  nodeKey: string;
+  /** 原样引用的那一句，将来会成为这个节点的 proof。 */
+  proof: string;
+  /** 为什么这句话满足这个节点的判据。 */
+  because: string;
+};
+
+const EARNED_SYSTEM = `你在帮一个人认领他**已经做到过**的技能节点。
+
+他写下的记录里，往往躺着好几件早就做成的事，只是他自己没想到那算一个技能。
+你的任务：把记录和节点对上。
+
+铁律：
+- proof 必须是他记录里的**原话，逐字**。不许总结、不许润色、不许合并两句。
+  引不出原话就别提这一条 —— 那等于你在替他编一段经历。
+- 只提**判据真的被满足**的。判据说"做成过一次"，记录里就得有那一次；
+  记录里只说"打算做""在考虑"的，不算。
+- because 里不许出现"表明""说明""可能""应该""尽管…但"这类词。
+  那是推断，不是证据。你要做的是**指认**：这句原话本身就是那一次。
+  需要靠推断才能连上的，一律不提。
+- proof 要引一整句能站住的话，不是半个短语。
+- because 一句话：这句原话为什么满足这个节点的判据。
+- 宁可少，不许凑。最多 8 条。
+
+输出 JSON：{"earned":[{"nodeKey","proof","because"}]}`;
+
+/** 导出只为测试。 */
+export function parseEarned(
+  value: unknown,
+  known: Set<string>,
+  material: string
+): EarnedNomination[] {
+  const root = value as { earned?: unknown };
+  if (!Array.isArray(root?.earned)) return [];
+
+  const taken = new Set<string>();
+  return root.earned
+    .map((item) => item as Record<string, unknown>)
+    .map((item) => ({
+      nodeKey: String(item.nodeKey ?? "").trim(),
+      proof: String(item.proof ?? "").trim(),
+      because: String(item.because ?? "").trim(),
+    }))
+    .filter((item) => {
+      if (!known.has(item.nodeKey) || taken.has(item.nodeKey)) return false;
+      // 逐字命中：改写过的引用一律不算，那是在替他编经历。
+      // 半个短语撑不起一条判据，而且太短的片段几乎一定命中。
+      if (item.proof.length < 15 || !material.includes(item.proof)) return false;
+      // 需要靠推断才连得上的，一律不算 —— 那不是指认，那是替他圆一个故事。
+      if (INFERENCE.test(item.because)) return false;
+      taken.add(item.nodeKey);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+export async function nominateEarned(input: {
+  /** 可选的节点：key + 技能名 + 小技能名 + 判据。 */
+  nodes: { key: string; label: string }[];
+  /** 他写下的全部材料，一行一条。 */
+  material: string[];
+}): Promise<EarnedNomination[]> {
+  const material = input.material.join("\n");
+  if (!material.trim() || input.nodes.length === 0) return [];
+
+  const contents = `他写下的记录：
+${material}
+
+还没点亮、现在可以认领的节点（nodeKey｜技能·小技能｜判据）：
+${input.nodes.map((node) => `${node.key}｜${node.label}`).join("\n")}
+
+请指出哪些他已经做到过，并原样引用他写的那句话。`;
+
+  return generateRealityJson(EARNED_SYSTEM, contents, (value) =>
+    parseEarned(value, new Set(input.nodes.map((node) => node.key)), material)
+  );
 }

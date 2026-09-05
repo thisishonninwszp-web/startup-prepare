@@ -21,6 +21,7 @@ import type { SkillTreeEntry } from "@/lib/domains/self-model/nodes";
 import { destinationOf } from "@/lib/domains/self-model/paths";
 import { iconFor } from "./skill-icons";
 import {
+  ClaimEarnedControl,
   DecomposeSkillControl,
   NominateSkillsControl,
   RelockNodeControl,
@@ -138,6 +139,20 @@ export function SkillTree({
           </span>
         </div>
       </div>
+
+      {lit === 0 && (
+        <div className="self-panel self-corners space-y-2 p-4">
+          <p className="self-rule">
+            <span className="self-label shrink-0">先把已经会的捡回来</span>
+          </p>
+          <p className="text-[12px] text-muted-foreground">
+            树是空的，多半不是因为你什么都没做，是因为入口太贵 ——
+            要在一百多个格子里翻，想哪个自己做到过。
+            而证据大概率已经在库里躺着了：自述、事迹、材料箱里的长文。
+          </p>
+          <ClaimEarnedControl />
+        </div>
+      )}
 
       {shown.length === 0 && (
         <p className="self-panel p-4 text-sm text-muted-foreground">

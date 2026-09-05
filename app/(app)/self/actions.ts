@@ -21,7 +21,9 @@ import {
   decomposeSkill,
   nominateSkills,
   nominateDispositions,
+  nominateEarned,
   sketchPerson,
+  type EarnedNomination,
   type SketchLine,
   type SkillNomination,
   type StageNomination,
@@ -1080,6 +1082,85 @@ export async function sketchSelf(): Promise<SketchLine[]> {
         }`
     ),
     context: buildContext((declarations.data ?? []) as { text: string }[]),
+  });
+}
+
+/**
+ * 从已有记录里提名「你已经挣到的节点」。**只提名，不写库。**
+ *
+ * 树空着不是因为什么都没做，是因为入口太贵。证据早就在库里了。
+ * 收下的时候仍然走 unlockSkillNode 那条路 —— 同样要过前置校验。
+ */
+export async function proposeEarnedNodes(): Promise<
+  (EarnedNomination & { skillName: string; nodeName: string; test: string })[]
+> {
+  const userId = await requireUserId();
+
+  const [unlocked, declarations, deeds, archived] = await Promise.all([
+    supabaseAdmin
+      .from("self_skill_nodes")
+      .select("node_key")
+      .eq("user_id", userId),
+    supabaseAdmin
+      .from("self_declarations")
+      .select("text, stated_on")
+      .eq("user_id", userId)
+      .limit(20),
+    supabaseAdmin
+      .from("self_deeds")
+      .select("title, what_happened, occurred_on")
+      .eq("user_id", userId)
+      .limit(20),
+    supabaseAdmin
+      .from("observations")
+      .select("raw_text, created_at")
+      .eq("user_id", userId)
+      .contains("tags", [SELF_ARCHIVE_TAG])
+      .limit(5),
+  ]);
+
+  const done = new Set(
+    ((unlocked.data ?? []) as { node_key: string }[]).map((row) => row.node_key)
+  );
+
+  // 只把**现在就能点**的节点摆出来。给它看点不了的，收下的时候会被前置挡回，
+  // 白白让人空欢喜一场。
+  const open = ALL_NODES.filter(
+    (node) => !done.has(node.key) && canUnlock(node.key, done).ok
+  );
+
+  const material = [
+    ...((declarations.data ?? []) as { text: string; stated_on: string }[])
+      .filter((row) => !row.text.startsWith("disposition:") && !row.text.startsWith("custom:"))
+      .map((row) => `${row.stated_on}｜${row.text}`),
+    ...((deeds.data ?? []) as {
+      title: string;
+      what_happened: string | null;
+      occurred_on: string;
+    }[]).map(
+      (row) => `${row.occurred_on}｜${row.title}｜${row.what_happened ?? ""}`
+    ),
+    ...((archived.data ?? []) as { raw_text: string; created_at: string }[]).map(
+      (row) => `${row.created_at.slice(0, 10)}｜${row.raw_text}`
+    ),
+  ];
+
+  const found = await nominateEarned({
+    nodes: open.map((node) => ({
+      key: node.key,
+      label: `${node.skillName}·${node.name}｜${node.test}`,
+    })),
+    material,
+  });
+
+  return found.map((item) => {
+    const node = ALL_NODES.find((entry) => entry.key === item.nodeKey)!;
+    return {
+      ...item,
+      skillName: node.skillName,
+      nodeName: node.name,
+      test: node.test,
+    };
   });
 }
 

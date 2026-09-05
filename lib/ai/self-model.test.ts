@@ -180,77 +180,85 @@ describe("parseSkillNominations", () => {
   });
 });
 
-import { parseSketch } from "./self-model";
+import { groundSketch, parseSketch } from "./self-model";
 
-const behavior = {
-  kind: "behavior",
+const pattern = {
+  kind: "pattern" as const,
   text: "没人要求的事，他也会做到底",
-  evidence: "2026-09-03｜逆向：把已有的监测数据接到订单和 CVR 上",
+  evidence: [
+    "2026-09-03｜逆向：把已有的监测数据接到订单和 CVR 上",
+    "2026-08-20｜社长之旅｜没被采纳",
+  ],
 };
-const gain = {
-  kind: "gain",
-  text: "因此发现了七月广告数据被对调，推翻了自己的结论",
-  evidence: "2026-09-03｜复盘：修正后原来支持的证据消失了",
+const contrast = {
+  kind: "contrast" as const,
+  text: "但被指派的事他反而只做到交差",
+  evidence: [
+    "2026-09-03｜复盘：修正后原来支持的证据消失了",
+    "2026-08-20｜社长之旅｜没被采纳",
+  ],
 };
+const gap = { kind: "gap" as const, text: "还没有记录到它的另一面", evidence: [] };
 
 describe("parseSketch", () => {
-  it("takes three lines that each point at a record", () => {
-    const lines = parseSketch({
-      lines: [
-        behavior,
-        gain,
-        { kind: "cost", text: "但那些事本来没人要", evidence: "四个自主项目 0 采纳" },
-      ],
-    });
-    expect(lines.map((line) => line.kind)).toEqual(["behavior", "gain", "cost"]);
+  it("takes three lines that each stand on two different days", () => {
+    const lines = parseSketch({ lines: [pattern, contrast, { ...contrast, kind: "cost" }] });
+    expect(lines.map((line) => line.kind)).toEqual([
+      "pattern",
+      "contrast",
+      "cost",
+    ]);
   });
 
-  it("allows the third line to be an admitted gap, and only that one", () => {
-    const gap = { kind: "gap", text: "还没有记录到它的另一面，时间太短", evidence: "" };
-    expect(parseSketch({ lines: [behavior, gain, gap] })).toHaveLength(3);
-    // 但前两句没有证据就是编的。
-    expect(
-      parseSketch({ lines: [{ ...behavior, evidence: "" }, gain, gap] })
-    ).toEqual([]);
-  });
-
-  it("refuses a third line that is neither cost, limit nor gap", () => {
+  it("refuses a line propped up by a single record — that is an event, not a person", () => {
     expect(
       parseSketch({
-        lines: [behavior, gain, { ...gain, kind: "gain" }],
+        lines: [{ ...pattern, evidence: [pattern.evidence[0]] }, contrast, gap],
       })
     ).toEqual([]);
+  });
+
+  it("refuses two quotes from the same day — one occasion is still one occasion", () => {
+    expect(
+      parseSketch({
+        lines: [
+          {
+            ...pattern,
+            evidence: [
+              "2026-09-03｜逆向：把已有的监测数据接到订单和 CVR 上",
+              "2026-09-03｜复盘：修正后原来支持的证据消失了",
+            ],
+          },
+          contrast,
+          gap,
+        ],
+      })
+    ).toEqual([]);
+  });
+
+  it("allows the third line to be an admitted gap, and only the third", () => {
+    expect(parseSketch({ lines: [pattern, contrast, gap] })).toHaveLength(3);
+    expect(parseSketch({ lines: [gap, contrast, gap] })).toEqual([]);
   });
 
   it("refuses praise and type names", () => {
     expect(
       parseSketch({
-        lines: [
-          { ...behavior, text: "他很擅长做这件事" },
-          gain,
-          { kind: "gap", text: "还没有记录到另一面", evidence: "" },
-        ],
+        lines: [{ ...pattern, text: "他很擅长做这件事" }, contrast, gap],
       })
     ).toEqual([]);
     expect(
       parseSketch({
-        lines: [
-          { ...behavior, text: "典型的 INTP，喜欢想清楚再动" },
-          gain,
-          { kind: "gap", text: "还没有记录到另一面", evidence: "" },
-        ],
+        lines: [{ ...pattern, text: "典型的 INTP" }, contrast, gap],
       })
     ).toEqual([]);
   });
 
-  it("refuses anything that is not exactly three lines, in order", () => {
-    expect(parseSketch({ lines: [behavior, gain] })).toEqual([]);
-    expect(parseSketch({ lines: [gain, behavior, { kind: "gap", text: "还没有记录到另一面", evidence: "" }] })).toEqual([]);
+  it("refuses anything that is not exactly three lines", () => {
+    expect(parseSketch({ lines: [pattern, contrast] })).toEqual([]);
     expect(parseSketch(null)).toEqual([]);
   });
 });
-
-import { groundSketch } from "./self-model";
 
 describe("groundSketch", () => {
   const material =
@@ -258,58 +266,146 @@ describe("groundSketch", () => {
     "- 2026-09-03｜复盘：修正后原来支持的证据消失了\n" +
     "- 2026-08-20｜社长之旅｜没被采纳";
   const negatives = ["2026-08-20｜社长之旅｜没被采纳"];
-  const base = [
-    { kind: "behavior" as const, text: "没人要求的事他也做到底", evidence: "逆向：把已有的监测数据接到订单和 CVR 上" },
-    { kind: "gain" as const, text: "因此推翻了自己的结论", evidence: "复盘：修正后原来支持的证据消失了" },
-  ];
 
   it("keeps a cost that stands on a real negative record", () => {
     const out = groundSketch(
-      [...base, { kind: "cost", text: "但那些事本来没人要", evidence: "社长之旅｜没被采纳" }],
+      [pattern, contrast, { ...contrast, kind: "cost" }],
       material,
       negatives
     );
     expect(out[2].kind).toBe("cost");
   });
 
-  it("demotes a cost that quotes an unrelated line — that is a guess dressed as a record", () => {
+  it("demotes a cost that quotes nothing negative — that is a guess dressed as a record", () => {
     const out = groundSketch(
       [
-        ...base,
+        pattern,
+        contrast,
         {
           kind: "cost",
           text: "这种做法会延长周期",
-          evidence: "复盘：修正后原来支持的证据消失了",
+          evidence: [
+            "2026-09-03｜逆向：把已有的监测数据接到订单和 CVR 上",
+            "2026-09-03｜复盘：修正后原来支持的证据消失了",
+          ],
         },
       ],
       material,
       negatives
     );
-    expect(out[2].kind).toBe("gap");
-    expect(out[2].text).toContain("还没有记录到");
-    expect(out[2].evidence).toBe("");
+    expect(out[2]).toMatchObject({ kind: "gap", evidence: [] });
   });
 
-  it("throws the whole sketch away when a quote is not in the material at all", () => {
+  it("throws the whole sketch away when a quote is not in the material", () => {
     expect(
       groundSketch(
-        [
-          { ...base[0], evidence: "他一向很拼" },
-          base[1],
-          { kind: "gap", text: "还没有记录到另一面", evidence: "" },
-        ],
+        [{ ...pattern, evidence: ["他一向很拼", pattern.evidence[1]] }, contrast, gap],
         material,
         negatives
       )
     ).toEqual([]);
   });
+});
 
-  it("leaves an honest gap alone", () => {
-    const out = groundSketch(
-      [...base, { kind: "gap", text: "还没有记录到另一面，时间太短", evidence: "" }],
-      material,
-      negatives
+import { parseEarned } from "./self-model";
+
+describe("parseEarned", () => {
+  const material =
+    "2026-09-03｜我重新修正数据、重新整理衍生指标，并重新运行回归。\n" +
+    "2026-08-20｜社长之旅｜给同事看了，没有人说过需要";
+  const known = new Set(["record:1:0", "retro:1:0"]);
+
+  it("takes a nomination whose proof is verbatim in the material", () => {
+    const out = parseEarned(
+      {
+        earned: [
+          {
+            nodeKey: "record:1:0",
+            proof: "我重新修正数据、重新整理衍生指标，并重新运行回归。",
+            because: "这就是那一次",
+          },
+        ],
+      },
+      known,
+      material
     );
-    expect(out[2].text).toContain("时间太短");
+    expect(out).toHaveLength(1);
+  });
+
+  it("throws away a proof that was polished — that is writing his history for him", () => {
+    expect(
+      parseEarned(
+        {
+          earned: [
+            {
+              nodeKey: "record:1:0",
+              proof: "他非常严谨地修正了数据并重跑了回归",
+              because: "总结自记录",
+            },
+          ],
+        },
+        known,
+        material
+      )
+    ).toEqual([]);
+  });
+
+  it("throws away a nomination that needs an inference to connect", () => {
+    expect(
+      parseEarned(
+        {
+          earned: [
+            {
+              nodeKey: "record:1:0",
+              proof: "我重新修正数据、重新整理衍生指标，并重新运行回归。",
+              because: "他提到了这件事，表明他有记录的习惯",
+            },
+          ],
+        },
+        known,
+        material
+      )
+    ).toEqual([]);
+  });
+
+  it("throws away a proof that is only half a phrase", () => {
+    expect(
+      parseEarned(
+        {
+          earned: [
+            { nodeKey: "record:1:0", proof: "重新运行回归", because: "就是那次" },
+          ],
+        },
+        known,
+        material
+      )
+    ).toEqual([]);
+  });
+
+  it("throws away a node that does not exist or is already lit", () => {
+    expect(
+      parseEarned(
+        {
+          earned: [
+            {
+              nodeKey: "nosuch:1:0",
+              proof: "我重新修正数据、重新整理衍生指标，并重新运行回归。",
+              because: "x",
+            },
+          ],
+        },
+        known,
+        material
+      )
+    ).toEqual([]);
+  });
+
+  it("keeps one nomination per node", () => {
+    const one = {
+      nodeKey: "record:1:0",
+      proof: "我重新修正数据、重新整理衍生指标，并重新运行回归。",
+      because: "x",
+    };
+    expect(parseEarned({ earned: [one, one] }, known, material)).toHaveLength(1);
   });
 });
