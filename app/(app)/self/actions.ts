@@ -21,6 +21,8 @@ import {
   decomposeSkill,
   nominateSkills,
   nominateDispositions,
+  sketchPerson,
+  type SketchLine,
   type SkillNomination,
   type StageNomination,
   type DispositionNomination,
@@ -988,6 +990,97 @@ function buildContext(rows: { text: string }[]): string {
     used += piece.length;
   }
   return parts.join("；");
+}
+
+
+/**
+ * 人物速写。**只读，不写库。**
+ *
+ * 这是 AI 唯一一处碰证据的地方，所以它只被允许做一件事：
+ * 把已经在库里的记录串成三句人话。每一句都要引一条原文 ——
+ * 引不到的句子在解析器那一层就被丢掉了。
+ */
+export async function sketchSelf(): Promise<SketchLine[]> {
+  const userId = await requireUserId();
+
+  const [nodes, windows, forecasts, deeds, declarations] = await Promise.all([
+    supabaseAdmin
+      .from("self_skill_nodes")
+      .select("skill_key, proof, unlocked_on")
+      .eq("user_id", userId)
+      .order("unlocked_on", { ascending: false })
+      .limit(30),
+    supabaseAdmin
+      .from("self_windows")
+      .select("situation, outcome, occurred_on")
+      .eq("user_id", userId)
+      .order("occurred_on", { ascending: false })
+      .limit(20),
+    supabaseAdmin
+      .from("predictions")
+      .select("text, outcome, confidence")
+      .eq("user_id", userId)
+      .eq("source_type", "self")
+      .neq("outcome", "pending")
+      .limit(20),
+    supabaseAdmin
+      .from("self_deeds")
+      .select("title, outcome, adopted, occurred_on")
+      .eq("user_id", userId)
+      .order("occurred_on", { ascending: false })
+      .limit(20),
+    supabaseAdmin
+      .from("self_declarations")
+      .select("text")
+      .eq("user_id", userId)
+      .order("stated_on", { ascending: false })
+      .limit(8),
+  ]);
+
+  const nameOf = (key: string) =>
+    SKILL_DEFS.find((def) => def.key === key)?.name ?? key;
+
+  return sketchPerson({
+    proofs: ((nodes.data ?? []) as {
+      skill_key: string;
+      proof: string;
+      unlocked_on: string;
+    }[]).map(
+      (row) => `${row.unlocked_on}｜${nameOf(row.skill_key)}：${row.proof}`
+    ),
+    windows: ((windows.data ?? []) as {
+      situation: string;
+      outcome: string;
+      occurred_on: string;
+    }[]).map(
+      (row) =>
+        `${row.occurred_on}｜${row.situation}｜${
+          row.outcome === "hit" ? "做了" : "没做"
+        }`
+    ),
+    forecasts: ((forecasts.data ?? []) as {
+      text: string;
+      outcome: string;
+      confidence: number | null;
+    }[]).map(
+      (row) =>
+        `${row.text}｜把握 ${row.confidence ?? "—"}｜${
+          row.outcome === "hit" ? "命中" : "落空"
+        }`
+    ),
+    deeds: ((deeds.data ?? []) as {
+      title: string;
+      outcome: string | null;
+      adopted: boolean | null;
+      occurred_on: string;
+    }[]).map(
+      (row) =>
+        `${row.occurred_on}｜${row.title}｜${row.outcome ?? "—"}｜${
+          row.adopted ? "被采纳" : "没被采纳"
+        }`
+    ),
+    context: buildContext((declarations.data ?? []) as { text: string }[]),
+  });
 }
 
 /**

@@ -179,3 +179,137 @@ describe("parseSkillNominations", () => {
     ).toHaveLength(1);
   });
 });
+
+import { parseSketch } from "./self-model";
+
+const behavior = {
+  kind: "behavior",
+  text: "没人要求的事，他也会做到底",
+  evidence: "2026-09-03｜逆向：把已有的监测数据接到订单和 CVR 上",
+};
+const gain = {
+  kind: "gain",
+  text: "因此发现了七月广告数据被对调，推翻了自己的结论",
+  evidence: "2026-09-03｜复盘：修正后原来支持的证据消失了",
+};
+
+describe("parseSketch", () => {
+  it("takes three lines that each point at a record", () => {
+    const lines = parseSketch({
+      lines: [
+        behavior,
+        gain,
+        { kind: "cost", text: "但那些事本来没人要", evidence: "四个自主项目 0 采纳" },
+      ],
+    });
+    expect(lines.map((line) => line.kind)).toEqual(["behavior", "gain", "cost"]);
+  });
+
+  it("allows the third line to be an admitted gap, and only that one", () => {
+    const gap = { kind: "gap", text: "还没有记录到它的另一面，时间太短", evidence: "" };
+    expect(parseSketch({ lines: [behavior, gain, gap] })).toHaveLength(3);
+    // 但前两句没有证据就是编的。
+    expect(
+      parseSketch({ lines: [{ ...behavior, evidence: "" }, gain, gap] })
+    ).toEqual([]);
+  });
+
+  it("refuses a third line that is neither cost, limit nor gap", () => {
+    expect(
+      parseSketch({
+        lines: [behavior, gain, { ...gain, kind: "gain" }],
+      })
+    ).toEqual([]);
+  });
+
+  it("refuses praise and type names", () => {
+    expect(
+      parseSketch({
+        lines: [
+          { ...behavior, text: "他很擅长做这件事" },
+          gain,
+          { kind: "gap", text: "还没有记录到另一面", evidence: "" },
+        ],
+      })
+    ).toEqual([]);
+    expect(
+      parseSketch({
+        lines: [
+          { ...behavior, text: "典型的 INTP，喜欢想清楚再动" },
+          gain,
+          { kind: "gap", text: "还没有记录到另一面", evidence: "" },
+        ],
+      })
+    ).toEqual([]);
+  });
+
+  it("refuses anything that is not exactly three lines, in order", () => {
+    expect(parseSketch({ lines: [behavior, gain] })).toEqual([]);
+    expect(parseSketch({ lines: [gain, behavior, { kind: "gap", text: "还没有记录到另一面", evidence: "" }] })).toEqual([]);
+    expect(parseSketch(null)).toEqual([]);
+  });
+});
+
+import { groundSketch } from "./self-model";
+
+describe("groundSketch", () => {
+  const material =
+    "- 2026-09-03｜逆向：把已有的监测数据接到订单和 CVR 上\n" +
+    "- 2026-09-03｜复盘：修正后原来支持的证据消失了\n" +
+    "- 2026-08-20｜社长之旅｜没被采纳";
+  const negatives = ["2026-08-20｜社长之旅｜没被采纳"];
+  const base = [
+    { kind: "behavior" as const, text: "没人要求的事他也做到底", evidence: "逆向：把已有的监测数据接到订单和 CVR 上" },
+    { kind: "gain" as const, text: "因此推翻了自己的结论", evidence: "复盘：修正后原来支持的证据消失了" },
+  ];
+
+  it("keeps a cost that stands on a real negative record", () => {
+    const out = groundSketch(
+      [...base, { kind: "cost", text: "但那些事本来没人要", evidence: "社长之旅｜没被采纳" }],
+      material,
+      negatives
+    );
+    expect(out[2].kind).toBe("cost");
+  });
+
+  it("demotes a cost that quotes an unrelated line — that is a guess dressed as a record", () => {
+    const out = groundSketch(
+      [
+        ...base,
+        {
+          kind: "cost",
+          text: "这种做法会延长周期",
+          evidence: "复盘：修正后原来支持的证据消失了",
+        },
+      ],
+      material,
+      negatives
+    );
+    expect(out[2].kind).toBe("gap");
+    expect(out[2].text).toContain("还没有记录到");
+    expect(out[2].evidence).toBe("");
+  });
+
+  it("throws the whole sketch away when a quote is not in the material at all", () => {
+    expect(
+      groundSketch(
+        [
+          { ...base[0], evidence: "他一向很拼" },
+          base[1],
+          { kind: "gap", text: "还没有记录到另一面", evidence: "" },
+        ],
+        material,
+        negatives
+      )
+    ).toEqual([]);
+  });
+
+  it("leaves an honest gap alone", () => {
+    const out = groundSketch(
+      [...base, { kind: "gap", text: "还没有记录到另一面，时间太短", evidence: "" }],
+      material,
+      negatives
+    );
+    expect(out[2].text).toContain("时间太短");
+  });
+});

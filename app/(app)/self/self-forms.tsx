@@ -31,6 +31,7 @@ import {
   archiveDeclaration,
   logSleep,
   recordSelfDeclaration,
+  sketchSelf,
   refuteSelfHypothesis,
   resolveSelfPrediction,
 } from "./actions";
@@ -482,6 +483,81 @@ export function ArchiveDeclarationControl({ id }: { id: string }) {
         原文归档到材料箱
       </ConfirmButton>
       <Err message={error} />
+    </div>
+  );
+}
+
+type Sketch = { kind: string; text: string; evidence: string };
+
+const SKETCH_LABELS: Record<string, string> = {
+  behavior: "他会怎么做",
+  gain: "带来了什么",
+  cost: "代价",
+  limit: "边界",
+  gap: "空缺",
+};
+
+/**
+ * 人物速写：三句话。
+ *
+ * 这一页有一堆清单，但没有一句描述 —— 被人问"你是个什么样的人"，
+ * 从清单里搬不出一句话来。速写补的是这个。
+ *
+ * 它是 AI 唯一一处碰证据的地方，所以只被允许做一件事：
+ * 把已经在库里的记录串成人话。每句下面挂着它引的那条原文，
+ * 引不到的句子在解析器那层就被丢了。
+ *
+ * 第三句一定是"另一面"，但不许为了凑而编：
+ * 有代价写代价，只知道边界写边界，两样都没有就明写着空缺。
+ */
+export function SketchControl() {
+  const [lines, setLines] = useState<Sketch[] | null>(null);
+  const { pending, error, run } = useAction();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pending}
+          onClick={() =>
+            run(async () => {
+              setLines(await sketchSelf());
+            })
+          }
+        >
+          {pending ? "写中…" : "用三句话说说我"}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          每句都得引一条你自己写下的记录，引不到的不许出现
+        </span>
+      </div>
+      <Err message={error} />
+
+      {lines && lines.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          写不出来 —— 库里还没有足够的记录可引。
+          先去点亮几个小技能，或者记几个触发窗口：
+          没有记录的时候，任何一句关于你的话都是编的。
+        </p>
+      )}
+
+      {lines?.map((line, index) => (
+        <div
+          key={line.kind}
+          className="animate-self-reveal border-l-2 border-primary/40 pl-3"
+          style={{ animationDelay: `${index * 120}ms` }}
+        >
+          <p className="text-[15px] leading-relaxed">{line.text}</p>
+          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+            <span className="self-label mr-1.5">
+              {SKETCH_LABELS[line.kind] ?? line.kind}
+            </span>
+            {line.evidence || "（没有记录可引，所以这一句只说明空缺）"}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }

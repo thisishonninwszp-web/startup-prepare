@@ -439,3 +439,176 @@ ${catalogue}
 
   return generateRealityJson(NOMINATE_SYSTEM, contents, parseSkillNominations);
 }
+
+// ---------------------------------------------------------------------------
+// 第四处 AI 调用：人物速写。
+//
+// 这一页有一堆清单 —— 属性、气质、技能、特性、形状 —— 但没有一句描述。
+// 被人问"你是个什么样的人"，从清单里搬不出一句话来。
+//
+// 速写只有三句，规矩比别处都硬，因为它是唯一一处 AI 碰**证据**的地方：
+//
+//   1. 不许用形容词下结论。第一句必须是「在什么条件下，他会做什么」——
+//      「他很谨慎」适用于一半的人，也无法被推翻；
+//      「不确定的时候他会再等一周」能想象出画面，也能被反驳。
+//   2. 每一句都必须引用一条**已经在库里的记录**，原样引，不许改写成更好听的。
+//      引不到记录的句子直接丢 —— 那就是编的。
+//   3. 第三句必须是"另一面"，但**不许为了凑而编**：
+//      有记录到代价就写代价；只知道边界就写边界；
+//      两样都没有，就明写着空缺 ——「还没有记录到它的另一面」。
+//      空缺本身是信息：说明这一面还没被观察过，或者时间不够长。
+//
+// 最后这条是这一处的立身之本：不许出现一句既没有证据、
+// 又不承认自己没有证据的话。规则不是"必须有代价"，是"不许假装完整"。
+// ---------------------------------------------------------------------------
+
+export const SKETCH_KINDS = ["behavior", "gain", "cost", "limit", "gap"] as const;
+export type SketchKind = (typeof SKETCH_KINDS)[number];
+
+export type SketchLine = {
+  kind: SketchKind;
+  text: string;
+  /** 这句话靠的是哪一条记录。gap 之外必须非空。 */
+  evidence: string;
+};
+
+const SKETCH_SYSTEM = `你在用三句话描述一个人。材料是他自己写下的记录。
+
+三句，顺序固定：
+1. kind=behavior —— **在什么条件下，他会做什么**。
+   不许用形容词下结论。"他很谨慎"适用于一半的人，也无法被推翻；
+   "不确定的时候他会再等一周"能想象出画面，也能被反驳。写后者。
+2. kind=gain —— 这带来了什么。必须是记录里真的发生过的一件事。
+3. 第三句是**另一面**，按材料里有什么选一种：
+   - kind=cost：材料里确实记录到了它的代价。
+   - kind=limit：写不出代价，但写得出边界 —— 它在什么条件下不成立。
+   - kind=gap：两样都没有。这时候 text 就写"还没有记录到它的另一面"
+     再加一句为什么（时间太短 / 这一面还没被记过），evidence 留空。
+   注意：cost 和 limit 只有在材料里**真的有一条记录了坏结果的行**时才允许 ——
+   「没做」「落空」「没被采纳」这类。材料里没有这种行就必须选 gap，
+   不许根据常识推测一个听起来合理的代价。
+
+铁律：
+- 每一句都要给 evidence：**原样引用材料里的一条记录**，不许改写成更好听的说法。
+  引不到就别写这一句 —— 引不到就是编的。kind=gap 是唯一允许 evidence 为空的。
+- 禁止评价：不许出现"很强""优秀""有潜力""擅长""天赋"这类词。
+- 禁止任何分数、百分比、性格类型名（INTP、i人 之类）。
+- 三句话说的应该是**同一件事的三面**，不是三个不相干的优点。
+  最好的速写是：他做得最好的那件事，和它带来的麻烦，是同一件事。
+- 中文，每句不超过 60 字，口语。
+
+输出 JSON：{"lines":[{"kind","text","evidence"}]}，正好三条。`;
+
+const PRAISE = /很强|优秀|不错|有潜力|擅长|天赋|出色|卓越|INTP|[0-9]{1,3}\s*[%分]/;
+
+/** 导出只为测试。 */
+export function parseSketch(value: unknown): SketchLine[] {
+  const root = value as { lines?: unknown };
+  if (!Array.isArray(root?.lines) || root.lines.length !== 3) return [];
+
+  const kinds = new Set<string>(SKETCH_KINDS);
+  const lines = root.lines
+    .map((item) => item as Record<string, unknown>)
+    .map((item) => ({
+      kind: String(item.kind ?? "").trim(),
+      text: String(item.text ?? "").trim(),
+      evidence: String(item.evidence ?? "").trim(),
+    }))
+    .filter((item) => kinds.has(item.kind) && item.text.length >= 6)
+    .filter((item) => !PRAISE.test(item.text));
+
+  if (lines.length !== 3) return [];
+  if (lines[0].kind !== "behavior" || lines[1].kind !== "gain") return [];
+  if (!["cost", "limit", "gap"].includes(lines[2].kind)) return [];
+
+  // 除了明写空缺的那一种，每句都必须挂得上一条记录。
+  // 一句既没有证据、又不承认自己没有证据的话，是这一处唯一不能出的错。
+  for (const line of lines) {
+    if (line.kind === "gap") continue;
+    if (line.evidence.length < 4) return [];
+  }
+  return lines as SketchLine[];
+}
+
+export async function sketchPerson(input: {
+  /** 已点亮节点的证据：技能名 + 他写的那句 proof。 */
+  proofs: string[];
+  /** 触发窗口：情境 + 做没做。 */
+  windows: string[];
+  /** 已对账的预测。 */
+  forecasts: string[];
+  /** 事迹。 */
+  deeds: string[];
+  /** 自述（已截断）。 */
+  context: string;
+}): Promise<SketchLine[]> {
+  const section = (title: string, rows: string[]) =>
+    rows.length > 0 ? `${title}：\n${rows.map((r) => `- ${r}`).join("\n")}` : "";
+
+  const contents = [
+    section("他点亮的技能，以及他写的证据", input.proofs),
+    section("触发窗口（含符合条件但没做的）", input.windows),
+    section("已对账的预测", input.forecasts),
+    section("事迹", input.deeds),
+    input.context ? `他写下的处境：${input.context}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  if (!contents.trim()) return [];
+  const lines = await generateRealityJson(
+    SKETCH_SYSTEM,
+    `${contents}\n\n请写三句。`,
+    parseSketch
+  );
+  return groundSketch(lines, contents, negatives(input));
+}
+
+/**
+ * 材料里「记录到了不好的一面」的那些行。
+ *
+ * 第三句要写代价或边界，就必须踩在这类记录上。
+ * 光要求 evidence 非空挡不住编造 —— 模型可以随手引一句无关的原文，
+ * 然后在 text 里写一个听着合理、但库里根本没发生过的代价。
+ * 这一层挡的就是这个：**没有负面记录，就不许出现代价**。
+ */
+function negatives(input: {
+  windows: string[];
+  forecasts: string[];
+  deeds: string[];
+}): string[] {
+  return [
+    ...input.windows.filter((row) => row.includes("没做")),
+    ...input.forecasts.filter((row) => row.includes("落空")),
+    ...input.deeds.filter((row) => row.includes("没被采纳")),
+  ];
+}
+
+const NO_OTHER_SIDE = "还没有记录到它的另一面 —— 可能是没发生，也可能是还没记。";
+
+/**
+ * 落地检查，两条：
+ *   · 每一句引的必须是材料里**逐字存在**的原文；
+ *   · 第三句若声称代价或边界，它引的那条还必须真的是一条负面记录。
+ * 任一不过，第三句降级成明写的空缺 —— 宁可承认没有，也不许假装完整。
+ */
+export function groundSketch(
+  lines: SketchLine[],
+  material: string,
+  negativeRows: string[]
+): SketchLine[] {
+  if (lines.length !== 3) return [];
+  for (const line of lines) {
+    if (line.kind === "gap") continue;
+    if (!material.includes(line.evidence)) return [];
+  }
+
+  const last = lines[2];
+  if (last.kind === "gap") return lines;
+  if (negativeRows.some((row) => row.includes(last.evidence))) return lines;
+  return [
+    lines[0],
+    lines[1],
+    { kind: "gap", text: NO_OTHER_SIDE, evidence: "" },
+  ];
+}

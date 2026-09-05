@@ -85,6 +85,7 @@ import {
   ArchiveDeclarationControl,
   BodyLogForm,
   DeclarationForm,
+  SketchControl,
   EncounterForm,
   KIND_LABELS,
   NewHypothesisForm,
@@ -913,6 +914,18 @@ export default async function SelfPage() {
         </TabsList>
 
       <TabsContent value="overview" className="mt-6 space-y-8">
+        <div className="self-panel self-corners p-5">
+          <p className="self-rule mb-2">
+            <span className="self-label shrink-0">速写</span>
+          </p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            这一页全是清单。清单不是描述 —— 被人问「你是个什么样的人」，
+            从属性表和技能格里搬不出一句话来。速写只有三句：
+            他在什么条件下会做什么、这带来了什么、以及它的另一面。
+          </p>
+          <SketchControl />
+        </div>
+
         <WeeklyReport report={report} />
 
 
