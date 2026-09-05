@@ -11,8 +11,8 @@ import {
 } from "./dispositions";
 
 describe("dispositions", () => {
-  it("ships fifty with unique keys", () => {
-    expect(DISPOSITION_TOTAL).toBe(50);
+  it("ships a wide catalogue with unique keys", () => {
+    expect(DISPOSITION_TOTAL).toBeGreaterThan(60);
     expect(new Set(DISPOSITIONS.map((item) => item.key)).size).toBe(
       DISPOSITION_TOTAL
     );

@@ -18,6 +18,7 @@ import {
   type SkillGroup,
 } from "@/lib/domains/self-model/skills";
 import type { SkillTreeEntry } from "@/lib/domains/self-model/nodes";
+import { destinationOf } from "@/lib/domains/self-model/paths";
 import { iconFor } from "./skill-icons";
 import {
   DecomposeSkillControl,
@@ -246,6 +247,61 @@ export function SkillTree({
   );
 }
 
+/**
+ * 这一项通向哪里、要付什么。
+ *
+ * 「记录」「复述」这种名字看着只是基本功，光看名字不知道点它值不值。
+ * 上半段全部由前置图算出来（改一条前置这里跟着变，不会过期），
+ * 下半段是写死的代价 —— 只有利没有弊的说明，等于没说。
+ */
+function Destination({
+  entry,
+  nameOf,
+}: {
+  entry: SkillTreeEntry;
+  nameOf: Map<string, string>;
+}) {
+  const dest = destinationOf(entry.def.key);
+  const label = (key: string) => nameOf.get(key) ?? key;
+
+  return (
+    <div className="space-y-1 border-l-2 border-border pl-3">
+      {dest.next.length > 0 && (
+        <p className="font-mono text-[11px]">
+          <span className="self-label mr-1.5">往上</span>
+          {dest.next.map((def) => label(def.key)).join(" · ")}
+        </p>
+      )}
+
+      {dest.signatures.length > 0 && (
+        <p className="font-mono text-[11px]">
+          <span className="self-label mr-1.5">最后到</span>
+          {dest.signatures.map((def) => label(def.key)).join(" · ")}
+        </p>
+      )}
+
+      {dest.classes.length > 0 && (
+        <p className="font-mono text-[11px] text-muted-foreground">
+          <span className="self-label mr-1.5">经过它的路</span>
+          {dest.classes.map((item) => item.name).join(" · ")}
+          {dest.gateFor.length > 0 && (
+            <span className="ml-1.5 text-primary">
+              （{dest.gateFor.map((item) => item.name).join(" · ")}的必经之路）
+            </span>
+          )}
+        </p>
+      )}
+
+      {entry.def.cost && (
+        <p className="text-[12px]">
+          <span className="self-label mr-1.5">代价</span>
+          <span className="text-muted-foreground">{entry.def.cost}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SkillDetail({
   entry,
   customised,
@@ -286,6 +342,8 @@ function SkillDetail({
           </>
         )}
       </p>
+
+      <Destination entry={entry} nameOf={nameOf} />
 
       {justLit?.startsWith(`${entry.def.key}:`) && (
         <p className="animate-self-reveal font-mono text-[11px] text-primary">

@@ -23,7 +23,11 @@ export type DispositionAxis =
   | "decision"
   | "structure"
   | "novelty"
-  | "conflict";
+  | "conflict"
+  | "distance"
+  | "uncertainty"
+  | "selfview"
+  | "time";
 
 export const AXIS_NAMES: Record<DispositionAxis, string> = {
   energy: "精力从哪来",
@@ -32,6 +36,10 @@ export const AXIS_NAMES: Record<DispositionAxis, string> = {
   structure: "对秩序的需要",
   novelty: "对新旧的偏好",
   conflict: "面对摩擦时",
+  distance: "和人的距离",
+  uncertainty: "面对不确定",
+  selfview: "怎么看自己",
+  time: "活在哪个时间",
 };
 
 export type DispositionDef = {
@@ -161,6 +169,52 @@ export const DISPOSITIONS: DispositionDef[] = [
     test: "卡住到求助的天数" },
   { key: "askwhy", axis: "conflict", name: "非要问清楚", claim: "不弄明白为什么不罢休",
     test: "分歧后是否追到根因" },
+
+  // 和人的距离
+  { key: "fewdeep", axis: "distance", name: "少而深", claim: "宁可三个很近的，不要三十个点头之交",
+    test: "半年内主动联系的人不超过五个，但其中至少三次是深聊" },
+  { key: "wideshallow", axis: "distance", name: "广而浅", claim: "认识很多人，但谁都不算特别近",
+    test: "半年内联系过二十人以上，没有一次超过两小时的对话" },
+  { key: "slowwarm", axis: "distance", name: "热得慢", claim: "要很久才把人放进来，放进来就很久",
+    test: "现在最近的几个人，认识都超过三年" },
+  { key: "boundary", axis: "distance", name: "边界清楚", claim: "工作是工作，私交是私交，不太混",
+    test: "同事里没有人知道你周末在做什么" },
+  { key: "hostmode", axis: "distance", name: "接待型", claim: "在场就会自动照顾气氛，事后累",
+    test: "多人场合结束后需要独处恢复，而当时你在张罗" },
+
+  // 面对不确定
+  { key: "needclear", axis: "uncertainty", name: "要先看清", claim: "没弄明白之前不想动手",
+    test: "开始一件事之前，平均花在准备上的时间超过实际动手" },
+  { key: "jumpin", axis: "uncertainty", name: "先跳再说", claim: "想不清就先做，边做边想",
+    test: "过去三件事里至少两件是没方案就开工的" },
+  { key: "riskfirst", axis: "uncertainty", name: "风险先行", claim: "写方案时风险那段总是最长的",
+    test: "写过的方案里，风险部分的字数超过机会部分" },
+  { key: "betsmall", axis: "uncertainty", name: "小注多押", claim: "不敢一把梭，喜欢多下几注",
+    test: "同时推进的事超过三件，单件投入都不大" },
+  { key: "waitclear", axis: "uncertainty", name: "等一等再说", claim: "不确定的时候倾向于什么都不做",
+    test: "至少一次因为「再看看」而错过了窗口，事后确认过" },
+
+  // 怎么看自己
+  { key: "underclaim", axis: "selfview", name: "不敢认", claim: "做成了也觉得是运气或别人的功劳",
+    test: "写复盘时，成功的原因里很少出现自己的动作" },
+  { key: "provemode", axis: "selfview", name: "证明模式", claim: "总在向某个人证明什么，哪怕他不在场",
+    test: "说得出那个人是谁，而且不止一次为他调整过做法" },
+  { key: "selfcritic", axis: "selfview", name: "自己最狠", claim: "别人还没说，自己先挑完了",
+    test: "被批评时的第一反应是「我早就想到了」" },
+  { key: "latebloom", axis: "selfview", name: "慢热型自评", claim: "当下觉得不行，隔一段回看觉得还行",
+    test: "半年前的东西，现在评价比当时高" },
+  { key: "needseen", axis: "selfview", name: "需要被看见", claim: "没人知道的努力会难以为继",
+    test: "没有反馈的项目，平均活不过三周" },
+
+  // 活在哪个时间
+  { key: "futureheavy", axis: "time", name: "住在未来", claim: "大部分注意力在还没发生的事上",
+    test: "记录里关于计划的比关于已发生的多" },
+  { key: "pastloop", axis: "time", name: "回放型", claim: "会反复回想已经过去的场面",
+    test: "同一件旧事在记录里出现过三次以上" },
+  { key: "nowonly", axis: "time", name: "只在当下", claim: "过去的忘得快，未来的想不动",
+    test: "写不出三个月后的具体计划，也想不起上个月做过什么" },
+  { key: "longgame", axis: "time", name: "看得很远", claim: "愿意为两年后的事现在就付代价",
+    test: "现在做的事里，至少一件在一年内不会有回报" },
 ];
 
 export const DISPOSITION_TOTAL = DISPOSITIONS.length;

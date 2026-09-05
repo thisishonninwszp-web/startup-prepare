@@ -71,6 +71,7 @@ import {
   stateOf,
 } from "@/lib/domains/self-model/dispositions";
 import { classFits } from "@/lib/domains/self-model/classes";
+import { crossovers } from "@/lib/domains/self-model/paths";
 import { SkillTree } from "./skill-tree";
 import {
   DeedForm,
@@ -684,6 +685,7 @@ export default async function SelfPage() {
     skillTree.entries.map((entry) => [entry.def.key, entry.reached])
   );
   const fits = classFits(reachedBySkill);
+  const crosses = crossovers(reachedBySkill);
   const skillNameOf = (key: string) =>
     skillTree.entries.find((entry) => entry.def.key === key)?.def.name ?? key;
 
@@ -1294,6 +1296,43 @@ export default async function SelfPage() {
               </div>
             </details>
           ))}
+        </div>
+
+        <div className="self-panel self-corners p-4">
+          <p className="self-rule mb-2">
+            <span className="self-label shrink-0">远交组合</span>
+          </p>
+          <p className="mb-2 text-[12px] text-muted-foreground">
+            比较优势不来自单项强 —— 一条线上再深，总有人比你深。
+            它来自两条互不相干的线同时有深度：能同时做这两件事的人才真的少。
+            这里只看结构，不编统计：除了最底下的基本功之外没有共用地基，才算两条线。
+          </p>
+
+          {crosses.length === 0 ? (
+            <p className="text-[12px] text-muted-foreground">
+              还没有。要么走的还太浅，要么点亮的都在同一条线上 ——
+              后一种更值得注意：深度会给你安全感，但比较优势是横着长出来的。
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {crosses.map((cross) => (
+                <li
+                  key={`${cross.a.key}-${cross.b.key}`}
+                  className="text-[12px]"
+                >
+                  <span className="font-medium">
+                    {cross.a.name} × {cross.b.name}
+                  </span>
+                  <span className="ml-2 text-muted-foreground">{cross.why}</span>
+                  {cross.classes.length > 0 && (
+                    <span className="ml-2 font-mono text-[11px] text-primary">
+                      两样都要：{cross.classes.map((item) => item.name).join(" · ")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <p className="text-xs text-muted-foreground">
