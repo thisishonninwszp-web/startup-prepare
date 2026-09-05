@@ -146,9 +146,9 @@ export function SkillTree({
             <span className="self-label shrink-0">先把已经会的捡回来</span>
           </p>
           <p className="text-[12px] text-muted-foreground">
-            树是空的，多半不是因为你什么都没做，是因为入口太贵 ——
-            要在一百多个格子里翻，想哪个自己做到过。
-            而证据大概率已经在库里躺着了：自述、事迹、材料箱里的长文。
+            一格都没亮，多半不是因为你没做过，是因为翻起来太累 ——
+            一百多个格子摆在那儿，谁也想不起自己到底做到过哪个。
+            但你写过的东西还在：自述、事迹、材料箱里那几篇长的。让它去翻。
           </p>
           <ClaimEarnedControl />
         </div>
@@ -156,9 +156,9 @@ export function SkillTree({
 
       {shown.length === 0 && (
         <p className="self-panel p-4 text-sm text-muted-foreground">
-          这个筛子下什么都没有。
+          这里空着。
           {mode === "open" &&
-            "「现在能点的」为空，说明每一项都卡在前置上 —— 换成「全部」看看差在哪。"}
+            "现在没有能点的，说明每一项都还卡在前面那几格上。点「全部」看看卡在哪。"}
         </p>
       )}
 
@@ -252,9 +252,9 @@ export function SkillTree({
           <span className="self-label shrink-0">树上少了什么</span>
         </p>
         <p className="text-[12px] text-muted-foreground">
-          「我该会哪些手艺」比「这门手艺怎么拆」更靠前，也更说不出口 ——
-          一个人本来就不知道自己不知道什么。给一个方向，它指出骨架上缺的那几项；
-          收下才进树，进了树也一样要写下证据才能点亮。
+          「这门手艺怎么拆」你还答得上，「我到底该会哪些手艺」就难了 ——
+          人本来就不知道自己不知道什么。说一个方向，它指出这棵树上缺的那几项。
+          你收下它才进来，进来了照样得写下证据才点得亮。
         </p>
         <NominateSkillsControl />
       </div>

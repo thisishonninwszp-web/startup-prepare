@@ -453,7 +453,7 @@ export function DeclarationForm() {
           记下
         </Button>
         <span className="text-xs text-muted-foreground">
-          它不进任何计算，只作为处境留着
+          不算分、不进任何统计，就搁在这儿
         </span>
       </div>
     </form>
@@ -530,17 +530,18 @@ export function SketchControl() {
           {pending ? "写中…" : "用三句话说说我"}
         </Button>
         <span className="text-xs text-muted-foreground">
-          每句都得引一条你自己写下的记录，引不到的不许出现
+          每句都得指着一条你自己写过的记录说话，指不出来的不让它出现
         </span>
       </div>
       <Err message={error} />
 
       {lines && lines.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          还写不出人来 —— 记录太少。
-          一条记录只能说明一件事发生过，说一个人是什么样，每句最少要踩两条、
-          而且来自不同的日子。少于六条、跨不到三天，这里就只会挤出复述，
-          所以宁可不写。先去点亮几个小技能，或者补几条事迹和触发窗口。
+          还写不出你这个人 —— 东西太少了。
+          一条记录只能说明某件事发生过；要说你是什么样的人，
+          每句话至少得踩住两条，而且得是不同日子的事。
+          现在不到六条、跨不到三天，硬写出来的只会是把那一条换个说法再讲一遍。
+          先去点亮几格，或者补几条事迹。
         </p>
       )}
 

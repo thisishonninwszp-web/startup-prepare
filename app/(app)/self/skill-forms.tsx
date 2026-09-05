@@ -609,16 +609,16 @@ export function ClaimEarnedControl() {
           {pending ? "翻记录中…" : "从已有记录里找出我已经挣到的"}
         </Button>
         <span className="text-xs text-muted-foreground">
-          它只负责翻记录、引原话。判据满没满足只有你知道
+          它只负责翻你写过的东西、把原话找出来。算不算数，只有你知道
         </span>
       </div>
       <Err message={error} />
 
       {items && items.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          没找出来。要么记录里确实还没有能对上判据的事，
-          要么它想提的那几条引不出你的原话 —— 引不出就不许提，
-          否则那不是认领，是替你编一段经历。
+          没翻出来。要么你写过的东西里确实还没有对得上的事，
+          要么它想提的那几条找不到你的原话 —— 找不到就不许提，
+          不然那不叫认领，那叫替你编一段经历。
         </p>
       )}
 
@@ -652,11 +652,11 @@ export function ClaimEarnedControl() {
             className="mt-2 text-[12px]"
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            这是你自己写过的原话，可以改。
+            这是你自己写过的原话，想改就改。
             <span className="text-foreground">
-              但先对着上面那条判据看一眼：想不起具体是哪一次，就别点。
+              但先抬头看一眼上面那行：想不起来具体是哪一次，就别点。
             </span>
-            AI 翻得出原话，判不了那一次算不算数。
+            它能翻出话，判不了那次算不算。
           </p>
 
           <div className="mt-2">
@@ -899,7 +899,7 @@ export function UnlockNodeControl({
         placeholder={`「${nodeName}」什么时候、用它做成了什么`}
       />
       <p className="text-xs text-muted-foreground">
-        写不出这一句就先别点。看教程、读书、想明白了，都不算。
+        写不出这一句就先别点 —— 看过教程、读过书、想明白了，都不算数。
       </p>
       <Err message={error} />
       <div className="flex gap-2">

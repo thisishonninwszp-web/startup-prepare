@@ -919,9 +919,10 @@ export default async function SelfPage() {
             <span className="self-label shrink-0">速写</span>
           </p>
           <p className="mb-3 text-xs text-muted-foreground">
-            这一页全是清单。清单不是描述 —— 被人问「你是个什么样的人」，
-            从属性表和技能格里搬不出一句话来。速写只有三句：
-            他在什么条件下会做什么、这带来了什么、以及它的另一面。
+            这一页全是清单。可清单不是描述 —— 真被人问起「你是个什么样的人」，
+            你从属性表和技能格里一句话都搬不出来。
+            所以这里只写三句：什么情况下你会怎么做、这让你走到了哪儿、
+            以及它的另一面。
           </p>
           <SketchControl />
         </div>
@@ -1197,9 +1198,9 @@ export default async function SelfPage() {
           <h2 className="shrink-0 text-lg font-semibold">技能</h2>
         </div>
           <p className="text-sm text-muted-foreground">
-            纵轴是层（元件→回路→模组→内核→印记），横轴是领域，
-            每项技能自己再分入门/基础/精通/专家四级。
-            点亮的唯一条件是写得出哪一次用它做成了什么。
+            往上是越来越深：元件 → 回路 → 模组 → 内核 → 印记；
+            横着是六个领域。每项手艺自己再走入门、基础、精通、专家四级。
+            点亮一格只要一件事：你说得出哪一次，用它做成了什么。
           </p>
 
 
@@ -1219,8 +1220,8 @@ export default async function SelfPage() {
           <h2 className="shrink-0 text-lg font-semibold">职业</h2>
         </div>
           <p className="text-sm text-muted-foreground">
-            没有「选择职业」这个动作 —— 选了就变成一句自述，而自述没有分母。
-            契合度只由你点亮的节点算出来。
+            这里没有「选职业」这个按钮。选出来的只是你想成为谁，
+            算出来的才是你已经是谁 —— 下面这些数，全来自你点亮的那些格子。
           </p>
 
 
@@ -1316,15 +1317,17 @@ export default async function SelfPage() {
             <span className="self-label shrink-0">远交组合</span>
           </p>
           <p className="mb-2 text-[12px] text-muted-foreground">
-            比较优势不来自单项强 —— 一条线上再深，总有人比你深。
-            它来自两条互不相干的线同时有深度：能同时做这两件事的人才真的少。
-            这里只看结构，不编统计：除了最底下的基本功之外没有共用地基，才算两条线。
+            一条路走到黑，前面总有人比你走得远。
+            真正难替代的是两条八竿子打不着的路你都走过一段 ——
+            能同时干这两件事的人本来就没几个。
+            这里不编统计数字，只看结构：除了最底下那些谁都会的基本功，
+            两边没有任何共用的地基，才算两条路。
           </p>
 
           {crosses.length === 0 ? (
             <p className="text-[12px] text-muted-foreground">
-              还没有。要么走的还太浅，要么点亮的都在同一条线上 ——
-              后一种更值得注意：深度会给你安全感，但比较优势是横着长出来的。
+              还没有。要么走得还太浅，要么点亮的都挤在同一条路上。
+              后一种更该留意：一条路走深会让人踏实，但让你难被替代的东西是横着长的。
             </p>
           ) : (
             <ul className="space-y-1.5">
@@ -1349,9 +1352,9 @@ export default async function SelfPage() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          这十一个不是让你挑一个。它们是用来看你无意中长成了什么形状的 ——
-          你多半会发现自己以为在走的那条，和实际点亮的那条不是同一条。
-          印记层这辈子点亮两三个就够，点满不是目标。
+          这十一个不是菜单，是镜子。你多半会发现自己以为在走的那条路，
+          和实际走出来的那条不是同一条 —— 那一刻才是这一页有用的时候。
+          最下面那行印记，一辈子点亮两三个就够了，没人点得满。
         </p>
       </section>
       </TabsContent>
@@ -1797,15 +1800,15 @@ export default async function SelfPage() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">记录口</h2>
           <p className="text-sm text-muted-foreground">
-            每一条都是分母的一部分。记录超过 20 秒就没人记了，所以字段刻意少。
+            每条都会被算进去。超过二十秒就没人愿意记了，所以字段少得刻意。
           </p>
         </div>
         <div className="self-panel self-corners p-5">
           <h3 className="mb-1 text-sm font-medium">自述</h3>
           <p className="mb-3 text-xs text-muted-foreground">
-            这一页唯一的自由文本口。它不进任何计算 ——
-            不影响属性、不参与档位、不算进任何分母。
-            留着它是为了半年后回头看，以及让 AI 拆技能时知道你的处境。
+            这一页只有这里能随便写。写下的东西不参与任何计算 ——
+            属性、档位、比例都不看它一眼。
+            留着它是给半年后的你看的，顺便让 AI 拆技能的时候知道你人在哪儿。
           </p>
           <DeclarationForm />
 
