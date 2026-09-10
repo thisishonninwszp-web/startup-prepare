@@ -145,7 +145,7 @@ export const AI_ROLES = [
 export type AiRole = (typeof AI_ROLES)[number]["key"];
 
 /** 一轮对话（存入 ai_sessions.messages）。 */
-export type ChatTurn = { role: "user" | "assistant"; content: string };
+export type ChatTurn = { role: "user" | "assistant"; content: string; selfContextKey?: string };
 
 /**
  * 验证证据只记两个二元信号（宪法第 4 条，绝不做多级分类）。

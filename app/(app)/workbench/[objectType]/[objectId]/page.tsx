@@ -10,6 +10,8 @@ import { getWorkbenchDetail } from "../../queries";
 import { FrameworkRecommendations } from "../../framework-recommendations";
 import { ClosureList, ObjectSummary } from "../../object-summary";
 import { PageContainer } from "@/components/ui/page-container";
+import { DecisionSelfPanel } from "@/lib/domains/decision-self/panel";
+import { TARGET_TYPES, type TargetType } from "@/lib/domains/decision-self/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,7 @@ export default async function WorkbenchDetailPage({
     <>
       <PageContainer width="default" className="space-y-5">
         <ObjectSummary detail={detail} today={today} />
+        {TARGET_TYPES.includes(objectType as TargetType) && <DecisionSelfPanel key={`${objectType}:${params.objectId}`} target={{ type: objectType as TargetType, id: params.objectId }} />}
         <FrameworkRecommendations cards={recommendations} />
         <ClosureList closures={detail.closures} />
       </PageContainer>

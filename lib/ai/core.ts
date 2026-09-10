@@ -3,6 +3,7 @@ import { DEATH_PATTERNS, parseIdeaCollisionResult, parseSelfEchoResult, type AiR
 import { rejectFlatteringLanguage } from "@/app/(app)/council/types";
 import { generateRealityJson } from "./reality";
 import { MODEL, generateContent } from "./shared";
+import { parseSelfChallenge, sourceKey, type SelfRecord } from "@/lib/domains/decision-self/domain";
 
 /** 捕捉阶段固定的第一问——对抗"错误共识效应"。永远是这一句。 */
 export const FIRST_INQUIRY_QUESTION = "他们现在怎么处理这个问题？";
@@ -84,7 +85,8 @@ const ROLE_OPENING_TRIGGER = "请基于我上面的假设，开始你的质疑�
 export async function challenge(
   role: AiRole,
   hypothesisContext: string,
-  turns: ChatTurn[]
+  turns: ChatTurn[],
+  selfRecords?: SelfRecord[]
 ): Promise<string> {
   const contents = turns.map((t) => ({
     role: t.role === "assistant" ? "model" : "user",
@@ -103,6 +105,22 @@ ${ROLE_COMMON}
 这是对方目前的假设（可能还不完整）：
 ${hypothesisContext}`;
 
+  if (selfRecords?.length) {
+    if (selfRecords.length > 8) throw new Error("请到工作台保留最相关的 8 条自我记录，再发起质疑");
+    const result = await generateRealityJson(
+      `${system}\n每个问题引用至少一条本次自我记录。说明什么现实观察会改变质疑，这不代表已经得到证据。问题正文不写链接或来源编号，来源仅放 sourceIds。\n仅输出 JSON：{"questions":[{"question":"问题","sourceIds":["本次提供的 sourceId"],"wouldChange":"能改变这一质疑的观察"}]}。`,
+      JSON.stringify(contents),
+      (value) => parseSelfChallenge(value, selfRecords),
+    );
+    return result.questions.map((question) => {
+      const sources = question.sourceIds.map((id) => {
+        const record = selfRecords.find((record) => sourceKey(record) === id)!;
+        return `依据：${record.title}（${record.date}） ${record.href}`;
+      });
+      return `${question.question}\n什么会改变这个判断：${question.wouldChange}\n${sources.join("\n")}`;
+    }).join("\n\n");
+  }
+
   const response = await generateContent({
     model: MODEL,
     contents,
@@ -113,7 +131,11 @@ ${hypothesisContext}`;
     },
   });
 
-  return (response.text ?? "").trim() || "（未能生成质疑，请重试）";
+  const reply = (response.text ?? "").trim();
+  if (selfRecords && /\/self\/records|self_(hypotheses|deeds|skill_nodes|resources):/i.test(reply)) {
+    throw new Error("质疑引用了未选择的自我记录，请重试");
+  }
+  return reply || "（未能生成质疑，请重试）";
 }
 
 // ---------------------------------------------------------------------------
@@ -485,4 +507,3 @@ export async function collideIdeas(
     parseIdeaCollisionResult
   );
 }
-

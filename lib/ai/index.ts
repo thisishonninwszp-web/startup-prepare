@@ -17,3 +17,4 @@ export * from "./patterns";
 export * from "./profile";
 export { MODEL } from "./shared";
 export * from "./self-model";
+export * from "./decision-self";

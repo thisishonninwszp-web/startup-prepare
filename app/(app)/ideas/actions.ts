@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
@@ -16,6 +17,8 @@ import {
 import { listCouncilPersonas } from "@/app/(app)/council/queries";
 import { getRelevantKnowledgeCards } from "@/app/(app)/knowledge/queries";
 import { tavilySearch } from "@/lib/external";
+import { getLinkedSelfRecords } from "@/lib/domains/decision-self/queries";
+import { renderSelfContext, sourceKey, turnsForSelfContext, type SelfRecord } from "@/lib/domains/decision-self/domain";
 import {
   AI_ROLES,
   HYPOTHESIS_FIELDS,
@@ -307,9 +310,20 @@ export async function sendRoleMessage(
       ? `\n\n=== 用户积累的上下文知识 ===\n${knowledgeCards.map((c) => `[${c.card_type === "market" ? "市场事实" : c.card_type === "customer" ? "顾客规律" : c.card_type === "judgment" ? "判断历史" : "领域知识"}] ${c.content}`).join("\n")}`
       : "";
 
-  const context = renderHypothesis(hypothesis) + knowledgeContext;
-  const reply = await challenge(role, context, turns);
-  turns.push({ role: "assistant", content: reply });
+  const selfLinks = await getLinkedSelfRecords(userId, { type: "idea", id: ideaId });
+  if (selfLinks.some((link) => !link.record)) {
+    throw new Error("关联的自我记录已失效，请到工作台移除后再质疑。");
+  }
+  const selfRecords = selfLinks.map((link) => link.record).filter((record): record is SelfRecord => record !== null);
+  selfRecords.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
+  const selfContext = renderSelfContext(selfRecords);
+  const selfContextKey = createHash("sha256").update(selfContext).digest("hex");
+  const context = renderHypothesis(hypothesis) + knowledgeContext + selfContext;
+  const aiTurns = turnsForSelfContext(turns, selfContextKey);
+  const previous = [...turns].reverse().find((turn) => turn.role === "assistant");
+  const contextChanged = previous?.selfContextKey && previous.selfContextKey !== selfContextKey;
+  const reply = await challenge(role, context, aiTurns, selfRecords);
+  turns.push({ role: "assistant", content: (contextChanged ? "自我记录已变化，本轮按当前记录重新质疑。\n\n" : "") + reply, selfContextKey });
 
   if (existing?.id) {
     const { error } = await supabaseAdmin
