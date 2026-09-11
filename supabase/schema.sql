@@ -5261,3 +5261,18 @@ on conflict (key) do nothing;
 drop table if exists self_feats;
 drop table if exists self_skill_ticks;
 drop table if exists self_skills;
+
+-- 049_self_window_skips.sql
+create table if not exists self_window_skips (
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  source_type text not null check (source_type in ('validation', 'decision', 'commitment')),
+  source_id   uuid not null,
+  created_at  timestamptz not null default now(),
+  primary key (user_id, source_type, source_id)
+);
+
+alter table self_window_skips enable row level security;
+
+drop policy if exists "self_window_skips_owner" on self_window_skips;
+create policy "self_window_skips_owner" on self_window_skips
+  for all using (auth.uid() = user_id);

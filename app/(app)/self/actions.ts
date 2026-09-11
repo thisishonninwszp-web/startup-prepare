@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { applyNames, nameDossier } from "@/lib/ai/dossier";
 import type { Dossier } from "@/lib/domains/self-model/dossier";
+import {
+  CANDIDATE_SOURCES,
+  type CandidateSource,
+} from "@/lib/domains/self-model/candidates";
 import { getSelfDossier } from "./queries";
 
 import {
@@ -1306,4 +1310,58 @@ export async function nameDossierNow(): Promise<Dossier> {
   const dossier = await getSelfDossier(userId);
   if (dossier.total === 0) return dossier;
   return applyNames(dossier, await nameDossier(dossier));
+}
+
+// ---------------------------------------------------------------- 这算不算
+
+/**
+ * 回答一条候选：算，做了 / 算，没做。
+ *
+ * 写成一次窗口，source_ref 记住它从哪来，下次不再问。
+ * grade 固定 E3：来源本身就是一条带时间戳的记录，算文档佐证。
+ * outcome=miss 的那条和 hit 一样重要 —— 它是分母，也是背面那三行的来源。
+ */
+export async function answerWindowCandidate(input: {
+  source: CandidateSource;
+  sourceId: string;
+  hypothesisId: string;
+  outcome: "hit" | "miss";
+  contextKey: string;
+  situation: string;
+  occurredOn: string;
+}): Promise<void> {
+  const userId = await requireUserId();
+  if (!CANDIDATE_SOURCES.includes(input.source)) throw new Error("未知的来源");
+
+  const { error } = await supabaseAdmin.from("self_windows").insert({
+    user_id: userId,
+    hypothesis_id: input.hypothesisId,
+    situation: required(input.situation, "情境"),
+    context_key: required(input.contextKey, "情境分类"),
+    outcome: input.outcome,
+    grade: "E3",
+    occurred_on: input.occurredOn,
+    source_ref: { type: input.source, id: input.sourceId },
+  });
+  if (error) throw new Error(error.message);
+
+  await resyncTier(input.hypothesisId, userId);
+  revalidatePath("/self");
+}
+
+/** 不算。记下来，下次不问。 */
+export async function skipWindowCandidate(input: {
+  source: CandidateSource;
+  sourceId: string;
+}): Promise<void> {
+  const userId = await requireUserId();
+  if (!CANDIDATE_SOURCES.includes(input.source)) throw new Error("未知的来源");
+
+  const { error } = await supabaseAdmin.from("self_window_skips").upsert({
+    user_id: userId,
+    source_type: input.source,
+    source_id: input.sourceId,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/self");
 }

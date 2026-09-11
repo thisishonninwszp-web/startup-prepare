@@ -29,6 +29,15 @@ import {
   type Dossier,
   type DossierEvidence,
 } from "@/lib/domains/self-model/dossier";
+import {
+  CANDIDATE_WINDOW_DAYS,
+  fromCommitment,
+  fromDecision,
+  fromValidation,
+  pendingCandidates,
+  type Candidate,
+  type SourceRef,
+} from "@/lib/domains/self-model/candidates";
 import { traitStrength } from "@/lib/domains/self-model/trait-library";
 import {
   referenceClasses,
@@ -1343,4 +1352,118 @@ export async function getSelfDossier(userId: string): Promise<Dossier> {
   }
 
   return buildDossier(evidence);
+}
+
+// ---------------------------------------------------------------- 这算不算
+
+export type WindowCandidates = {
+  pending: Candidate[];
+  /** 能挂的假设：只列还立着的。 */
+  hypotheses: { id: string; code: string; statement: string }[];
+};
+
+/**
+ * 从已有记录里挑出还没回答过的候选窗口。
+ *
+ * 只看最近 60 天 —— 更早的事回忆不可靠，记下来的窗口也就不可靠。
+ * validations / decisions 没有 user_id，经 ideas 归属。
+ */
+export async function getWindowCandidates(
+  userId: string
+): Promise<WindowCandidates> {
+  const since = new Date();
+  since.setDate(since.getDate() - CANDIDATE_WINDOW_DAYS);
+  const sinceIso = since.toISOString();
+
+  const [ideas, commitments, windows, skips, hypotheses] = await Promise.all([
+    supabaseAdmin.from("ideas").select("id, title").eq("user_id", userId),
+    supabaseAdmin
+      .from("retro_commitments")
+      .select("id, text, due_at, completed_at, created_at")
+      .eq("user_id", userId)
+      .gte("created_at", sinceIso),
+    supabaseAdmin
+      .from("self_windows")
+      .select("source_ref")
+      .eq("user_id", userId)
+      .not("source_ref", "is", null),
+    supabaseAdmin
+      .from("self_window_skips")
+      .select("source_type, source_id")
+      .eq("user_id", userId),
+    supabaseAdmin
+      .from("self_hypotheses")
+      .select("id, code, statement")
+      .eq("user_id", userId)
+      .in("tier", ["hunch", "working", "load_bearing"])
+      .order("code"),
+  ]);
+  for (const result of [ideas, commitments, windows, skips, hypotheses]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  const ideaRows = (ideas.data ?? []) as { id: string; title: string }[];
+  const ideaIds = ideaRows.map((row) => row.id);
+  const titleOf = new Map(ideaRows.map((row) => [row.id, row.title]));
+
+  const [validations, decisions] =
+    ideaIds.length === 0
+      ? [{ data: [], error: null }, { data: [], error: null }]
+      : await Promise.all([
+          supabaseAdmin
+            .from("validations")
+            .select("id, idea_id, has_pain, will_pay, note, contacted_at")
+            .in("idea_id", ideaIds)
+            .gte("contacted_at", sinceIso),
+          supabaseAdmin
+            .from("decisions")
+            .select("id, idea_id, verdict, reason, decided_at")
+            .in("idea_id", ideaIds)
+            .gte("decided_at", sinceIso),
+        ]);
+  if (validations.error) throw new Error(validations.error.message);
+  if (decisions.error) throw new Error(decisions.error.message);
+
+  const candidates: Candidate[] = [
+    ...((validations.data ?? []) as {
+      id: string;
+      idea_id: string;
+      has_pain: string;
+      will_pay: string;
+      note: string | null;
+      contacted_at: string;
+    }[]).map((row) =>
+      fromValidation({ ...row, idea_title: titleOf.get(row.idea_id) ?? "一个想法" })
+    ),
+    ...((decisions.data ?? []) as {
+      id: string;
+      idea_id: string;
+      verdict: string;
+      reason: string | null;
+      decided_at: string;
+    }[]).map((row) =>
+      fromDecision({ ...row, idea_title: titleOf.get(row.idea_id) ?? "一个想法" })
+    ),
+    ...((commitments.data ?? []) as {
+      id: string;
+      text: string;
+      due_at: string | null;
+      completed_at: string | null;
+      created_at: string;
+    }[])
+      .map(fromCommitment)
+      .filter((item): item is Candidate => item !== null),
+  ];
+
+  const answered = ((windows.data ?? []) as { source_ref: SourceRef | null }[])
+    .map((row) => row.source_ref)
+    .filter((ref): ref is SourceRef => Boolean(ref?.type && ref?.id));
+  const skipped = ((skips.data ?? []) as { source_type: string; source_id: string }[]).map(
+    (row) => ({ type: row.source_type as SourceRef["type"], id: row.source_id })
+  );
+
+  return {
+    pending: pendingCandidates(candidates, answered, skipped),
+    hypotheses: (hypotheses.data ?? []) as WindowCandidates["hypotheses"],
+  };
 }

@@ -58,6 +58,7 @@ import {
   getQuestSightings,
   getSelfDeeds,
   getSelfDossier,
+  getWindowCandidates,
   getSelfEvents,
   getDeclarations,
   getSkillTree,
@@ -100,6 +101,7 @@ import {
   WindowForm,
 } from "./self-forms";
 import { DossierPanel } from "./dossier-panel";
+import { CandidatesPanel } from "./candidates-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -653,7 +655,10 @@ export default async function SelfPage() {
     getSelfDeeds(user!.id),
     getDispositions(user!.id, ledger),
   ]);
-  const dossier = await getSelfDossier(user!.id);
+  const [dossier, candidates] = await Promise.all([
+    getSelfDossier(user!.id),
+    getWindowCandidates(user!.id),
+  ]);
 
   const { calibration, entries, pending } = ledger;
   const active = entries.filter(
@@ -928,6 +933,17 @@ export default async function SelfPage() {
             每张标签也都写着要发生什么它才不成立 —— 那句话同时就是改掉它的办法。
           </p>
           <DossierPanel initial={dossier} />
+
+          <div className="mt-6 border-t border-border pt-4">
+            <p className="self-rule mb-2">
+              <span className="self-label shrink-0">这算不算</span>
+            </p>
+            <p className="mb-3 text-xs text-muted-foreground">
+              档案只会从这里长。不用你从零填 —— 最近发生过的接触、决定、承诺，
+              系统挑出来问你一句：算不算你某条假设说的那种情况。
+            </p>
+            <CandidatesPanel initial={candidates} />
+          </div>
         </div>
 
         <div className="self-panel self-corners p-5">
