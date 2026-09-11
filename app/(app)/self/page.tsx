@@ -59,6 +59,7 @@ import {
   getSelfDeeds,
   getSelfDossier,
   getWindowCandidates,
+  recordDossierEvents,
   getSelfEvents,
   getDeclarations,
   getSkillTree,
@@ -288,6 +289,9 @@ const EVENT_MARKS: Record<string, string> = {
   build_changed: "🔀",
   hypothesis_refuted: "🔴",
   tier_changed: "▲",
+  label_formed: "▣",
+  divide_found: "⇄",
+  label_flipped: "↻",
 };
 
 const QUEST_MARKS: Record<Quest["tier"], string> = {
@@ -646,6 +650,13 @@ export default async function SelfPage() {
       )
     )
   );
+  const [dossier, candidates] = await Promise.all([
+    getSelfDossier(user!.id),
+    getWindowCandidates(user!.id),
+  ]);
+  // 档案变了要在「最近的变化」留下时间。在读 events 之前记，这次就能看见。
+  await recordDossierEvents(user!.id, dossier);
+
   const [report, npcs, events, sightings, deedData, dispositions] =
     await Promise.all([
     getWeeklyReport(user!.id),
@@ -654,10 +665,6 @@ export default async function SelfPage() {
     getQuestSightings(user!.id),
     getSelfDeeds(user!.id),
     getDispositions(user!.id, ledger),
-  ]);
-  const [dossier, candidates] = await Promise.all([
-    getSelfDossier(user!.id),
-    getWindowCandidates(user!.id),
   ]);
 
   const { calibration, entries, pending } = ledger;
@@ -932,7 +939,7 @@ export default async function SelfPage() {
             每张标签底下挂的都是你自己写过的真事，点得开；
             每张标签也都写着要发生什么它才不成立 —— 那句话同时就是改掉它的办法。
           </p>
-          <DossierPanel initial={dossier} />
+          <DossierPanel initial={dossier} sketch={<SketchControl />} />
 
           <div className="mt-6 border-t border-border pt-4">
             <p className="self-rule mb-2">
@@ -944,19 +951,6 @@ export default async function SelfPage() {
             </p>
             <CandidatesPanel initial={candidates} />
           </div>
-        </div>
-
-        <div className="self-panel self-corners p-5">
-          <p className="self-rule mb-2">
-            <span className="self-label shrink-0">速写</span>
-          </p>
-          <p className="mb-3 text-xs text-muted-foreground">
-            这一页全是清单。可清单不是描述 —— 真被人问起「你是个什么样的人」，
-            你从属性表和技能格里一句话都搬不出来。
-            所以这里只写三句：什么情况下你会怎么做、这让你走到了哪儿、
-            以及它的另一面。
-          </p>
-          <SketchControl />
         </div>
 
         <WeeklyReport report={report} />

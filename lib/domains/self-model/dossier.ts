@@ -493,3 +493,61 @@ export function flipSide(
     remaining: label.flipsAfter,
   };
 }
+
+// ---------------------------------------------------------------- 留下记录
+
+/**
+ * 档案里值得在「最近的变化」留时间的事。
+ *
+ * 其余所有东西都是「现在的状态」，只有 changelog 记得什么时候变的。
+ * 三种事：一条苗头攒够次数长成了标签；同一件事第一次两边都有记录；
+ * 一条主题的多数一侧换了边。全部由代码从证据算出，靠 dedupe_key 只记一次。
+ */
+export type DossierEvent = {
+  kind: "label_formed" | "divide_found" | "label_flipped";
+  title: string;
+  detail: string | null;
+  dedupeKey: string;
+};
+
+export function dossierEvents(dossier: Dossier): DossierEvent[] {
+  const events: DossierEvent[] = [];
+
+  for (const label of [...dossier.kept, ...dossier.unkept]) {
+    if (label.strength !== "label") continue;
+    events.push({
+      kind: "label_formed",
+      title:
+        label.side === "kept"
+          ? `兑现那栏多了一条：${label.subject}`
+          : `欠着那栏多了一条：${label.subject}`,
+      detail: `攒够 ${label.evidence.length} 次`,
+      dedupeKey: `label:${label.side}:${label.subject}`,
+    });
+  }
+
+  for (const divide of dossier.divides) {
+    events.push({
+      kind: "divide_found",
+      title: `第一次两边都有记录：${divide.subject}`,
+      detail: `做到 ${divide.kept.length} 次 · 没做到 ${divide.unkept.length} 次`,
+      dedupeKey: `divide:${divide.subject}`,
+    });
+
+    // 多数一侧换边才算翻。两边一样多不算 —— 那是僵持，不是翻。
+    if (divide.kept.length !== divide.unkept.length) {
+      const now = divide.kept.length > divide.unkept.length ? "kept" : "unkept";
+      events.push({
+        kind: "label_flipped",
+        title:
+          now === "kept"
+            ? `翻过来了：${divide.subject} —— 现在做到的多`
+            : `翻回去了：${divide.subject} —— 现在没做到的多`,
+        detail: `做到 ${divide.kept.length} 次 · 没做到 ${divide.unkept.length} 次`,
+        dedupeKey: `flip:${divide.subject}:${now}`,
+      });
+    }
+  }
+
+  return events;
+}

@@ -5276,3 +5276,14 @@ alter table self_window_skips enable row level security;
 drop policy if exists "self_window_skips_owner" on self_window_skips;
 create policy "self_window_skips_owner" on self_window_skips
   for all using (auth.uid() = user_id);
+
+-- 050_self_events_dossier_kinds.sql
+alter table self_events drop constraint if exists self_events_kind_check;
+alter table self_events add constraint self_events_kind_check check (kind in (
+  'trait_granted', 'trait_faded',
+  'skill_up', 'skill_rust',
+  'feat_taken',
+  'title_earned', 'build_changed',
+  'hypothesis_refuted', 'tier_changed',
+  'label_formed', 'divide_found', 'label_flipped'
+));

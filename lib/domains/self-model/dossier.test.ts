@@ -3,6 +3,7 @@ import {
   MIN_LABEL_EVIDENCE,
   buildDossier,
   confrontations,
+  dossierEvents,
   emptiness,
   flipSide,
   fromDeed,
@@ -312,5 +313,46 @@ describe("背面：更好的我", () => {
     ]);
     const label = dossier.unkept[0];
     expect(flipSide(label, dossier)!.remaining).toBe(label.flipsAfter);
+  });
+});
+
+describe("留下记录", () => {
+  it("苗头不留记录，长成标签才留", () => {
+    const lead = buildDossier([evidence(), evidence()]);
+    expect(dossierEvents(lead).filter((e) => e.kind === "label_formed")).toHaveLength(0);
+
+    const formed = buildDossier([evidence(), evidence(), evidence()]);
+    const events = dossierEvents(formed).filter((e) => e.kind === "label_formed");
+    expect(events).toHaveLength(1);
+    expect(events[0].dedupeKey).toBe("label:kept:交付");
+  });
+
+  it("两边一样多是僵持，不算翻", () => {
+    const dossier = buildDossier([
+      evidence({ side: "kept" }),
+      evidence({ side: "unkept" }),
+    ]);
+    const events = dossierEvents(dossier);
+    expect(events.some((e) => e.kind === "divide_found")).toBe(true);
+    expect(events.some((e) => e.kind === "label_flipped")).toBe(false);
+  });
+
+  it("多数一侧换边，dedupe 带着当前那一侧，所以翻回去还能再记一次", () => {
+    const keptWins = buildDossier([
+      evidence({ side: "kept" }),
+      evidence({ side: "kept" }),
+      evidence({ side: "unkept" }),
+    ]);
+    const unkeptWins = buildDossier([
+      evidence({ side: "kept" }),
+      evidence({ side: "unkept" }),
+      evidence({ side: "unkept" }),
+    ]);
+    const a = dossierEvents(keptWins).find((e) => e.kind === "label_flipped");
+    const b = dossierEvents(unkeptWins).find((e) => e.kind === "label_flipped");
+    expect(a?.dedupeKey).toBe("flip:交付:kept");
+    expect(b?.dedupeKey).toBe("flip:交付:unkept");
+    expect(a?.title).toContain("做到的多");
+    expect(b?.title).toContain("没做到的多");
   });
 });

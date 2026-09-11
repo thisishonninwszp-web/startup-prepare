@@ -22,6 +22,7 @@ import {
 } from "@/lib/domains/self-model/catalog";
 import {
   buildDossier,
+  dossierEvents,
   fromDeed,
   fromHypothesis,
   fromPrediction,
@@ -1466,4 +1467,23 @@ export async function getWindowCandidates(
     pending: pendingCandidates(candidates, answered, skipped),
     hypotheses: (hypotheses.data ?? []) as WindowCandidates["hypotheses"],
   };
+}
+
+/** 档案的派生事件。撞上唯一索引说明早就记过了，忽略即可。 */
+export async function recordDossierEvents(
+  userId: string,
+  dossier: Dossier
+): Promise<void> {
+  const rows = dossierEvents(dossier).map((event) => ({
+    user_id: userId,
+    kind: event.kind,
+    title: event.title,
+    detail: event.detail,
+    dedupe_key: event.dedupeKey,
+  }));
+  if (rows.length === 0) return;
+  await supabaseAdmin.from("self_events").upsert(rows, {
+    onConflict: "user_id,dedupe_key",
+    ignoreDuplicates: true,
+  });
 }

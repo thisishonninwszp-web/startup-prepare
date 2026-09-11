@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Err, useAction } from "./self-forms";
 import { nameDossierNow } from "./actions";
 import {
   MIN_LABEL_EVIDENCE,
+  EVIDENCE_SOURCES,
   confrontations,
+  emptiness,
   flipSide,
   type Confrontation,
   type FlipSide,
   type Dossier,
   type DossierEvidence,
   type DossierLabel,
+  type EvidenceSource,
 } from "@/lib/domains/self-model/dossier";
 
-type Side = "kept" | "unkept" | "divides";
+type Side = "kept" | "unkept" | "divides" | "sketch";
 
 const TABS: { key: Side; label: string; hint: string }[] = [
   {
@@ -33,7 +36,20 @@ const TABS: { key: Side; label: string; hint: string }[] = [
     label: "看情况",
     hint: "同一件事，两边都有话说。那就得讲清楚什么时候是哪一句。",
   },
+  {
+    key: "sketch",
+    label: "速写",
+    hint: "三句话。真被人问起「你是个什么样的人」，从清单里一句都搬不出来，这三句能。",
+  },
 ];
+
+const SOURCE_NAMES: Record<EvidenceSource, string> = {
+  prediction: "对过账的预测",
+  deed: "做完或烂尾的事迹",
+  adoption: "标了有没有人用的事迹",
+  window: "假设的触发窗口",
+  hypothesis: "被推翻的假设",
+};
 
 function EvidenceRow({ item }: { item: DossierEvidence }) {
   return (
@@ -246,32 +262,56 @@ function ConfrontationBlock({
   );
 }
 
-function Empty() {
+function Empty({ dossier, side }: { dossier: Dossier; side: "kept" | "unkept" }) {
+  const { empty, missing } = emptiness(dossier);
   return (
     <div className="self-panel">
       <div className="self-panel__body space-y-2">
-        <p className="text-[15px] leading-relaxed">这里空着。</p>
-        <p className="text-sm text-muted-foreground">
-          档案只收一种东西：你事先说过会怎样、后来有了结果的事。
-          押出去还没到期的、正在做还没做完的，都不算 —— 悬着的事说明不了你是谁。
-          所以刚开始它必然是空的，这不是坏了。
+        <p className="text-[15px] leading-relaxed">
+          {empty ? "这里空着。" : side === "kept" ? "兑现那栏还是空的。" : "欠着那栏还是空的。"}
         </p>
-        <p className="text-sm text-muted-foreground">
-          让它不空最快的一步：挑一件你这周就会知道结果的事，
-          先写下你觉得会怎样，到点回来对一次。一条记录，两个时间点，它就进来了。
-        </p>
+        {empty ? (
+          <>
+            <p className="text-sm text-muted-foreground">
+              档案只收一种东西：你事先说过会怎样、后来有了结果的事。
+              押出去还没到期的、正在做还没做完的，都不算 —— 悬着的事说明不了你是谁。
+              所以刚开始它必然是空的，这不是坏了。
+            </p>
+            <p className="text-sm text-muted-foreground">
+              让它不空最快的一步：挑一件你这周就会知道结果的事，
+              先写下你觉得会怎样，到点回来对一次。一条记录，两个时间点，它就进来了。
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {side === "kept"
+              ? "有记录，但没有一条是对上的。这本身就是一条信息。"
+              : "有记录，而且全对上了。样本还少的时候先别高兴，多攒几条再看。"}
+          </p>
+        )}
+        {missing.length > 0 && missing.length < EVIDENCE_SOURCES.length && (
+          <p className="text-xs text-muted-foreground">
+            还没来过的记录：{missing.map((source) => SOURCE_NAMES[source]).join("、")}。
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-export function DossierPanel({ initial }: { initial: Dossier }) {
+export function DossierPanel({
+  initial,
+  sketch,
+}: {
+  initial: Dossier;
+  sketch?: ReactNode;
+}) {
   const [dossier, setDossier] = useState(initial);
   const [side, setSide] = useState<Side>("unkept");
   const { pending, error, run } = useAction();
 
   const tab = TABS.find((item) => item.key === side) ?? TABS[0];
-  const labels = side === "kept" ? dossier.kept : dossier.unkept;
+  const labels = side === "kept" ? dossier.kept : side === "unkept" ? dossier.unkept : [];
   const facing = confrontations(dossier);
   const contested = new Set(facing.map((item) => item.subject));
   const named = [...dossier.kept, ...dossier.unkept].some(
@@ -314,7 +354,11 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
       <p className="text-xs text-muted-foreground">{tab.hint}</p>
       <Err message={error} />
 
-      {side === "divides" ? (
+      {side === "sketch" ? (
+        <div className="self-panel">
+          <div className="self-panel__body">{sketch}</div>
+        </div>
+      ) : side === "divides" ? (
         facing.length === 0 ? (
           <div className="self-panel">
             <div className="self-panel__body space-y-2">
@@ -336,7 +380,7 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
           </div>
         )
       ) : labels.length === 0 ? (
-        <Empty />
+        <Empty dossier={dossier} side={side === "kept" ? "kept" : "unkept"} />
       ) : (
         <div className="space-y-3">
           {labels.map((label) => (
