@@ -77,8 +77,8 @@ export type DossierLabel = {
   falsifier: string;
   /** AI 填。代码永远不写这两栏。 */
   name: string | null;
-  /** 凭什么这么说 —— 一句，只复述这簇里已有的事。 */
-  because: string | null;
+  /** 这簇里真实发生过的一次，写成看得见的样子。 */
+  scene: string | null;
 };
 
 /** 分水岭：同一主题两侧都有记录 —— 这个人在什么情况下会翻面。 */
@@ -90,6 +90,14 @@ export type Divide = {
   unkeptContexts: string[];
   /** AI 填：什么情况下你是前者，什么情况下是后者。 */
   condition: string | null;
+};
+
+/** 同一主题的两侧，当面摆在一起。 */
+export type Confrontation = {
+  subject: string;
+  kept: DossierLabel | null;
+  unkept: DossierLabel | null;
+  divide: Divide;
 };
 
 export type Dossier = {
@@ -279,7 +287,7 @@ function toLabel(
       dominantSource(own)
     ),
     name: null,
-    because: null,
+    scene: null,
   };
 }
 
@@ -356,6 +364,32 @@ export function buildDossier(evidence: DossierEvidence[]): Dossier {
     bySource,
     total: deduped.length,
   };
+}
+
+
+/**
+ * 对质：同一主题的两侧摆在一起。
+ *
+ * 这是三份档案唯一的爽点。「自己挖坑自己填」和「做了没人用」说的是同一批
+ * 项目，可它们各待在一个 tab 里，你永远看不到它们当面顶牛 ——
+ * 而那个瞬间才是这套东西的全部意义：两句话都为真，所以你得知道
+ * 什么时候是哪一句。
+ *
+ * 注意主题不同的两条不算对质（「做完」和「有人要」是两件事，
+ * 它们不矛盾）。只有同一主题两侧都有记录，才是真的顶牛。
+ */
+export function confrontations(dossier: Dossier): Confrontation[] {
+  const keptBySubject = new Map(dossier.kept.map((item) => [item.subject, item]));
+  const unkeptBySubject = new Map(
+    dossier.unkept.map((item) => [item.subject, item])
+  );
+
+  return dossier.divides.map((divide) => ({
+    subject: divide.subject,
+    kept: keptBySubject.get(divide.subject) ?? null,
+    unkept: unkeptBySubject.get(divide.subject) ?? null,
+    divide,
+  }));
 }
 
 /**

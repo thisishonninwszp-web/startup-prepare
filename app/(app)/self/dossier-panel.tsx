@@ -6,6 +6,8 @@ import { Err, useAction } from "./self-forms";
 import { nameDossierNow } from "./actions";
 import {
   MIN_LABEL_EVIDENCE,
+  confrontations,
+  type Confrontation,
   type Dossier,
   type DossierEvidence,
   type DossierLabel,
@@ -27,7 +29,7 @@ const TABS: { key: Side; label: string; hint: string }[] = [
   {
     key: "divides",
     label: "看情况",
-    hint: "同一件事你两边都占过 —— 那就得说清楚，什么时候你是哪一种。",
+    hint: "同一件事，两边都有话说。那就得讲清楚什么时候是哪一句。",
   },
 ];
 
@@ -45,7 +47,38 @@ function EvidenceRow({ item }: { item: DossierEvidence }) {
   );
 }
 
-function LabelCard({ label }: { label: DossierLabel }) {
+/**
+ * 推翻条件画成能啃的进度。
+ *
+ * 「再有 2 次就翻过来」本来是句死话。标出还差几格，它就成了一件有终点的事 ——
+ * 而够到终点的唯一办法是去做真事，不是在这页上点什么。
+ */
+function Countdown({ label }: { label: DossierLabel }) {
+  if (label.strength === "lead") return null;
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-muted-foreground">
+      <span className="self-label shrink-0">怎么改</span>
+      <span>{label.falsifier}</span>
+      <span
+        className="shrink-0 font-mono text-[11px]"
+        aria-label={`还差 ${label.flipsAfter} 次`}
+      >
+        {"○".repeat(Math.min(label.flipsAfter, 8))}
+        {label.flipsAfter > 8 && ` +${label.flipsAfter - 8}`}
+      </span>
+    </p>
+  );
+}
+
+function LabelCard({
+  label,
+  alsoOtherSide,
+  onJump,
+}: {
+  label: DossierLabel;
+  alsoOtherSide?: boolean;
+  onJump?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const isLead = label.strength === "lead";
 
@@ -61,19 +94,32 @@ function LabelCard({ label }: { label: DossierLabel }) {
         </span>
       </div>
       <div className="self-panel__body space-y-2">
-        {label.because && (
-          <p className="text-[15px] leading-relaxed">{label.because}</p>
+        {label.scene && (
+          <p className="border-l-2 border-primary/40 pl-3 text-[15px] leading-relaxed">
+            {label.scene}
+          </p>
         )}
         {!label.name && !isLead && (
           <p className="text-sm text-muted-foreground">
             还没起名字。点上面那个按钮，让它把这几件事翻成一句人话。
           </p>
         )}
+        {isLead && (
+          <p className="text-sm text-muted-foreground">{label.falsifier}</p>
+        )}
 
-        <p className="text-sm text-muted-foreground">
-          <span className="self-label mr-1.5">怎么改</span>
-          {label.falsifier}
-        </p>
+        <Countdown label={label} />
+
+        {alsoOtherSide && (
+          <p className="text-sm text-muted-foreground">
+            同一件事，另一边也有话说。
+            {onJump && (
+              <Button variant="link" size="sm" onClick={onJump}>
+                摆到一起看
+              </Button>
+            )}
+          </p>
+        )}
 
         <Button
           variant="ghost"
@@ -94,7 +140,56 @@ function LabelCard({ label }: { label: DossierLabel }) {
   );
 }
 
-function Empty({ dossier }: { dossier: Dossier }) {
+/**
+ * 对质。两句都为真，所以你得知道什么时候是哪一句。
+ * 这是三份档案唯一的爽点，之前被 tab 切没了。
+ */
+function ConfrontationBlock({ item }: { item: Confrontation }) {
+  return (
+    <div className="space-y-3">
+      <div className="self-plate self-corners p-4">
+        <p className="self-label mb-1">分界线</p>
+        <p className="text-[15px] leading-relaxed">
+          {item.divide.condition ?? item.subject}
+        </p>
+        {item.divide.condition && (
+          <p className="mt-1 text-sm text-muted-foreground">{item.subject}</p>
+        )}
+        <p className="mt-2 text-xs text-muted-foreground">
+          {item.divide.keptContexts.length > 0 && (
+            <>做到时：{item.divide.keptContexts.join(" / ")}　</>
+          )}
+          {item.divide.unkeptContexts.length > 0 && (
+            <>没做到：{item.divide.unkeptContexts.join(" / ")}</>
+          )}
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {item.kept ? (
+          <LabelCard label={item.kept} />
+        ) : (
+          <div className="self-panel">
+            <div className="self-panel__body text-sm text-muted-foreground">
+              这一侧还没攒够能说的。
+            </div>
+          </div>
+        )}
+        {item.unkept ? (
+          <LabelCard label={item.unkept} />
+        ) : (
+          <div className="self-panel">
+            <div className="self-panel__body text-sm text-muted-foreground">
+              这一侧还没攒够能说的。
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Empty() {
   return (
     <div className="self-panel">
       <div className="self-panel__body space-y-2">
@@ -108,11 +203,6 @@ function Empty({ dossier }: { dossier: Dossier }) {
           让它不空最快的一步：挑一件你这周就会知道结果的事，
           先写下你觉得会怎样，到点回来对一次。一条记录，两个时间点，它就进来了。
         </p>
-        {dossier.total === 0 && (
-          <p className="text-sm text-muted-foreground">
-            现在预测、事迹、假设窗口这几处一条都没有。
-          </p>
-        )}
       </div>
     </div>
   );
@@ -125,6 +215,8 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
 
   const tab = TABS.find((item) => item.key === side) ?? TABS[0];
   const labels = side === "kept" ? dossier.kept : dossier.unkept;
+  const facing = confrontations(dossier);
+  const contested = new Set(facing.map((item) => item.subject));
   const named = [...dossier.kept, ...dossier.unkept].some(
     (label) => label.name !== null
   );
@@ -140,6 +232,11 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
             onClick={() => setSide(item.key)}
           >
             {item.label}
+            {item.key === "divides" && facing.length > 0 && (
+              <span className="ml-1.5 font-mono text-[11px]">
+                {facing.length}
+              </span>
+            )}
           </Button>
         ))}
         <Button
@@ -161,7 +258,7 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
       <Err message={error} />
 
       {side === "divides" ? (
-        dossier.divides.length === 0 ? (
+        facing.length === 0 ? (
           <div className="self-panel">
             <div className="self-panel__body space-y-2">
               <p className="text-[15px] leading-relaxed">
@@ -169,46 +266,29 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
               </p>
               <p className="text-sm text-muted-foreground">
                 这一栏要的是同一类事情上，你有时做到了、有时没做到 ——
-                那个分界线才是最值得知道的东西。现在每一类都还是一边倒，
+                那条分界线才是最值得知道的东西。现在每一类都还是一边倒，
                 要么是真的稳定，要么只是记得太少。
               </p>
             </div>
           </div>
         ) : (
-          dossier.divides.map((divide) => (
-            <div key={divide.subject} className="self-panel">
-              <div className="self-panel__head">
-                <span className="self-label">分界线</span>
-                <span className="text-sm font-medium">{divide.subject}</span>
-              </div>
-              <div className="self-panel__body space-y-3">
-                {divide.condition && (
-                  <p className="text-[15px] leading-relaxed">
-                    {divide.condition}
-                  </p>
-                )}
-                <div>
-                  <p className="self-label mb-1">做到的时候</p>
-                  {divide.kept.map((item) => (
-                    <EvidenceRow key={item.key} item={item} />
-                  ))}
-                </div>
-                <div>
-                  <p className="self-label mb-1">没做到的时候</p>
-                  {divide.unkept.map((item) => (
-                    <EvidenceRow key={item.key} item={item} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))
+          <div className="space-y-6">
+            {facing.map((item) => (
+              <ConfrontationBlock key={item.subject} item={item} />
+            ))}
+          </div>
         )
       ) : labels.length === 0 ? (
-        <Empty dossier={dossier} />
+        <Empty />
       ) : (
         <div className="space-y-3">
           {labels.map((label) => (
-            <LabelCard key={`${label.side}:${label.subject}`} label={label} />
+            <LabelCard
+              key={`${label.side}:${label.subject}`}
+              label={label}
+              alsoOtherSide={contested.has(label.subject)}
+              onJump={() => setSide("divides")}
+            />
           ))}
           {labels.some((label) => label.strength === "lead") && (
             <p className="text-xs text-muted-foreground">

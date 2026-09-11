@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MIN_LABEL_EVIDENCE,
   buildDossier,
+  confrontations,
   emptiness,
   fromDeed,
   fromHypothesis,
@@ -225,5 +226,34 @@ describe("推翻条件按来源说话", () => {
       )
     );
     expect(dossier.unkept[0].falsifier).toContain("赶上这种情况你动了");
+  });
+});
+
+describe("对质", () => {
+  it("同一主题两侧配成一对，摆在一起", () => {
+    const dossier = buildDossier([
+      evidence({ subject: "交付", side: "kept", context: "有人盯着" }),
+      evidence({ subject: "交付", side: "kept", context: "有人盯着" }),
+      evidence({ subject: "交付", side: "unkept", context: "没人管" }),
+    ]);
+    const facing = confrontations(dossier);
+    expect(facing).toHaveLength(1);
+    expect(facing[0].kept?.evidence).toHaveLength(2);
+    expect(facing[0].unkept?.evidence).toHaveLength(1);
+  });
+
+  it("主题不同的两条不算对质 —— 做完和有人要不矛盾", () => {
+    const deeds = Array.from({ length: 4 }, (_, index) =>
+      deed({ id: `d${index}`, outcome: "done", adopted: false })
+    );
+    expect(confrontations(buildDossier(deeds.flatMap(fromDeed)))).toHaveLength(0);
+  });
+
+  it("一边倒的主题不进对质", () => {
+    const dossier = buildDossier([
+      evidence({ subject: "交付", side: "kept" }),
+      evidence({ subject: "交付", side: "kept" }),
+    ]);
+    expect(confrontations(dossier)).toHaveLength(0);
   });
 });

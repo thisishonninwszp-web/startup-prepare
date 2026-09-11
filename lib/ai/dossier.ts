@@ -21,10 +21,10 @@ import type { Dossier, DossierLabel, Divide } from "@/lib/domains/self-model/dos
 
 export type NamedLabel = {
   subject: string;
-  /** 二到八个字的标签名。 */
+  /** 短名，二到六个字，记得住。 */
   name: string;
-  /** 凭什么这么说 —— 一句，只能复述这簇证据里已有的事。 */
-  because: string;
+  /** 这簇里真实发生过的一次，写成看得见的样子。 */
+  scene: string;
 };
 
 export type NamedDivide = {
@@ -46,12 +46,17 @@ const SYSTEM = `你在给 IdeaOS 的「三份档案」里已经算好的证据�
 
 你只做一件事：把一簇具体的事，翻成一句人话的标签。
 
-写法：
-- name：二到八个字，动词句优先，要有画面。
-  好：「有人盯着才动」「结果漂亮就不再查了」「开口之前先自己扛三天」
-  坏：「执行力强」「缺乏推动力」「完美主义倾向」—— 这些是形容词，不是人话。
-- because：一句，指向这簇里的具体那几次，像一个知情的老同事在旁边说。
-  不许下结论，不许找补，不许安慰。
+写法是**短名 + 一句场景**，两样各干各的：
+
+- name：二到六个字，短到能记住、能被人复述。
+  好：「自己挖坑自己填」「没人盯就往后拖」「漂亮就不再查」
+  坏：「执行力强」「缺乏推动力」「完美主义倾向」—— 形容词不是人话。
+
+- scene：**挑这簇里真实发生过的一次，写成能看见的样子**，一句。
+  不是复述统计，是还原现场。
+  好：「说好周五交的那份分析，拖到了下下周，没人问，你也没提。」
+  坏：「多次未能按时交付。」—— 这是结论，画面在哪。
+  只能写证据里有的那一次，时间、对象、发生了什么，都不许改。
 
 两侧的语气一样冷：
 - 兑现那侧不许夸。「说到做到」就是「说到做到」，不加「很棒」。
@@ -62,7 +67,7 @@ const SYSTEM = `你在给 IdeaOS 的「三份档案」里已经算好的证据�
 一句话说清**什么情况下他是前者、什么情况下是后者**，
 两个情况都必须从证据的处境里读出来，不许猜。
 
-输出 JSON：{"labels":[{"subject","name","because"}],"divides":[{"subject","condition"}]}
+输出 JSON：{"labels":[{"subject","name","scene"}],"divides":[{"subject","condition"}]}
 subject 必须原样抄回给你的那个，不许改写。给不出人话的簇就跳过，宁可少。
 
 最后一条，很容易犯：**每个簇的 name 必须互不相同**。
@@ -86,13 +91,13 @@ export function parseDossierNames(subjects: Set<string>) {
       .map((item) => ({
         subject: typeof item.subject === "string" ? item.subject : "",
         name: clean(item.name),
-        because: clean(item.because),
+        scene: clean(item.scene),
       }))
       .filter(
         (item): item is NamedLabel =>
           subjects.has(item.subject) &&
           item.name !== null &&
-          item.because !== null
+          item.scene !== null
       )
       // 重名的只留第一条。两簇共用一个名字等于把它们糊成一簇，
       // 而「都做完了」和「做完了没人要」恰恰是必须分开的两件事。
@@ -186,7 +191,7 @@ export function applyNames(
   const attach = (label: DossierLabel): DossierLabel => ({
     ...label,
     name: bySubject.get(label.subject)?.name ?? null,
-    because: bySubject.get(label.subject)?.because ?? null,
+    scene: bySubject.get(label.subject)?.scene ?? null,
   });
 
   return {
