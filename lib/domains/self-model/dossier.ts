@@ -407,3 +407,89 @@ export function emptiness(dossier: Dossier): {
   );
   return { empty: dossier.total === 0, missing };
 }
+
+// ---------------------------------------------------------------- 背面
+
+/**
+ * 欠着那张卡的背面：更好的我。
+ *
+ * 不是第三份画像，是欠着那份的未来时。反复想的东西必须是「那一刻我怎么做」，
+ * 不能是「我是什么样的人」—— 前者练的是情境到动作那根线，到了那个下午会响；
+ * 后者练的是关于自己的信念，绑的是「我」不是「那个下午」，到时候不放电。
+ *
+ * 所以三行里没有一句是标签：
+ *   proven  你做到过 —— 同主题兑现侧的真事。不是鼓励，是你自己的数据。
+ *   trigger 那一刻长这样 —— 欠着侧出事时的处境，提前把画面走一遍。
+ *   action  那一刻做这个 —— 一个动词。
+ */
+export type FlipSide = {
+  /** 你做到过。没有就如实说没有。 */
+  proven: string;
+  /** 那一刻长这样。 */
+  trigger: string;
+  /** 那一刻做这个。 */
+  action: string;
+  /** 还差几次，这条就翻过来了。 */
+  remaining: number;
+};
+
+function listDates(items: DossierEvidence[]): string {
+  return items
+    .map((item) => item.occurredOn.slice(5).replace(/^0/, "").replace("-0", "/").replace("-", "/"))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("、");
+}
+
+function actionFor(label: DossierLabel): string {
+  switch (label.evidence[0]?.source) {
+    case "window":
+      // 假设原句本身就是动作：「答应了的交付日期我会守住」。
+      return label.subject;
+    case "adoption":
+      return "动手之前，先找到一个会用它的人，问他要不要。";
+    case "deed":
+      return "开了头就先定一个最小的「做完」，做到那儿再说。";
+    case "prediction":
+      return "押之前先写下：什么样算落空。";
+    default:
+      return label.subject;
+  }
+}
+
+/**
+ * 给一张欠着的卡拼背面。
+ *
+ * 只对欠着的卡有背面 —— 兑现的卡没什么可翻的，被推翻的假设也不该翻回去。
+ */
+export function flipSide(
+  label: DossierLabel,
+  dossier: Dossier
+): FlipSide | null {
+  if (label.side !== "unkept") return null;
+  if (label.evidence[0]?.source === "hypothesis") return null;
+
+  const kept = dossier.kept.find((item) => item.subject === label.subject);
+  const keptContexts = kept ? uniqueContexts(kept.evidence) : [];
+  const unkeptContexts = uniqueContexts(label.evidence);
+
+  const proven = kept
+    ? `你做到过。${listDates(kept.evidence)} 那${
+        kept.evidence.length > 1 ? "几" : ""
+      }次${
+        keptContexts.length > 0 ? `，都是${keptContexts.join("、")}` : ""
+      } —— 那不是运气，是你在那个条件下的常态。`
+    : "还没有做到过的记录。这一行等你第一次做到就会有。";
+
+  const trigger =
+    unkeptContexts.length > 0
+      ? `那一刻长这样：${unkeptContexts.join("，或者")}。`
+      : `那一刻长这样：${label.evidence[0]?.claim ?? label.subject}。`;
+
+  return {
+    proven,
+    trigger,
+    action: actionFor(label),
+    remaining: label.flipsAfter,
+  };
+}

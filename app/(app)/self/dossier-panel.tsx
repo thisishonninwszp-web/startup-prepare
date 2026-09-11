@@ -7,7 +7,9 @@ import { nameDossierNow } from "./actions";
 import {
   MIN_LABEL_EVIDENCE,
   confrontations,
+  flipSide,
   type Confrontation,
+  type FlipSide,
   type Dossier,
   type DossierEvidence,
   type DossierLabel,
@@ -70,17 +72,59 @@ function Countdown({ label }: { label: DossierLabel }) {
   );
 }
 
+/**
+ * 背面。反复想的是「那一刻」，不是「我这个人」。
+ * 三行全是代码从已有记录拼的，没有一句是 AI 的评价。
+ */
+function BackSide({ back, onFlip }: { back: FlipSide; onFlip: () => void }) {
+  return (
+    <div className="self-panel">
+      <div className="self-panel__head">
+        <span className="self-label">背面</span>
+        <span className="text-sm font-medium">更好的我，等于这条翻过来的样子</span>
+        <span
+          className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground"
+          aria-label={`还差 ${back.remaining} 次`}
+        >
+          {"○".repeat(Math.min(back.remaining, 8))}
+          {back.remaining > 8 && ` +${back.remaining - 8}`}
+        </span>
+      </div>
+      <div className="self-panel__body space-y-2">
+        <p className="text-[15px] leading-relaxed">{back.proven}</p>
+        <p className="text-[15px] leading-relaxed">{back.trigger}</p>
+        <p className="border-l-2 border-primary/40 pl-3 text-[15px] font-medium leading-relaxed">
+          {back.action}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          每周读一遍的是上面那个下午，不是「我是什么样的人」。它不动，圈就不动。
+        </p>
+        <Button variant="ghost" size="sm" onClick={onFlip}>
+          翻回正面
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function LabelCard({
   label,
+  back,
   alsoOtherSide,
   onJump,
 }: {
   label: DossierLabel;
+  back?: FlipSide | null;
   alsoOtherSide?: boolean;
   onJump?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [flipped, setFlipped] = useState(false);
   const isLead = label.strength === "lead";
+
+  if (flipped && back) {
+    return <BackSide back={back} onFlip={() => setFlipped(false)} />;
+  }
 
   return (
     <div className="self-panel">
@@ -121,13 +165,20 @@ function LabelCard({
           </p>
         )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setOpen((value) => !value)}
-        >
-          {open ? "收起" : `凭什么这么说（${label.evidence.length} 条）`}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? "收起" : `凭什么这么说（${label.evidence.length} 条）`}
+          </Button>
+          {back && !isLead && (
+            <Button variant="outline" size="sm" onClick={() => setFlipped(true)}>
+              翻过来看
+            </Button>
+          )}
+        </div>
         {open && (
           <div>
             {label.evidence.map((item) => (
@@ -144,7 +195,13 @@ function LabelCard({
  * 对质。两句都为真，所以你得知道什么时候是哪一句。
  * 这是三份档案唯一的爽点，之前被 tab 切没了。
  */
-function ConfrontationBlock({ item }: { item: Confrontation }) {
+function ConfrontationBlock({
+  item,
+  dossier,
+}: {
+  item: Confrontation;
+  dossier: Dossier;
+}) {
   return (
     <div className="space-y-3">
       <div className="self-plate self-corners p-4">
@@ -176,7 +233,7 @@ function ConfrontationBlock({ item }: { item: Confrontation }) {
           </div>
         )}
         {item.unkept ? (
-          <LabelCard label={item.unkept} />
+          <LabelCard label={item.unkept} back={flipSide(item.unkept, dossier)} />
         ) : (
           <div className="self-panel">
             <div className="self-panel__body text-sm text-muted-foreground">
@@ -274,7 +331,7 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
         ) : (
           <div className="space-y-6">
             {facing.map((item) => (
-              <ConfrontationBlock key={item.subject} item={item} />
+              <ConfrontationBlock key={item.subject} item={item} dossier={dossier} />
             ))}
           </div>
         )
@@ -286,6 +343,7 @@ export function DossierPanel({ initial }: { initial: Dossier }) {
             <LabelCard
               key={`${label.side}:${label.subject}`}
               label={label}
+              back={flipSide(label, dossier)}
               alsoOtherSide={contested.has(label.subject)}
               onJump={() => setSide("divides")}
             />

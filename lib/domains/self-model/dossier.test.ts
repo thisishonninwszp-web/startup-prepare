@@ -4,6 +4,7 @@ import {
   buildDossier,
   confrontations,
   emptiness,
+  flipSide,
   fromDeed,
   fromHypothesis,
   fromPrediction,
@@ -255,5 +256,61 @@ describe("对质", () => {
       evidence({ subject: "交付", side: "kept" }),
     ]);
     expect(confrontations(dossier)).toHaveLength(0);
+  });
+});
+
+describe("背面：更好的我", () => {
+  it("欠着的卡有背面，兑现的没有", () => {
+    const dossier = buildDossier([
+      evidence({ subject: "交付", side: "kept" }),
+      evidence({ subject: "交付", side: "unkept" }),
+    ]);
+    expect(flipSide(dossier.kept[0], dossier)).toBeNull();
+    expect(flipSide(dossier.unkept[0], dossier)).not.toBeNull();
+  });
+
+  it("第一行是你自己做到过的真事，带日期和当时的条件", () => {
+    const dossier = buildDossier([
+      evidence({ subject: "交付", side: "kept", occurredOn: "2026-01-15", context: "有上级盯着" }),
+      evidence({ subject: "交付", side: "kept", occurredOn: "2026-02-10", context: "有上级盯着" }),
+      evidence({ subject: "交付", side: "unkept", context: "没人催的自选题" }),
+    ]);
+    const back = flipSide(dossier.unkept[0], dossier)!;
+    expect(back.proven).toContain("你做到过");
+    expect(back.proven).toContain("2/10");
+    expect(back.proven).toContain("有上级盯着");
+  });
+
+  it("没做到过就如实说没有，不编", () => {
+    const dossier = buildDossier([
+      evidence({ subject: "交付", side: "unkept", context: "没人催" }),
+    ]);
+    expect(flipSide(dossier.unkept[0], dossier)!.proven).toContain("还没有做到过的记录");
+  });
+
+  it("第二行是出事时的处境，第三行是动作", () => {
+    const dossier = buildDossier([
+      evidence({ source: "window", subject: "答应了的交付日期我会守住", side: "unkept", context: "没人催的自选题" }),
+    ]);
+    const back = flipSide(dossier.unkept[0], dossier)!;
+    expect(back.trigger).toContain("没人催的自选题");
+    expect(back.action).toBe("答应了的交付日期我会守住");
+  });
+
+  it("被推翻的假设没有背面 —— 不该翻回去", () => {
+    const dossier = buildDossier([
+      evidence({ source: "hypothesis", subject: "我扛得住", side: "unkept" }),
+    ]);
+    expect(flipSide(dossier.unkept[0], dossier)).toBeNull();
+  });
+
+  it("还差几次和正面的推翻条件是同一个数", () => {
+    const dossier = buildDossier([
+      evidence({ subject: "交付", side: "unkept" }),
+      evidence({ subject: "交付", side: "unkept" }),
+      evidence({ subject: "交付", side: "unkept" }),
+    ]);
+    const label = dossier.unkept[0];
+    expect(flipSide(label, dossier)!.remaining).toBe(label.flipsAfter);
   });
 });
