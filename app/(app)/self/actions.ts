@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { applyNames, nameDossier } from "@/lib/ai/dossier";
+import type { Dossier } from "@/lib/domains/self-model/dossier";
+import { getSelfDossier } from "./queries";
+
 import {
   evaluateTier,
   SELF_HYPOTHESIS_KINDS,
@@ -1289,4 +1293,17 @@ export async function relockSkillNode(nodeKey: string): Promise<void> {
     .eq("node_key", nodeKey);
   if (error) throw new Error(error.message);
   revalidatePath("/self");
+}
+
+/**
+ * 给三份档案里的簇起名字。
+ *
+ * 不入库。名字是 AI 对当前证据的一次翻译，证据变了名字就该跟着变 ——
+ * 存下来只会让一句旧话挂在新的证据上面。
+ */
+export async function nameDossierNow(): Promise<Dossier> {
+  const userId = await requireUserId();
+  const dossier = await getSelfDossier(userId);
+  if (dossier.total === 0) return dossier;
+  return applyNames(dossier, await nameDossier(dossier));
 }

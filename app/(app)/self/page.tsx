@@ -57,6 +57,7 @@ import {
   getNpcs,
   getQuestSightings,
   getSelfDeeds,
+  getSelfDossier,
   getSelfEvents,
   getDeclarations,
   getSkillTree,
@@ -98,6 +99,7 @@ import {
   SleepForm,
   WindowForm,
 } from "./self-forms";
+import { DossierPanel } from "./dossier-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -651,6 +653,7 @@ export default async function SelfPage() {
     getSelfDeeds(user!.id),
     getDispositions(user!.id, ledger),
   ]);
+  const dossier = await getSelfDossier(user!.id);
 
   const { calibration, entries, pending } = ledger;
   const active = entries.filter(
@@ -914,6 +917,19 @@ export default async function SelfPage() {
         </TabsList>
 
       <TabsContent value="overview" className="mt-6 space-y-8">
+        <div className="self-panel self-corners p-5">
+          <p className="self-rule mb-2">
+            <span className="self-label shrink-0">档案</span>
+          </p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            同一批记录，三种切法：你说到做到的那些、你说了没做到的那些，
+            以及同一件事上你两边都占过的地方。
+            每张标签底下挂的都是你自己写过的真事，点得开；
+            每张标签也都写着要发生什么它才不成立 —— 那句话同时就是改掉它的办法。
+          </p>
+          <DossierPanel initial={dossier} />
+        </div>
+
         <div className="self-panel self-corners p-5">
           <p className="self-rule mb-2">
             <span className="self-label shrink-0">速写</span>

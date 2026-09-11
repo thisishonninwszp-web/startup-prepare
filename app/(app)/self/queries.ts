@@ -20,6 +20,15 @@ import {
 import {
   type CatalogEntry,
 } from "@/lib/domains/self-model/catalog";
+import {
+  buildDossier,
+  fromDeed,
+  fromHypothesis,
+  fromPrediction,
+  fromWindow,
+  type Dossier,
+  type DossierEvidence,
+} from "@/lib/domains/self-model/dossier";
 import { traitStrength } from "@/lib/domains/self-model/trait-library";
 import {
   referenceClasses,
@@ -1257,4 +1266,81 @@ export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
     customised: [...overrides.keys()],
     added: extra.map((def) => def.key),
   };
+}
+
+// ---------------------------------------------------------------- 三份档案
+
+/**
+ * 三份档案的取数层。
+ *
+ * 这里不发新查询，只把已有的台账和事迹重新切一遍 ——
+ * 档案不是新的一摊数据，是同一批记录换个切法。
+ *
+ * 主题（subject）的取法是关键：一条假设的窗口和它底下的预测，
+ * 必须归到同一个主题，否则「说到做到」和「说了没做到」会落进两个簇，
+ * 分水岭就永远算不出来。
+ */
+export async function getSelfDossier(userId: string): Promise<Dossier> {
+  const [ledger, deedData] = await Promise.all([
+    getSelfLedger(userId),
+    getSelfDeeds(userId),
+  ]);
+
+  const evidence: DossierEvidence[] = [];
+
+  for (const entry of ledger.entries) {
+    const subject = entry.hypothesis.statement;
+
+    for (const window of entry.windows) {
+      evidence.push(
+        fromWindow({
+          id: window.id,
+          occurred_on: window.occurred_on,
+          context_key: window.context_key,
+          outcome: window.outcome,
+          grade: window.grade,
+          cost_paid: window.cost_paid,
+          hypothesis_label: subject,
+        })
+      );
+    }
+
+    for (const prediction of entry.predictions) {
+      const item = fromPrediction({
+        id: prediction.id,
+        text: prediction.text,
+        outcome: prediction.outcome,
+        due_at: prediction.due_at,
+        resolved_at: prediction.resolved_at,
+        subject,
+      });
+      if (item) evidence.push(item);
+    }
+
+    const refuted = fromHypothesis({
+      id: entry.hypothesis.id,
+      label: subject,
+      tier: entry.evaluation.tier,
+      stated_on: entry.hypothesis.refuted_at ?? entry.hypothesis.first_observed,
+    });
+    if (refuted) evidence.push(refuted);
+  }
+
+  // 没挂在任何假设上的预测，单独成一簇。它们仍然是"说了会怎样"。
+  for (const prediction of ledger.looseSettled) {
+    const item = fromPrediction({
+      id: prediction.id,
+      text: prediction.text,
+      outcome: prediction.outcome,
+      due_at: prediction.due_at,
+      resolved_at: prediction.resolved_at,
+    });
+    if (item) evidence.push(item);
+  }
+
+  for (const deed of deedData.deeds) {
+    evidence.push(...fromDeed(deed));
+  }
+
+  return buildDossier(evidence);
 }

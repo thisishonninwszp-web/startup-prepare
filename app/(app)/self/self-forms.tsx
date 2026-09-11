@@ -53,12 +53,12 @@ const GRADE_LABELS: Record<WindowGrade, string> = {
   E4: "E4 系统统计",
 };
 
-function Err({ message }: { message: string | null }) {
+export function Err({ message }: { message: string | null }) {
   if (!message) return null;
   return <p className="text-sm text-destructive">{message}</p>;
 }
 
-function useAction() {
+export function useAction() {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const run = (fn: () => Promise<void>, onDone?: () => void) => {

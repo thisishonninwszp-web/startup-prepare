@@ -16,5 +16,6 @@ export * from "./outreach";
 export * from "./patterns";
 export * from "./profile";
 export { MODEL } from "./shared";
+export * from "./dossier";
 export * from "./self-model";
 export * from "./decision-self";
