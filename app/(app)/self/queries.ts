@@ -1291,9 +1291,10 @@ export async function getSkillTree(userId: string): Promise<SelfSkillTree> {
  * 分水岭就永远算不出来。
  */
 export async function getSelfDossier(userId: string): Promise<Dossier> {
-  const [ledger, deedData] = await Promise.all([
+  const [ledger, deedData, ideaPredictions] = await Promise.all([
     getSelfLedger(userId),
     getSelfDeeds(userId),
+    getSettledIdeaPredictions(userId),
   ]);
 
   const evidence: DossierEvidence[] = [];
@@ -1352,7 +1353,72 @@ export async function getSelfDossier(userId: string): Promise<Dossier> {
     evidence.push(...fromDeed(deed));
   }
 
+  // 想法那边押的注。它们说的不是「我是什么样的人」，是「我对市场的判断准不准」——
+  // 对一个要创业的人，后者比交付日期守不守得住更贴身。
+  // 全部归一个主题，想法标题当处境：分水岭会告诉你在哪类想法上押得准、哪类押不准。
+  for (const prediction of ideaPredictions) {
+    const item = fromPrediction({
+      id: prediction.id,
+      text: prediction.text,
+      outcome: prediction.outcome,
+      due_at: prediction.due_at,
+      resolved_at: prediction.resolved_at,
+      subject: IDEA_JUDGMENT_SUBJECT,
+    });
+    if (item) evidence.push({ ...item, context: prediction.idea_title });
+  }
+
   return buildDossier(evidence);
+}
+
+/** 想法侧预测在档案里的主题。一个主题，处境用想法标题区分。 */
+export const IDEA_JUDGMENT_SUBJECT = "对市场的判断";
+
+type SettledIdeaPrediction = {
+  id: string;
+  text: string;
+  outcome: string;
+  due_at: string | null;
+  resolved_at: string | null;
+  idea_title: string;
+};
+
+async function getSettledIdeaPredictions(
+  userId: string
+): Promise<SettledIdeaPrediction[]> {
+  const { data, error } = await supabaseAdmin
+    .from("predictions")
+    .select("id, text, outcome, due_at, resolved_at, idea_id")
+    .eq("user_id", userId)
+    .eq("source_type", "idea")
+    .in("outcome", ["hit", "miss"]);
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as {
+    id: string;
+    text: string;
+    outcome: string;
+    due_at: string | null;
+    resolved_at: string | null;
+    idea_id: string | null;
+  }[];
+  const ideaIds = [...new Set(rows.map((row) => row.idea_id).filter(Boolean))] as string[];
+  const titleOf = new Map<string, string>();
+  if (ideaIds.length > 0) {
+    const { data: ideas, error: ideasError } = await supabaseAdmin
+      .from("ideas")
+      .select("id, title")
+      .in("id", ideaIds);
+    if (ideasError) throw new Error(ideasError.message);
+    for (const idea of (ideas ?? []) as { id: string; title: string }[]) {
+      titleOf.set(idea.id, idea.title);
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    idea_title: (row.idea_id && titleOf.get(row.idea_id)) || "一个想法",
+  }));
 }
 
 // ---------------------------------------------------------------- 这算不算

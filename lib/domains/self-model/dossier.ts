@@ -551,3 +551,17 @@ export function dossierEvents(dossier: Dossier): DossierEvent[] {
 
   return events;
 }
+
+/**
+ * 欠着那栏里离翻面最近的一条。
+ *
+ * 周复盘顶上只放这一条 —— 不是排行榜，是这周最够得着的那件事。
+ * 苗头不算：还不够成一条的东西，谈不上翻。
+ */
+export function closestToFlip(dossier: Dossier): DossierLabel | null {
+  const candidates = dossier.unkept.filter((label) => label.strength === "label");
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, label) =>
+    label.flipsAfter < best.flipsAfter ? label : best
+  );
+}

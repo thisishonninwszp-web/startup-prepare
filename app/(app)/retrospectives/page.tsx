@@ -21,6 +21,9 @@ import {
 import { getMonthlyPeriod, getWeeklyPeriod } from "./types";
 import { RetroHomeActions } from "./retro-home-actions";
 import { PageContainer } from "@/components/ui/page-container";
+import { getSelfDossier, getWindowCandidates } from "@/app/(app)/self/queries";
+import { closestToFlip } from "@/lib/domains/self-model/dossier";
+
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +34,13 @@ export default async function RetrospectivesPage() {
   } = await supabase.auth.getUser();
   const userId = user!.id;
   const settings = await getReflectionSettings(userId);
+  // 档案顺路经过周复盘。不接进来，它就会像所有自我记录一样三周后没人打开。
+  const [dossier, candidates] = await Promise.all([
+    getSelfDossier(userId),
+    getWindowCandidates(userId),
+  ]);
+  const nearest = closestToFlip(dossier);
+  const unanswered = candidates.pending.length;
   const today = todayInTimezone(settings.timezone);
   const week = getWeeklyPeriod(today, settings.review_weekday);
   const month = getMonthlyPeriod(today);
@@ -122,6 +132,38 @@ export default async function RetrospectivesPage() {
                 完成之后再记录，不用提前证明自己会做到。
               </p>
               <RetroHomeActions openCommitments={openCommitments} />
+            </section>
+          )}
+
+          {(unanswered > 0 || nearest) && (
+            <section className="mb-8 rounded-lg border bg-card p-5">
+              <h2 className="text-sm font-medium">档案这周的事</h2>
+              <div className="mt-3 space-y-2 text-sm">
+                {unanswered > 0 && (
+                  <p>
+                    有 {unanswered} 件最近发生的事还没判断算不算。
+                    <span className="text-muted-foreground">
+                      {" "}「没做」和「做了」一样要记，它是分母。
+                    </span>
+                  </p>
+                )}
+                {nearest && (
+                  <p>
+                    欠着那栏离翻面最近的：
+                    <span className="font-medium">{nearest.subject}</span>
+                    <span className="text-muted-foreground"> —— {nearest.falsifier}</span>
+                    <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                      {"○".repeat(Math.min(nearest.flipsAfter, 8))}
+                    </span>
+                  </p>
+                )}
+              </div>
+              <Link
+                href="/self"
+                className="mt-3 inline-block text-sm text-primary underline-offset-4 hover:underline"
+              >
+                去档案 →
+              </Link>
             </section>
           )}
 

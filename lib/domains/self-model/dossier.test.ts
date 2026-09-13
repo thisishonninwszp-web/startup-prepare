@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MIN_LABEL_EVIDENCE,
   buildDossier,
+  closestToFlip,
   confrontations,
   dossierEvents,
   emptiness,
@@ -354,5 +355,24 @@ describe("留下记录", () => {
     expect(b?.dedupeKey).toBe("flip:交付:unkept");
     expect(a?.title).toContain("做到的多");
     expect(b?.title).toContain("没做到的多");
+  });
+});
+
+describe("离翻面最近", () => {
+  it("挑欠着那栏里还差最少次数的一条，苗头不算", () => {
+    const dossier = buildDossier([
+      // 主题 A：3 欠 0 兑 → 还差 4
+      ...Array.from({ length: 3 }, () => evidence({ subject: "A", side: "unkept" })),
+      // 主题 B：3 欠 2 兑 → 还差 2
+      ...Array.from({ length: 3 }, () => evidence({ subject: "B", side: "unkept" })),
+      ...Array.from({ length: 2 }, () => evidence({ subject: "B", side: "kept" })),
+      // 主题 C：只有 1 条，苗头
+      evidence({ subject: "C", side: "unkept" }),
+    ]);
+    expect(closestToFlip(dossier)?.subject).toBe("B");
+  });
+
+  it("欠着那栏没有成条的就返回空", () => {
+    expect(closestToFlip(buildDossier([evidence({ side: "unkept" })]))).toBeNull();
   });
 });
