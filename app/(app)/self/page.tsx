@@ -336,8 +336,8 @@ function WeeklyReport({
       text: `对账 ${report.settled} 条预测，命中 ${report.settledHits}`,
     });
   }
-  if (report.ticks > 0) {
-    lines.push({ mark: "✓", text: `技能打勾 ${report.ticks} 次` });
+  if (report.nodesLit > 0) {
+    lines.push({ mark: "✓", text: `点亮技能格 ${report.nodesLit} 个` });
   }
   if (report.lifts > 0 || report.cardioMinutes > 0) {
     lines.push({

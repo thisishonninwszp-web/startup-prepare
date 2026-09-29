@@ -763,7 +763,8 @@ export type WeeklyReport = {
   serendipities: number;
   settled: number;
   settledHits: number;
-  ticks: number;
+  /** 这周点亮的技能格。048 杀掉打勾涨分之后，证据是节点，不是勾。 */
+  nodesLit: number;
   lifts: number;
   cardioMinutes: number;
   encounters: number;
@@ -777,7 +778,7 @@ export async function getWeeklyReport(userId: string): Promise<WeeklyReport> {
   const from = new Date(Date.now() - 7 * DAY_MS).toISOString().slice(0, 10);
   const fromTs = `${from}T00:00:00Z`;
 
-  const [windows, predictions, ticks, body, encounters, daily, validations] =
+  const [windows, predictions, nodes, body, encounters, daily, validations] =
     await Promise.all([
       supabaseAdmin
         .from("self_windows")
@@ -792,10 +793,10 @@ export async function getWeeklyReport(userId: string): Promise<WeeklyReport> {
         .not("resolved_at", "is", null)
         .gte("resolved_at", fromTs),
       supabaseAdmin
-        .from("self_skill_ticks")
+        .from("self_skill_nodes")
         .select("id")
         .eq("user_id", userId)
-        .gte("occurred_on", from),
+        .gte("unlocked_on", from),
       supabaseAdmin
         .from("self_body_logs")
         .select("kind, duration_min")
@@ -821,7 +822,7 @@ export async function getWeeklyReport(userId: string): Promise<WeeklyReport> {
   for (const result of [
     windows,
     predictions,
-    ticks,
+    nodes,
     body,
     encounters,
     daily,
@@ -851,7 +852,7 @@ export async function getWeeklyReport(userId: string): Promise<WeeklyReport> {
     serendipities: windowRows.filter((row) => row.serendipity).length,
     settled: predictionRows.length,
     settledHits: predictionRows.filter((row) => row.outcome === "hit").length,
-    ticks: (ticks.data ?? []).length,
+    nodesLit: (nodes.data ?? []).length,
     lifts: bodyRows.filter((row) => row.kind === "lift").length,
     cardioMinutes: bodyRows
       .filter((row) => row.kind === "cardio")
@@ -866,7 +867,7 @@ export async function getWeeklyReport(userId: string): Promise<WeeklyReport> {
     report.contacts === 0 &&
     report.windows === 0 &&
     report.settled === 0 &&
-    report.ticks === 0 &&
+    report.nodesLit === 0 &&
     report.lifts === 0 &&
     report.cardioMinutes === 0 &&
     report.encounters === 0 &&
