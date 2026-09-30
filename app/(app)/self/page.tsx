@@ -21,7 +21,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { SelfTier } from "@/lib/domains/self-model/tiers";
+import { KIND_LABELS, type SelfTier } from "@/lib/domains/self-model/tiers";
 import type {
   Domain,
   MainAttribute,
@@ -90,7 +90,6 @@ import {
   DeclarationForm,
   SketchControl,
   EncounterForm,
-  KIND_LABELS,
   NewHypothesisForm,
   FadeTraitControl,
   NewPredictionForm,

@@ -34,6 +34,18 @@ export const SELF_HYPOTHESIS_KINDS = [
 
 export type SelfHypothesisKind = (typeof SELF_HYPOTHESIS_KINDS)[number];
 
+// 放在这里而不是 self-forms.tsx：那是 "use client" 文件，服务端页面从里面
+// 拿到的常量只是一个客户端引用，一读属性渲染就炸。
+export const KIND_LABELS: Record<SelfHypothesisKind, string> = {
+  trait: "特质",
+  state: "状态",
+  context_behavior: "情境行为",
+  skill: "技能",
+  preference: "偏好",
+  value: "价值观",
+  motivation: "动机",
+};
+
 export const WINDOW_GRADES = ["E1", "E2", "E3", "E4"] as const;
 export type WindowGrade = (typeof WINDOW_GRADES)[number];
 

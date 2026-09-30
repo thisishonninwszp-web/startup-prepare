@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  KIND_LABELS,
   SELF_HYPOTHESIS_KINDS,
   WINDOW_GRADES,
   type SelfHypothesisKind,
@@ -36,15 +37,6 @@ import {
   resolveSelfPrediction,
 } from "./actions";
 
-export const KIND_LABELS: Record<SelfHypothesisKind, string> = {
-  trait: "特质",
-  state: "状态",
-  context_behavior: "情境行为",
-  skill: "技能",
-  preference: "偏好",
-  value: "价值观",
-  motivation: "动机",
-};
 
 const GRADE_LABELS: Record<WindowGrade, string> = {
   E1: "E1 回忆",
