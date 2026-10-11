@@ -5287,3 +5287,42 @@ alter table self_events add constraint self_events_kind_check check (kind in (
   'hypothesis_refuted', 'tier_changed',
   'label_formed', 'divide_found', 'label_flipped'
 ));
+
+-- ============================================================================
+-- 052：外部信号复活（/signals 每日新闻）—— 按新闻发布时间排序
+-- ============================================================================
+
+alter table external_signals add column if not exists published_at timestamptz;
+
+create index if not exists idx_external_signals_published
+  on external_signals (status, published_at desc nulls last);
+
+-- ============================================================================
+-- 053：外部信号的每日精选 + 读新闻用的"关于你"
+-- ============================================================================
+create table if not exists signal_profiles (
+  user_id    uuid primary key references auth.users (id) on delete cascade,
+  context    text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists signal_briefs (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  brief_date date not null,
+  kind       text not null check (kind in ('news', 'tools')),
+  items      jsonb not null,               -- [{ signal_id, title, url, source, headline, background, for_you }]
+  created_at timestamptz not null default now(),
+  constraint signal_briefs_uniq unique (user_id, brief_date, kind)
+);
+
+alter table signal_profiles enable row level security;
+alter table signal_briefs enable row level security;
+
+drop policy if exists "signal_profiles_owner" on signal_profiles;
+create policy "signal_profiles_owner" on signal_profiles
+  for all using (auth.uid() = user_id);
+
+drop policy if exists "signal_briefs_owner" on signal_briefs;
+create policy "signal_briefs_owner" on signal_briefs
+  for all using (auth.uid() = user_id);

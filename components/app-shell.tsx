@@ -18,6 +18,7 @@ import {
   LogOut,
   Menu,
   PenLine,
+  Radar,
   RotateCcw,
   ScanSearch,
   Settings,
@@ -43,6 +44,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/reality": ScanSearch,
   "/customer-view": Users,
   "/self": Fingerprint,
+  "/signals": Radar,
   "/companies": Building2,
   "/knowledge": BookOpen,
 };

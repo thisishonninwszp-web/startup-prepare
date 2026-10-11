@@ -25,9 +25,9 @@ it("exposes all four independent system entries", () => {
   );
 });
 
-it("keeps the navigation at four groups and thirteen items", () => {
+it("keeps the navigation at four groups and fourteen items", () => {
   expect(NAV_GROUPS).toHaveLength(4);
-  expect(NAV_GROUPS.flatMap((group) => group.items)).toHaveLength(13);
+  expect(NAV_GROUPS.flatMap((group) => group.items)).toHaveLength(14);
 });
 
 // AppShell 用 ICONS[item.href] 取图标后直接 <Icon />，缺一个键就是整个应用壳白屏。

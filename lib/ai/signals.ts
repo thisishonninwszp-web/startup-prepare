@@ -1,5 +1,6 @@
 import { type ExternalSignal, type RealityCheckResult, type TavilyResult } from "@/app/(app)/ideas/types";
 import { FIRST_INQUIRY_QUESTION } from "./core";
+import { executeAiJson } from "@/lib/ai-gateway";
 import { MODEL, generateContent } from "./shared";
 
 // ---------------------------------------------------------------------------
@@ -223,3 +224,251 @@ export function parseQuestions(text: string): string[] {
   return [FIRST_INQUIRY_QUESTION];
 }
 
+
+// ---------------------------------------------------------------------------
+// 外部信号（/signals）：每日精选 + 单条深读。
+// 目的：让用户对世界多一点认识、跟上新工具。讲清楚来龙去脉，不迎合、不打分、不给投资建议。
+// ---------------------------------------------------------------------------
+
+/** 出现这些词就算迎合或越界（原则 2；不给投资建议），整条作废重来。 */
+const SIGNAL_BANNED = [
+  "值得关注",
+  "很有潜力",
+  "不错的",
+  "机会很大",
+  "建议买",
+  "建议卖",
+  "买入",
+  "卖出",
+  "加仓",
+  "减仓",
+  "抄底",
+  // 空话：说了等于没说
+  "有启发",
+  "有参考价值",
+  "更全面地理解",
+];
+
+function assertNoBanned(texts: string[]): void {
+  const all = texts.join("\n");
+  const hit = SIGNAL_BANNED.find((w) => all.includes(w));
+  if (hit) throw new Error(`出现了不该出现的话：${hit}`);
+}
+
+function requireString(v: Record<string, unknown>, key: string): string {
+  const s = typeof v[key] === "string" ? (v[key] as string).trim() : "";
+  if (!s) throw new Error(`缺少 ${key}`);
+  return s;
+}
+
+const SIGNAL_SHARED_RULES = `铁律：
+- 只用给你的材料往下推。材料里没有的数字、日期、公司名一律不写；推测要写成"可能"。
+- 不夸、不打气、不说"值得关注""很有潜力"。
+- 不给任何投资、买卖、理财建议。
+- 不打分、不排名、不给百分比。
+- 不替他假设他没写过的处境（有没有房贷、有没有投资、住在哪）。他写了什么就只用什么。
+- 说"跟你"的那一句必须具体：点出他工作里会碰到的一件事、或他能动手做的一件事。不许写"有助于你理解""可能对你有帮助"这种话。
+- 利率、汇率、政策这类宏观的事，要往下推到他所在的行业会怎样（比如消费、广告预算、招聘），推得到就不要说"关系不大"。
+- 中文，短句，第二人称"你"，像一个懂行的老同事在旁边说话。`;
+
+function aboutUser(context: string, ideas: string[], dreams: string[]): string {
+  const list = (items: string[]) => (items.length ? items.map((t) => `- ${t}`).join("\n") : "（没有）");
+  return [
+    `他自己写的背景：${context.trim() || "（没写）"}`,
+    `他手上的想法：\n${list(ideas)}`,
+    `他的梦想：\n${list(dreams)}`,
+  ].join("\n");
+}
+
+export type SignalReader = {
+  /** 用户在 /signals 上自己写的几句背景。 */
+  context: string;
+  ideas: string[];
+  dreams: string[];
+};
+
+// ── 单条深读 ───────────────────────────────────────────────────────────────
+
+export type NewsAnalysisInput = SignalReader & {
+  title: string;
+  summary: string;
+  /** 文章正文的粗提取；拿不到时为空。 */
+  body: string;
+  source: string;
+};
+
+export type NewsAnalysis = {
+  /** 来龙去脉：这件事为什么会发生，之前是什么情况。 */
+  background: string;
+  /** 这件事经过哪几步会影响到谁。 */
+  chain: string;
+  /** 对他意味着什么；无关就直说。 */
+  forYou: string;
+  /** 能找哪一类人聊、问哪一句。 */
+  who: string;
+  question: string;
+};
+
+const NEWS_ANALYSIS_PROMPT = `你帮一个人读新闻。他读新闻是为了对这个世界多一点认识，顺便看清方向。
+他的情况见材料最后的"他自己写的背景"。
+
+给你一条新闻（标题、简介，可能有正文）和他的情况。输出五段：
+1. background：来龙去脉。这件事为什么会发生、之前是什么状况、有什么争议或另一种看法。3 到 5 句，让一个不懂这个领域的人也能看懂。
+2. chain：这件事接下来会经过哪几步，落到哪一类人或公司身上。写成"A → B → C"，2 到 4 步。
+3. forYou：对他意味着什么。从他写的背景（工作、处境、打算）或他手上的想法与梦想里找连接点，点名说是哪一个。真的无关就直说"跟你关系不大"，再说一句它跟谁关系大。
+4. who：能找哪一类真人聊来把这件事看得更清楚，具体到身份。
+5. question：见面时可以直接问的一句话，要具体到对方能答出一件事，不要问"您怎么看"这种大问题。
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"background":"…","chain":"…","forYou":"…","who":"…","question":"…"}`;
+
+/** 校验单条深读：五段齐全、没有迎合与投资建议。不合格就抛，gateway 会重试一次。 */
+export function parseNewsAnalysis(value: unknown): NewsAnalysis {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const result: NewsAnalysis = {
+    background: requireString(v, "background"),
+    chain: requireString(v, "chain"),
+    forYou: requireString(v, "forYou"),
+    who: requireString(v, "who"),
+    question: requireString(v, "question"),
+  };
+  assertNoBanned(Object.values(result));
+  return result;
+}
+
+export async function analyzeNewsItem(input: NewsAnalysisInput): Promise<NewsAnalysis> {
+  const contents = [
+    `新闻标题：${input.title}`,
+    `新闻简介：${input.summary || "（没有）"}`,
+    `正文节选：${input.body || "（拿不到正文，只能根据标题和简介推）"}`,
+    `来源：${input.source}`,
+    "",
+    aboutUser(input.context, input.ideas, input.dreams),
+  ].join("\n");
+
+  return executeAiJson(
+    { operation: "news_analysis", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验（缺字段，或出现了迎合、投资建议类的话）。严格按 JSON 字段重写。"
+          : ""),
+      config: {
+        systemInstruction: NEWS_ANALYSIS_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2000,
+      },
+    }),
+    parseNewsAnalysis
+  );
+}
+
+// ── 每日精选 ───────────────────────────────────────────────────────────────
+
+export type BriefCandidate = { title: string; text: string; source: string };
+
+export type BriefPick = {
+  /** 候选列表里的序号。 */
+  index: number;
+  /** 一句话：发生了什么 / 这是什么工具。 */
+  headline: string;
+  /** 新闻：为什么重要、来龙去脉；工具：能拿来做什么。 */
+  background: string;
+  /** 跟他有什么关系 / 他可以拿它试什么。 */
+  forYou: string;
+};
+
+const BRIEF_SIZE = 5;
+
+const BRIEF_PROMPTS: Record<"news" | "tools", string> = {
+  news: `你每天早上帮一个人从几十条新闻里挑出 ${BRIEF_SIZE} 条最值得读的。
+他读新闻是为了对这个世界多一点认识。他的情况见材料开头的"他自己写的背景"。
+
+挑的标准（按这个顺序考虑）：
+- 会改变很多人处境的事：利率、汇率、政策、规制、大公司的大动作、产业结构的变化。
+- 能看出"钱往哪里流、谁遇到了新麻烦、什么变便宜了"的事。
+- 跟他写的背景、他手上的想法有关的事。
+不挑：单纯的事件、犯罪、八卦、同一件事的重复报道（同一件事只留一条）。
+
+每条写：
+- headline：一句话说发生了什么。
+- background：为什么重要、来龙去脉，2 到 3 句。
+- forYou：跟他有什么关系，一句话；关系不大就说它会影响谁。`,
+  tools: `你每天帮一个人从几十个 GitHub 新仓库里挑出 ${BRIEF_SIZE} 个最值得看的工具，让他跟上时代。
+他的情况见材料开头的"他自己写的背景"。
+
+挑的标准：
+- 能直接拿来用、能解决一类真实问题的工具，优先于纯研究代码、作业、清单类仓库。
+- 代表一个新趋势的（比如 AI agent 的新用法），哪怕他暂时用不上。
+- 跟他写的背景（工作、在学的东西）有关的优先。
+
+每条写：
+- headline：一句话说这是什么。
+- background：它能拿来做什么、为什么现在有很多人关注它，2 到 3 句。
+- forYou：他可以拿它试的一件具体的事，一句话。`,
+};
+
+export function parseBrief(value: unknown, candidateCount: number): BriefPick[] {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const picks = (value as { picks?: unknown }).picks;
+  if (!Array.isArray(picks) || picks.length === 0) throw new Error("缺少 picks");
+  const seen = new Set<number>();
+  const result: BriefPick[] = [];
+  for (const raw of picks) {
+    if (!raw || typeof raw !== "object") continue;
+    const v = raw as Record<string, unknown>;
+    const index = typeof v.index === "number" ? v.index : Number(v.index);
+    if (!Number.isInteger(index) || index < 0 || index >= candidateCount || seen.has(index)) continue;
+    seen.add(index);
+    result.push({
+      index,
+      headline: requireString(v, "headline"),
+      background: requireString(v, "background"),
+      forYou: requireString(v, "forYou"),
+    });
+  }
+  if (result.length === 0) throw new Error("没有一条能对上候选序号");
+  assertNoBanned(result.flatMap((p) => [p.headline, p.background, p.forYou]));
+  return result.slice(0, BRIEF_SIZE);
+}
+
+export async function generateSignalBrief(
+  kind: "news" | "tools",
+  candidates: BriefCandidate[],
+  reader: SignalReader
+): Promise<BriefPick[]> {
+  if (candidates.length === 0) return [];
+  const numbered = candidates
+    .map((c, i) => `[${i}] ${c.title}（${c.source}）\n${c.text.slice(0, 160)}`)
+    .join("\n");
+  const contents = `${aboutUser(reader.context, reader.ideas, reader.dreams)}\n\n候选：\n${numbered}`;
+  const systemInstruction = `${BRIEF_PROMPTS[kind]}
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"picks":[{"index":序号,"headline":"…","background":"…","forYou":"…"}]}`;
+
+  return executeAiJson(
+    { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验（序号对不上、缺字段，或出现了迎合、投资建议类的话）。严格按 JSON 字段重写。"
+          : ""),
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    (value) => parseBrief(value, candidates.length)
+  );
+}

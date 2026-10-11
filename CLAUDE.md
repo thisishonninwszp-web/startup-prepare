@@ -46,15 +46,17 @@ IdeaOS 不是笔记工具,不是 AI 聊天工具。它是一个服务于"用户�
 |---|---|---|
 | 决策轴(一级导航) | dashboard, capture, materials, ideas, workbench, learnings | materials 是唯一统一输入口;collide/concept/outreach 是 idea 详情内的工具入口,不独立铺导航 |
 | 成长轴(一级导航) | dreams, retrospectives(周为主), learnings | dreams 保持可编辑一级模块;日/月复盘是周复盘页内的次级视图;patterns 报告是 learnings 的视图 |
-| 认识层(一级导航) | reality, customer-view, self | self 是自我认知台账:自述不进推理,只记可证伪的条件命题;数值规则见原则 1 例外 |
+| 认识层(一级导航) | reality, customer-view, self, signals | self 是自我认知台账:自述不进推理,只记可证伪的条件命题;数值规则见原则 1 例外。signals(外部信号,每日新闻)只读不写:新闻不直接进任何台账,被人挑中的那条连同用户写的一句"为什么在意"记成带「外部」标签的观察,进捕捉链条(痛点雷达、周复盘);按需的"这条意味着什么"分析不落库、不打分、不给投资建议 |
 | 档案层(低权重导航) | companies(含原 company-kb), knowledge | |
 | 工具层(无一级导航) | reasoning 5 框架, council | 从 workbench/idea 上下文调用,/tools 聚合页兜底 |
 | 设置区 | AI 诊断、导出、审计、profile | |
-| 已杀死 | life(生活罗盘), /review(外部信号页) | 不得复活;同类需求走 materials |
+| 已杀死 | life(生活罗盘) | 不得复活;同类需求走 materials |
 
-**禁止**:新增一级导航模块、新增独立闭环系统、新增独立输入口。导航固定 4 组 13 项 + 底栏。
+**禁止**:新增一级导航模块、新增独立闭环系统、新增独立输入口。导航固定 4 组 14 项 + 底栏。
 新增一级模块必须先写进上表并同步 `components/app-navigation.test.ts`(该测试锁死组数与项数);
-self 是经用户明确裁决后加入的唯一例外,不构成后续新增的先例。
+self 与 signals 是经用户明确裁决后加入的例外,不构成后续新增的先例。
+(signals:原 /review 外部信号页,2026-10 经用户裁决以每日新闻形式复活于 `/signals`,
+表沿用 004 的 external_signals,抓取逻辑在 `lib/domains/signals/`,每天由 Vercel Cron 跑一次。)
 
 ## 目录规范
 
