@@ -21,6 +21,8 @@ export type Deed = {
   /** 有没有人真的用了 / 接受了。null = 不适用。 */
   adopted: boolean | null;
   durationDays: number | null;
+  /** 具体发生了什么。标题只是名字，这里才是那件事。 */
+  whatHappened: string | null;
   cost: string | null;
 };
 

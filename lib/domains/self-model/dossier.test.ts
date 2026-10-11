@@ -38,6 +38,7 @@ function deed(over: Partial<Deed> = {}): Deed {
     outcome: "done",
     adopted: null,
     durationDays: null,
+    whatHappened: null,
     cost: null,
     ...over,
   };

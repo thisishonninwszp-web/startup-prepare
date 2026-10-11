@@ -31,6 +31,7 @@ export type AiModule =
   | "reasoning"
   | "concepts"
   | "business_plans"
+  | "self"
   | "unknown";
 
 export type AiPayloadLogging = "encrypted" | "metadata_only";
@@ -297,6 +298,187 @@ export async function executeAiJson<T>(
     });
     throw gatewayError;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Jev（TypeSafe System One）：只做判断的模型，返回档位与概率，不生成文字。
+// 目前只有 /self 的写法画像在用；它的数字原样展示，规则见 CLAUDE.md 原则 1 例外二。
+// ---------------------------------------------------------------------------
+
+export const JEV_MODEL = process.env.JEV_MODEL ?? "jev-1.13.0";
+const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+
+export type JevQuestion =
+  | { type: "noul"; instructions: string }
+  | { type: "score"; instructions: string; criteria: string[] };
+
+export type JevRequest = {
+  /** 被判断的材料：一段文字。 */
+  state: string;
+  questions: Record<string, JevQuestion>;
+};
+
+export type JevResult = {
+  model: string;
+  answers: Record<string, unknown>;
+  usage: { input_tokens: number; output_tokens: number };
+};
+
+export async function executeJev<T>(
+  context: AiCallContext,
+  request: JevRequest,
+  validate: (result: JevResult) => T,
+  fetchImpl: typeof fetch = fetch
+): Promise<T> {
+  const startedAt = Date.now();
+  const requestId = cryptoRandomId();
+  const timeoutMs = context.timeoutMs ?? 45_000;
+  const resolvedContext = {
+    ...context,
+    userId: context.userId ?? (await getCurrentUserIdSafely()),
+  };
+  let callId: string | null = null;
+
+  try {
+    const apiKey = process.env.JEV_API_KEY;
+    if (!apiKey) {
+      throw new AiGatewayError({
+        code: "configuration",
+        requestId,
+        message: "缺少 JEV_API_KEY，请在 .env.local 里填上 TypeSafe 的 Key。",
+      });
+    }
+
+    callId = await safeCreateAiCall({
+      requestId,
+      context: { ...resolvedContext, outputMode: "json", timeoutMs },
+      model: JEV_MODEL,
+      request: { model: JEV_MODEL, contents: request },
+      timeoutMs,
+    });
+
+    const attemptStarted = Date.now();
+    let rawText = "";
+    try {
+      const response = await fetchImpl(JEV_ENDPOINT, {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...request, model: JEV_MODEL }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        // 不读响应体：可能回显 Key 或原文。
+        await response.body?.cancel();
+        throw jevHttpError(response.status, requestId);
+      }
+      rawText = await response.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch (cause) {
+        throw new AiGatewayError({ code: "invalid_json", requestId, cause });
+      }
+      let value: T;
+      try {
+        value = validate(parseJevResult(parsed));
+      } catch (cause) {
+        throw new AiGatewayError({ code: "schema_violation", requestId, cause });
+      }
+      await safeCreateAiAttempt({
+        callId,
+        attemptNo: 1,
+        purpose: "primary",
+        durationMs: Date.now() - attemptStarted,
+        status: "success",
+        rawText,
+        validationErrors: null,
+        errorCode: null,
+        payloadLogging: resolvedContext.payloadLogging,
+      });
+      await safeFinishAiCall({
+        callId,
+        status: "success",
+        durationMs: Date.now() - startedAt,
+      });
+      return value;
+    } catch (error) {
+      const code =
+        error instanceof AiGatewayError ? error.code : classifyAiError(error);
+      await safeCreateAiAttempt({
+        callId,
+        attemptNo: 1,
+        purpose: "primary",
+        durationMs: Date.now() - attemptStarted,
+        status: "failed",
+        rawText,
+        validationErrors: [errorMessage(error).slice(0, 1000)],
+        errorCode: code,
+        payloadLogging: resolvedContext.payloadLogging,
+      });
+      throw error;
+    }
+  } catch (error) {
+    const gatewayError =
+      error instanceof AiGatewayError
+        ? error
+        : new AiGatewayError({
+            code: classifyAiError(error),
+            requestId,
+            cause: error,
+          });
+    await safeFinishAiCall({
+      callId,
+      status: "failed",
+      durationMs: Date.now() - startedAt,
+      errorCode: gatewayError.code,
+      errorMessage: gatewayError.message,
+    });
+    throw gatewayError;
+  }
+}
+
+export function parseJevResult(value: unknown): JevResult {
+  if (!value || typeof value !== "object") throw new Error("Jev 返回不是对象");
+  const record = value as Record<string, unknown>;
+  const usage = record.usage as Record<string, unknown> | undefined;
+  if (typeof record.model !== "string" || !record.model) {
+    throw new Error("Jev 返回缺少 model");
+  }
+  if (!record.answers || typeof record.answers !== "object") {
+    throw new Error("Jev 返回缺少 answers");
+  }
+  return {
+    model: record.model,
+    answers: record.answers as Record<string, unknown>,
+    usage: {
+      input_tokens: Number(usage?.input_tokens) || 0,
+      output_tokens: Number(usage?.output_tokens) || 0,
+    },
+  };
+}
+
+function jevHttpError(status: number, requestId: string): AiGatewayError {
+  const known: Record<number, [AiErrorCode, string]> = {
+    401: ["authentication", "Jev 的 Key 无效或过期了，换一个填进 JEV_API_KEY。"],
+    402: ["provider_error", "TypeSafe 账户额度用完了，去控制台看一眼余额。"],
+    403: ["authentication", "这个 Key 没有调用 Jev 的权限。"],
+    413: ["provider_error", "这次送去的文字太长了。"],
+    429: ["rate_limit", "Jev 那边限流了，过一会儿再试。"],
+  };
+  const [code, message] = known[status] ?? [
+    "provider_error",
+    `Jev 暂时不可用（HTTP ${status}），稍后再试。`,
+  ];
+  return new AiGatewayError({
+    code,
+    requestId,
+    message,
+    cause: new Error(`HTTP ${status}`),
+  });
 }
 
 export function shouldAttemptJsonRepair(

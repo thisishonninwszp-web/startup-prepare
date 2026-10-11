@@ -36,7 +36,14 @@ import {
   type SkillNomination,
   type StageNomination,
   type DispositionNomination,
+  type RetroInterviewTurn,
+  readPortrait,
 } from "@/lib/ai";
+import {
+  MIN_WRITINGS,
+  selectWritings,
+  type Writing,
+} from "@/lib/domains/self-model/portrait";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
 import { ALL_NODES, canUnlock } from "@/lib/domains/self-model/nodes";
 import { isoWeekKey } from "@/lib/domains/self-model/quests";
@@ -1361,6 +1368,123 @@ export async function skipWindowCandidate(input: {
     user_id: userId,
     source_type: input.source,
     source_id: input.sourceId,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/self");
+}
+
+/**
+ * 写法画像：把你亲手写下的字送给 Jev 读一遍，存一份快照。
+ *
+ * 只取本人写的：复盘对话里你说的话、你签下的行动、随手捕捉、自述、学到了。
+ * AI 写的复盘正文不送 —— 那是它的口气，不是你的。
+ * 结果原样存，不进任何台账推理（CLAUDE.md 原则 1 例外二）。
+ */
+export async function generatePortrait(): Promise<void> {
+  const userId = await requireUserId();
+
+  const [retros, commitments, observations, declarations, decisions] =
+    await Promise.all([
+      supabaseAdmin
+        .from("retro_periods")
+        .select("period_end, messages")
+        .eq("user_id", userId)
+        .order("period_end", { ascending: false })
+        .limit(20),
+      supabaseAdmin
+        .from("retro_commitments")
+        .select("text, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabaseAdmin
+        .from("observations")
+        .select("raw_text, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(60),
+      supabaseAdmin
+        .from("self_declarations")
+        .select("text, stated_on")
+        .eq("user_id", userId)
+        .order("stated_on", { ascending: false })
+        .limit(40),
+      supabaseAdmin
+        .from("decisions")
+        .select("learned, decided_at, ideas!inner(user_id)")
+        .eq("ideas.user_id", userId)
+        .not("learned", "is", null)
+        .order("decided_at", { ascending: false })
+        .limit(30),
+    ]);
+  for (const result of [retros, commitments, observations, declarations, decisions]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  const writings: Writing[] = [
+    ...((retros.data ?? []) as { period_end: string; messages: unknown }[]).flatMap(
+      (row) =>
+        (Array.isArray(row.messages) ? (row.messages as RetroInterviewTurn[]) : [])
+          .filter((turn) => turn?.role === "user" && typeof turn.content === "string")
+          .map((turn) => ({
+            kind: "retro" as const,
+            date: row.period_end,
+            text: turn.content,
+          }))
+    ),
+    ...((commitments.data ?? []) as { text: string; created_at: string }[]).map(
+      (row) => ({
+        kind: "retro" as const,
+        date: row.created_at.slice(0, 10),
+        text: `签下的行动：${row.text}`,
+      })
+    ),
+    ...((observations.data ?? []) as { raw_text: string; created_at: string }[]).map(
+      (row) => ({
+        kind: "observation" as const,
+        date: row.created_at.slice(0, 10),
+        text: row.raw_text,
+      })
+    ),
+    ...((declarations.data ?? []) as { text: string; stated_on: string }[])
+      // 同一张表里还存着认领的气质（带前缀），只有无前缀的才是自述。
+      .filter(
+        (row) =>
+          !row.text.startsWith("disposition:") && !row.text.startsWith("custom:")
+      )
+      .map((row) => ({
+        kind: "declaration" as const,
+        date: row.stated_on,
+        text: row.text,
+      })),
+    ...((decisions.data ?? []) as { learned: string; decided_at: string }[]).map(
+      (row) => ({
+        kind: "learned" as const,
+        date: row.decided_at.slice(0, 10),
+        text: row.learned,
+      })
+    ),
+  ];
+
+  const selection = selectWritings(writings);
+  if (selection.picked.length < MIN_WRITINGS) {
+    throw new Error(
+      `现在只有 ${selection.picked.length} 段你写的字，Jev 读不出什么。` +
+        `复盘、捕捉、自述加起来攒到 ${MIN_WRITINGS} 段以上再来。`
+    );
+  }
+
+  const { answers, model, usage } = await readPortrait(selection.picked, userId);
+
+  const { error } = await supabaseAdmin.from("self_portraits").insert({
+    user_id: userId,
+    model,
+    answers,
+    sources: selection.picked,
+    source_counts: selection.counts,
+    chars: selection.chars,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/self");

@@ -11,6 +11,11 @@ import {
   type SkillDef,
 } from "@/lib/domains/self-model/skills";
 import { findDisposition } from "@/lib/domains/self-model/dispositions";
+import type {
+  PortraitAnswers,
+  Writing,
+  WritingKind,
+} from "@/lib/domains/self-model/portrait";
 import {
   NODE_TOTAL,
   buildSkillTree,
@@ -747,6 +752,49 @@ export async function getDeclarations(
     }));
 }
 
+export type PortraitSnapshot = {
+  id: string;
+  createdAt: string;
+  model: string;
+  answers: PortraitAnswers;
+  sources: Writing[];
+  counts: Record<WritingKind, number>;
+  chars: number;
+};
+
+/** 写法画像，新的在前。只给自己回头看，不进任何台账推理。 */
+export async function getPortraits(
+  userId: string,
+  limit = 6
+): Promise<PortraitSnapshot[]> {
+  const { data, error } = await supabaseAdmin
+    .from("self_portraits")
+    .select("id, created_at, model, answers, sources, source_counts, chars")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (
+    (data ?? []) as {
+      id: string;
+      created_at: string;
+      model: string;
+      answers: PortraitAnswers;
+      sources: Writing[];
+      source_counts: Record<WritingKind, number>;
+      chars: number;
+    }[]
+  ).map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    model: row.model,
+    answers: row.answers,
+    sources: row.sources,
+    counts: row.source_counts,
+    chars: row.chars,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // 周战报：同一批数据，换个语气。
 // 不新增任何采集 —— 只把最近 7 天已经发生过的事捞出来重讲一遍。
@@ -1054,7 +1102,7 @@ export async function getSelfDeeds(userId: string): Promise<SelfDeeds> {
   const { data, error } = await supabaseAdmin
     .from("self_deeds")
     .select(
-      "id, occurred_on, title, class_key, outcome, adopted, duration_days, cost"
+      "id, occurred_on, title, class_key, outcome, adopted, duration_days, what_happened, cost"
     )
     .eq("user_id", userId)
     .order("occurred_on", { ascending: false });
@@ -1069,6 +1117,7 @@ export async function getSelfDeeds(userId: string): Promise<SelfDeeds> {
       outcome: "done" | "abandoned" | "ongoing";
       adopted: boolean | null;
       duration_days: number | null;
+      what_happened: string | null;
       cost: string | null;
     }[]
   ).map((row) => ({
@@ -1079,6 +1128,7 @@ export async function getSelfDeeds(userId: string): Promise<SelfDeeds> {
     outcome: row.outcome,
     adopted: row.adopted,
     durationDays: row.duration_days,
+    whatHappened: row.what_happened,
     cost: row.cost,
   }));
 

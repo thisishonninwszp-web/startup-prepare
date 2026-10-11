@@ -23,6 +23,12 @@ IdeaOS 不是笔记工具,不是 AI 聊天工具。它是一个服务于"用户�
    ②每个数字都能点开看到分子分母,样本不足时只显示样本数、不显示比率;
    ③不得聚合成任何形式的总分(战力值、综合评分、雷达面积)。
    例外只对"关于自己的可证伪命题"成立,对想法/机会打分仍然禁止。
+   **例外二(写法画像,经用户明确裁决,2026-10)**:`/self` 的「写法」页可以原样显示
+   Jev 对用户亲手写下的文字给出的档位与概率,条件是 ——
+   ①页面必须写明它量的是"你怎么讲自己",不是"你做了什么";
+   ②每份画像都能点开看到这次读了哪些原文,原文只取用户本人写的(AI 生成的复盘正文不送);
+   ③不进任何台账推理(档位、特性、技能、档案都不读 `self_portraits`),不聚合成总分;
+   ④只用于用户自己,对想法/机会仍然禁止。规则在 `lib/domains/self-model/portrait.ts`。
 
 2. **AI 必须是对抗性的,不许迎合**。所有 AI prompt 的目标是"找出这个想法会死的理由",
    不是让用户感觉良好。禁止输出"很有潜力""不错的想法"这类话。
@@ -128,6 +134,8 @@ components/ui/       共享原子组件(shadcn 模式);页面禁止手搓 button
 - 样式:Tailwind CSS + shadcn/ui
 - 数据库 & Auth:Supabase (PostgreSQL)
 - AI:Google Gemini API(@google/genai),模型 gemini-2.5-flash(经 lib/ai-gateway.ts 封装,模型名读 AI_MODEL)
+- 判断模型:TypeSafe Jev(只回档位/概率,不生成文字),同样经 lib/ai-gateway.ts 的 `executeJev`,
+  Key 读 JEV_API_KEY、模型名读 JEV_MODEL;目前只用于写法画像
 - 部署:Vercel
 
 ## 代码约定
@@ -151,6 +159,8 @@ components/ui/       共享原子组件(shadcn 模式);页面禁止手搓 button
 - self_hypotheses / self_windows / self_declarations: /self 台账。self_windows 记录每一次
   "符合触发条件的情境"含行为未发生的(outcome=miss)——它是触发率的分母,少了它数字就退回评分。
   档位升降规则在 lib/domains/self-model/tiers.ts,AI 只有提名权、无授予权。
+- self_portraits: 写法画像快照(answers 原样存 Jev 输出,sources 存当次读的原文)。
+  台账旁路,任何推理不得读它(原则 1 例外二)。
 - idea_exit_criteria: id, idea_id, user_id, criterion, triggered(unreviewed/yes/no), reviewed_at, created_at
 
 其余模块的表定义见 `supabase/migrations/`(按编号顺序执行,append-only);

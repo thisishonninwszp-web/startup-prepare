@@ -140,6 +140,7 @@ export function DeedForm() {
   );
   const [adopted, setAdopted] = useState<"yes" | "no" | "na">("na");
   const [durationDays, setDurationDays] = useState("");
+  const [whatHappened, setWhatHappened] = useState("");
   const [cost, setCost] = useState("");
   const { pending, error, run } = useAction();
 
@@ -151,6 +152,7 @@ export function DeedForm() {
         run(
           () =>
             recordDeed({
+              whatHappened,
               title,
               classKey,
               occurredOn,
@@ -162,6 +164,7 @@ export function DeedForm() {
             }),
           () => {
             setTitle("");
+            setWhatHappened("");
             setDurationDays("");
             setCost("");
           }
@@ -189,6 +192,17 @@ export function DeedForm() {
             required
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="deed-what">具体发生了什么（可空）</Label>
+        <Textarea
+          id="deed-what"
+          value={whatHappened}
+          onChange={(event) => setWhatHappened(event.target.value)}
+          placeholder="为什么开始、中间卡在哪、最后怎么收的尾。写给一年后的自己看。"
+          rows={3}
+        />
       </div>
 
       <div className="space-y-1.5">

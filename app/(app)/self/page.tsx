@@ -62,6 +62,7 @@ import {
   recordDossierEvents,
   getSelfEvents,
   getDeclarations,
+  getPortraits,
   getSkillTree,
   getSelfTraits,
   getWeeklyReport,
@@ -76,6 +77,7 @@ import {
 import { classFits } from "@/lib/domains/self-model/classes";
 import { crossovers } from "@/lib/domains/self-model/paths";
 import { SkillTree } from "./skill-tree";
+import { PortraitPanel } from "./portrait-panel";
 import {
   DeedForm,
   DispositionSuggest,
@@ -696,6 +698,7 @@ export default async function SelfPage() {
   const progress = levelFromExp(kills.exp);
   const skillTree = await getSkillTree(user!.id);
   const declarations = await getDeclarations(user!.id);
+  const portraits = await getPortraits(user!.id);
   const reachedBySkill = new Map(
     skillTree.entries.map((entry) => [entry.def.key, entry.reached])
   );
@@ -925,6 +928,7 @@ export default async function SelfPage() {
           <TabsTrigger value="ledger">台账</TabsTrigger>
           <TabsTrigger value="deeds">事迹</TabsTrigger>
           <TabsTrigger value="log">记录</TabsTrigger>
+          <TabsTrigger value="portrait">写法</TabsTrigger>
         </TabsList>
 
       <TabsContent value="overview" className="mt-6 space-y-8">
@@ -1808,6 +1812,11 @@ export default async function SelfPage() {
                       (deed.adopted ? " · 有人用" : " · 没人用")}
                     {deed.durationDays !== null && ` · ${deed.durationDays} 天`}
                   </span>
+                  {deed.whatHappened && (
+                    <span className="w-full whitespace-pre-line text-xs leading-relaxed">
+                      {deed.whatHappened}
+                    </span>
+                  )}
                   {deed.cost && (
                     <span className="w-full text-xs text-muted-foreground">
                       代价：{deed.cost}
@@ -1910,6 +1919,10 @@ export default async function SelfPage() {
           </div>
         </div>
       </section>
+      </TabsContent>
+
+      <TabsContent value="portrait" className="mt-6 space-y-8">
+        <PortraitPanel snapshots={portraits} />
       </TabsContent>
       </Tabs>
 

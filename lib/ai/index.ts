@@ -19,3 +19,4 @@ export { MODEL } from "./shared";
 export * from "./dossier";
 export * from "./self-model";
 export * from "./decision-self";
+export * from "./portrait";
