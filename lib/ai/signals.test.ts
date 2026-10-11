@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseBayesDraft, sameEvent, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -345,5 +345,31 @@ describe("同一件事只留一条 + 也值得一看", () => {
     );
     expect(b.picks.map((p) => p.index)).toEqual([0, 2, 3, 4, 5]);
     expect(b.more.map((m) => m.index)).toEqual([6, 8]);
+  });
+});
+
+describe("parseGroundedBrief（读正文重写）", () => {
+  const inputs = [
+    { index: 3, title: "日銀利上げ", summary: "", body: "日本銀行は政策金利を1%から1.25%に引き上げることを決めた。物価上昇が続いている。", draft: { headline: "h", background: "b", forYou: "f" } },
+    { index: 7, title: "Google News", summary: "", body: "", draft: { headline: "h", background: "b", forYou: "f" } },
+  ];
+  const item = (over: Record<string, unknown>) => ({
+    index: 3, headline: "日银加息到 1.25%。", background: "日本银行决定把政策利率从 1% 提高到 1.25%，原因是物价持续上涨。",
+    forYou: "主要影响靠贷款周转的中小企业。", basis: ["政策金利を1%から1.25%に引き上げる"], ...over,
+  });
+
+  it("依据逐字在正文里才收；正文为空的条目不收", () => {
+    const r = parseGroundedBrief({ overview: "今天日银加息了。", items: [item({}), item({ index: 7 })] }, inputs);
+    expect(r.items.map((i) => i.index)).toEqual([3]);
+    expect(r.items[0].basis).toEqual(["政策金利を1%から1.25%に引き上げる"]);
+  });
+
+  it("依据是编的（正文里没有）就整条不收，调用方会保留草稿", () => {
+    const r = parseGroundedBrief({ overview: "今天日银加息了。", items: [item({ basis: ["日銀は来月も利上げすると明言した"] })] }, inputs);
+    expect(r.items).toEqual([]);
+  });
+
+  it("没有总述不收", () => {
+    expect(() => parseGroundedBrief({ items: [item({})] }, inputs)).toThrow("overview");
   });
 });

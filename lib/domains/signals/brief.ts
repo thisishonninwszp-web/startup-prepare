@@ -1,5 +1,13 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { generateSignalBrief, linkPicksToReader, type SignalReader, type SituationFact } from "@/lib/ai";
+import {
+  generateSignalBrief,
+  groundBrief,
+  linkPicksToReader,
+  type SignalReader,
+  type SituationFact,
+} from "@/lib/ai";
+import { fetchArticleBody } from "./article";
+import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
 import { newsSourceLabel, SIGNAL_KIND_PREFIX, type SignalKind } from "./feeds";
 import { fetchGithubTools } from "./github";
@@ -39,6 +47,12 @@ export type BriefItem = {
   event?: string;
   /** true = "也值得一看"那一行：只有 headline，没有 background / for_you。 */
   extra?: boolean;
+  /**
+   * true = 背景是读了正文写的，basis 是代码核对过的原文依据；
+   * false = 没读到正文（比如 Google News 的跳转链接），背景只根据标题和简介写。早期数据没有这个字段。
+   */
+  grounded?: boolean;
+  basis?: string[];
 };
 
 /** 日本时间的今天（YYYY-MM-DD）。cron 在 UTC 22 点跑，正好是日本早上 7 点。 */
@@ -142,8 +156,41 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     text: kind === "tools" ? (r.raw_text as string) : usableSummary(r.title as string, r.raw_text as string),
     source: newsSourceLabel(r.source as string),
   }));
-  // 第一步：只看新闻写报告，不给 AI 看任何关于他的信息
-  const { overview, picks, more, practice } = await generateSignalBrief(kind, candidates);
+  // 第一步：只看标题和简介挑 5 条、起草（不给 AI 看任何关于他的信息）
+  const draft = await generateSignalBrief(kind, candidates);
+  const { more, practice } = draft;
+
+  // 第二步：只给挑中的这几条抓正文（工具抓 README），按正文重写，原文依据由代码核对。
+  // 抓不到正文、或重写没有一句依据对得上的，保留草稿并标"只根据标题和简介写的"。
+  const bodies = await Promise.all(
+    draft.picks.map((p) => {
+      const row = rows[p.index];
+      return kind === "tools"
+        ? fetchReadme((row.title as string | null) ?? "").catch(() => "")
+        : fetchArticleBody((row.url as string | null) ?? null);
+    })
+  );
+  const grounded = new Map<number, { headline: string; background: string; forYou: string; basis: string[] }>();
+  let overview = draft.overview;
+  try {
+    const result = await groundBrief(
+      draft.picks.map((p, i) => ({
+        index: p.index,
+        title: candidates[p.index].title,
+        summary: candidates[p.index].text,
+        body: bodies[i],
+        draft: { headline: p.headline, background: p.background, forYou: p.forYou },
+      }))
+    );
+    for (const g of result.items) grounded.set(g.index, g);
+    if (result.items.length > 0 && result.overview) overview = result.overview;
+  } catch (e) {
+    console.error("brief grounding failed, keeping drafts", e);
+  }
+  const picks = draft.picks.map((p) => {
+    const g = grounded.get(p.index);
+    return g ? { ...p, headline: g.headline, background: g.background, forYou: g.forYou } : p;
+  });
 
   // 第二步：单独找最多两条真跟他连得上的，代码核对出处；失败只是少了"跟你"
   const personal = new Map<number, string>();
@@ -166,6 +213,8 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       for_you: p.forYou,
       personal: personal.get(p.index),
       event: p.event,
+      grounded: grounded.has(p.index),
+      basis: grounded.get(p.index)?.basis,
     };
   });
   // "也值得一看"跟精选存在同一个数组里，用 extra 标出来，不用加列

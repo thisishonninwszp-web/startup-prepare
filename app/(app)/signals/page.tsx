@@ -108,6 +108,21 @@ function ReportSectionView({
                 ) : (
                   <>
                     <p className="mt-2 text-base leading-8">{item.background}</p>
+                    {item.grounded === true && item.basis && item.basis.length > 0 && (
+                      <details className="mt-1 text-xs">
+                        <summary className="cursor-pointer text-muted-foreground">按正文写的 · 看原文依据</summary>
+                        <ul className="mt-1 space-y-1 border-l-2 border-border pl-3 leading-6 text-muted-foreground">
+                          {item.basis.map((b, j) => (
+                            <li key={j}>「{b}」</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                    {item.grounded === false && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        没读到正文，这段背景只根据标题和一两句简介写，具体数字和日期可能不准。点进去看原文。
+                      </p>
+                    )}
                     <p className="mt-3 text-sm leading-7">
                       <span className="text-muted-foreground">{section.forYouLabel}：</span>
                       {item.for_you}

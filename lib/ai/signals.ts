@@ -1514,3 +1514,114 @@ export async function extractStepEvidence(claim: string, sources: SearchSource[]
     (value) => parseStepEvidence(value, sources)
   );
 }
+
+// ── 每日报告第二步：读正文重写 ───────────────────────────────────────────
+
+/**
+ * 第一步只看标题和一两句简介挑出 5 条、起草；第二步只给这 5 条去抓正文，按正文重写"来龙去脉"。
+ * 每条要附原文依据（逐字摘录），代码核对确实在正文里 —— 不然背景里的数字、日期、名字
+ * 就是 AI 凭记忆补的，补错了读的人也分不出来。
+ */
+export type GroundInput = {
+  index: number;
+  title: string;
+  summary: string;
+  /** 正文（新闻）或 README（工具）。拿不到就是空串，这条不重写。 */
+  body: string;
+  draft: { headline: string; background: string; forYou: string };
+};
+
+export type GroundedPick = {
+  index: number;
+  headline: string;
+  background: string;
+  forYou: string;
+  /** 代码核对过、确实在正文里的原文依据。 */
+  basis: string[];
+};
+
+const GROUND_PROMPT = `你在改写一份每日报告。之前只看了标题和一两句简介就起了草稿，现在给你这几条的正文。
+按正文重写每一条：
+
+- headline：一句话说发生了什么。
+- background：为什么重要、来龙去脉，3 到 4 句。里面的具体事实（数字、日期、人名、公司名、地名）必须是正文里写了的；
+  正文没写的不要补，草稿里有、正文里没有的事实要删掉。可以用一两句常识帮人看懂，但不要编具体数字和日期。
+- forYou：照草稿的意思写（主要影响谁 / 可以找谁聊 / 可以拿它试什么），一到两句，有正文依据更好。
+- basis：1 到 3 句正文原文，逐字照抄（不翻译、不改字，每句 15 到 120 字），是 background 里事实的出处。
+
+另外按重写后的内容写 overview：开头的一段总述，3 到 5 句，第一句直接说最重要的那件事，只用这几条里出现过的事实。
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"overview":"…","items":[{"index":序号,"headline":"…","background":"…","forYou":"…","basis":["…"]}]}`;
+
+/** 只收正文里真有依据的；没有一句依据对得上的条目丢掉（调用方保留草稿并标注）。 */
+export function parseGroundedBrief(
+  value: unknown,
+  inputs: GroundInput[]
+): { overview: string; items: GroundedPick[] } {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const overview = requireString(v, "overview");
+  const raw = Array.isArray(v.items) ? v.items : [];
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const byIndex = new Map(inputs.map((i) => [i.index, i]));
+  const items: GroundedPick[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const it = r as Record<string, unknown>;
+    const index = typeof it.index === "number" ? it.index : Number(it.index);
+    const input = byIndex.get(index);
+    if (!input || !input.body || items.some((x) => x.index === index)) continue;
+    const body = squash(input.body);
+    const basis = (Array.isArray(it.basis) ? it.basis : [])
+      .filter((b): b is string => typeof b === "string")
+      .map((b) => b.trim())
+      .filter((b) => squash(b).length >= 8 && body.includes(squash(b)))
+      .slice(0, 3);
+    if (basis.length === 0) continue;
+    items.push({
+      index,
+      headline: requireString(it, "headline"),
+      background: requireString(it, "background"),
+      forYou: requireString(it, "forYou"),
+      basis: basis.map((b) => b.slice(0, 200)),
+    });
+  }
+  const texts = [overview, ...items.flatMap((i) => [i.headline, i.background, i.forYou])];
+  assertNoBanned(texts);
+  assertChinese(texts);
+  return { overview, items };
+}
+
+export async function groundBrief(inputs: GroundInput[]): Promise<{ overview: string; items: GroundedPick[] }> {
+  const withBody = inputs.filter((i) => i.body);
+  if (withBody.length === 0) return { overview: "", items: [] };
+  const blocks = inputs
+    .map((i) =>
+      [
+        `【${i.index}】${i.title}`,
+        `草稿：${i.draft.headline}｜${i.draft.background}｜${i.draft.forYou}`,
+        i.body ? `正文：${i.body.slice(0, 2500)}` : `（拿不到正文，这条照草稿保留，不用写进 items）`,
+      ].join("\n")
+    )
+    .join("\n\n");
+  return executeAiJson(
+    { operation: "brief_ground", module: "unknown", outputMode: "json", timeoutMs: 50_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        blocks +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验。basis 必须逐字照抄正文原文；背景只用正文里有的事实；用中文写。"
+          : ""),
+      config: {
+        systemInstruction: GROUND_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 5000,
+      },
+    }),
+    (value) => parseGroundedBrief(value, inputs)
+  );
+}
