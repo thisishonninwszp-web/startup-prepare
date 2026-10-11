@@ -35,6 +35,10 @@ export type BriefItem = {
   for_you: string;
   /** "跟你"：只有代码核对过确实连得上"关于他"时才有；早期数据没有这个字段。 */
   personal?: string;
+  /** 这件事的短标签（去重用）。早期数据没有。 */
+  event?: string;
+  /** true = "也值得一看"那一行：只有 headline，没有 background / for_you。 */
+  extra?: boolean;
 };
 
 /** 日本时间的今天（YYYY-MM-DD）。cron 在 UTC 22 点跑，正好是日本早上 7 点。 */
@@ -139,7 +143,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     source: newsSourceLabel(r.source as string),
   }));
   // 第一步：只看新闻写报告，不给 AI 看任何关于他的信息
-  const { overview, picks, practice } = await generateSignalBrief(kind, candidates);
+  const { overview, picks, more, practice } = await generateSignalBrief(kind, candidates);
 
   // 第二步：单独找最多两条真跟他连得上的，代码核对出处；失败只是少了"跟你"
   const personal = new Map<number, string>();
@@ -161,8 +165,24 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       background: p.background,
       for_you: p.forYou,
       personal: personal.get(p.index),
+      event: p.event,
     };
   });
+  // "也值得一看"跟精选存在同一个数组里，用 extra 标出来，不用加列
+  for (const m of more) {
+    const row = rows[m.index];
+    items.push({
+      signal_id: row.id as string,
+      title: (row.title as string | null) ?? "",
+      url: (row.url as string | null) ?? null,
+      source: newsSourceLabel(row.source as string),
+      headline: m.headline,
+      background: "",
+      for_you: "",
+      event: m.event,
+      extra: true,
+    });
+  }
 
   const { error: saveError } = await supabaseAdmin
     .from("signal_briefs")

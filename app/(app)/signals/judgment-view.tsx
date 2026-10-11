@@ -1,4 +1,4 @@
-import { CONFIDENCE_LEVELS, type JudgmentRow } from "@/lib/domains/signals/practice-shared";
+import { CONFIDENCE_LEVELS, displayQuestion, type JudgmentRow } from "@/lib/domains/signals/practice-shared";
 import { RetryFeedback } from "./judgment-forms";
 
 const DATE = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric" });
@@ -22,7 +22,7 @@ export function JudgmentView({ judgment, showQuestion = true }: { judgment: Judg
   const confidence = confidenceLabel(judgment.confidence);
   return (
     <div>
-      {showQuestion && <p className="text-sm text-muted-foreground">{judgment.question}</p>}
+      {showQuestion && <p className="text-sm text-muted-foreground">{displayQuestion(judgment.question)}</p>}
       <p className="mt-2 border-l-2 border-primary pl-3 text-base font-medium leading-8">{judgment.judgment}</p>
       <p className="mt-2 font-mono text-xs text-muted-foreground">
         {formatDueDate(judgment.due_at)} 对账{confidence ? ` · ${confidence}` : ""}

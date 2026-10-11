@@ -63,7 +63,7 @@ function ReportSectionView({
     <section className="mt-12">
       <h2 className="border-b pb-2 text-xl font-semibold">{section.title}</h2>
 
-      {data && data.items.length === 0 ? (
+      {data && data.items.filter((i) => !i.extra).length === 0 ? (
         <div className="mt-4">
           {data.overview && <p className="text-base leading-8">{data.overview}</p>}
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
@@ -88,7 +88,7 @@ function ReportSectionView({
         <>
           {data.overview && <p className="mt-4 text-base leading-8">{data.overview}</p>}
           <ol className="mt-8 space-y-10">
-            {data.items.map((item, i) => (
+            {data.items.filter((item) => !item.extra).map((item, i) => (
               <li key={item.signal_id}>
                 <p className="font-mono text-xs text-muted-foreground">
                   {String(i + 1).padStart(2, "0")} · {item.source}
@@ -141,6 +141,26 @@ function ReportSectionView({
               </li>
             ))}
           </ol>
+          {data.items.some((item) => item.extra) && (
+            <div className="mt-10 border-t pt-4">
+              <h3 className="text-sm font-medium text-muted-foreground">还有这些也值得一看</h3>
+              <ul className="mt-2 space-y-2">
+                {data.items
+                  .filter((item) => item.extra)
+                  .map((item) => (
+                    <li key={item.signal_id} className="text-sm leading-7">
+                      <Link
+                        href={`/signals/${item.signal_id}`}
+                        className="transition-colors duration-150 hover:text-primary"
+                      >
+                        {item.headline}
+                      </Link>
+                      <span className="ml-2 font-mono text-xs text-muted-foreground">{item.source}</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
           {isToday && (
             <div className="mt-6 flex justify-end">
               <GenerateBriefButton kind={section.kind} regenerate />

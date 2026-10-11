@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseBayesDraft, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseBayesDraft, sameEvent, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -27,7 +27,7 @@ describe("parseNewsAnalysis", () => {
 });
 
 describe("parseBrief", () => {
-  const pick = (index: unknown) => ({ index, headline: "h", background: "b", forYou: "f" });
+  const pick = (index: unknown) => ({ index, event: `事件${String(index)}`, headline: "h", background: "b", forYou: "f" });
   const brief = (picks: unknown[]) => ({ overview: "今天的世界", picks });
 
   it("序号越界、重复、不是整数的丢掉，其余保留", () => {
@@ -77,7 +77,7 @@ describe("assertChinese", () => {
 });
 
 describe("parseBrief 的练习题", () => {
-  const pick = (index: number) => ({ index, headline: "日银加息", background: "日银把利率调到一点二五。", forYou: "广告预算可能先被砍。" });
+  const pick = (index: number) => ({ index, event: `事件${index}`, headline: "日银加息", background: "日银把利率调到一点二五。", forYou: "广告预算可能先被砍。" });
   const base = { overview: "今天日银加息了。", picks: [pick(0), pick(3)] };
 
   it("练习题指向 picks 里的一条才收", () => {
@@ -272,5 +272,78 @@ describe("mentionsNumericLikelihood", () => {
     for (const t of ["日银把政策利率从 1% 提高到 1.25%。", "销售额增长了 3%。", "银行可能会把利率调到 0.5%"]) {
       expect(mentionsNumericLikelihood(t), t).toBe(false);
     }
+  });
+});
+
+describe("parseStepEvidence（上网查证据）", () => {
+  const sources = [
+    { title: "日経", url: "https://example.jp/a", content: "三菱UFJ銀行は11月から住宅ローンの変動金利を0.15%引き上げると発表した。" },
+    { title: "Yahoo", url: "https://example.jp/b", content: "大手行の多くは当面、預金金利を据え置く方針だ。" },
+  ];
+  const item = (over: Record<string, unknown>) => ({
+    source: 1, fact: "三菱UFJ银行宣布从11月起上调房贷浮动利率0.15个百分点。",
+    excerpt: "住宅ローンの変動金利を0.15%引き上げる", stance: "supports", ...over,
+  });
+
+  it("来源编号对得上、摘录逐字在原文里，才收", () => {
+    const ev = parseStepEvidence({ evidence: [item({}), item({ source: 2, fact: "大型银行多数暂时维持存款利率不变。", excerpt: "預金金利を据え置く方針", stance: "contradicts" })] }, sources);
+    expect(ev.map((e) => [e.url, e.stance])).toEqual([["https://example.jp/a", "supports"], ["https://example.jp/b", "contradicts"]]);
+  });
+
+  it("编的摘录、不存在的来源、档位不对，都丢掉", () => {
+    const ev = parseStepEvidence(
+      { evidence: [item({ excerpt: "原文里根本没有这句话的内容" }), item({ source: 9 }), item({ stance: "maybe" })] },
+      sources
+    );
+    expect(ev).toEqual([]);
+  });
+
+  it("没有 evidence 字段不收；空数组可以", () => {
+    expect(() => parseStepEvidence({}, sources)).toThrow("evidence");
+    expect(parseStepEvidence({ evidence: [] }, sources)).toEqual([]);
+  });
+});
+
+describe("parseBayesDraft 挂来源", () => {
+  const draft = {
+    prior: "low",
+    priorWhy: "普通年份里，大银行很少主动大幅调房贷利率。",
+    evidence: [
+      { text: "三菱UFJ银行已宣布上调房贷利率。", why: "龙头带头，其他银行容易跟。", strength: "for", found: 1 },
+      { text: "多数大行暂时维持存款利率。", why: "说明银行不急着全面调整。", strength: "against", found: 0 },
+    ],
+  };
+  it("found 编号对得上才挂 url；0 或越界不挂", () => {
+    const d = parseBayesDraft(draft, [{ url: "https://example.jp/a" }]);
+    expect(d.evidence.map((e) => e.url)).toEqual(["https://example.jp/a", undefined]);
+  });
+});
+
+describe("同一件事只留一条 + 也值得一看", () => {
+  const pick = (index: number, event: string) => ({ index, event, headline: `标题${index}`, background: "b", forYou: "f" });
+
+  it("sameEvent：去掉空格标点后相同、或一个包含另一个", () => {
+    expect(sameEvent("日银加息", "日银 加息")).toBe(true);
+    expect(sameEvent("日银加息", "日银加息后银行跟进")).toBe(true);
+    expect(sameEvent("日银加息", "台积电熊本")).toBe(false);
+  });
+
+  it("标签重复的精选被去掉，后面的补上来；多出来的进也值得一看", () => {
+    const b = parseBrief(
+      {
+        overview: "今天日银加息。",
+        picks: [
+          pick(0, "日银加息"), pick(1, "日银加息后银行跟进"), pick(2, "台积电熊本"), pick(3, "物流缺人"),
+          pick(4, "OpenAI Dots"), pick(5, "微软紧急刹车"), pick(6, "乐天漫游缩小"),
+        ],
+        more: [
+          { index: 7, event: "物流缺人", headline: "又一篇物流缺人的报道" },
+          { index: 8, event: "派拉蒙收购", headline: "派拉蒙计划收购华纳" },
+        ],
+      },
+      10
+    );
+    expect(b.picks.map((p) => p.index)).toEqual([0, 2, 3, 4, 5]);
+    expect(b.more.map((m) => m.index)).toEqual([6, 8]);
   });
 });

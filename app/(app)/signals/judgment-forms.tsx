@@ -24,15 +24,22 @@ import {
 export function JudgmentForm({
   signalId,
   question,
+  questionLabel,
+  initialJudgment = "",
   submitLabel = "写下，然后看答案",
 }: {
   signalId: string;
+  /** 存进账本的问题。 */
   question: string;
+  /** 界面上显示的问题；不给就显示 question。 */
+  questionLabel?: string;
+  /** 预填的判断（押推论时预填那一步的结论，用户可以改）。 */
+  initialJudgment?: string;
   submitLabel?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [judgment, setJudgment] = useState("");
+  const [judgment, setJudgment] = useState(initialJudgment);
   const [horizon, setHorizon] = useState<HorizonKey>("3m");
   const [confidence, setConfidence] = useState<ConfidenceKey | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +57,7 @@ export function JudgmentForm({
         });
       }}
     >
-      <p className="text-base font-medium leading-8">{question}</p>
+      <p className="text-base font-medium leading-8">{questionLabel ?? question}</p>
       <Textarea
         className="mt-3"
         value={judgment}

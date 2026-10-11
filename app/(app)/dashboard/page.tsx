@@ -154,6 +154,17 @@ export default async function DashboardPage() {
     .order("due_at", { ascending: true });
   if (duePredsError) throw new Error(duePredsError.message);
 
+  // 读新闻时下的判断到期了 —— 也进同一条"去做"的队列
+  const { data: dueSignalPreds, error: dueSignalError } = await supabaseAdmin
+    .from("predictions")
+    .select("id, text")
+    .eq("user_id", userId)
+    .eq("source_type", "signal")
+    .eq("outcome", "pending")
+    .lte("due_at", new Date().toISOString())
+    .order("due_at", { ascending: true });
+  if (dueSignalError) throw new Error(dueSignalError.message);
+
   const due = (duePreds ?? []).map((p) => ({
     id: p.id as string,
     text: p.text as string,
@@ -180,6 +191,12 @@ export default async function DashboardPage() {
       kind: "预测对账",
       text: p.text,
       href: `/ideas/${p.ideaId}`,
+    })),
+    ...(dueSignalPreds ?? []).map((p) => ({
+      key: `signal-pred-${p.id}`,
+      kind: "判断对账",
+      text: p.text as string,
+      href: "/signals/practice",
     })),
     ...dueRealityCases.map((c) => ({
       key: `reality-${c.id}`,
@@ -217,7 +234,7 @@ export default async function DashboardPage() {
           data={{
             realContacts: mirror.realContacts,
             toolOps: mirror.toolOps,
-            duePredictions: due.length + dueRetroPredictions.length,
+            duePredictions: due.length + dueRetroPredictions.length + (dueSignalPreds ?? []).length,
             staleValidatingIdeas: items.filter(
               (idea) => daysSince(idea.last_activity_at) > 3
             ).length,

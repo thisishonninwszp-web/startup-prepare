@@ -5,12 +5,13 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import { fetchDailyNews } from "@/lib/domains/signals/daily-news";
-import { ensureSignalAnalysis, type StoredHistory } from "@/lib/domains/signals/analysis";
+import { ensureSignalAnalysis, getSignalDetail, type StoredHistory } from "@/lib/domains/signals/analysis";
 import { ensureSignalHistory } from "@/lib/domains/signals/history";
 import { draftNodeBayes, expandInference, saveNodeBayes } from "@/lib/domains/signals/inference";
 import type { BayesState, InferenceNode } from "@/lib/domains/signals/inference-shared";
 import { generateBrief } from "@/lib/domains/signals/brief";
 import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
+import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import {
   resolveJudgment,
@@ -241,5 +242,55 @@ export async function saveBayesAction(
     return { ok: true, nodes: await saveNodeBayes(signalId, nodeId, state) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没存上") };
+  }
+}
+
+// ── 能找谁聊 → 触达规划画布 ────────────────────────────────────────────────
+
+/**
+ * 把具体报告里的"能找谁聊"记成一张触达规划画布：人和要问的那句话填好，
+ * 剩下的（在哪儿找到他、什么时候、怎么开口）去画布上想，AI 在那边当挑战者。
+ * 同一条新闻同一个人只建一张，重复点直接回到那张。
+ */
+export async function createContactPlanAction(
+  signalId: string
+): Promise<{ ok: true; canvasId: string } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const detail = await getSignalDetail(signalId);
+    if (!detail || detail === "missing-schema") throw new Error("这条已经不在了");
+    if (detail.analysis?.kind !== "news") throw new Error("这条还没有具体报告，先打开它让报告生成出来");
+    const { who, question } = detail.analysis;
+    const title = `找${contactPerson(who)}聊`;
+    const scenario = `读到：${detail.title}${detail.url ? `\n${detail.url}` : ""}`;
+
+    const { data: existing, error: findError } = await supabaseAdmin
+      .from("outreach_canvases")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("title", title)
+      .eq("scenario", scenario)
+      .limit(1)
+      .maybeSingle();
+    if (findError) throw new Error(findError.message);
+    if (existing) return { ok: true, canvasId: existing.id as string };
+
+    const { data, error } = await supabaseAdmin
+      .from("outreach_canvases")
+      .insert({
+        user_id: userId,
+        title,
+        use_case: "other",
+        scenario,
+        person_notes: who,
+        message_draft: question,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    revalidatePath("/outreach");
+    return { ok: true, canvasId: data.id as string };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没建上") };
   }
 }

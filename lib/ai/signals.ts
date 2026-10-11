@@ -436,7 +436,12 @@ export type BriefPick = {
   background: string;
   /** 每条都有的一句，不涉及他：主要影响谁 / 可以找谁聊 / 可以拿它试什么。 */
   forYou: string;
+  /** 这是哪件事的短标签（"日银加息"）。代码按它去重：同一件事的几篇报道、后续反应只留一条。 */
+  event: string;
 };
+
+/** "也值得一看"：只有一句中文标题，不写背景。 */
+export type BriefMore = { index: number; event: string; headline: string };
 
 /** 一份报告里最多几条点到他。多了就是硬扯。 */
 const MAX_PERSONAL = 2;
@@ -453,7 +458,7 @@ const BRIEF_PROMPTS: Record<BriefKind, string> = {
 - 会改变很多人处境的事：利率、汇率、政策、规制、大公司的大动作、产业结构的变化。
 - 能看出"钱往哪里流、谁遇到了新麻烦、什么变便宜了"的事。
 不挑：单纯的事件、犯罪、八卦。
-同一件事只留一条：一个事件和它引发的后续反应（比如"央行加息"和"银行跟着调存款利率"）算同一件事，挑一条，后续放进 background 里讲。5 条必须是 5 件不同的事。
+同一件事只留一条：一个事件和它引发的后续反应（比如"央行加息"和"银行跟着调存款利率"）算同一件事，挑一条，后续放进 background 里讲。
 
 每条写：
 - headline：一句话说发生了什么。
@@ -516,6 +521,8 @@ export type Brief = {
   /** 报告开头"今天的世界"：把几条串起来讲，3 到 5 句。 */
   overview: string;
   picks: BriefPick[];
+  /** 精选之外、也值得一看的几条（不同的事），只有标题。 */
+  more: BriefMore[];
   /** 只有新闻报告有：今天的练习题。 */
   practice: BriefPractice | null;
 };
@@ -529,13 +536,32 @@ const PRACTICE_INSTRUCTION = `再出一道今天的练习题（practice）。他
 `;
 
 /** allowEmpty：日程那一份，当天真没有带日期的消息时允许一条都不挑（不许硬凑）。 */
+const MORE_SIZE = 5;
+
+const MORE_INSTRUCTION = `每条 picks 都写 event：这是哪件事的短标签，4 到 10 个字（比如"日银加息""台积电熊本"）。
+同一件事的不同报道、它引发的后续反应，用同一个标签 —— 代码会按标签去重，标签不同的才算不同的事。
+picks 按重要性从高到低排，可以多挑一两条备选（最多 ${BRIEF_SIZE + 2} 条），去重后只留前 ${BRIEF_SIZE} 条。
+
+再写 more：精选之外、也值得一看的最多 ${MORE_SIZE} 条，必须是和 picks 不同的事。每条只写 index、event，
+和 headline（一句中文，说清楚发生了什么）。不写背景。没有就给空数组。
+`;
+
+/** 标签比较前去掉空格和标点；一个包含另一个也算同一件事（"日银加息" ⊂ "日银加息后银行跟进"）。 */
+export function sameEvent(a: string, b: string): boolean {
+  const norm = (t: string) => t.toLowerCase().replace(/[\s\p{P}]/gu, "");
+  const x = norm(a);
+  const y = norm(b);
+  if (!x || !y) return false;
+  return x === y || x.includes(y) || y.includes(x);
+}
+
 export function parseBrief(value: unknown, candidateCount: number, allowEmpty = false): Brief {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
   const overview = requireString(value as Record<string, unknown>, "overview");
   const rawPicks = (value as { picks?: unknown }).picks;
   if (!Array.isArray(rawPicks)) throw new Error("缺少 picks");
   if (rawPicks.length === 0) {
-    if (allowEmpty) return { overview, picks: [], practice: null };
+    if (allowEmpty) return { overview, picks: [], more: [], practice: null };
     throw new Error("缺少 picks");
   }
   const seen = new Set<number>();
@@ -546,24 +572,51 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
     const index = typeof v.index === "number" ? v.index : Number(v.index);
     if (!Number.isInteger(index) || index < 0 || index >= candidateCount || seen.has(index)) continue;
     seen.add(index);
+    const headline = requireString(v, "headline");
+    const event = typeof v.event === "string" && v.event.trim() ? v.event.trim().slice(0, 30) : headline;
+    // 同一件事（标签相同或互相包含）只留排在前面的那条
+    if (result.some((r) => sameEvent(r.event, event))) continue;
     result.push({
       index,
-      headline: requireString(v, "headline"),
+      headline,
       background: requireString(v, "background"),
       forYou: requireString(v, "forYou"),
+      event,
     });
   }
   if (result.length === 0 && !allowEmpty) throw new Error("没有一条能对上候选序号");
   const picks = result.slice(0, BRIEF_SIZE);
+
+  // 也值得一看：去重后多出来的精选备选排前面，再接 AI 给的 more；都要和精选、彼此不是同一件事
+  const more: BriefMore[] = [];
+  const takenIndex = new Set(picks.map((p) => p.index));
+  const addMore = (index: number, event: string, headline: string) => {
+    if (more.length >= MORE_SIZE || takenIndex.has(index) || !headline) return;
+    if ([...picks.map((p) => p.event), ...more.map((m) => m.event)].some((e) => sameEvent(e, event))) return;
+    takenIndex.add(index);
+    more.push({ index, event, headline });
+  };
+  for (const r of result.slice(BRIEF_SIZE)) addMore(r.index, r.event, r.headline);
+  const rawMore = (value as { more?: unknown }).more;
+  for (const m of Array.isArray(rawMore) ? rawMore : []) {
+    if (!m || typeof m !== "object") continue;
+    const v = m as Record<string, unknown>;
+    const index = typeof v.index === "number" ? v.index : Number(v.index);
+    if (!Number.isInteger(index) || index < 0 || index >= candidateCount) continue;
+    const headline = typeof v.headline === "string" ? v.headline.trim() : "";
+    const event = typeof v.event === "string" && v.event.trim() ? v.event.trim() : headline;
+    addMore(index, event, headline);
+  }
   const practice = parsePractice((value as { practice?: unknown }).practice, picks);
   const texts = [
     overview,
     ...picks.flatMap((p) => [p.headline, p.background, p.forYou]),
+    ...more.map((m) => m.headline),
     ...(practice ? [practice.question, practice.checkHow] : []),
   ];
   assertNoBanned(texts);
   assertChinese(texts);
-  return { overview, picks, practice };
+  return { overview, picks, more, practice };
 }
 
 /** 练习题可有可无（工具报告没有）；有的话必须指向 picks 里的一条，问题和检验方法都要有。 */
@@ -583,7 +636,7 @@ function parsePractice(raw: unknown, picks: BriefPick[]): BriefPractice | null {
  * "跟你"由第二步 linkPicksToReader 单独做，并由代码核对。
  */
 export async function generateSignalBrief(kind: BriefKind, candidates: BriefCandidate[]): Promise<Brief> {
-  if (candidates.length === 0) return { overview: "", picks: [], practice: null };
+  if (candidates.length === 0) return { overview: "", picks: [], more: [], practice: null };
   const numbered = candidates
     .map((c, i) => `[${i}] ${c.title}（${c.source}）\n${c.text.slice(0, 160)}`)
     .join("\n");
@@ -595,7 +648,8 @@ ${SIGNAL_SHARED_RULES}
 另外写 overview：开头的一段总述，3 到 5 句，把挑出来的几条串起来讲${OVERVIEW_TOPIC[kind]}。第一句直接说今天最重要的那一件事是什么；每一句都要带一件具体的事（谁、做了什么）。不许用"持续演进""几个重要领域""值得注意的是"这类空开头，也不要逐条复述。
 
 ${kind === "news" ? PRACTICE_INSTRUCTION : ""}
-只输出 JSON：{"overview":"…","picks":[{"index":序号,"headline":"…","background":"…","forYou":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…"}' : ""}}`;
+${MORE_INSTRUCTION}
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
@@ -1074,6 +1128,13 @@ export type InferenceStep = {
   /** 怎么看出它正在发生：一个能观察到的信号。 */
   watch: string;
   likelihood: Likelihood;
+  /** 用来查证这一步的搜索词（日文或英文，具体）。没给就用 claim 本身。 */
+  query: string;
+  /**
+   * 反方向的搜索词：照着推论本身去搜，搜到的几乎全是支持它的文章（确认偏误搬进了搜索）。
+   * 所以同时搜"它不会发生 / 影响有限"的说法。
+   */
+  counterQuery: string;
 };
 
 /** 每层最多几条。层数上限由调用方控制。 */
@@ -1098,7 +1159,11 @@ const INFERENCE_PROMPT = `你帮一个人练"顺着一条消息往下推"。给�
   幅度不够大、不足以导致下一步的，就标 "unlikely"，并在 why 里说清楚为什么幅度不够。
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"steps":[{"claim":"…","why":"…","watch":"…","likelihood":"likely"}]}`;
+另外给每种情况写两个搜索词，用日文或英文（看这件事主要在哪个国家），具体到对象和动作，不要写成一句话：
+- query：找支持它的资料，比如 "大手銀行 住宅ローン金利 引き上げ 2026"。
+- counterQuery：找反对它的资料 —— 它不会发生、影响有限、有人反着做，比如 "住宅ローン金利 据え置き 大手銀行" 或 "利上げ 影響 限定的"。
+
+只输出 JSON：{"steps":[{"claim":"…","why":"…","watch":"…","likelihood":"likely","query":"…","counterQuery":"…"}]}`;
 
 export function parseInferenceSteps(value: unknown): InferenceStep[] {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
@@ -1110,6 +1175,8 @@ export function parseInferenceSteps(value: unknown): InferenceStep[] {
       claim: requireString(s, "claim"),
       why: requireString(s, "why"),
       watch: requireString(s, "watch"),
+      query: typeof s.query === "string" && s.query.trim() ? s.query.trim().slice(0, 120) : String(s.claim ?? ""),
+      counterQuery: typeof s.counterQuery === "string" ? s.counterQuery.trim().slice(0, 120) : "",
       likelihood: LIKELIHOOD_ORDER.includes(s.likelihood as Likelihood) ? (s.likelihood as Likelihood) : "possible",
     }))
     .slice(0, INFERENCE_BRANCHES)
@@ -1212,15 +1279,23 @@ export async function judgeInferenceSteps(input: {
   summary: string;
   chain: string[];
   steps: InferenceStep[];
+  /** 每一步上网查到的事实（和 steps 一一对应）。没查到就是空数组。 */
+  evidence?: StepEvidence[][];
 }): Promise<JudgedTier[]> {
+  // 不给 Jev 看 Gemini 写的"为什么"：那是最有说服力、也最容易把判断往高处带的部分。
+  // 换成上网查到的事实，让它看证据判断。
   const state = [
     `新闻：${input.title}`,
     input.summary ? `简介：${input.summary}` : "",
     input.chain.length > 0
       ? `假设下面这些已经依次发生：\n${input.chain.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
       : "",
-    "接下来可能发生的几种情况：",
-    ...input.steps.map((s, i) => `[${i}] ${s.claim}（理由：${s.why}）`),
+    "接下来可能发生的几种情况，以及上网查到的相关事实：",
+    ...input.steps.map((s, i) => {
+      const facts = input.evidence?.[i] ?? [];
+      const lines = facts.map((f) => `   - ${f.fact}`);
+      return [`[${i}] ${s.claim}`, ...(lines.length ? lines : ["   - （没查到相关事实）"])].join("\n");
+    }),
   ]
     .filter(Boolean)
     .join("\n");
@@ -1246,7 +1321,13 @@ export async function judgeInferenceSteps(input: {
 export type BayesDraft = {
   prior: "rare" | "low" | "even" | "high" | "common";
   priorWhy: string;
-  evidence: { text: string; why: string; strength: "strong_for" | "for" | "neutral" | "against" | "strong_against" }[];
+  evidence: {
+    text: string;
+    why: string;
+    strength: "strong_for" | "for" | "neutral" | "against" | "strong_against";
+    /** 用的是上网查到的哪条事实；凭印象想的证据没有来源。 */
+    url?: string;
+  }[];
 };
 
 const PRIORS = ["rare", "low", "even", "high", "common"] as const;
@@ -1270,9 +1351,12 @@ const BAYES_PROMPT = `你帮一个人用贝叶斯的方式估计一件事有多�
 铁律：不写任何百分比或数字化的可能性，只选档。
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"prior":"…","priorWhy":"…","evidence":[{"text":"…","why":"…","strength":"…"}]}`;
+如果材料里有"上网查到的事实"（带编号），证据优先从里面挑，并在 found 里写它的编号；
+确实需要补一条查到的事实里没有的证据时，found 写 0。
 
-export function parseBayesDraft(value: unknown): BayesDraft {
+只输出 JSON：{"prior":"…","priorWhy":"…","evidence":[{"text":"…","why":"…","strength":"…","found":1}]}`;
+
+export function parseBayesDraft(value: unknown, found: { url: string }[] = []): BayesDraft {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
   const v = value as Record<string, unknown>;
   if (!PRIORS.includes(v.prior as (typeof PRIORS)[number])) throw new Error("prior 不是五档之一");
@@ -1284,6 +1368,8 @@ export function parseBayesDraft(value: unknown): BayesDraft {
       text: requireString(e, "text"),
       why: requireString(e, "why"),
       strength: e.strength as BayesDraft["evidence"][number]["strength"],
+      // 编号对得上才挂来源；对不上就当凭印象想的，不挂
+      url: found[(typeof e.found === "number" ? e.found : Number(e.found)) - 1]?.url,
     }))
     .slice(0, 4);
   if (evidence.length === 0) throw new Error("缺少 evidence");
@@ -1305,12 +1391,16 @@ export async function draftBayes(input: {
   summary: string;
   chain: string[];
   claim: string;
+  /** 这一步上网查到过的事实（带来源）。 */
+  found?: { url: string; fact: string; stance: string }[];
 }): Promise<BayesDraft> {
+  const found = input.found ?? [];
   const contents = [
     `新闻：${input.title}`,
     input.summary ? `简介：${input.summary}` : "",
     input.chain.length > 0 ? `前面已经推到的链：\n${input.chain.map((c, i) => `${i + 1}. ${c}`).join("\n")}` : "",
     `要估计的这一步：${input.claim}`,
+    found.length > 0 ? `上网查到的事实：\n${found.map((f, i) => `[${i + 1}] ${f.fact}`).join("\n")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -1331,6 +1421,96 @@ export async function draftBayes(input: {
         maxOutputTokens: 3000,
       },
     }),
-    parseBayesDraft
+    (value) => parseBayesDraft(value, found)
+  );
+}
+
+// ── 往下推：上网查证据 ─────────────────────────────────────────────────────
+
+export type EvidenceStance = "supports" | "contradicts" | "context";
+
+/** 查到的一条事实。来源 URL 和原文摘录都由代码核对过，确实在搜索结果里。 */
+export type StepEvidence = {
+  url: string;
+  title: string;
+  /** 用中文写的一句事实。 */
+  fact: string;
+  /** 原文摘录（逐字）。 */
+  excerpt: string;
+  stance: EvidenceStance;
+};
+
+export type SearchSource = { title: string; url: string; content: string };
+
+const MAX_EVIDENCE_PER_STEP = 4;
+const STANCES = ["supports", "contradicts", "context"] as const;
+
+const EVIDENCE_PROMPT = `你帮一个人查证一个推论。给你一个推论，和几篇上网搜到的资料。
+从资料里抽出跟这个推论有关的**事实**，最多 ${MAX_EVIDENCE_PER_STEP} 条。
+
+每条写：
+- source：资料的编号（数字）。
+- fact：用中文写一句具体的事实（谁、做了什么、什么时候、多少）。
+- excerpt：资料里支撑这条事实的原文，逐字照抄，不要翻译、不要改字，30 到 120 字。
+- stance：这条事实对推论是 "supports"（支持）、"contradicts"（反对）还是 "context"（背景，不直接支持也不反对）。
+
+铁律：
+- 只抽资料里真写了的。没写的不要补，不要推测。
+- 跟推论无关的资料直接跳过；讲的是别的国家、别的行业、别的事的，也跳过（推论讲日本，就不要抽美国的数据）。一条都没有就给空数组，不要凑。
+- 反对的事实和支持的一样重要，看到就要抽。
+- 同一件事只留一条最具体的。
+
+只输出 JSON：{"evidence":[{"source":1,"fact":"…","excerpt":"…","stance":"supports"}]}`;
+
+/** 来源编号必须对得上、摘录必须逐字出现在那篇资料里（忽略空白），否则丢掉 —— 防止编来源。 */
+export function parseStepEvidence(value: unknown, sources: SearchSource[]): StepEvidence[] {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const raw = (value as { evidence?: unknown }).evidence;
+  if (!Array.isArray(raw)) throw new Error("缺少 evidence");
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const seen = new Set<string>();
+  const out: StepEvidence[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const idx = (typeof v.source === "number" ? v.source : Number(v.source)) - 1;
+    const source = sources[idx];
+    const fact = typeof v.fact === "string" ? v.fact.trim() : "";
+    const excerpt = typeof v.excerpt === "string" ? v.excerpt.trim() : "";
+    const stance = STANCES.includes(v.stance as EvidenceStance) ? (v.stance as EvidenceStance) : null;
+    if (!source || !fact || squash(excerpt).length < 8 || !stance) continue;
+    if (!squash(source.content).includes(squash(excerpt))) continue;
+    if (seen.has(fact)) continue;
+    seen.add(fact);
+    out.push({ url: source.url, title: source.title, fact, excerpt: excerpt.slice(0, 300), stance });
+    if (out.length >= MAX_EVIDENCE_PER_STEP) break;
+  }
+  if (out.length > 0) {
+    assertNoBanned(out.map((e) => e.fact));
+    assertChinese(out.map((e) => e.fact));
+  }
+  return out;
+}
+
+export async function extractStepEvidence(claim: string, sources: SearchSource[]): Promise<StepEvidence[]> {
+  if (sources.length === 0) return [];
+  const blocks = sources
+    .map((src, i) => `【资料 ${i + 1}】${src.title}\n${src.url}\n${src.content.slice(0, 2500)}`)
+    .join("\n\n");
+  return executeAiJson(
+    { operation: "inference_evidence", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        `要查证的推论：${claim}\n\n${blocks}` +
+        (attempt === 1 ? "\n\n上一次输出没通过校验。excerpt 必须逐字照抄资料原文，source 必须是资料编号。" : ""),
+      config: {
+        systemInstruction: EVIDENCE_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parseStepEvidence(value, sources)
   );
 }

@@ -25,3 +25,16 @@ export function formatReportDate(date: string): string {
 export function isReportDate(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
+
+/**
+ * 报告里"能找谁聊"常写成一整句（"可以找物流公司负责招聘的高管聊聊，了解……"），
+ * 记成画布标题时只留"找谁"那一段。
+ */
+export function contactPerson(who: string): string {
+  const person = who
+    .trim()
+    .replace(/^(你)?(可以|能)?(去)?(找|和|跟|与)/, "")
+    .split(/[，,。；;]|聊/)[0]
+    .trim();
+  return (person || who.trim()).slice(0, 30);
+}

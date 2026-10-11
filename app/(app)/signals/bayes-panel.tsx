@@ -150,6 +150,18 @@ export function BayesPanel({
                 <p>{e.text}</p>
                 <p className="text-muted-foreground">
                   {e.why}（AI 的草稿：{draftLabel}）
+                  {e.url ? (
+                    <a
+                      href={e.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-1 text-primary underline-offset-4 hover:underline"
+                    >
+                      来源 ↗
+                    </a>
+                  ) : (
+                    <span className="ml-1 text-xs">（没有来源，是 AI 凭印象想的）</span>
+                  )}
                 </p>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {EVIDENCE_STRENGTHS.map((s) => (

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { authorKey, isLiteratureNdc, mainTitle, normalizeTitle } from "./books";
 import { newsSourceLabel, RSS_FEEDS, rssSource, signalKindOf } from "./feeds";
+import { contactPerson } from "./format";
 
 describe("signalKindOf", () => {
   it("按前缀认出四类", () => {
@@ -38,5 +39,13 @@ describe("书名处理", () => {
     expect(mainTitle("The Great Demographic Reversal: Ageing Societies")).toBe("The Great Demographic Reversal");
     expect(mainTitle("失敗の本質：日本軍の組織論的研究")).toBe("失敗の本質");
     expect(normalizeTitle("1587, a Year of No Significance")).toBe(normalizeTitle("1587 A Year of No Significance"));
+  });
+});
+
+describe("contactPerson", () => {
+  it("只留找谁那一段", () => {
+    expect(contactPerson("可以找物流公司负责招聘或运营的高管聊聊，了解他们如何应对人手短缺。")).toBe("物流公司负责招聘或运营的高管");
+    expect(contactPerson("你可以和在中小制造业做财务的人聊")).toBe("在中小制造业做财务的人");
+    expect(contactPerson("在中小制造业做财务的人")).toBe("在中小制造业做财务的人");
   });
 });

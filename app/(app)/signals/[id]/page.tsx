@@ -4,13 +4,16 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { getSignalDetail, type SignalAnalysis } from "@/lib/domains/signals/analysis";
 import { formatTokyoTime } from "@/lib/domains/signals/format";
-import { GENERIC_QUESTION, getJudgmentForSignal } from "@/lib/domains/signals/practice";
+import { GENERIC_QUESTION, getJudgmentForSignal, listNodeBets } from "@/lib/domains/signals/practice";
+import { NODE_BET_PREFIX } from "@/lib/domains/signals/practice-shared";
+import { formatDueDate } from "../judgment-view";
 import { AnalysisLoader } from "./analysis-loader";
 import { SignalActions } from "../signal-actions";
 import { JudgmentForm } from "../judgment-forms";
 import { JudgmentView } from "../judgment-view";
 import { HistoryPanel } from "../history-panel";
 import { InferenceTree } from "../inference-tree";
+import { ContactPlanButton } from "../contact-plan-button";
 import { getInference } from "@/lib/domains/signals/inference";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +29,7 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function AnalysisView({ analysis }: { analysis: SignalAnalysis }) {
+function AnalysisView({ analysis, signalId }: { analysis: SignalAnalysis; signalId: string }) {
   if (analysis.kind === "tools") {
     return (
       <div className="space-y-6">
@@ -49,6 +52,9 @@ function AnalysisView({ analysis }: { analysis: SignalAnalysis }) {
       <Block label="能找谁聊">
         {analysis.who}
         <p className="mt-1 text-muted-foreground">可以这样问：「{analysis.question}」</p>
+        <div className="mt-3">
+          <ContactPlanButton signalId={signalId} />
+        </div>
       </Block>
     </div>
   );
@@ -67,7 +73,7 @@ export default async function SignalDetailPage({
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [detail, judgment, inference] = await Promise.all([
+  const [detail, judgment, inference, nodeBets] = await Promise.all([
     getSignalDetail(params.id),
     // 迁移 055 没跑时没有判断练习，详情页照旧直接显示报告
     getJudgmentForSignal(user.id, params.id).catch((e: Error) => {
@@ -75,7 +81,11 @@ export default async function SignalDetailPage({
       throw e;
     }),
     getInference(params.id),
+    listNodeBets(user.id, params.id).catch(() => []),
   ]);
+  const bets = Object.fromEntries(
+    nodeBets.map((b) => [b.question.slice(NODE_BET_PREFIX.length), formatDueDate(b.due_at)])
+  );
   if (detail === null) notFound();
   const skipped = searchParams.skip === "1";
   // 还没判断过、也没选跳过：先写判断，报告藏起来
@@ -152,7 +162,7 @@ export default async function SignalDetailPage({
             <section className="mt-10 rounded-lg border bg-card p-5">
               <h2 className="mb-5 text-base font-semibold">具体报告</h2>
               {detail.analysis ? (
-                <AnalysisView analysis={detail.analysis} />
+                <AnalysisView analysis={detail.analysis} signalId={detail.id} />
               ) : (
                 <AnalysisLoader id={detail.id} />
               )}
@@ -162,7 +172,7 @@ export default async function SignalDetailPage({
           {!gated && detail.kind === "news" && inference !== "missing-schema" && (
             <section className="mt-10 rounded-lg border bg-card p-5">
               <h2 className="mb-4 text-base font-semibold">往下推</h2>
-              <InferenceTree signalId={detail.id} initial={inference} />
+              <InferenceTree signalId={detail.id} initial={inference} bets={bets} />
             </section>
           )}
 

@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase";
-import { draftBayes, inferNextSteps, judgeInferenceSteps, type JudgedTier } from "@/lib/ai";
+import {
+  draftBayes,
+  extractStepEvidence,
+  inferNextSteps,
+  judgeInferenceSteps,
+  type JudgedTier,
+  type StepEvidence,
+} from "@/lib/ai";
+import { tavilySearch } from "@/lib/external";
 import { getSignalDetail } from "./analysis";
 import { fetchArticleBody } from "./article";
 import {
@@ -69,11 +77,15 @@ export async function expandInference(
   const claims = chain.map((n) => n.claim);
   const steps = await inferNextSteps({ title: detail.title, summary: detail.summary, body, chain: claims, direction: dir });
 
+  // 每一步上网查一次，只抽事实（来源和摘录由代码核对）。查不到、没配 Key 都不拦着推论。
+  const evidence = await Promise.all(steps.map((s) => findStepEvidence(s.claim, s.query, s.counterQuery)));
+
   // 写推论的和判可能性的分开：Gemini 给自己写的结论打分几乎一律"较可能"，档位交给 Jev 判。
+  // 给 Jev 看的是查到的事实，不是 Gemini 写的"为什么"（那段话最容易把判断往高处带）。
   // Jev 不可用（没配 Key、超时）时退回 Gemini 自己标的档位，并记下来是谁判的。
   let tiers: JudgedTier[] | null = null;
   try {
-    tiers = await judgeInferenceSteps({ title: detail.title, summary: detail.summary, chain: claims, steps });
+    tiers = await judgeInferenceSteps({ title: detail.title, summary: detail.summary, chain: claims, steps, evidence });
   } catch (e) {
     console.error("inference judge failed, falling back to generator tiers", e);
   }
@@ -91,10 +103,30 @@ export async function expandInference(
       judged_by: tiers ? ("jev" as const) : ("gemini" as const),
       unsure: tiers ? tiers[i].unsure : undefined,
       direction: dir,
+      evidence: evidence[i].length > 0 ? evidence[i] : undefined,
     })),
   ];
   await saveTree(signalId, next);
   return next;
+}
+
+/** 正反两个方向各搜几条。只照着推论去搜，搜到的几乎全是支持它的。 */
+const SEARCH_RESULTS_PER_SIDE = 3;
+
+/** 查证一步：正反两个方向各搜一次 → 合起来抽事实。任何一环失败都返回空数组，推论照常。 */
+async function findStepEvidence(claim: string, query: string, counterQuery: string): Promise<StepEvidence[]> {
+  try {
+    const [pro, con] = await Promise.all([
+      tavilySearch(query || claim, SEARCH_RESULTS_PER_SIDE).catch(() => []),
+      counterQuery ? tavilySearch(counterQuery, SEARCH_RESULTS_PER_SIDE).catch(() => []) : Promise.resolve([]),
+    ]);
+    const seen = new Set<string>();
+    const sources = [...pro, ...con].filter((r) => r.url && r.content && !seen.has(r.url) && seen.add(r.url));
+    return await extractStepEvidence(claim, sources);
+  } catch (e) {
+    console.error("step evidence failed", e);
+    return [];
+  }
 }
 
 /** 贝叶斯草稿：AI 只给粗档（先验五档、证据强度五档），转成可编辑的状态，不落库。 */
@@ -108,6 +140,8 @@ export async function draftNodeBayes(signalId: string, nodeId: string): Promise<
     summary: detail.summary,
     chain: chain.slice(0, -1).map((n) => n.claim),
     claim: node.claim,
+    // 查到过证据就让草稿优先用它们，而不是凭印象想证据
+    found: node.evidence ?? [],
   };
   // 草稿偶尔连着两次不合规（比如只给支持的证据），整体再来一轮；还不行就让用户再点一次
   let draft;
@@ -142,6 +176,7 @@ export async function saveNodeBayes(signalId: string, nodeId: string, state: Bay
       why: String(e.why ?? "").slice(0, 300),
       strength: keys.has(e.strength) ? e.strength : "neutral",
       ratio: e.ratio !== undefined ? clampRatio(Number(e.ratio)) : undefined,
+      url: typeof e.url === "string" && /^https?:\/\//.test(e.url) ? e.url : undefined,
     })),
     draft: state.draft,
   };

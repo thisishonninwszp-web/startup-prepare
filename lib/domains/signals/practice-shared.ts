@@ -53,3 +53,22 @@ export function tallyJudgments(rows: JudgmentRow[]) {
     pending: rows.filter((r) => r.outcome === "pending").length,
   };
 }
+
+/**
+ * "押这一条"：在往下推的某一步上下的判断。question 以这个前缀开头，
+ * 好和"这条新闻本身的判断"（每日练习、详情页那道门）分开 —— 一条新闻可以有一个总判断、再押几步推论。
+ */
+export const NODE_BET_PREFIX = "【往下推】";
+
+export function nodeBetQuestion(claim: string): string {
+  return `${NODE_BET_PREFIX}${claim}`;
+}
+
+export function isNodeBet(question: string): boolean {
+  return question.startsWith(NODE_BET_PREFIX);
+}
+
+/** 界面上显示的问题：押推论的那种，去掉前缀换成人话。 */
+export function displayQuestion(question: string): string {
+  return isNodeBet(question) ? `往下推的一步会不会发生：${question.slice(NODE_BET_PREFIX.length)}` : question;
+}

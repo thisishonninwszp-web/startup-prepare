@@ -11,11 +11,15 @@ import {
   LIKELIHOOD_LABELS,
   MAX_INFERENCE_DEPTH,
   posterior,
+  STANCE_LABELS,
+  type InferenceEvidence,
   type InferenceLikelihood,
   type InferenceNode,
 } from "@/lib/domains/signals/inference-shared";
+import { nodeBetQuestion } from "@/lib/domains/signals/practice-shared";
 import { expandInferenceAction } from "./actions";
 import { BayesPanel } from "./bayes-panel";
+import { JudgmentForm } from "./judgment-forms";
 
 /** 五格，填满几格就是几档。扫一眼就能比，不用读字。 */
 export function LikelihoodMeter({ likelihood, unsure }: { likelihood: InferenceLikelihood; unsure?: boolean }) {
@@ -35,6 +39,35 @@ export function LikelihoodMeter({ likelihood, unsure }: { likelihood: InferenceL
         {unsure ? " · 裁判也拿不准" : ""}
       </span>
     </span>
+  );
+}
+
+/** 上网查到的事实：默认收起，标题上就写着支持几条、反对几条。 */
+function EvidenceList({ evidence }: { evidence: InferenceEvidence[] }) {
+  const count = (stance: InferenceEvidence["stance"]) => evidence.filter((e) => e.stance === stance).length;
+  return (
+    <details className="mt-1 text-sm">
+      <summary className="cursor-pointer text-muted-foreground">
+        查到的证据：支持 {count("supports")} · 反对 {count("contradicts")} · 背景 {count("context")}
+      </summary>
+      <ul className="mt-2 space-y-3 border-l-2 border-border pl-3">
+        {evidence.map((e, i) => (
+          <li key={i} className="leading-7">
+            <span className="mr-1 font-mono text-xs text-muted-foreground">[{STANCE_LABELS[e.stance]}]</span>
+            {e.fact}
+            <span className="block text-xs text-muted-foreground">原文：「{e.excerpt}」</span>
+            <a
+              href={e.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary underline-offset-4 hover:underline"
+            >
+              {e.title || e.url} ↗
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -79,11 +112,21 @@ function DirectionInput({
  * 往下推：一棵按需展开的推论树。
  * 每层按可能性从高到低排；可以让它自己推，也可以给方向；每一步都能用贝叶斯算一算。
  */
-export function InferenceTree({ signalId, initial }: { signalId: string; initial: InferenceNode[] }) {
+export function InferenceTree({
+  signalId,
+  initial,
+  bets = {},
+}: {
+  signalId: string;
+  initial: InferenceNode[];
+  /** 押过的那几步：结论 → 对账日期（已经格式化好的）。 */
+  bets?: Record<string, string>;
+}) {
   const [nodes, setNodes] = useState<InferenceNode[]>(initial);
   const [pendingId, setPendingId] = useState<string | null | undefined>(undefined);
   const [directing, setDirecting] = useState<string | null | undefined>(undefined);
   const [bayesOpen, setBayesOpen] = useState<string | null>(null);
+  const [betOpen, setBetOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const busy = pendingId !== undefined;
@@ -116,7 +159,7 @@ export function InferenceTree({ signalId, initial }: { signalId: string; initial
           {!hasFree && (
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => expand(parentId)}>
               {pendingId === parentId && directing !== parentId
-                ? "在推…"
+                ? "在推、在查证据…（十几秒）"
                 : parentId === null
                   ? "让它自己往下推一层"
                   : "顺着这条再推一层 →"}
@@ -162,12 +205,35 @@ export function InferenceTree({ signalId, initial }: { signalId: string; initial
         <span className="text-muted-foreground">怎么看出它在发生：</span>
         {n.watch}
       </p>
+      {n.evidence && n.evidence.length > 0 ? (
+        <EvidenceList evidence={n.evidence} />
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">没查到相关的事实，这一步的档位只能凭推理判断。</p>
+      )}
 
-      <div className="mt-1">
+      <div className="mt-1 flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => setBayesOpen(bayesOpen === n.id ? null : n.id)}>
           {bayesOpen === n.id ? "收起" : n.bayes ? "看 / 改我算的可能性" : "算一算有多大可能"}
         </Button>
+        {bets[n.claim] ? (
+          <span className="text-xs text-primary">已经押了，{bets[n.claim]}对账</span>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={() => setBetOpen(betOpen === n.id ? null : n.id)}>
+            {betOpen === n.id ? "不押了" : "押这一条"}
+          </Button>
+        )}
       </div>
+      {betOpen === n.id && !bets[n.claim] && (
+        <div className="mt-2 rounded-md bg-muted/50 p-4">
+          <JudgmentForm
+            signalId={signalId}
+            question={nodeBetQuestion(n.claim)}
+            questionLabel="你觉得这一步会不会发生？改成你自己的说法，越具体越好对账。"
+            initialJudgment={n.claim}
+            submitLabel="押下，进判断账本"
+          />
+        </div>
+      )}
       {bayesOpen === n.id && (
         <BayesPanel signalId={signalId} node={n} onSaved={(next) => setNodes(next)} />
       )}
@@ -199,7 +265,7 @@ export function InferenceTree({ signalId, initial }: { signalId: string; initial
   return (
     <div>
       <p className="mb-4 text-sm leading-7 text-muted-foreground">
-        每一层都假设上一层成立，所以越往下越不确定。方块是可能性的档位（写推论和判档位的是两个不同的模型）；
+        每一层都假设上一层成立，所以越往下越不确定。每一步都会上网查一次证据；方块是可能性的档位，由另一个模型看着查到的事实来判，不看推论自己写的理由；
         想要具体的数，就在那一步上「算一算」—— AI 起个粗草稿，你来改，代码按贝叶斯算。
       </p>
       {nodes.length > 0 && renderChildren(null)}

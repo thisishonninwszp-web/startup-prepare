@@ -23,6 +23,22 @@ export type InferenceNode = {
   direction?: string;
   /** 用户在这一步上算过的贝叶斯（先验和证据强度都由用户确认）。 */
   bayes?: BayesState;
+  /** 上网查到的事实。来源和原文摘录由代码核对过；Jev 判档时看的就是这些，不看"为什么"。 */
+  evidence?: InferenceEvidence[];
+};
+
+export type InferenceEvidence = {
+  url: string;
+  title: string;
+  fact: string;
+  excerpt: string;
+  stance: "supports" | "contradicts" | "context";
+};
+
+export const STANCE_LABELS: Record<InferenceEvidence["stance"], string> = {
+  supports: "支持",
+  contradicts: "反对",
+  context: "背景",
 };
 
 const ORDER: InferenceLikelihood[] = ["very_likely", "likely", "possible", "unlikely", "very_unlikely"];
@@ -97,6 +113,8 @@ export type BayesEvidence = {
   strength: EvidenceStrength;
   /** 用户用滑块细调过的倍数（÷5 到 ×5）；有它就用它，没有就用 strength 对应的倍数。 */
   ratio?: number;
+  /** 这条证据来自哪个网页（上网查到的事实才有）。 */
+  url?: string;
 };
 
 export const MIN_RATIO = 1 / 5;

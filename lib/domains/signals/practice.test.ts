@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { dueJudgments, tallyJudgments, type JudgmentRow } from "./practice-shared";
+import {
+  displayQuestion,
+  dueJudgments,
+  isNodeBet,
+  nodeBetQuestion,
+  tallyJudgments,
+  type JudgmentRow,
+} from "./practice-shared";
 
 const row = (over: Partial<JudgmentRow>): JudgmentRow => ({
   id: "j",
@@ -36,5 +43,15 @@ describe("tallyJudgments", () => {
   it("只数次数", () => {
     const rows = [row({ outcome: "hit" }), row({ outcome: "miss" }), row({ outcome: "miss" }), row({})];
     expect(tallyJudgments(rows)).toEqual({ hit: 1, miss: 2, pending: 1 });
+  });
+});
+
+describe("押推论（往下推的某一步）", () => {
+  it("问题带前缀，和这条新闻本身的判断分得开；显示时换成人话", () => {
+    const q = nodeBetQuestion("大银行三个月内上调房贷利率");
+    expect(isNodeBet(q)).toBe(true);
+    expect(isNodeBet("这件事接下来会怎样？")).toBe(false);
+    expect(displayQuestion(q)).toBe("往下推的一步会不会发生：大银行三个月内上调房贷利率");
+    expect(displayQuestion("三个月后定存利率会过 1.5% 吗？")).toBe("三个月后定存利率会过 1.5% 吗？");
   });
 });

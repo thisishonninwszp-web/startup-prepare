@@ -5,7 +5,9 @@ import { getSignalDetail } from "./analysis";
 import {
   CONFIDENCE_LEVELS,
   GENERIC_QUESTION,
+  displayQuestion,
   HORIZONS,
+  NODE_BET_PREFIX,
   type ConfidenceKey,
   type HorizonKey,
   type JudgmentRow,
@@ -65,7 +67,9 @@ export async function submitJudgment(input: {
   if (detail === "missing-schema") throw new Error("迁移 054 还没跑");
   if (!detail) throw new Error("这条已经不在了");
 
-  const existing = await getJudgmentForSignal(input.userId, input.signalId);
+  // 同一个问题只记一次（重复点提交不会押两次）；不同问题可以各押一次
+  const question = input.question.trim() || GENERIC_QUESTION;
+  const existing = await findJudgment(input.userId, input.signalId, question);
   if (existing) return existing;
 
   const horizon = HORIZONS[input.horizon];
@@ -92,7 +96,7 @@ export async function submitJudgment(input: {
       prediction_id: prediction.id,
       news_title: detail.title,
       news_url: detail.url,
-      question: input.question.trim() || GENERIC_QUESTION,
+      question,
       judgment,
     })
     .select("id")
@@ -106,7 +110,7 @@ export async function submitJudgment(input: {
       newsTitle: detail.title,
       newsSummary: detail.summary,
       body,
-      question: input.question.trim() || GENERIC_QUESTION,
+      question: displayQuestion(question),
       judgment,
       horizon: horizon.label,
     });
@@ -120,17 +124,44 @@ export async function submitJudgment(input: {
   return saved;
 }
 
+/** 这条新闻本身的判断（每日练习、详情页那道门）。押推论的那几条不算。 */
 export async function getJudgmentForSignal(userId: string, signalId: string): Promise<JudgmentRow | null> {
   const { data, error } = await supabaseAdmin
     .from("signal_judgments")
     .select(SELECT)
     .eq("user_id", userId)
     .eq("signal_id", signalId)
+    .not("question", "like", `${NODE_BET_PREFIX}%`)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data ? flatten(data as Record<string, unknown>) : null;
+}
+
+async function findJudgment(userId: string, signalId: string, question: string): Promise<JudgmentRow | null> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_judgments")
+    .select(SELECT)
+    .eq("user_id", userId)
+    .eq("signal_id", signalId)
+    .eq("question", question)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? flatten(data as Record<string, unknown>) : null;
+}
+
+/** 在这条新闻的往下推上押过的那几步。 */
+export async function listNodeBets(userId: string, signalId: string): Promise<JudgmentRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_judgments")
+    .select(SELECT)
+    .eq("user_id", userId)
+    .eq("signal_id", signalId)
+    .like("question", `${NODE_BET_PREFIX}%`);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => flatten(r as Record<string, unknown>));
 }
 
 export async function listJudgments(userId: string): Promise<JudgmentRow[]> {
