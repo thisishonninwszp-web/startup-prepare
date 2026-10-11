@@ -112,12 +112,13 @@ export function BayesPanel({
       <div>
         <p className="font-medium">1. 这类事平常有多常见？（先验）</p>
         <p className="text-muted-foreground">AI 的草稿：{draftPriorLabel}。{state.priorWhy}</p>
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div className="mt-2 grid grid-cols-5 gap-1 sm:flex sm:flex-wrap">
           {PRIOR_BUCKETS.map((b) => (
             <Button
               key={b.key}
               type="button"
               size="sm"
+              className="h-10 px-1 text-xs sm:h-8 sm:px-3"
               variant={Math.abs(state.prior - b.value) < 0.001 ? "secondary" : "ghost"}
               onClick={() => setPrior(b.value)}
             >
@@ -163,12 +164,13 @@ export function BayesPanel({
                     <span className="ml-1 text-xs">（没有来源，是 AI 凭印象想的）</span>
                   )}
                 </p>
-                <div className="mt-1 flex flex-wrap gap-1">
+                <div className="mt-1 grid grid-cols-5 gap-1 sm:flex sm:flex-wrap">
                   {EVIDENCE_STRENGTHS.map((s) => (
                     <Button
                       key={s.key}
                       type="button"
                       size="sm"
+                      className="h-10 px-1 text-xs sm:h-8 sm:px-3"
                       variant={e.strength === s.key && e.ratio === undefined ? "secondary" : "ghost"}
                       onClick={() => setStrength(i, s.key)}
                     >
@@ -176,8 +178,8 @@ export function BayesPanel({
                     </Button>
                   ))}
                 </div>
-                <div className="mt-1 flex items-center gap-3">
-                  <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">÷5</span>
+                {/* 滑块占满整行（手机上手指才拖得准），刻度和当前倍数放在下面 */}
+                <div className="mt-2">
                   <input
                     type="range"
                     min={-100}
@@ -185,11 +187,14 @@ export function BayesPanel({
                     step={5}
                     value={toSlider(evidenceRatio(e))}
                     onChange={(ev) => setRatio(i, fromSlider(Number(ev.target.value)))}
-                    className="w-full accent-primary"
+                    className="h-6 w-full accent-primary"
                     aria-label="这条证据的力度"
                   />
-                  <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">×5</span>
-                  <span className="w-12 shrink-0 text-right font-mono">{ratioText(evidenceRatio(e))}</span>
+                  <div className="flex items-center justify-between font-mono text-xs text-muted-foreground">
+                    <span>÷5 压低</span>
+                    <span className="text-sm text-foreground">{ratioText(evidenceRatio(e))}</span>
+                    <span>推高 ×5</span>
+                  </div>
                 </div>
               </li>
             );

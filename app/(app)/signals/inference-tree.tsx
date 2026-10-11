@@ -157,7 +157,7 @@ export function InferenceTree({
       <>
         <div className="mt-2 flex flex-wrap gap-2">
           {!hasFree && (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => expand(parentId)}>
+            <Button variant="ghost" size="sm" className="h-10 sm:h-8" disabled={busy} onClick={() => expand(parentId)}>
               {pendingId === parentId && directing !== parentId
                 ? "在推、在查证据…（十几秒）"
                 : parentId === null
@@ -166,7 +166,7 @@ export function InferenceTree({
             </Button>
           )}
           {directing !== parentId && (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setDirecting(parentId)}>
+            <Button variant="ghost" size="sm" className="h-10 sm:h-8" disabled={busy} onClick={() => setDirecting(parentId)}>
               我给个方向
             </Button>
           )}
@@ -212,13 +212,13 @@ export function InferenceTree({
       )}
 
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => setBayesOpen(bayesOpen === n.id ? null : n.id)}>
+        <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBayesOpen(bayesOpen === n.id ? null : n.id)}>
           {bayesOpen === n.id ? "收起" : n.bayes ? "看 / 改我算的可能性" : "算一算有多大可能"}
         </Button>
         {bets[n.claim] ? (
           <span className="text-xs text-primary">已经押了，{bets[n.claim]}对账</span>
         ) : (
-          <Button variant="ghost" size="sm" onClick={() => setBetOpen(betOpen === n.id ? null : n.id)}>
+          <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBetOpen(betOpen === n.id ? null : n.id)}>
             {betOpen === n.id ? "不押了" : "押这一条"}
           </Button>
         )}

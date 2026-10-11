@@ -67,41 +67,50 @@ export function JudgmentForm({
         maxLength={300}
       />
 
-      <div className="mt-4 space-y-3 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="w-20 shrink-0 text-muted-foreground">什么时候对账</span>
-          {(Object.keys(HORIZONS) as HorizonKey[]).map((key) => (
-            <Button
-              key={key}
-              type="button"
-              size="sm"
-              variant={horizon === key ? "secondary" : "ghost"}
-              onClick={() => setHorizon(key)}
-            >
-              {HORIZONS[key].label}
-            </Button>
-          ))}
+      {/* 手机上标题单独一行、三个选项等宽排开；宽屏时标题和选项在同一行 */}
+      <div className="mt-4 space-y-4 text-sm sm:space-y-3">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+          <span className="shrink-0 text-muted-foreground sm:w-24">什么时候对账</span>
+          <div className="grid grid-cols-3 gap-1.5 sm:flex sm:gap-2">
+            {(Object.keys(HORIZONS) as HorizonKey[]).map((key) => (
+              <Button
+                key={key}
+                type="button"
+                size="sm"
+                className="h-10 sm:h-8"
+                variant={horizon === key ? "secondary" : "ghost"}
+                onClick={() => setHorizon(key)}
+              >
+                {HORIZONS[key].label}
+              </Button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="w-20 shrink-0 text-muted-foreground">有多大把握</span>
-          {(Object.keys(CONFIDENCE_LEVELS) as ConfidenceKey[]).map((key) => (
-            <Button
-              key={key}
-              type="button"
-              size="sm"
-              variant={confidence === key ? "secondary" : "ghost"}
-              onClick={() => setConfidence(confidence === key ? null : key)}
-            >
-              {CONFIDENCE_LEVELS[key].label}
-            </Button>
-          ))}
-          <span className="text-xs text-muted-foreground">可以不选</span>
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+          <span className="shrink-0 text-muted-foreground sm:w-24">
+            有多大把握<span className="ml-2 text-xs sm:hidden">可以不选</span>
+          </span>
+          <div className="grid grid-cols-3 gap-1.5 sm:flex sm:gap-2">
+            {(Object.keys(CONFIDENCE_LEVELS) as ConfidenceKey[]).map((key) => (
+              <Button
+                key={key}
+                type="button"
+                size="sm"
+                className="h-10 sm:h-8"
+                variant={confidence === key ? "secondary" : "ghost"}
+                onClick={() => setConfidence(confidence === key ? null : key)}
+              >
+                {CONFIDENCE_LEVELS[key].label}
+              </Button>
+            ))}
+          </div>
+          <span className="hidden text-xs text-muted-foreground sm:inline">可以不选</span>
         </div>
       </div>
 
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       <div className="mt-4">
-        <Button type="submit" disabled={pending || judgment.trim().length < 4}>
+        <Button type="submit" className="h-11 w-full sm:h-9 sm:w-auto" disabled={pending || judgment.trim().length < 4}>
           {pending ? "记下了，AI 在挑刺…" : submitLabel}
         </Button>
       </div>

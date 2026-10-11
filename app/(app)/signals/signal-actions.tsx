@@ -69,12 +69,13 @@ export function SignalActions({
 
   return (
     <span className="flex items-center gap-2">
-      <Button variant="outline" size="sm" disabled={pending} onClick={() => setMode("noting")}>
+      <Button variant="outline" size="sm" className="h-10 sm:h-8" disabled={pending} onClick={() => setMode("noting")}>
         记一笔
       </Button>
       <Button
         variant="ghost"
         size="sm"
+        className="h-10 sm:h-8"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
