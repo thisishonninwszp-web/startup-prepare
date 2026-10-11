@@ -1,0 +1,73 @@
+import { describe, expect, it } from "vitest";
+import {
+  chainTo,
+  childrenOf,
+  evidenceRatio,
+  formatPercent,
+  LIKELIHOOD_FILLED,
+  LIKELIHOOD_LABELS,
+  posterior,
+  priorValue,
+  ratioOf,
+  type InferenceNode,
+} from "./inference-shared";
+
+const node = (id: string, parent_id: string | null, depth: number): InferenceNode => ({
+  id, parent_id, depth, claim: `结论 ${id}`, why: "w", watch: "看", likelihood: "likely",
+});
+
+describe("推论树", () => {
+  const nodes = [node("a", null, 1), node("b", null, 1), node("a1", "a", 2), node("a1x", "a1", 3)];
+
+  it("chainTo 从根排到自己", () => {
+    expect(chainTo(nodes, "a1x").map((n) => n.id)).toEqual(["a", "a1", "a1x"]);
+    expect(chainTo(nodes, null)).toEqual([]);
+  });
+
+  it("childrenOf 找直接的下一层", () => {
+    expect(childrenOf(nodes, null).map((n) => n.id)).toEqual(["a", "b"]);
+    expect(childrenOf(nodes, "a").map((n) => n.id)).toEqual(["a1"]);
+  });
+});
+
+describe("贝叶斯", () => {
+  it("没有证据时后验等于先验", () => {
+    expect(posterior(0.25, [])).toBeCloseTo(0.25);
+  });
+
+  it("先验 25%（赔率 1:3），一条强烈支持（×3）→ 赔率 1:1 → 50%", () => {
+    expect(posterior(0.25, [ratioOf("strong_for")])).toBeCloseTo(0.5);
+  });
+
+  it("支持和反对互相抵消", () => {
+    expect(posterior(0.4, [ratioOf("for"), ratioOf("against")])).toBeCloseTo(0.4);
+  });
+
+  it("先验被夹在 1%–99%，不会算出 0 或 100%", () => {
+    expect(posterior(0, [3])).toBeGreaterThan(0);
+    expect(posterior(1, [1 / 3])).toBeLessThan(1);
+  });
+
+  it("档位换算", () => {
+    expect(priorValue("low")).toBe(0.25);
+    expect(ratioOf("strong_against")).toBeCloseTo(1 / 3);
+    expect(formatPercent(0.504)).toBe("50%");
+  });
+});
+
+describe("证据细调", () => {
+  it("细调过就用细调的倍数，夹在 ÷5 到 ×5；没细调就用档位", () => {
+    expect(evidenceRatio({ strength: "for" })).toBeCloseTo(1.5);
+    expect(evidenceRatio({ strength: "for", ratio: 2.2 })).toBeCloseTo(2.2);
+    expect(evidenceRatio({ strength: "for", ratio: 40 })).toBe(5);
+    expect(evidenceRatio({ strength: "for", ratio: 0 })).toBe(1);
+  });
+});
+
+describe("五档", () => {
+  it("每一档都有名字和格数，旧数据的 possible 读作一半一半", () => {
+    expect(LIKELIHOOD_LABELS.possible).toBe("一半一半");
+    expect(LIKELIHOOD_FILLED.very_likely).toBe(5);
+    expect(LIKELIHOOD_FILLED.very_unlikely).toBe(1);
+  });
+});

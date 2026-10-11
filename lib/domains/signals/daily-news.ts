@@ -1,10 +1,11 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { NEWS_FEEDS, NEWS_SOURCE_PREFIX, SIGNAL_KIND_PREFIX, type NewsFeed } from "./feeds";
+import { RSS_FEEDS, rssSource, SIGNAL_KIND_PREFIX, type RssFeed } from "./feeds";
+import { fetchHtml } from "./article";
 import { extractPageDescription, parseFeed } from "./rss";
 import { usableSummary, worthFetchingPage } from "./summary";
 
 /**
- * 每日新闻：抓 NEWS_FEEDS 里的 RSS，去重写进 external_signals（status=pending）。
+ * 每日抓取：抓 RSS_FEEDS 里的 RSS（世界、谁在头疼什么、日程三类），去重写进 external_signals（status=pending）。
  * 每天由 /api/cron/daily-news 调一次，/signals 页上也能手动刷新。
  *
  * 新闻只是外部信号，不直接进材料箱 —— 在 /signals 上被人挑中的那条，才收进材料箱。
@@ -23,7 +24,7 @@ export type DailyNewsOutcome = {
   failed: string[];
 };
 
-async function fetchFeed(feed: NewsFeed) {
+async function fetchFeed(feed: RssFeed) {
   const res = await fetch(feed.url, {
     headers: { "User-Agent": "ideaos-news/1.0" },
     signal: AbortSignal.timeout(15_000),
@@ -32,7 +33,7 @@ async function fetchFeed(feed: NewsFeed) {
   if (!res.ok) throw new Error(`${feed.label} ${res.status}`);
   const items = parseFeed(await res.text()).slice(0, PER_FEED);
   return items.map((it) => ({
-    source: NEWS_SOURCE_PREFIX + feed.key,
+    source: rssSource(feed),
     source_id: it.link,
     url: it.link,
     title: it.title.slice(0, 300),
@@ -44,17 +45,9 @@ async function fetchFeed(feed: NewsFeed) {
 type InsertedRow = { id: string; title: string | null; url: string | null; raw_text: string };
 
 async function fetchPageDescription(url: string): Promise<string> {
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; ideaos-news/1.0)" },
-      signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
-      cache: "no-store",
-    });
-    if (!res.ok || !(res.headers.get("content-type") ?? "").includes("html")) return "";
-    return extractPageDescription(await res.text());
-  } catch {
-    return ""; // 拿不到简介就只显示标题，不算失败
-  }
+  // 拿不到简介就只显示标题，不算失败
+  const html = await fetchHtml(url, PAGE_TIMEOUT_MS);
+  return html ? extractPageDescription(html) : "";
 }
 
 async function fillMissingSummaries(rows: InsertedRow[]): Promise<void> {
@@ -76,13 +69,13 @@ async function fillMissingSummaries(rows: InsertedRow[]): Promise<void> {
 }
 
 export async function fetchDailyNews(): Promise<DailyNewsOutcome> {
-  const settled = await Promise.allSettled(NEWS_FEEDS.map(fetchFeed));
+  const settled = await Promise.allSettled(RSS_FEEDS.map(fetchFeed));
 
   const rows: Awaited<ReturnType<typeof fetchFeed>> = [];
   const failed: string[] = [];
   settled.forEach((s, i) => {
     if (s.status === "fulfilled") rows.push(...s.value);
-    else failed.push(`${NEWS_FEEDS[i].label}：${s.reason instanceof Error ? s.reason.message : String(s.reason)}`);
+    else failed.push(`${RSS_FEEDS[i].label}：${s.reason instanceof Error ? s.reason.message : String(s.reason)}`);
   });
 
   // 同一篇文章会同时挂在几个分类下（Yahoo 的主要 / 経済），按链接只留第一次出现的那条。

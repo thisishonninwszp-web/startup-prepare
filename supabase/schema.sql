@@ -5357,3 +5357,84 @@ create policy "signal_profiles_owner" on signal_profiles
 drop policy if exists "signal_briefs_owner" on signal_briefs;
 create policy "signal_briefs_owner" on signal_briefs
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 054：外部信号的每日报告 + 单条详情
+-- ============================================================================
+
+alter table signal_briefs add column if not exists overview text;
+
+alter table external_signals add column if not exists analysis jsonb;
+alter table external_signals add column if not exists excerpt text;
+alter table external_signals add column if not exists analyzed_at timestamptz;
+
+-- ============================================================================
+-- 055：读新闻练判断 —— 先写自己的判断，再看 AI 的，到期对账
+-- ============================================================================
+
+alter table predictions drop constraint if exists predictions_source_type_check;
+alter table predictions drop constraint if exists predictions_source_ref_check;
+
+do $$ begin
+  alter table predictions add constraint predictions_source_type_check
+    check (source_type in ('idea', 'retro', 'self', 'signal'));
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table predictions add constraint predictions_source_ref_check check (
+    (source_type = 'idea'  and idea_id is not null and period_id is null)
+    or (source_type = 'retro' and period_id is not null and idea_id is null)
+    or (source_type in ('self', 'signal') and idea_id is null and period_id is null)
+  );
+exception when duplicate_object then null; end $$;
+
+create table if not exists signal_judgments (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users (id) on delete cascade,
+  signal_id     uuid references external_signals (id) on delete set null,
+  prediction_id uuid not null references predictions (id) on delete cascade,
+  news_title    text not null,
+  news_url      text,
+  question      text not null,             -- 回答的是哪个问题（练习题，或详情页的通用问题）
+  judgment      text not null,             -- 用户写下的判断（与 predictions.text 相同，冗余便于展示）
+  feedback      jsonb,                     -- AI 的挑刺：{ missed, sharpen, counter }
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists idx_signal_judgments_user
+  on signal_judgments (user_id, created_at desc);
+create index if not exists idx_signal_judgments_signal
+  on signal_judgments (signal_id);
+
+alter table signal_judgments enable row level security;
+
+drop policy if exists "signal_judgments_owner" on signal_judgments;
+create policy "signal_judgments_owner" on signal_judgments
+  for all using (auth.uid() = user_id);
+
+alter table signal_briefs add column if not exists practice jsonb;   -- { signal_id, question, check_how }
+
+-- ============================================================================
+-- 056：外部信号 —— 历史上类似的事 + 现场 + 已经定了的未来
+-- ============================================================================
+
+alter table external_signals add column if not exists history jsonb;
+
+alter table signal_briefs drop constraint if exists signal_briefs_kind_check;
+do $$ begin
+  alter table signal_briefs add constraint signal_briefs_kind_check
+    check (kind in ('news', 'tools', 'voices', 'calendar'));
+exception when duplicate_object then null; end $$;
+
+-- ============================================================================
+-- 057：读新闻时 AI 知道的"你"——从自述里抽处境事实（带出处），缓存在 signal_profiles
+-- ============================================================================
+
+alter table signal_profiles add column if not exists facts jsonb;          -- [{ fact, quote }]
+alter table signal_profiles add column if not exists facts_from timestamptz;
+
+-- ============================================================================
+-- 058：外部信号的"往下推"（多层推论，三档可能性，不存百分比）
+-- ============================================================================
+
+alter table external_signals add column if not exists inference jsonb;

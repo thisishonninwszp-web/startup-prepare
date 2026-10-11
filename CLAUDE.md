@@ -23,6 +23,11 @@ IdeaOS 不是笔记工具,不是 AI 聊天工具。它是一个服务于"用户�
    ②每个数字都能点开看到分子分母,样本不足时只显示样本数、不显示比率;
    ③不得聚合成任何形式的总分(战力值、综合评分、雷达面积)。
    例外只对"关于自己的可证伪命题"成立,对想法/机会打分仍然禁止。
+   **例外三(贝叶斯估计器,经用户明确裁决,2026-10)**:signals「往下推」的某一步上可以算出一个可能性数字,条件是 ——
+   ①AI 只起粗档草稿(先验五档、证据强度五档),不得输出任何精确数字;
+   ②用户确认或修改每一档后,数字由代码按贝叶斯公式算出,算式全部摊开(先验赔率 × 每条证据的倍数);
+   ③页面标明"这是你确认过的估计",并提醒锚定;④只用于对世界事件的推论,对想法/机会仍然禁止打分。
+   规则在 `lib/domains/signals/inference-shared.ts`。
    **例外二(写法画像,经用户明确裁决,2026-10)**:`/self` 的「写法」页可以原样显示
    Jev 对用户亲手写下的文字给出的档位与概率,条件是 ——
    ①页面必须写明它量的是"你怎么讲自己",不是"你做了什么";
@@ -52,7 +57,7 @@ IdeaOS 不是笔记工具,不是 AI 聊天工具。它是一个服务于"用户�
 |---|---|---|
 | 决策轴(一级导航) | dashboard, capture, materials, ideas, workbench, learnings | materials 是唯一统一输入口;collide/concept/outreach 是 idea 详情内的工具入口,不独立铺导航 |
 | 成长轴(一级导航) | dreams, retrospectives(周为主), learnings | dreams 保持可编辑一级模块;日/月复盘是周复盘页内的次级视图;patterns 报告是 learnings 的视图 |
-| 认识层(一级导航) | reality, customer-view, self, signals | self 是自我认知台账:自述不进推理,只记可证伪的条件命题;数值规则见原则 1 例外。signals(外部信号,每日新闻)只读不写:新闻不直接进任何台账,被人挑中的那条连同用户写的一句"为什么在意"记成带「外部」标签的观察,进捕捉链条(痛点雷达、周复盘);按需的"这条意味着什么"分析不落库、不打分、不给投资建议 |
+| 认识层(一级导航) | reality, customer-view, self, signals | self 是自我认知台账:自述不进推理,只记可证伪的条件命题;数值规则见原则 1 例外。**自述的唯一例外(经用户裁决,2026-10)**:signals 读新闻时可从自述里抽"处境事实"(工作、行业、在学、在做的事),自我评价一律不抽,每条事实必须能在原文里逐字找到出处(代码核对),只用于判断新闻跟他有没有关系,不进 self 台账的任何推理;写法画像仍不读。规则在 `lib/domains/signals/reader-facts.ts`。signals(外部信号,每日新闻)只读不写:新闻不直接进任何台账,被人挑中的那条连同用户写的一句"为什么在意"记成带「外部」标签的观察,进捕捉链条(痛点雷达、周复盘);详情页的 AI 报告第一次打开时生成并缓存;每天一道"先判断再看答案"的练习,判断进 predictions(source_type=signal)到期对账,账本只记次数不算比率;报告分四节:世界(news)、已经定了的未来(calendar,只收写明日期的变化)、谁在头疼什么(voices)、新工具(tools);"历史上类似的事"写判断前就能看,荐书必须在 Open Library / NDL 查到且不是小说;不打分、不给投资建议 |
 | 档案层(低权重导航) | companies(含原 company-kb), knowledge | |
 | 工具层(无一级导航) | reasoning 5 框架, council | 从 workbench/idea 上下文调用,/tools 聚合页兜底 |
 | 设置区 | AI 诊断、导出、审计、profile | |
@@ -135,7 +140,8 @@ components/ui/       共享原子组件(shadcn 模式);页面禁止手搓 button
 - 数据库 & Auth:Supabase (PostgreSQL)
 - AI:Google Gemini API(@google/genai),模型 gemini-2.5-flash(经 lib/ai-gateway.ts 封装,模型名读 AI_MODEL)
 - 判断模型:TypeSafe Jev(只回档位/概率,不生成文字),同样经 lib/ai-gateway.ts 的 `executeJev`,
-  Key 读 JEV_API_KEY、模型名读 JEV_MODEL;目前只用于写法画像
+  Key 读 JEV_API_KEY、模型名读 JEV_MODEL;用于写法画像,以及 signals「往下推」里给每一步判档位
+  (写推论的 Gemini 和判档位的 Jev 分开;页面只显示五档(很可能/较可能/一半一半/不太可能/很不可能)和"拿不准",不显示 Jev 的数字)
 - 部署:Vercel
 
 ## 代码约定
@@ -153,12 +159,14 @@ components/ui/       共享原子组件(shadcn 模式);页面禁止手搓 button
 - validations: id, idea_id, has_pain(enum), will_pay(enum), note, contacted_at
 - ai_sessions: id, idea_id, role(enum), messages(jsonb), created_at
 - decisions: id, idea_id, verdict(enum), reason, learned, decided_at
-- predictions: id, user_id, source_type(idea/retro/self), idea_id(source_type=idea时必填), period_id(source_type=retro时必填), hypothesis_id(self 侧可选), confidence(0-100,用户自填的把握度), text, due_at, made_at, outcome(enum pending/hit/miss), resolved_at, note
+- predictions: id, user_id, source_type(idea/retro/self/signal), idea_id(source_type=idea时必填), period_id(source_type=retro时必填), hypothesis_id(self 侧可选), confidence(0-100,用户自填的把握度), text, due_at, made_at, outcome(enum pending/hit/miss), resolved_at, note
   — 统一的预测对账表,idea 侧、周复盘侧、self 侧共用同一张表与同一套到期/命中逻辑
-  (idea_id 与 period_id 互斥;source_type=self 时两者皆空)。三侧同表是为了能横向比校准。
+  (idea_id 与 period_id 互斥;source_type=self/signal 时两者皆空)。各侧同表是为了能横向比校准。
+  signal 侧是"读新闻练判断":先写自己的判断再看 AI 的,上下文(新闻、问题、AI 挑刺)在 signal_judgments。
 - self_hypotheses / self_windows / self_declarations: /self 台账。self_windows 记录每一次
   "符合触发条件的情境"含行为未发生的(outcome=miss)——它是触发率的分母,少了它数字就退回评分。
   档位升降规则在 lib/domains/self-model/tiers.ts,AI 只有提名权、无授予权。
+- signal_profiles: 读新闻用的处境事实缓存(facts 带原文出处,facts_from 记抽取时用到的最新自述时间)。
 - self_portraits: 写法画像快照(answers 原样存 Jev 输出,sources 存当次读的原文)。
   台账旁路,任何推理不得读它(原则 1 例外二)。
 - idea_exit_criteria: id, idea_id, user_id, criterion, triggered(unreviewed/yes/no), reviewed_at, created_at

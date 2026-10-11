@@ -6,7 +6,7 @@ describe("usableSummary", () => {
   it("正常摘要原样给出，太长的截断", () => {
     const s = "10月1日から、楽天モバイルユーザーに対するKDDIのエリアローミングが大幅に縮小された。";
     expect(usableSummary("楽天モバイル", s)).toBe(s);
-    expect(usableSummary("t", "あ".repeat(300))).toHaveLength(201);
+    expect(usableSummary("t", "あ".repeat(500))).toHaveLength(401);
   });
 
   it("Hacker News 的 Comments、Google News 重复标题、空的，都不显示", () => {

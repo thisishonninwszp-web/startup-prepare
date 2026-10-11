@@ -1,6 +1,6 @@
 import { type ExternalSignal, type RealityCheckResult, type TavilyResult } from "@/app/(app)/ideas/types";
 import { FIRST_INQUIRY_QUESTION } from "./core";
-import { executeAiJson } from "@/lib/ai-gateway";
+import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/lib/ai-gateway";
 import { MODEL, generateContent } from "./shared";
 
 // ---------------------------------------------------------------------------
@@ -243,6 +243,8 @@ const SIGNAL_BANNED = [
   "加仓",
   "减仓",
   "抄底",
+  "资金配置",
+  "理财",
   // 空话：说了等于没说
   "有启发",
   "有参考价值",
@@ -253,6 +255,31 @@ function assertNoBanned(texts: string[]): void {
   const all = texts.join("\n");
   const hit = SIGNAL_BANNED.find((w) => all.includes(w));
   if (hit) throw new Error(`出现了不该出现的话：${hit}`);
+}
+
+/**
+ * 新闻多半是日文，模型会跟着原文写日文。正文里假名超过一成就当作没用中文，作废重写。
+ * （中文里偶尔夹一个片假名专有名词不算。）
+ */
+export function assertChinese(texts: string[]): void {
+  const all = texts.join("");
+  const letters = all.replace(/[\s\p{P}\p{S}0-9A-Za-z]/gu, "");
+  if (letters.length === 0) return;
+  const kana = (all.match(/[\u3040-\u30ff]/g) ?? []).length;
+  if (kana / letters.length > 0.1) throw new Error("用了日文，没有用中文写");
+}
+
+/**
+ * 有没有用数字说可能性（"70% 的可能""概率为三成""百分之八十会"）。
+ * 只拦跟"可能、概率、把握、机会"连在一起的数字 —— 利率 1.25%、增长 3% 这类事实里的百分比不拦。
+ */
+export function mentionsNumericLikelihood(text: string): boolean {
+  const num = String.raw`(\d+(\.\d+)?\s*[%％]|百分之[\d一二三四五六七八九十百]+|[一二三四五六七八九十\d]+成)`;
+  const word = "(可能|概率|几率|机率|把握|机会)";
+  return (
+    new RegExp(String.raw`${num}\s*的?\s*${word}`).test(text) ||
+    new RegExp(String.raw`${word}(性)?\s*(为|是|约|大约|在|有)?\s*${num}`).test(text)
+  );
 }
 
 function requireString(v: Record<string, unknown>, key: string): string {
@@ -267,25 +294,52 @@ const SIGNAL_SHARED_RULES = `铁律：
 - 不给任何投资、买卖、理财建议。
 - 不打分、不排名、不给百分比。
 - 不替他假设他没写过的处境（有没有房贷、有没有投资、住在哪）。他写了什么就只用什么。
+- 不要为了联系而联系。大多数新闻本来就跟他手上的事无关。不要每条都扯到他的项目、技能或梦想，
+  也不要用"作为未来的社长"这种套话。
 - 说"跟你"的那一句必须具体：点出他工作里会碰到的一件事、或他能动手做的一件事。不许写"有助于你理解""可能对你有帮助"这种话。
 - 利率、汇率、政策这类宏观的事，要往下推到他所在的行业会怎样（比如消费、广告预算、招聘），推得到就不要说"关系不大"。
-- 中文，短句，第二人称"你"，像一个懂行的老同事在旁边说话。`;
+- 一律用简体中文写，哪怕新闻原文是日文或英文。日文专有名词可以保留原文，但句子必须是中文。
+- 短句，第二人称"你"，像一个懂行的老同事在旁边说话。`;
 
-function aboutUser(context: string, ideas: string[], dreams: string[]): string {
-  const list = (items: string[]) => (items.length ? items.map((t) => `- ${t}`).join("\n") : "（没有）");
-  return [
-    `他自己写的背景：${context.trim() || "（没写）"}`,
-    `他手上的想法：\n${list(ideas)}`,
-    `他的梦想：\n${list(dreams)}`,
-  ].join("\n");
-}
-
+/**
+ * AI 读新闻时知道的"他"。全部来自他做过的事，不来自他怎么说自己：
+ * 最近记下的观察、/self 里有行为支撑的假设（工作假设及以上）、点亮的技能、手上的想法和梦想，
+ * 再加上从 /self 自述里抽出的"处境事实"（经用户裁决：只抽事实不抽自我评价，每条带原文出处）。
+ * 写法画像（self_portraits）不读。
+ */
 export type SignalReader = {
-  /** 用户在 /signals 上自己写的几句背景。 */
-  context: string;
+  /** 从自述里抽出的处境事实：工作、行业、在学、在做的事。 */
+  facts: string[];
+  /** 最近记下的观察（截短）。他会把什么记下来，就说明他在关心什么。 */
+  observations: string[];
+  /** /self 里工作假设、可承重两档的假设。 */
+  hypotheses: string[];
+  /** 技能树里已经点亮的技能名。 */
+  skills: string[];
   ideas: string[];
   dreams: string[];
 };
+
+export const EMPTY_READER: SignalReader = { facts: [], observations: [], hypotheses: [], skills: [], ideas: [], dreams: [] };
+
+function aboutUser(reader: SignalReader): string {
+  const sections: [string, string[]][] = [
+    ["他的处境（从他的自述里抽出的事实）", reader.facts],
+    ["他最近记下的观察（说明他在关心什么）", reader.observations],
+    ["关于他、已经有行为支撑的判断", reader.hypotheses],
+    ["他已经练出来的技能", reader.skills],
+    ["他手上的想法", reader.ideas],
+    ["他的梦想", reader.dreams],
+  ];
+  const filled = sections.filter(([, items]) => items.length > 0);
+  if (filled.length === 0) {
+    return "关于他：（还没有任何记录。不要猜他的职业、客户或处境；说\"跟你\"时改成说这件事会影响哪一类人。）";
+  }
+  return [
+    "关于他（都来自他做过、记过的事；只用这些，不要额外猜他的职业和处境）：",
+    ...filled.map(([title, items]) => `${title}：\n${items.map((t) => `- ${t}`).join("\n")}`),
+  ].join("\n");
+}
 
 // ── 单条深读 ───────────────────────────────────────────────────────────────
 
@@ -310,12 +364,12 @@ export type NewsAnalysis = {
 };
 
 const NEWS_ANALYSIS_PROMPT = `你帮一个人读新闻。他读新闻是为了对这个世界多一点认识，顺便看清方向。
-他的情况见材料最后的"他自己写的背景"。
+他的情况见材料最后"关于他"的部分。
 
 给你一条新闻（标题、简介，可能有正文）和他的情况。输出五段：
 1. background：来龙去脉。这件事为什么会发生、之前是什么状况、有什么争议或另一种看法。3 到 5 句，让一个不懂这个领域的人也能看懂。
 2. chain：这件事接下来会经过哪几步，落到哪一类人或公司身上。写成"A → B → C"，2 到 4 步。
-3. forYou：对他意味着什么。从他写的背景（工作、处境、打算）或他手上的想法与梦想里找连接点，点名说是哪一个。真的无关就直说"跟你关系不大"，再说一句它跟谁关系大。
+3. forYou：对他意味着什么。从"关于他"里找连接点（他记过的观察、练的技能、手上的想法与梦想），点名说是哪一条。真的无关就直说"跟你关系不大"，再说一句它跟谁关系大。
 4. who：能找哪一类真人聊来把这件事看得更清楚，具体到身份。
 5. question：见面时可以直接问的一句话，要具体到对方能答出一件事，不要问"您怎么看"这种大问题。
 
@@ -335,6 +389,7 @@ export function parseNewsAnalysis(value: unknown): NewsAnalysis {
     question: requireString(v, "question"),
   };
   assertNoBanned(Object.values(result));
+  assertChinese(Object.values(result));
   return result;
 }
 
@@ -345,7 +400,7 @@ export async function analyzeNewsItem(input: NewsAnalysisInput): Promise<NewsAna
     `正文节选：${input.body || "（拿不到正文，只能根据标题和简介推）"}`,
     `来源：${input.source}`,
     "",
-    aboutUser(input.context, input.ideas, input.dreams),
+    aboutUser(input),
   ].join("\n");
 
   return executeAiJson(
@@ -379,47 +434,113 @@ export type BriefPick = {
   headline: string;
   /** 新闻：为什么重要、来龙去脉；工具：能拿来做什么。 */
   background: string;
-  /** 跟他有什么关系 / 他可以拿它试什么。 */
+  /** 每条都有的一句，不涉及他：主要影响谁 / 可以找谁聊 / 可以拿它试什么。 */
   forYou: string;
 };
 
+/** 一份报告里最多几条点到他。多了就是硬扯。 */
+const MAX_PERSONAL = 2;
+
 const BRIEF_SIZE = 5;
 
-const BRIEF_PROMPTS: Record<"news" | "tools", string> = {
+export type BriefKind = "news" | "tools" | "voices" | "calendar";
+
+const BRIEF_PROMPTS: Record<BriefKind, string> = {
   news: `你每天早上帮一个人从几十条新闻里挑出 ${BRIEF_SIZE} 条最值得读的。
-他读新闻是为了对这个世界多一点认识。他的情况见材料开头的"他自己写的背景"。
+他读新闻是为了对这个世界多一点认识。
 
 挑的标准（按这个顺序考虑）：
 - 会改变很多人处境的事：利率、汇率、政策、规制、大公司的大动作、产业结构的变化。
 - 能看出"钱往哪里流、谁遇到了新麻烦、什么变便宜了"的事。
-- 跟他写的背景、他手上的想法有关的事。
-不挑：单纯的事件、犯罪、八卦、同一件事的重复报道（同一件事只留一条）。
+不挑：单纯的事件、犯罪、八卦。
+同一件事只留一条：一个事件和它引发的后续反应（比如"央行加息"和"银行跟着调存款利率"）算同一件事，挑一条，后续放进 background 里讲。5 条必须是 5 件不同的事。
 
 每条写：
 - headline：一句话说发生了什么。
-- background：为什么重要、来龙去脉，2 到 3 句。
-- forYou：跟他有什么关系，一句话；关系不大就说它会影响谁。`,
+- background：为什么重要、来龙去脉，3 到 4 句，让不懂这个领域的人也能看懂。
+- forYou：这件事主要影响哪一类人或企业、怎么影响，一到两句。直接写"物流公司会……""地方银行要……"，不写"你"，也不写"如果你在 XX 行业"。`,
   tools: `你每天帮一个人从几十个 GitHub 新仓库里挑出 ${BRIEF_SIZE} 个最值得看的工具，让他跟上时代。
-他的情况见材料开头的"他自己写的背景"。
 
 挑的标准：
 - 能直接拿来用、能解决一类真实问题的工具，优先于纯研究代码、作业、清单类仓库。
 - 代表一个新趋势的（比如 AI agent 的新用法），哪怕他暂时用不上。
-- 跟他写的背景（工作、在学的东西）有关的优先。
 
 每条写：
 - headline：一句话说这是什么。
-- background：它能拿来做什么、为什么现在有很多人关注它，2 到 3 句。
-- forYou：他可以拿它试的一件具体的事，一句话。`,
+- background：它能拿来做什么、为什么现在有很多人关注它，3 到 4 句。
+- forYou：可以拿它试的一件具体的事，一个周末能做完，一句话。`,
+  voices: `你每天帮一个人从几十条材料里挑出最多 ${BRIEF_SIZE} 条"谁在头疼什么"。
+材料来自一线干活的人自己写、自己转发的文章（はてブ热门、note #経営）和"招不到人、人手不足"的报道。
+他想知道一线的人具体卡在哪里 —— 别人的麻烦，往往就是生意的来源。
+
+挑的标准：
+- 有一个具体的人群卡在一个具体的地方（谁、卡在哪、试过什么、为什么没解决）。
+- 招人难的报道要看出"招不到的是什么样的人、为什么招不到"。
+不挑：纯观点争吵、名人发言、和工作无关的生活趣闻、技术教程、新产品或新工具的发布（那是"新工具"那一节的事，不是一线的人在头疼的事）。
+
+每条写：
+- headline：一句话说谁在烦什么。
+- background：具体卡在哪、已经有人怎么应对、为什么还没解决，3 到 4 句。
+- forYou：可以去找谁聊、问什么，一到两句（具体到身份，比如"在中小物流公司做调度的人"）。不要往他的工作上扯。`,
+  calendar: `你帮一个人整理"已经定了的未来"：从几十条法规意见征集和新闻里，找出写明了日期的、确定会发生的变化。
+这类事几乎一定会发生，只是还没变成大新闻。每次生效之前，都有一批企业或个人要调整、愿意花钱解决。
+
+规则（严格）：
+- 只挑材料里明确写了日期或时间点（施行日、义务化开始、意见募集截止、制度开始）的条目。没写日期的一律不挑，不要自己推测日期。
+- 同一项制度只留一条。
+- 最多 ${BRIEF_SIZE} 条，真的没有就少挑。
+
+每条写：
+- headline：以日期开头，比如"2027年4月起：……"或"意见募集截止 2026年11月10日：……"。日期必须是材料里写的。
+- background：要变的是什么、为什么要变、之前是什么样，2 到 3 句。
+- forYou：会影响哪一类人或企业、他们到时候要做什么调整，一到两句。只写受影响的人，不写"你"。`,
 };
 
-export function parseBrief(value: unknown, candidateCount: number): BriefPick[] {
+const OVERVIEW_TOPIC: Record<BriefKind, string> = {
+  news: "今天世界上发生了什么、整体在往哪个方向变",
+  tools: "今天大家在做什么样的工具、透露出什么趋势",
+  voices: "今天一线的人普遍卡在哪里、这些麻烦有什么共同点",
+  calendar: "接下来几个月有哪些已经定了的变化、哪些人要开始准备（一条都没有就直说这批消息里没有写明日期的变化）",
+};
+
+export type BriefPractice = {
+  /** 候选列表里的序号，必须是 picks 里的一条。 */
+  index: number;
+  /** 一个能在几个月后用事实检验的问题。 */
+  question: string;
+  /** 到时候看什么来判断对错。 */
+  checkHow: string;
+};
+
+export type Brief = {
+  /** 报告开头"今天的世界"：把几条串起来讲，3 到 5 句。 */
+  overview: string;
+  picks: BriefPick[];
+  /** 只有新闻报告有：今天的练习题。 */
+  practice: BriefPractice | null;
+};
+
+const PRACTICE_INSTRUCTION = `再出一道今天的练习题（practice）。他在练"读新闻、下判断、事后对账"。
+- 从你挑的 5 条里选最适合下判断的一条（index 用候选序号）。选后续会有公开消息能验证的事，不选已经尘埃落定的。
+- question：一个几个月内能用事实检验的问题，问"会怎样"而不是"你怎么看"。要能回答成一句具体的话。
+  例："三个月后，日本大型地方银行的一年期定存利率会不会超过 0.5%？"
+  不要："你怎么看日银加息？"
+- checkHow：到时候去看什么来判断对错，一句话（看哪类新闻、哪个数字、哪家公司的公告）。
+`;
+
+/** allowEmpty：日程那一份，当天真没有带日期的消息时允许一条都不挑（不许硬凑）。 */
+export function parseBrief(value: unknown, candidateCount: number, allowEmpty = false): Brief {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
-  const picks = (value as { picks?: unknown }).picks;
-  if (!Array.isArray(picks) || picks.length === 0) throw new Error("缺少 picks");
+  const overview = requireString(value as Record<string, unknown>, "overview");
+  const rawPicks = (value as { picks?: unknown }).picks;
+  if (!Array.isArray(rawPicks)) throw new Error("缺少 picks");
+  if (rawPicks.length === 0) {
+    if (allowEmpty) return { overview, picks: [], practice: null };
+    throw new Error("缺少 picks");
+  }
   const seen = new Set<number>();
   const result: BriefPick[] = [];
-  for (const raw of picks) {
+  for (const raw of rawPicks) {
     if (!raw || typeof raw !== "object") continue;
     const v = raw as Record<string, unknown>;
     const index = typeof v.index === "number" ? v.index : Number(v.index);
@@ -432,26 +553,49 @@ export function parseBrief(value: unknown, candidateCount: number): BriefPick[] 
       forYou: requireString(v, "forYou"),
     });
   }
-  if (result.length === 0) throw new Error("没有一条能对上候选序号");
-  assertNoBanned(result.flatMap((p) => [p.headline, p.background, p.forYou]));
-  return result.slice(0, BRIEF_SIZE);
+  if (result.length === 0 && !allowEmpty) throw new Error("没有一条能对上候选序号");
+  const picks = result.slice(0, BRIEF_SIZE);
+  const practice = parsePractice((value as { practice?: unknown }).practice, picks);
+  const texts = [
+    overview,
+    ...picks.flatMap((p) => [p.headline, p.background, p.forYou]),
+    ...(practice ? [practice.question, practice.checkHow] : []),
+  ];
+  assertNoBanned(texts);
+  assertChinese(texts);
+  return { overview, picks, practice };
 }
 
-export async function generateSignalBrief(
-  kind: "news" | "tools",
-  candidates: BriefCandidate[],
-  reader: SignalReader
-): Promise<BriefPick[]> {
-  if (candidates.length === 0) return [];
+/** 练习题可有可无（工具报告没有）；有的话必须指向 picks 里的一条，问题和检验方法都要有。 */
+function parsePractice(raw: unknown, picks: BriefPick[]): BriefPractice | null {
+  if (!raw || typeof raw !== "object") return null;
+  const v = raw as Record<string, unknown>;
+  const index = typeof v.index === "number" ? v.index : Number(v.index);
+  if (!picks.some((p) => p.index === index)) return null;
+  const question = typeof v.question === "string" ? v.question.trim() : "";
+  const checkHow = typeof v.checkHow === "string" ? v.checkHow.trim() : "";
+  if (!question || !checkHow) return null;
+  return { index, question, checkHow };
+}
+
+/**
+ * 写报告时故意不给 AI 看任何关于他的信息：看得到它就会每条都往他身上扯。
+ * "跟你"由第二步 linkPicksToReader 单独做，并由代码核对。
+ */
+export async function generateSignalBrief(kind: BriefKind, candidates: BriefCandidate[]): Promise<Brief> {
+  if (candidates.length === 0) return { overview: "", picks: [], practice: null };
   const numbered = candidates
     .map((c, i) => `[${i}] ${c.title}（${c.source}）\n${c.text.slice(0, 160)}`)
     .join("\n");
-  const contents = `${aboutUser(reader.context, reader.ideas, reader.dreams)}\n\n候选：\n${numbered}`;
+  const contents = `候选：\n${numbered}`;
   const systemInstruction = `${BRIEF_PROMPTS[kind]}
 
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"picks":[{"index":序号,"headline":"…","background":"…","forYou":"…"}]}`;
+另外写 overview：开头的一段总述，3 到 5 句，把挑出来的几条串起来讲${OVERVIEW_TOPIC[kind]}。第一句直接说今天最重要的那一件事是什么；每一句都要带一件具体的事（谁、做了什么）。不许用"持续演进""几个重要领域""值得注意的是"这类空开头，也不要逐条复述。
+
+${kind === "news" ? PRACTICE_INSTRUCTION : ""}
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"headline":"…","background":"…","forYou":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
@@ -466,9 +610,727 @@ ${SIGNAL_SHARED_RULES}
         systemInstruction,
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 4000,
+      },
+    }),
+    (value) => parseBrief(value, candidates.length, kind === "calendar")
+  );
+}
+
+// ── 工具深读 ───────────────────────────────────────────────────────────────
+
+export type ToolAnalysisInput = SignalReader & {
+  name: string;
+  description: string;
+  /** README 的开头；拿不到时为空。 */
+  readme: string;
+};
+
+export type ToolAnalysis = {
+  /** 这是什么、解决什么问题。 */
+  what: string;
+  /** 大致怎么用：装什么、跑什么、需要什么前提。 */
+  howToUse: string;
+  /** 适合谁、不适合谁。 */
+  whoFor: string;
+  /** 他可以拿它试的一件具体的事。 */
+  tryThis: string;
+};
+
+const TOOL_ANALYSIS_PROMPT = `你帮一个人看 GitHub 上的新工具，让他跟上时代。他的情况见材料最后"关于他"的部分。
+
+给你仓库名、简介和 README 开头。输出四段：
+1. what：这是什么、解决什么问题，3 到 4 句，让不写代码的人也能看懂。
+2. howToUse：大致怎么用 —— 要装什么、跑什么、需要什么前提（API key、显卡、付费账号）。README 里没写清楚就说没写清楚。
+3. whoFor：适合谁、不适合谁，各一句。
+4. tryThis：他可以拿它试的一件具体的事，能在一个周末内做完。
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"what":"…","howToUse":"…","whoFor":"…","tryThis":"…"}`;
+
+export function parseToolAnalysis(value: unknown): ToolAnalysis {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const result: ToolAnalysis = {
+    what: requireString(v, "what"),
+    howToUse: requireString(v, "howToUse"),
+    whoFor: requireString(v, "whoFor"),
+    tryThis: requireString(v, "tryThis"),
+  };
+  assertNoBanned(Object.values(result));
+  assertChinese(Object.values(result));
+  return result;
+}
+
+export async function analyzeToolItem(input: ToolAnalysisInput): Promise<ToolAnalysis> {
+  const contents = [
+    `仓库：${input.name}`,
+    `简介：${input.description}`,
+    `README 开头：${input.readme || "（拿不到 README）"}`,
+    "",
+    aboutUser(input),
+  ].join("\n");
+
+  return executeAiJson(
+    { operation: "tool_analysis", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验（缺字段，或出现了迎合、空话）。严格按 JSON 字段重写。"
+          : ""),
+      config: {
+        systemInstruction: TOOL_ANALYSIS_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2000,
+      },
+    }),
+    parseToolAnalysis
+  );
+}
+
+// ── 判断练习：挑刺 ─────────────────────────────────────────────────────────
+
+export type JudgmentInput = {
+  newsTitle: string;
+  newsSummary: string;
+  /** 文章正文节选；拿不到时为空。 */
+  body: string;
+  question: string;
+  judgment: string;
+  /** 用户选的检验期限，比如"三个月后"。 */
+  horizon: string;
+};
+
+export type JudgmentFeedback = {
+  /** 他没想到、但会影响结果的因素。 */
+  missed: string;
+  /** 这句判断怎么改，才能到期时明确说出对或错。 */
+  sharpen: string;
+  /** 最可能让他看错的理由。 */
+  counter: string;
+};
+
+const JUDGMENT_PROMPT = `一个人在练"读新闻、下判断、事后对账"。他刚读了一条新闻，回答了一个问题，写下自己的判断。
+你是带他练习的老同事。你的工作不是评价他对不对（现在没人知道），而是让这句判断变得更值得押注。
+
+输出三段：
+1. missed：他没提到、但会实质影响结果的一两个因素。具体到"谁会做什么"，不要泛泛说"还要考虑宏观环境"。
+2. sharpen：这句判断如果到期时没法明确说对或错，就指出模糊在哪，并给一个改写后的版本（带具体的对象、方向、时间）。已经很具体就说"已经可以检验"，再补一个让它更锋利的细节。
+3. counter：最可能让他看错的那个理由，一到两句。要站在反方最强的位置说。
+
+不评价他聪明不聪明，不说"判断得很好""思路清晰"，也不打分。
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"missed":"…","sharpen":"…","counter":"…"}`;
+
+export function parseJudgmentFeedback(value: unknown): JudgmentFeedback {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const result: JudgmentFeedback = {
+    missed: requireString(v, "missed"),
+    sharpen: requireString(v, "sharpen"),
+    counter: requireString(v, "counter"),
+  };
+  const texts = Object.values(result);
+  assertNoBanned(texts);
+  assertChinese(texts);
+  const praise = ["判断得很好", "思路清晰", "很有见地", "非常准确"].find((w) => texts.join("").includes(w));
+  if (praise) throw new Error(`出现了夸奖：${praise}`);
+  return result;
+}
+
+export async function critiqueJudgment(input: JudgmentInput): Promise<JudgmentFeedback> {
+  const contents = [
+    `新闻标题：${input.newsTitle}`,
+    `新闻简介：${input.newsSummary || "（没有）"}`,
+    `正文节选：${input.body ? input.body.slice(0, 2000) : "（拿不到正文）"}`,
+    "",
+    `他回答的问题：${input.question}`,
+    `他的判断：${input.judgment}`,
+    `检验期限：${input.horizon}`,
+  ].join("\n");
+
+  return executeAiJson(
+    { operation: "judgment_critique", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验（缺字段、出现了夸奖或空话、或没用中文）。严格按 JSON 字段重写。"
+          : ""),
+      config: {
+        systemInstruction: JUDGMENT_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    parseJudgmentFeedback
+  );
+}
+
+// ── 历史上类似的事 ─────────────────────────────────────────────────────────
+
+export type HistoricalAnalog = {
+  /**
+   * modern：近现代（大约 1900 年以后），条件可比，能当"这类事通常怎样"的参照。
+   * ancient：古代，只看人和制度怎么反应，是启发不是基准。
+   * 早期缓存的数据没有这个字段，按 modern 处理。
+   */
+  era?: "modern" | "ancient";
+  /** 年份或时期，比如"2006 年 7 月"。记不清就写大概。 */
+  when: string;
+  /** 当时发生了什么。 */
+  what: string;
+  /** 之后实际怎样了。 */
+  after: string;
+};
+
+export type BookPick = {
+  /** 页面上显示的书名（有中文版写中文名）。 */
+  title: string;
+  /** 原书名，用来去书目库核实。 */
+  originalTitle: string;
+  author: string;
+  /** 为什么读这本能帮他看懂这类事。 */
+  why: string;
+};
+
+export type SignalHistory = {
+  /** 这类事通常会怎样（从历史上的几次里归纳）。 */
+  baseRate: string;
+  analogs: HistoricalAnalog[];
+  /** 这次和过去有什么不同。 */
+  different: string;
+  books: BookPick[];
+};
+
+const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得好的人，都是先看"这类事过去通常怎样"，再看"这次有什么不同"。
+给你一条新闻，你负责第一步：找历史上的参照。
+
+输出：
+1. analogs：历史上 1 到 4 次相似的事。到这几个地方去找：日本、中国（近现代和古代）、欧美及其他国家。
+   - 近现代（大约 1900 年以后）的事：era 写 "modern"，这是主要参照，至少给 1 次。
+     中国近现代可以想想：改革开放与价格双轨制、90 年代国企改革与下岗潮、2015 年股灾、房地产调控等。
+   - 古代的事：era 写 "ancient"，最多 1 次，只在真的能说明"人和制度会怎么反应"时才给。
+     比如王安石变法（好政策在执行中走样）、宋代交子滥发、明代白银流入与断流。
+   每次写：
+   - era："modern" 或 "ancient"。
+   - when：年份或时期。
+   - what：当时发生了什么，一到两句。
+   - after：之后几个月到几年里实际怎样了，一到两句。这是最重要的部分。
+2. baseRate：只用近现代（modern）的那几次归纳"这类事通常会怎样"，两到三句。古代的事不能拿来当基准。几次结果不一样就直说不一样，以及取决于什么。
+3. different：这次和过去比，有什么明显不同，可能让结果不一样，一到两句。
+4. books：0 到 2 本能帮他看懂这类事的书。
+   - 只推荐非虚构类：经济、金融、历史、商业、社会学。绝不推荐小说，哪怕题材沾边。
+   - 必须直接讲这类事（比如讲央行和利率、讲日本泡沫和通缩、讲人口与劳动力、讲中国的改革与经济史），不推荐泛泛的"思维方法"书。
+   - 只推荐你确定真实存在、比较有名的书；没有合适的就给空数组，不要凑。
+   每本写 title（有中文版就写中文名）、originalTitle（原书名，用原文：英文书写英文、日文书写日文、中文书写中文）、
+   author（作者名同样用原文，不要音译：写 "Charles Goodhart" 不写"查尔斯·古德哈特"）、why（为什么读它能看懂这类事，一句话）。
+
+铁律：
+- 只写你有把握的历史事实。年份记不准就写"大约 XXXX 年前后"，细节记不清就少写，绝不编数字。
+- 找不到真正相似的事，就只给 1 个最接近的，并在 baseRate 里说明参照性有限。
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"analogs":[{"when":"…","what":"…","after":"…"}],"baseRate":"…","different":"…","books":[{"title":"…","originalTitle":"…","author":"…","why":"…"}]}`;
+
+export function parseSignalHistory(value: unknown): SignalHistory {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const rawAnalogs = Array.isArray(v.analogs) ? v.analogs : [];
+  const analogs: HistoricalAnalog[] = rawAnalogs
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
+    .map((a) => ({
+      era: a.era === "ancient" ? ("ancient" as const) : ("modern" as const),
+      when: requireString(a, "when"),
+      what: requireString(a, "what"),
+      after: requireString(a, "after"),
+    }))
+    // 古代的最多留一条，排在最后
+    .filter((a, i, all) => a.era === "modern" || all.findIndex((x) => x.era === "ancient") === i)
+    .sort((a, b) => (a.era === b.era ? 0 : a.era === "modern" ? -1 : 1))
+    .slice(0, 4);
+  if (!analogs.some((a) => a.era === "modern")) throw new Error("缺少近现代的参照");
+  const books: BookPick[] = (Array.isArray(v.books) ? v.books : [])
+    .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
+    .flatMap((b) => {
+      try {
+        return [{
+          title: requireString(b, "title"),
+          originalTitle: requireString(b, "originalTitle"),
+          author: requireString(b, "author"),
+          why: requireString(b, "why"),
+        }];
+      } catch {
+        return []; // 缺字段的书直接丢，不让整份作废
+      }
+    })
+    .slice(0, 2);
+  const result: SignalHistory = {
+    baseRate: requireString(v, "baseRate"),
+    analogs,
+    different: requireString(v, "different"),
+    books,
+  };
+  // 书名、作者名常是外文，只检查叙述部分有没有用中文
+  const prose = [result.baseRate, result.different, ...analogs.flatMap((a) => [a.what, a.after]), ...books.map((b) => b.why)];
+  assertNoBanned(prose);
+  assertChinese(prose);
+  return result;
+}
+
+export async function findHistoricalAnalogs(input: {
+  title: string;
+  summary: string;
+  body: string;
+}): Promise<SignalHistory> {
+  const contents = [
+    `新闻标题：${input.title}`,
+    `新闻简介：${input.summary || "（没有）"}`,
+    `正文节选：${input.body ? input.body.slice(0, 2000) : "（拿不到正文）"}`,
+  ].join("\n");
+
+  return executeAiJson(
+    { operation: "signal_history", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验（缺字段、没用中文、或出现了空话）。严格按 JSON 字段重写。"
+          : ""),
+      config: {
+        systemInstruction: HISTORY_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2500,
+      },
+    }),
+    parseSignalHistory
+  );
+}
+
+// ── 从自述里抽处境事实 ─────────────────────────────────────────────────────
+
+export type SituationFact = {
+  /** 改写成第三人称的一句事实，比如"在一家电商公司做广告数据分析"。 */
+  fact: string;
+  /** 原文里的出处（逐字摘抄）。代码会核对它真的在原文里。 */
+  quote: string;
+};
+
+const FACTS_PROMPT = `下面是一个人在不同时间写下的自述。从里面只抽"处境事实"，给读新闻的 AI 当背景用。
+
+处境事实是：他在做什么工作、在什么行业或公司类型、什么职位或阶段、住在哪个国家或城市、在学什么、手上在做什么项目、有什么时间或经济上的约束。
+不是处境事实、一律不抽：性格（"我很内向"）、能力评价（"我不擅长沟通"）、动机和价值观（"我想证明自己"）、情绪、对自己的任何评价。
+拿不准是事实还是评价的，不抽。
+
+每条写：
+- fact：改写成一句客观的话，不带评价。关键名词照原文用，不要换成意思相近的词。
+- quote：原文里对应的那一段，必须逐字照抄，不能改一个字。
+
+同一句原话只抽一条，不要把一句话拆成几条。最多 8 条。没有处境事实就给空数组。
+只输出 JSON：{"facts":[{"fact":"…","quote":"…"}]}`;
+
+/** 出处必须逐字出现在原文里（忽略空白差异），对不上的丢掉。 */
+export function parseSituationFacts(value: unknown, sources: string[]): SituationFact[] {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const raw = (value as { facts?: unknown }).facts;
+  if (!Array.isArray(raw)) throw new Error("缺少 facts");
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const haystack = sources.map(squash);
+  return raw
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .map((f) => ({
+      fact: typeof f.fact === "string" ? f.fact.trim() : "",
+      quote: typeof f.quote === "string" ? f.quote.trim() : "",
+    }))
+    .filter((f) => f.fact && f.quote.length >= 4 && haystack.some((h) => h.includes(squash(f.quote))))
+    .slice(0, 8);
+}
+
+export async function extractSituationFacts(declarations: string[]): Promise<SituationFact[]> {
+  if (declarations.length === 0) return [];
+  const contents = declarations.map((d, i) => `[${i + 1}] ${d}`).join("\n\n");
+  return executeAiJson(
+    { operation: "situation_facts", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出格式不对。严格按 JSON 字段重写。" : ""),
+      config: {
+        systemInstruction: FACTS_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parseSituationFacts(value, declarations)
+  );
+}
+
+// ── 报告的第二步："跟你" ───────────────────────────────────────────────────
+
+export type PersonalLink = { index: number; personal: string };
+
+const LINK_PROMPT = `下面是今天报告里的几条，和"关于他"的记录。找出真的跟他连得上的，最多 ${MAX_PERSONAL} 条。
+
+连得上的意思是：同一个行业、同一类问题、或者他记过的观察里直接提到过。
+"都跟 AI 有关""都是商业新闻"不算连得上。连不上的就不写，一条都没有就给空数组。宁缺毋滥。
+
+每条写：
+- index：报告里那一条的序号。
+- personal：跟他有什么关系，一到两句，具体到他记录里的那件事。
+- link：逐字照抄"关于他"里你据以联系的那一条（或其中一段）。
+
+不要用"作为未来的社长"这种套话。
+不要曲解他记录里的词：照原话的意思说，不要自己换成近似但意思不同的词（比如把"AI 推荐率监测"说成"AI 推荐系统"）。
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"links":[{"index":序号,"personal":"…","link":"…"}]}`;
+
+/** link 必须真在"关于他"里（忽略空白），序号必须是报告里的一条；最多留 MAX_PERSONAL 条。 */
+export function parsePersonalLinks(value: unknown, indices: number[], readerItems: string[]): PersonalLink[] {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const raw = (value as { links?: unknown }).links;
+  if (!Array.isArray(raw)) throw new Error("缺少 links");
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const grounded = (link: string) =>
+    squash(link).length >= 2 &&
+    readerItems.some((item) => squash(item).includes(squash(link)) || squash(link).includes(squash(item)));
+  const seen = new Set<number>();
+  const result: PersonalLink[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const index = typeof v.index === "number" ? v.index : Number(v.index);
+    const personal = typeof v.personal === "string" ? v.personal.trim() : "";
+    const link = typeof v.link === "string" ? v.link.trim() : "";
+    if (!indices.includes(index) || seen.has(index) || !personal || !grounded(link)) continue;
+    seen.add(index);
+    result.push({ index, personal });
+    if (result.length >= MAX_PERSONAL) break;
+  }
+  assertNoBanned(result.map((r) => r.personal));
+  assertChinese(result.map((r) => r.personal));
+  return result;
+}
+
+export async function linkPicksToReader(
+  picks: { index: number; headline: string; background: string }[],
+  reader: SignalReader
+): Promise<PersonalLink[]> {
+  const items = [
+    ...reader.facts,
+    ...reader.observations,
+    ...reader.hypotheses,
+    ...reader.skills,
+    ...reader.ideas,
+    ...reader.dreams,
+  ];
+  if (picks.length === 0 || items.length === 0) return [];
+  const contents = [
+    "今天的报告：",
+    ...picks.map((p) => `[${p.index}] ${p.headline}\n${p.background}`),
+    "",
+    aboutUser(reader),
+  ].join("\n");
+
+  return executeAiJson(
+    { operation: "brief_personal_links", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验。严格按 JSON 字段重写。" : ""),
+      config: {
+        systemInstruction: LINK_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 800,
+      },
+    }),
+    (value) => parsePersonalLinks(value, picks.map((p) => p.index), items)
+  );
+}
+
+// ── 往下推：多层推论 ───────────────────────────────────────────────────────
+
+/**
+ * 五档，不给百分比：AI 给的"62%"是编的，却会让人觉得很精确（原则 1）。
+ * "possible" 沿用早期三档时的键名，意思是"一半一半"，这样旧数据不用迁移。
+ */
+export type Likelihood = "very_likely" | "likely" | "possible" | "unlikely" | "very_unlikely";
+export const LIKELIHOOD_ORDER: Likelihood[] = ["very_likely", "likely", "possible", "unlikely", "very_unlikely"];
+
+export type InferenceStep = {
+  /** 会发生什么。 */
+  claim: string;
+  /** 为什么会这样：从上一步到这一步的机制。 */
+  why: string;
+  /** 怎么看出它正在发生：一个能观察到的信号。 */
+  watch: string;
+  likelihood: Likelihood;
+};
+
+/** 每层最多几条。层数上限由调用方控制。 */
+const INFERENCE_BRANCHES = 3;
+
+const INFERENCE_PROMPT = `你帮一个人练"顺着一条消息往下推"。给你一条新闻，和已经推到的那条链（可能为空）。
+你只负责推下一层：在这条链最后一步成立的前提下，接下来最可能发生的 2 到 ${INFERENCE_BRANCHES} 种情况。
+
+每种情况写：
+- claim：会发生什么，一句话，具体到谁、做什么。
+- why：为什么上一步会导致这一步，说清机制，一到两句。
+- watch：到时候看什么能知道它正在发生（哪类新闻、哪个数字、谁的动作），一句话。
+- likelihood：在上一步成立的前提下，它发生的可能性，只能是这五档之一：
+  "very_likely"（很可能）/"likely"（较可能）/"possible"（一半一半）/"unlikely"（不太可能）/"very_unlikely"（很不可能）。
+  最好也给一条反方向或意外的情况。
+
+铁律：
+- 不写百分比、不写"概率为 X"、不写任何表示可能性的数字。只用上面五档。
+- 这几种情况要真的不一样（不同的人、不同的方向），不要同一件事换个说法。
+- 不重复链上已经出现过的结论，往前推，不要原地打转。
+- 考虑幅度：小变化（比如利率只动 0.25 个百分点、一家公司的小动作）通常推不出大后果。
+  幅度不够大、不足以导致下一步的，就标 "unlikely"，并在 why 里说清楚为什么幅度不够。
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"steps":[{"claim":"…","why":"…","watch":"…","likelihood":"likely"}]}`;
+
+export function parseInferenceSteps(value: unknown): InferenceStep[] {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const raw = (value as { steps?: unknown }).steps;
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error("缺少 steps");
+  const steps: InferenceStep[] = raw
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+    .map((s) => ({
+      claim: requireString(s, "claim"),
+      why: requireString(s, "why"),
+      watch: requireString(s, "watch"),
+      likelihood: LIKELIHOOD_ORDER.includes(s.likelihood as Likelihood) ? (s.likelihood as Likelihood) : "possible",
+    }))
+    .slice(0, INFERENCE_BRANCHES)
+    // 从较可能到不太可能排
+    .sort((a, b) => LIKELIHOOD_ORDER.indexOf(a.likelihood) - LIKELIHOOD_ORDER.indexOf(b.likelihood));
+  const texts = steps.flatMap((s) => [s.claim, s.why, s.watch]);
+  const numeric = texts.find(mentionsNumericLikelihood);
+  if (numeric) throw new Error(`出现了数字化的可能性：${numeric.slice(0, 30)}`);
+  assertNoBanned(texts);
+  assertChinese(texts);
+  return steps;
+}
+
+export async function inferNextSteps(input: {
+  title: string;
+  summary: string;
+  body: string;
+  /** 从根到当前节点已经推出的结论，按顺序。空数组表示从新闻本身开始推。 */
+  chain: string[];
+  /** 用户给的方向；有的话，这一层的几种情况都要围绕它推。 */
+  direction?: string;
+}): Promise<InferenceStep[]> {
+  const contents = [
+    `新闻标题：${input.title}`,
+    `新闻简介：${input.summary || "（没有）"}`,
+    `正文节选：${input.body ? input.body.slice(0, 1500) : "（拿不到正文）"}`,
+    "",
+    input.chain.length === 0
+      ? "已经推到的链：（还没有，从这条新闻本身开始推第一层）"
+      : `已经推到的链（每一步都假设成立）：\n${input.chain.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+    input.direction
+      ? `\n他想往这个方向推：${input.direction}\n` +
+        `这一层的几种情况都要围绕这个方向。如果它是一个假设（"如果……"），就当它成立往下推。` +
+        `这个方向本身站不住、或者跟前面的链对不上的话，照实标低可能性，并在 why 里说清楚为什么，不要硬凑。`
+      : "",
+  ].join("\n");
+
+  return executeAiJson(
+    { operation: "signal_inference", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验（缺字段、写了百分比、或没用中文）。严格按 JSON 字段重写。"
+          : ""),
+      config: {
+        systemInstruction: INFERENCE_PROMPT,
+        responseMimeType: "application/json",
+        // 推论要掂量幅度（0.25 个百分点推不出房价下跌），不开思考时模型一律标"较可能"。
+        // 思考会吃 maxOutputTokens，所以上限给足，免得 JSON 被截断。
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 4096,
+      },
+    }),
+    parseInferenceSteps
+  );
+}
+
+// ── 往下推：Jev 当裁判 ─────────────────────────────────────────────────────
+
+/**
+ * 写推论的（Gemini）和判可能性的（Jev）分开：让同一个模型给自己写的结论打分，
+ * 它几乎一律标"较可能"。Jev 只回档位分布、不生成文字，正好当裁判。
+ * 页面只显示档位，不显示 Jev 的数字（原则 1：精确性偏误）；分布太平就标"拿不准"。
+ */
+export type JudgedTier = { likelihood: Likelihood; unsure: boolean };
+
+const TIER_CRITERIA = [
+  "很可能：在前面这些都成立的情况下，这一步几乎一定会发生",
+  "较可能：多半会发生",
+  "一半一半：可能发生，也可能不发生，取决于别的条件",
+  "不太可能：幅度不够、条件不足，多半不会发生",
+  "很不可能：有更强的力量在反方向，几乎不会发生",
+];
+/** 最高一档的概率低于这个，就当 Jev 拿不准。 */
+const JEV_UNSURE_BELOW = 0.5;
+
+export function parseJudgedTiers(result: JevResult, count: number): JudgedTier[] {
+  return Array.from({ length: count }, (_, i) => {
+    const answer = result.answers[`step_${i}`] as Record<string, unknown> | undefined;
+    if (!answer || answer.type !== "score") throw new Error(`step_${i} 缺少档位`);
+    // Jev 的 score 是期望值（比如 0.35），不是档位；档位取概率最高的那一档
+    const raw = answer.probabilities as Record<string, unknown> | undefined;
+    if (!raw || typeof raw !== "object") throw new Error(`step_${i} 缺少概率`);
+    const probs = TIER_CRITERIA.map((_, level) => {
+      const v = raw[String(level)];
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1) {
+        throw new Error(`step_${i}[${level}] 不是 0 到 1 之间的数`);
+      }
+      return v;
+    });
+    const top = Math.max(...probs);
+    return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW };
+  });
+}
+
+export async function judgeInferenceSteps(input: {
+  title: string;
+  summary: string;
+  chain: string[];
+  steps: InferenceStep[];
+}): Promise<JudgedTier[]> {
+  const state = [
+    `新闻：${input.title}`,
+    input.summary ? `简介：${input.summary}` : "",
+    input.chain.length > 0
+      ? `假设下面这些已经依次发生：\n${input.chain.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
+      : "",
+    "接下来可能发生的几种情况：",
+    ...input.steps.map((s, i) => `[${i}] ${s.claim}（理由：${s.why}）`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const questions: Record<string, JevQuestion> = {};
+  input.steps.forEach((s, i) => {
+    questions[`step_${i}`] = {
+      type: "score",
+      instructions: `在新闻和前面那些都成立的前提下，情况 [${i}]「${s.claim}」发生的可能性有多大？要考虑变化的幅度够不够大。`,
+      criteria: TIER_CRITERIA,
+    };
+  });
+
+  return executeJev(
+    { operation: "inference_judge", module: "unknown", timeoutMs: 30_000 },
+    { state, questions },
+    (result) => parseJudgedTiers(result, input.steps.length)
+  );
+}
+
+// ── 贝叶斯草稿：AI 只给粗档，用户改，代码算 ───────────────────────────────
+
+export type BayesDraft = {
+  prior: "rare" | "low" | "even" | "high" | "common";
+  priorWhy: string;
+  evidence: { text: string; why: string; strength: "strong_for" | "for" | "neutral" | "against" | "strong_against" }[];
+};
+
+const PRIORS = ["rare", "low", "even", "high", "common"] as const;
+const STRENGTHS = ["strong_for", "for", "neutral", "against", "strong_against"] as const;
+
+const BAYES_PROMPT = `你帮一个人用贝叶斯的方式估计一件事有多大可能。你只起草稿，他会改。
+给你一条新闻、前面已经推到的链，和要估计的那一步。
+
+输出：
+1. prior：先不看这条新闻和前面的链，这类事平常发生的频率，只能选一档：
+   "rare"（很少见）/"low"（偏少）/"even"（一半一半）/"high"（偏多）/"common"（很常见）。
+2. priorWhy：为什么选这一档，一到两句（参照过去类似的情况）。
+   先验里绝不能用到这条新闻和前面的链（比如"因为利率上升了，所以……"）—— 那是证据，放进先验再当证据算一次，就重复算了，结果会虚高。
+   先验只回答：在一个普通的年份里，这类事有多常见。
+3. evidence：2 到 4 条会改变这个估计的证据，从新闻和前面的链里找，正反都要有 —— 至少一条反对或无关的。
+   证据的强度要看幅度：小变化（比如利率只动 0.25 个百分点）最多算"支持"，不要算"强烈支持"。每条写：
+   - text：证据是什么，一句话。
+   - why：它为什么让这件事更可能或更不可能，一句话。
+   - strength：只能选一档 "strong_for"（强烈支持）/"for"（支持）/"neutral"（无关）/"against"（反对）/"strong_against"（强烈反对）。
+
+铁律：不写任何百分比或数字化的可能性，只选档。
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"prior":"…","priorWhy":"…","evidence":[{"text":"…","why":"…","strength":"…"}]}`;
+
+export function parseBayesDraft(value: unknown): BayesDraft {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  if (!PRIORS.includes(v.prior as (typeof PRIORS)[number])) throw new Error("prior 不是五档之一");
+  const raw = Array.isArray(v.evidence) ? v.evidence : [];
+  const evidence = raw
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    .filter((e) => STRENGTHS.includes(e.strength as (typeof STRENGTHS)[number]))
+    .map((e) => ({
+      text: requireString(e, "text"),
+      why: requireString(e, "why"),
+      strength: e.strength as BayesDraft["evidence"][number]["strength"],
+    }))
+    .slice(0, 4);
+  if (evidence.length === 0) throw new Error("缺少 evidence");
+  // 只给支持的证据，草稿一算就虚高，还会把人锚过去：至少要有一条反对或无关的
+  if (!evidence.some((e) => e.strength === "against" || e.strength === "strong_against" || e.strength === "neutral")) {
+    throw new Error("证据只有支持的，没有反方");
+  }
+  const draft: BayesDraft = { prior: v.prior as BayesDraft["prior"], priorWhy: requireString(v, "priorWhy"), evidence };
+  const texts = [draft.priorWhy, ...evidence.flatMap((e) => [e.text, e.why])];
+  const numeric = texts.find(mentionsNumericLikelihood);
+  if (numeric) throw new Error(`出现了数字化的可能性：${numeric.slice(0, 30)}`);
+  assertNoBanned(texts);
+  assertChinese(texts);
+  return draft;
+}
+
+export async function draftBayes(input: {
+  title: string;
+  summary: string;
+  chain: string[];
+  claim: string;
+}): Promise<BayesDraft> {
+  const contents = [
+    `新闻：${input.title}`,
+    input.summary ? `简介：${input.summary}` : "",
+    input.chain.length > 0 ? `前面已经推到的链：\n${input.chain.map((c, i) => `${i + 1}. ${c}`).join("\n")}` : "",
+    `要估计的这一步：${input.claim}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return executeAiJson(
+    { operation: "bayes_draft", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验。常见原因：证据里没有一条反对或无关的（至少要一条）、档位不是规定的五档之一、写了百分比、没用中文。严格按 JSON 字段重写。"
+          : ""),
+      config: {
+        systemInstruction: BAYES_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 512 },
         maxOutputTokens: 3000,
       },
     }),
-    (value) => parseBrief(value, candidates.length)
+    parseBayesDraft
   );
 }

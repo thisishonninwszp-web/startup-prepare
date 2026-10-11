@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFeed } from "./rss";
+import { extractArticleText, parseFeed } from "./rss";
 
 describe("parseFeed", () => {
   it("读 RSS 2.0：标题、链接、时间，CDATA 和实体都解开", () => {
@@ -40,5 +40,15 @@ describe("parseFeed", () => {
     expect(items).toHaveLength(1);
     expect(items[0].title).toBe("时间坏了");
     expect(items[0].publishedAt).toBeNull();
+  });
+});
+
+describe("extractArticleText", () => {
+  it("跳过版权行、邮件杂志广告和碎片，实体解两层", () => {
+    const html = `<p>シェア</p>
+      <p>OpenAIのエンジニアが新しいパーソナルAI「Dots」について説明した。</p>
+      <p>&amp;copy; エクサウィザーズ AI新聞</p>
+      <p>ITmedia ビジネスオンライン編集部が制作する日刊メールマガジンです</p>`;
+    expect(extractArticleText(html)).toBe("OpenAIのエンジニアが新しいパーソナルAI「Dots」について説明した。");
   });
 });

@@ -32,6 +32,33 @@ export function describeRepo(repo: Pick<Repo, "description" | "language" | "star
   return parts.filter(Boolean).join(" · ");
 }
 
+/** 仓库 README 的开头，去掉图片、徽章、HTML 和代码块，给详情页和 AI 看。拿不到返回空串。 */
+export async function fetchReadme(fullName: string, maxLength = 4000): Promise<string> {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${fullName}/readme`, {
+      headers: { Accept: "application/vnd.github.raw+json", "User-Agent": "ideaos-news/1.0" },
+      signal: AbortSignal.timeout(8_000),
+      cache: "no-store",
+    });
+    if (!res.ok) return "";
+    return cleanReadme(await res.text()).slice(0, maxLength);
+  } catch {
+    return "";
+  }
+}
+
+export function cleanReadme(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^#+\s*/gm, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function fetchGithubTools(): Promise<{ inserted: number }> {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
   const params = new URLSearchParams({

@@ -4,29 +4,249 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
+import { getSignalDetail } from "@/lib/domains/signals/analysis";
+import { tokyoToday } from "@/lib/domains/signals/brief";
 import type { SignalKind } from "@/lib/domains/signals/feeds";
-import { getSignalPageExtras, listPendingSignals } from "./queries";
-import { BriefPanel, ContextEditor } from "./brief-panel";
-import { RefreshButton, SignalList } from "./signal-list";
+import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
+import { dueJudgments, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
+import { countPendingSignals, getDailyReport, type ReportSection } from "./queries";
+import { GenerateBriefButton } from "./brief-panel";
+import { ReaderPanel } from "./reader-panel";
+import { JudgmentForm, ResolveJudgment } from "./judgment-forms";
+import { formatDueDate, JudgmentView } from "./judgment-view";
+import { HistoryPanel } from "./history-panel";
 
 export const dynamic = "force-dynamic";
-// 手动抓取、生成精选的 server action 跟着页面的时长上限走，默认 10 秒不够。
+// 「现在生成」「写下判断」的 server action 跟着页面的时长上限走，默认 10 秒不够。
 export const maxDuration = 60;
 
-const TABS: { kind: SignalKind; label: string; description: string }[] = [
+const SECTIONS: { kind: SignalKind; title: string; forYouLabel: string; empty: string }[] = [
   {
     kind: "news",
-    label: "新闻",
-    description: "Yahoo!、日经系、科技媒体，加上利率汇率和转职的关键词。看世界在发生什么。",
+    title: "今天的世界",
+    forYouLabel: "主要影响",
+    empty: "今天的新闻报告还没生成。",
+  },
+  {
+    kind: "calendar",
+    title: "已经定了的未来",
+    forYouLabel: "会影响谁",
+    empty: "今天的日程还没整理。",
+  },
+  {
+    kind: "voices",
+    title: "谁在头疼什么",
+    forYouLabel: "可以找谁聊",
+    empty: "今天这一节还没整理。",
   },
   {
     kind: "tools",
-    label: "工具",
-    description: "GitHub 上最近 7 天新建、星数涨得快的仓库。看大家在用什么新东西。",
+    title: "今天的新工具",
+    forYouLabel: "你可以试",
+    empty: "今天的工具报告还没生成。",
   },
 ];
 
-export default async function SignalsPage({
+function ReportSectionView({
+  section,
+  data,
+  isToday,
+  hiddenSignalId,
+}: {
+  section: (typeof SECTIONS)[number];
+  data: ReportSection | null;
+  isToday: boolean;
+  /** 今天的练习题还没写判断时，这一条的 AI 解读先藏起来。 */
+  hiddenSignalId: string | null;
+}) {
+  return (
+    <section className="mt-12">
+      <h2 className="border-b pb-2 text-xl font-semibold">{section.title}</h2>
+
+      {data && data.items.length === 0 ? (
+        <div className="mt-4">
+          {data.overview && <p className="text-base leading-8">{data.overview}</p>}
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">
+            这一批消息里没有能放进这一节的。宁可空着，也不硬凑。
+          </p>
+        </div>
+      ) : !data ? (
+        <div className="mt-4 rounded-lg border border-dashed bg-dotgrid px-6 py-8 text-center">
+          <p className="text-sm">{section.empty}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isToday
+              ? "每天早上 7 点会自动生成；现在想看就点下面，大约要十几秒。"
+              : "那天没有生成这一份。"}
+          </p>
+          {isToday && (
+            <div className="mt-4 flex justify-center">
+              <GenerateBriefButton kind={section.kind} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {data.overview && <p className="mt-4 text-base leading-8">{data.overview}</p>}
+          <ol className="mt-8 space-y-10">
+            {data.items.map((item, i) => (
+              <li key={item.signal_id}>
+                <p className="font-mono text-xs text-muted-foreground">
+                  {String(i + 1).padStart(2, "0")} · {item.source}
+                </p>
+                <h3 className="mt-1 text-lg font-semibold leading-8">
+                  <Link
+                    href={`/signals/${item.signal_id}`}
+                    className="transition-colors duration-150 hover:text-primary"
+                  >
+                    {item.headline}
+                  </Link>
+                </h3>
+                {item.signal_id === hiddenSignalId ? (
+                  <p className="mt-2 rounded-md bg-muted/60 px-3 py-2 text-sm leading-7 text-muted-foreground">
+                    这条是今天的练习题。先在上面写下你的判断，AI 的解读再出来。
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-2 text-base leading-8">{item.background}</p>
+                    <p className="mt-3 text-sm leading-7">
+                      <span className="text-muted-foreground">{section.forYouLabel}：</span>
+                      {item.for_you}
+                    </p>
+                    {item.personal && (
+                      <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
+                        <span className="text-muted-foreground">跟你：</span>
+                        {item.personal}
+                      </p>
+                    )}
+                  </>
+                )}
+                <p className="mt-3 flex gap-4 text-sm">
+                  <Link
+                    href={`/signals/${item.signal_id}`}
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    看具体报告 →
+                  </Link>
+                  {item.url && (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
+                    >
+                      原文 ↗
+                    </a>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ol>
+          {isToday && (
+            <div className="mt-6 flex justify-end">
+              <GenerateBriefButton kind={section.kind} regenerate />
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function DueJudgments({ rows }: { rows: JudgmentRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <section className="mb-8 rounded-lg border border-primary/40 bg-card p-5">
+      <h2 className="text-base font-semibold">到期了，对一下账（{rows.length}）</h2>
+      <p className="mt-1 text-sm leading-7 text-muted-foreground">
+        这些是你之前写下的判断。去看看现在实际怎样了，再回来标对错。
+      </p>
+      <ul className="mt-4 space-y-6">
+        {rows.map((r) => (
+          <li key={r.id}>
+            <p className="text-sm text-muted-foreground">
+              {formatDueDate(r.created_at)}读到：
+              {r.news_url ? (
+                <a
+                  href={r.news_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline-offset-4 hover:underline"
+                >
+                  {r.news_title}
+                </a>
+              ) : (
+                r.news_title
+              )}
+            </p>
+            <p className="mt-1 border-l-2 border-primary pl-3 text-base font-medium leading-8">{r.judgment}</p>
+            <ResolveJudgment predictionId={r.prediction_id} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+async function PracticeCard({
+  practice,
+  title,
+  judgment,
+}: {
+  practice: NonNullable<ReportSection["practice"]>;
+  title: string;
+  judgment: JudgmentRow | null;
+}) {
+  const detail = await getSignalDetail(practice.signal_id);
+  const usable = detail && detail !== "missing-schema" ? detail : null;
+  const summary = usable?.summary ?? "";
+  return (
+    <section className="mb-8 rounded-lg border bg-card p-5">
+      <p className="font-mono text-xs text-muted-foreground">Today&apos;s practice</p>
+      <h2 className="mt-1 text-lg font-semibold">今天的练习：先判断，再看答案</h2>
+      <p className="mt-4 text-sm text-muted-foreground">读这一条：</p>
+      <p className="mt-1 text-base font-medium leading-8">{title}</p>
+      {summary && <p className="mt-1 text-sm leading-7">{summary}</p>}
+
+      <div className="mt-5 border-t pt-5">
+        {judgment ? (
+          <>
+            <JudgmentView judgment={judgment} />
+            <p className="mt-4 text-sm leading-7 text-muted-foreground">到时候看什么：{practice.check_how}</p>
+            <p className="mt-3 text-sm">
+              <Link
+                href={`/signals/${practice.signal_id}`}
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                看这条的具体报告 →
+              </Link>
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="mb-5">
+              <p className="mb-2 text-sm leading-7 text-muted-foreground">
+                写判断前，推荐先看看这类事过去通常怎样。看完再想「这次有什么不同」。
+              </p>
+              <HistoryPanel signalId={practice.signal_id} initial={usable?.history ?? null} />
+            </div>
+            <JudgmentForm signalId={practice.signal_id} question={practice.question} />
+          </>
+        )}
+        {judgment && (
+          <div className="mt-6 border-t pt-5">
+            <HistoryPanel
+              signalId={practice.signal_id}
+              initial={usable?.history ?? null}
+              label="看历史上类似的事"
+            />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export default async function SignalsReportPage({
   searchParams,
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
@@ -37,50 +257,106 @@ export default async function SignalsPage({
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const kind: SignalKind = searchParams.tab === "tools" ? "tools" : "news";
-  const tab = TABS.find((t) => t.kind === kind) ?? TABS[0];
-  const [items, extras] = await Promise.all([
-    listPendingSignals(kind),
-    getSignalPageExtras(user.id, kind),
+  const today = tokyoToday();
+  const date = isReportDate(searchParams.date) ? searchParams.date : today;
+  const isToday = date === today;
+  const [report, newsCount, toolsCount, judgments] = await Promise.all([
+    getDailyReport(user.id, date),
+    countPendingSignals("news"),
+    countPendingSignals("tools"),
+    // 迁移 055 没跑时练习整块不显示，报告照常
+    listJudgments(user.id).catch((e: Error) => {
+      if (/signal_judgments/.test(e.message)) return null;
+      throw e;
+    }),
   ]);
 
+  const practice = report !== "missing-schema" ? report.news?.practice ?? null : null;
+  const practiceItem =
+    practice && report !== "missing-schema"
+      ? report.news?.items.find((i) => i.signal_id === practice.signal_id) ?? null
+      : null;
+  const practiceJudgment =
+    practice && judgments ? judgments.find((j) => j.signal_id === practice.signal_id) ?? null : null;
+  const hiddenSignalId = practice && judgments && !practiceJudgment ? practice.signal_id : null;
+
   return (
-    <PageContainer>
+    <PageContainer width="narrow">
       <PageHeader
-        eyebrow="External signals"
-        title="外部信号"
-        description="每天早上 7 点自动抓一轮，AI 先替你挑 5 条、讲清楚为什么。哪条让你多看了一眼，就记一笔；没动过的两周后自己清掉。"
-        actions={items !== null && <RefreshButton kind={kind} />}
+        eyebrow={`Daily report · ${date}`}
+        title={isToday ? "今日报告" : `${formatReportDate(date)}的报告`}
+        description="每天先做一道练习：读一条新闻，写下你的判断，再看 AI 怎么拆。下面是今天的世界、已经定了的未来、一线的人在头疼什么，还有新工具。"
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/signals/practice">判断账本</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/signals/inbox">全部新闻 {newsCount}</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/signals/inbox?tab=tools">全部工具 {toolsCount}</Link>
+            </Button>
+          </>
+        }
       />
 
-      <nav className="mb-2 flex gap-2">
-        {TABS.map((t) => (
-          <Button key={t.kind} asChild size="sm" variant={t.kind === kind ? "secondary" : "ghost"}>
-            <Link href={t.kind === "news" ? "/signals" : "/signals?tab=tools"}>{t.label}</Link>
-          </Button>
-        ))}
-      </nav>
-      <p className="mb-6 text-sm leading-7 text-muted-foreground">{tab.description}</p>
-
-      {items === null ? (
-        <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-5 text-sm text-status-validating">
-          数据库还差一步：迁移 052 没跑，新闻排不了序。到 Supabase 的 SQL Editor 执行
-          supabase/migrations/052_external_signals_published_at.sql 之后再来。
+      {report === "missing-schema" ? (
+        <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-5 text-sm leading-7 text-status-validating">
+          数据库还差一步：迁移 053 或 054 没跑。到 Supabase 的 SQL Editor 执行
+          supabase/migrations/054_signal_reports.sql 之后再来。
         </div>
       ) : (
         <>
-          {extras.available ? (
-            <>
-              <ContextEditor initial={extras.context} />
-              <BriefPanel kind={kind} items={extras.brief} />
-            </>
-          ) : (
-            <div className="mb-6 rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-sm text-status-validating">
-              每日精选还差一步：迁移 053 没跑。执行 supabase/migrations/053_signal_briefs.sql 之后，这里会出现 AI 挑的 5 条。
-            </div>
+          {report.recentDates.length > 1 && (
+            <nav className="mb-6 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <span className="text-muted-foreground">往期：</span>
+              {report.recentDates.map((d) => (
+                <Link
+                  key={d}
+                  href={d === today ? "/signals" : `/signals?date=${d}`}
+                  className={
+                    d === date
+                      ? "font-medium text-primary"
+                      : "text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                  }
+                >
+                  {formatReportDate(d)}
+                </Link>
+              ))}
+            </nav>
           )}
-          <h2 className="mb-3 mt-8 text-base font-semibold">全部（{items.length}）</h2>
-          <SignalList items={items} kind={kind} />
+
+          {isToday && <ReaderPanel userId={user.id} />}
+
+          {judgments === null ? (
+            <div className="mb-8 rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-sm leading-7 text-status-validating">
+              「先判断，再看答案」的练习还差一步：迁移 055 没跑。执行
+              supabase/migrations/055_signal_judgments.sql 之后，这里会出现每天的练习题。
+            </div>
+          ) : (
+            <>
+              {isToday && <DueJudgments rows={dueJudgments(judgments)} />}
+              {practice && practiceItem && (
+                <PracticeCard practice={practice} title={practiceItem.title} judgment={practiceJudgment} />
+              )}
+              {isToday && report.news && !practice && (
+                <p className="mb-8 text-sm leading-7 text-muted-foreground">
+                  今天这份报告是在练习功能上线前生成的，没有练习题。点「今天的世界」下面的「重新生成这一份」就会有。
+                </p>
+              )}
+            </>
+          )}
+
+          {SECTIONS.map((section) => (
+            <ReportSectionView
+              key={section.kind}
+              section={section}
+              data={report[section.kind]}
+              isToday={isToday}
+              hiddenSignalId={section.kind === "news" ? hiddenSignalId : null}
+            />
+          ))}
         </>
       )}
     </PageContainer>

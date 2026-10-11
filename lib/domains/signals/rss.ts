@@ -18,6 +18,11 @@ const ENTITIES: Record<string, string> = {
   quot: '"',
   apos: "'",
   nbsp: " ",
+  copy: "©",
+  reg: "®",
+  hellip: "…",
+  mdash: "—",
+  ndash: "–",
 };
 
 function decode(text: string): string {
@@ -60,6 +65,10 @@ export function extractPageDescription(html: string): string {
   );
 }
 
+/** 版权行、邮件杂志广告、"最新情报送到你手上"这类不是正文的段落。 */
+const BOILERPLATE =
+  /©|All rights reserved|無断転載|メールマガジン|メルマガ|最新情報をお届け|購読|会員登録|ログイン|この記事をシェア|続きを読む/i;
+
 /**
  * 文章正文的粗提取：只取 <p> 段落里的文字，去掉脚本和样式。
  * 给 AI 做单条分析用，不求完美 —— 拿不到就退回标题 + 简介。
@@ -71,8 +80,10 @@ export function extractArticleText(html: string, maxLength = 3000): string {
   const paragraphs: string[] = [];
   let total = 0;
   for (const m of cleaned.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/gi)) {
-    const text = stripTags(decode(m[1]));
+    // 有的站点把实体编码了两层（&amp;copy;），解两次
+    const text = stripTags(decode(decode(m[1])));
     if (text.length < 20) continue; // 跳过"シェア""関連記事"之类的碎片
+    if (BOILERPLATE.test(text)) continue;
     paragraphs.push(text);
     total += text.length;
     if (total >= maxLength) break;

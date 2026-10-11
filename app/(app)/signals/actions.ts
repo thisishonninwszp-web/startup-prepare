@@ -3,14 +3,22 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { analyzeNewsItem, type NewsAnalysis } from "@/lib/ai";
 import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import { fetchDailyNews } from "@/lib/domains/signals/daily-news";
-import { fetchArticleBody } from "@/lib/domains/signals/article";
-import { generateBrief, loadSignalReader } from "@/lib/domains/signals/brief";
+import { ensureSignalAnalysis, type StoredHistory } from "@/lib/domains/signals/analysis";
+import { ensureSignalHistory } from "@/lib/domains/signals/history";
+import { draftNodeBayes, expandInference, saveNodeBayes } from "@/lib/domains/signals/inference";
+import type { BayesState, InferenceNode } from "@/lib/domains/signals/inference-shared";
+import { generateBrief } from "@/lib/domains/signals/brief";
 import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
-import { usableSummary } from "@/lib/domains/signals/summary";
+import {
+  resolveJudgment,
+  retryJudgmentFeedback,
+  submitJudgment,
+  type ConfidenceKey,
+  type HorizonKey,
+} from "@/lib/domains/signals/practice";
 import { createObservation } from "../capture/actions";
 import { EXTERNAL_TAG } from "../ideas/types";
 
@@ -26,14 +34,13 @@ async function requireUserId(): Promise<string> {
 async function getPendingSignal(id: string) {
   const { data: row, error } = await supabaseAdmin
     .from("external_signals")
-    .select("id, status, source, title, url, raw_text")
+    .select("id, status, source, title, url")
     .eq("id", id)
     .single();
   if (error) throw new Error(error.message);
   if (row.status !== "pending") throw new Error("这条已经处理过了");
   return {
     title: (row.title as string | null) ?? "",
-    rawText: row.raw_text as string,
     source: newsSourceLabel(row.source as string),
     url: (row.url as string | null) ?? "",
   };
@@ -94,34 +101,22 @@ export async function dismissSignal(id: string): Promise<void> {
   revalidatePath("/signals");
 }
 
-export type AnalyzeSignalResult =
-  | { ok: true; analysis: NewsAnalysis }
-  | { ok: false; message: string };
-
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof AiGatewayError) return humanAiErrorMessage(error.code);
   return error instanceof Error ? error.message : fallback;
 }
 
-/** 这条意味着什么：读正文（拿得到的话）+ 你写的背景 + 想法和梦想的标题。结果不落库。 */
-export async function analyzeSignal(id: string): Promise<AnalyzeSignalResult> {
+/** 详情页的深读：第一次生成并存下，之后直接读。 */
+export async function analyzeSignal(
+  id: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    const signal = await getPendingSignal(id);
-    const [reader, body] = await Promise.all([
-      loadSignalReader(userId),
-      fetchArticleBody(signal.url),
-    ]);
-    const analysis = await analyzeNewsItem({
-      ...reader,
-      title: signal.title,
-      summary: usableSummary(signal.title, signal.rawText),
-      body,
-      source: signal.source,
-    });
-    return { ok: true, analysis };
+    await ensureSignalAnalysis(userId, id);
+    revalidatePath(`/signals/${id}`);
+    return { ok: true };
   } catch (error) {
-    return { ok: false, message: errorMessage(error, "分析失败") };
+    return { ok: false, message: errorMessage(error, "深读没生成出来") };
   }
 }
 
@@ -131,23 +126,120 @@ export async function generateBriefNow(
 ): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    const items = await generateBrief(userId, kind);
+    let items = await generateBrief(userId, kind);
+    if (items === null) {
+      // 还没抓过这一类（比如刚加的源、或 cron 还没跑）：先抓一轮再挑
+      if (kind === "tools") await fetchGithubTools();
+      else await fetchDailyNews();
+      items = await generateBrief(userId, kind);
+    }
     revalidatePath("/signals");
-    return { ok: true, count: items.length };
+    return { ok: true, count: items?.length ?? 0 };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "精选没生成出来") };
   }
 }
 
-/** AI 读新闻时知道的"你"。写过之后，每天早上 cron 才会给你生成精选。 */
-export async function saveSignalContext(context: string): Promise<void> {
+// ── 读新闻练判断 ───────────────────────────────────────────────────────────
+
+/** 先写判断：存进 predictions + signal_judgments，再让 AI 挑刺。 */
+export async function submitJudgmentAction(input: {
+  signalId: string;
+  question: string;
+  judgment: string;
+  horizon: HorizonKey;
+  confidence: ConfidenceKey | null;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
   const userId = await requireUserId();
-  const { error } = await supabaseAdmin
-    .from("signal_profiles")
-    .upsert(
-      { user_id: userId, context: context.trim().slice(0, 1000), updated_at: new Date().toISOString() },
-      { onConflict: "user_id" }
-    );
-  if (error) throw new Error(error.message);
+  try {
+    await submitJudgment({ userId, ...input });
+    revalidatePath("/signals");
+    revalidatePath(`/signals/${input.signalId}`);
+    revalidatePath("/signals/practice");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "判断没存上") };
+  }
+}
+
+/** 到期对账：看对了 / 看错了，可以补一句为什么。 */
+export async function resolveJudgmentAction(
+  predictionId: string,
+  outcome: "hit" | "miss",
+  note: string
+): Promise<void> {
+  const userId = await requireUserId();
+  await resolveJudgment(userId, predictionId, outcome, note);
   revalidatePath("/signals");
+  revalidatePath("/signals/practice");
+}
+
+export async function retryJudgmentFeedbackAction(
+  judgmentId: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await retryJudgmentFeedback(userId, judgmentId);
+    revalidatePath("/signals");
+    revalidatePath("/signals/practice");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "挑刺没生成出来") };
+  }
+}
+
+// ── 历史上类似的事 ─────────────────────────────────────────────────────────
+
+/** 第一次点开时生成并存下，之后直接读。写判断之前就能看。 */
+export async function ensureHistoryAction(
+  signalId: string
+): Promise<{ ok: true; history: StoredHistory } | { ok: false; message: string }> {
+  await requireUserId();
+  try {
+    return { ok: true, history: await ensureSignalHistory(signalId) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "历史参照没生成出来") };
+  }
+}
+
+// ── 往下推 ─────────────────────────────────────────────────────────────────
+
+/** 推某一步的下一层（parentId 为 null 时推第一层）。给了 direction 就按方向另推一组。 */
+export async function expandInferenceAction(
+  signalId: string,
+  parentId: string | null,
+  direction?: string
+): Promise<{ ok: true; nodes: InferenceNode[] } | { ok: false; message: string }> {
+  await requireUserId();
+  try {
+    return { ok: true, nodes: await expandInference(signalId, parentId, direction) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没推出来") };
+  }
+}
+
+/** 贝叶斯草稿：AI 只给粗档，返回给页面让用户改，不落库。 */
+export async function draftBayesAction(
+  signalId: string,
+  nodeId: string
+): Promise<{ ok: true; state: BayesState } | { ok: false; message: string }> {
+  await requireUserId();
+  try {
+    return { ok: true, state: await draftNodeBayes(signalId, nodeId) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "草稿没起出来") };
+  }
+}
+
+export async function saveBayesAction(
+  signalId: string,
+  nodeId: string,
+  state: BayesState
+): Promise<{ ok: true; nodes: InferenceNode[] } | { ok: false; message: string }> {
+  await requireUserId();
+  try {
+    return { ok: true, nodes: await saveNodeBayes(signalId, nodeId, state) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没存上") };
+  }
 }

@@ -4,7 +4,7 @@
  */
 
 const MIN_LENGTH = 20;
-const MAX_LENGTH = 200;
+const MAX_LENGTH = 400;
 
 /** 这段摘要值不值得显示。Hacker News 的 "Comments"、Google News 把标题重复一遍的，都不算。 */
 export function usableSummary(title: string | null, summary: string | null): string {

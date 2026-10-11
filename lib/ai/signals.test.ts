@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBrief, parseNewsAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseBayesDraft, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -28,22 +28,249 @@ describe("parseNewsAnalysis", () => {
 
 describe("parseBrief", () => {
   const pick = (index: unknown) => ({ index, headline: "h", background: "b", forYou: "f" });
+  const brief = (picks: unknown[]) => ({ overview: "今天的世界", picks });
 
   it("序号越界、重复、不是整数的丢掉，其余保留", () => {
-    const picks = parseBrief({ picks: [pick(0), pick(0), pick(9), pick("2"), pick(1.5)] }, 3);
+    const { overview, picks } = parseBrief(brief([pick(0), pick(0), pick(9), pick("2"), pick(1.5)]), 3);
+    expect(overview).toBe("今天的世界");
     expect(picks.map((p) => p.index)).toEqual([0, 2]);
   });
 
-  it("一条都对不上、或者没有 picks，就不收", () => {
-    expect(() => parseBrief({ picks: [pick(5)] }, 3)).toThrow();
-    expect(() => parseBrief({}, 3)).toThrow("picks");
+  it("一条都对不上、没有 picks、没有总述，就不收", () => {
+    expect(() => parseBrief(brief([pick(5)]), 3)).toThrow();
+    expect(() => parseBrief({ overview: "x" }, 3)).toThrow("picks");
+    expect(() => parseBrief({ picks: [pick(0)] }, 3)).toThrow("overview");
   });
 
   it("最多 5 条；出现投资建议就作废", () => {
     const many = Array.from({ length: 8 }, (_, i) => pick(i));
-    expect(parseBrief({ picks: many }, 8)).toHaveLength(5);
+    expect(parseBrief(brief(many), 8).picks).toHaveLength(5);
+    expect(() => parseBrief(brief([{ ...pick(0), forYou: "可以抄底" }]), 3)).toThrow("抄底");
+  });
+});
+
+describe("parseToolAnalysis", () => {
+  const tool = { what: "w", howToUse: "h", whoFor: "f", tryThis: "t" };
+  it("四段齐全才收，空话作废", () => {
+    expect(parseToolAnalysis(tool)).toEqual(tool);
+    expect(() => parseToolAnalysis({ ...tool, tryThis: "" })).toThrow("tryThis");
+    expect(() => parseToolAnalysis({ ...tool, what: "对你很有启发" })).toThrow("有启发");
+  });
+});
+
+describe("assertChinese", () => {
+  it("中文夹一个片假名名词可以，整段日文不行", () => {
+    expect(() => assertChinese(["OpenAI 发布了能自己操作电脑的个人 AI，名字叫 Dots。它在云端的虚拟电脑上运行，读取屏幕背后的数据结构来操作。トヨタ也表示会跟进。"])).not.toThrow();
     expect(() =>
-      parseBrief({ picks: [{ ...pick(0), forYou: "可以抄底" }] }, 3)
-    ).toThrow("抄底");
+      assertChinese(["日本銀行が政策金利を引き上げ、地方銀行も預金金利を上げる動きが出ています。"])
+    ).toThrow("日文");
+  });
+
+  it("新闻报告整段写成日文就不收", () => {
+    expect(() =>
+      parseBrief(
+        { overview: "日銀が金利を引き上げました。", picks: [{ index: 0, headline: "利上げ", background: "これは大きな変化です。", forYou: "あなたの会社に影響します。" }] },
+        1
+      )
+    ).toThrow("日文");
+  });
+});
+
+describe("parseBrief 的练习题", () => {
+  const pick = (index: number) => ({ index, headline: "日银加息", background: "日银把利率调到一点二五。", forYou: "广告预算可能先被砍。" });
+  const base = { overview: "今天日银加息了。", picks: [pick(0), pick(3)] };
+
+  it("练习题指向 picks 里的一条才收", () => {
+    const ok = parseBrief({ ...base, practice: { index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" } }, 5);
+    expect(ok.practice).toEqual({ index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" });
+    const off = parseBrief({ ...base, practice: { index: 1, question: "q", checkHow: "c" } }, 5);
+    expect(off.practice).toBeNull();
+  });
+
+  it("没有练习题也收（工具报告）", () => {
+    expect(parseBrief(base, 5).practice).toBeNull();
+  });
+});
+
+describe("parseJudgmentFeedback", () => {
+  const fb = { missed: "你没提到大企业的反应。", sharpen: "改成：三个月内乐天的广告单价会下降。", counter: "加息幅度太小，企业可能根本不调预算。" };
+  it("三段齐全才收；夸奖作废", () => {
+    expect(parseJudgmentFeedback(fb)).toEqual(fb);
+    expect(() => parseJudgmentFeedback({ ...fb, counter: "" })).toThrow("counter");
+    expect(() => parseJudgmentFeedback({ ...fb, missed: "你判断得很好，只是没提到大企业。" })).toThrow("夸奖");
+  });
+});
+
+describe("parseSignalHistory", () => {
+  const ok = {
+    analogs: [{ when: "2006 年 7 月", what: "日银解除零利率，把利率调到 0.25%。", after: "大银行在几周内陆续小幅上调了定存利率。" }],
+    baseRate: "央行加息后，大银行通常会跟进，但幅度比政策利率小。",
+    different: "这次通胀更持续，银行之间抢存款的压力更大。",
+    books: [
+      { title: "超预测", originalTitle: "Superforecasting", author: "Philip E. Tetlock", why: "讲怎么先看历史基准再下判断。" },
+      { title: "缺作者" },
+    ],
+  };
+  it("缺字段的书丢掉，其余保留", () => {
+    const h = parseSignalHistory(ok);
+    expect(h.analogs).toHaveLength(1);
+    expect(h.books.map((b) => b.originalTitle)).toEqual(["Superforecasting"]);
+  });
+  it("没有近现代的参照就不收（古代的不能单独当参照）", () => {
+    expect(() => parseSignalHistory({ ...ok, analogs: [] })).toThrow("近现代");
+    const ancientOnly = [{ era: "ancient", when: "1070 年前后", what: "王安石推行青苗法。", after: "地方官强行摊派，农民负担反而加重。" }];
+    expect(() => parseSignalHistory({ ...ok, analogs: ancientOnly })).toThrow("近现代");
+  });
+
+  it("古代的最多留一条，排在近现代后面", () => {
+    const ancient = (when: string) => ({ era: "ancient", when, what: "宋代滥发交子。", after: "交子大幅贬值。" });
+    const h = parseSignalHistory({ ...ok, analogs: [ancient("1100 年前后"), ancient("1200 年前后"), ...ok.analogs] });
+    expect(h.analogs.map((a) => a.era)).toEqual(["modern", "ancient"]);
+    expect(h.analogs[1].when).toBe("1100 年前后");
+  });
+});
+
+describe("parseBrief 的日程（允许空）", () => {
+  it("日程那一份一条都没有也收，别的不行", () => {
+    expect(parseBrief({ overview: "这批消息里没有写明日期的变化。", picks: [] }, 10, true).picks).toEqual([]);
+    expect(() => parseBrief({ overview: "x", picks: [] }, 10)).toThrow("picks");
+  });
+});
+
+describe("parseSituationFacts", () => {
+  const sources = ["今年四月进了一家电商公司，在经营层做广告数据分析。", "我其实很内向，不擅长和人打交道。"];
+  it("出处必须逐字出现在原文里（空白不算），对不上的丢掉", () => {
+    const facts = parseSituationFacts(
+      {
+        facts: [
+          { fact: "在一家电商公司做广告数据分析", quote: "在经营层做广告 数据分析" },
+          { fact: "在东京工作", quote: "我在东京上班" },
+          { fact: "没有出处", quote: "" },
+        ],
+      },
+      sources
+    );
+    expect(facts.map((f) => f.fact)).toEqual(["在一家电商公司做广告数据分析"]);
+  });
+
+  it("没有 facts 字段就不收；空数组可以", () => {
+    expect(() => parseSituationFacts({}, sources)).toThrow("facts");
+    expect(parseSituationFacts({ facts: [] }, sources)).toEqual([]);
+  });
+});
+
+describe("parsePersonalLinks（报告的第二步：跟你）", () => {
+  const reader = ["负责公司的 AI 推荐率监测，把它和网站访问、订单关联分析", "想当社长"];
+
+  it("link 对得上关于他的某一条、序号在报告里，才留", () => {
+    const links = parsePersonalLinks(
+      {
+        links: [
+          { index: 0, personal: "跟你的推荐率监测有关。", link: "AI 推荐率监测" },
+          { index: 1, personal: "跟你有关。", link: "他在做推荐系统" },
+          { index: 9, personal: "跟你有关。", link: "想当社长" },
+        ],
+      },
+      [0, 1, 2],
+      reader
+    );
+    expect(links).toEqual([{ index: 0, personal: "跟你的推荐率监测有关。" }]);
+  });
+
+  it("最多留两条；没有 links 字段不收", () => {
+    const many = [0, 1, 2, 3].map((i) => ({ index: i, personal: "跟你想当社长有关。", link: "想当社长" }));
+    expect(parsePersonalLinks({ links: many }, [0, 1, 2, 3], reader)).toHaveLength(2);
+    expect(() => parsePersonalLinks({}, [0], reader)).toThrow("links");
+  });
+});
+
+describe("parseInferenceSteps", () => {
+  const step = (likelihood: string, claim = "地方银行跟着提高定存利率。") => ({
+    claim, why: "存款外流的压力变大。", watch: "看各地银行的利率公告。", likelihood,
+  });
+
+  it("按较可能 → 有可能 → 不太可能排；不认识的档位当作有可能", () => {
+    const steps = parseInferenceSteps({ steps: [step("unlikely"), step("weird"), step("likely")] });
+    expect(steps.map((s) => s.likelihood)).toEqual(["likely", "possible", "unlikely"]);
+  });
+
+  it("写了百分比或「概率为」就作废", () => {
+    expect(() => parseInferenceSteps({ steps: [step("likely", "有 70% 的可能银行会跟进。")] })).toThrow("数字化");
+    expect(() => parseInferenceSteps({ steps: [step("likely", "银行跟进的概率为六成。")] })).toThrow("数字化");
+  });
+
+  it("没有 steps 不收；最多三条", () => {
+    expect(() => parseInferenceSteps({ steps: [] })).toThrow("steps");
+    expect(parseInferenceSteps({ steps: [1, 2, 3, 4].map(() => step("possible")) })).toHaveLength(3);
+  });
+});
+
+describe("parseJudgedTiers（Jev 当裁判）", () => {
+  const answer = (p: number[]) => ({
+    type: "score",
+    score: 1.4,
+    confidence: 0.5,
+    probabilities: Object.fromEntries(p.map((v, i) => [String(i), v])),
+  });
+  const result = (answers: Record<string, unknown>) => ({ model: "jev", answers, usage: { input_tokens: 1, output_tokens: 1 } });
+
+  it("五档：取概率最高的那档（score 是期望值，不是档位）；最高档不到一半就算拿不准", () => {
+    const tiers = parseJudgedTiers(
+      result({ step_0: answer([0.05, 0.68, 0.2, 0.05, 0.02]), step_1: answer([0.02, 0.08, 0.3, 0.45, 0.15]) }),
+      2
+    );
+    expect(tiers).toEqual([
+      { likelihood: "likely", unsure: false },
+      { likelihood: "unlikely", unsure: true },
+    ]);
+  });
+
+  it("两头的档也认得", () => {
+    const tiers = parseJudgedTiers(result({ step_0: answer([0.8, 0.1, 0.05, 0.03, 0.02]) }), 1);
+    expect(tiers[0].likelihood).toBe("very_likely");
+  });
+
+  it("缺档位、概率不在 0 到 1 之间，都不收", () => {
+    expect(() => parseJudgedTiers(result({}), 1)).toThrow("step_0");
+    expect(() => parseJudgedTiers(result({ step_0: answer([1.2, 0, 0, 0, 0]) }), 1)).toThrow("0 到 1");
+  });
+});
+
+describe("parseBayesDraft", () => {
+  const ok = {
+    prior: "low",
+    priorWhy: "央行小幅加息后，大银行通常会跟进，但不会一下子调很多。",
+    evidence: [
+      { text: "地方银行已经开始上调存款利率。", why: "说明银行之间在抢存款。", strength: "for" },
+      { text: "这次只加了一点点。", why: "幅度小，银行不急着跟。", strength: "against" },
+      { text: "档位写错的证据", why: "会被丢掉。", strength: "very_strong" },
+    ],
+  };
+  it("只认五档，档位不对的证据丢掉", () => {
+    const d = parseBayesDraft(ok);
+    expect(d.prior).toBe("low");
+    expect(d.evidence.map((e) => e.strength)).toEqual(["for", "against"]);
+  });
+  it("证据只有支持的、没有反方，不收", () => {
+    const onlyFor = { ...ok, evidence: [ok.evidence[0], { ...ok.evidence[0], strength: "strong_for" }] };
+    expect(() => parseBayesDraft(onlyFor)).toThrow("反方");
+  });
+
+  it("先验不是五档之一、或写了百分比，都不收", () => {
+    expect(() => parseBayesDraft({ ...ok, prior: "30%" })).toThrow("prior");
+    expect(() => parseBayesDraft({ ...ok, priorWhy: "大概有 30% 的可能。" })).toThrow("数字化");
+  });
+});
+
+describe("mentionsNumericLikelihood", () => {
+  it("拦用数字说可能性的", () => {
+    for (const t of ["有 70% 的可能会跟进。", "概率为 30%。", "可能性大约 40%", "七成的可能", "百分之八十的把握"]) {
+      expect(mentionsNumericLikelihood(t), t).toBe(true);
+    }
+  });
+  it("不拦事实里的百分比", () => {
+    for (const t of ["日银把政策利率从 1% 提高到 1.25%。", "销售额增长了 3%。", "银行可能会把利率调到 0.5%"]) {
+      expect(mentionsNumericLikelihood(t), t).toBe(false);
+    }
   });
 });

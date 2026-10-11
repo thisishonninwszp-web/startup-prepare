@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { SIGNAL_KIND_PREFIX, type SignalKind } from "@/lib/domains/signals/feeds";
-import { tokyoToday, type BriefItem } from "@/lib/domains/signals/brief";
+import type { BriefItem, BriefPracticeRow } from "@/lib/domains/signals/brief";
 
 export type NewsItem = {
   id: string;
@@ -35,31 +35,65 @@ export async function listPendingSignals(kind: SignalKind, limit = 60): Promise<
   });
 }
 
-export type SignalPageExtras = {
-  /** 迁移 053 没跑时为 false，精选和背景都不显示。 */
-  available: boolean;
-  context: string;
-  brief: BriefItem[] | null;
+export async function countPendingSignals(kind: SignalKind): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from("external_signals")
+    .select("id", { count: "exact", head: true })
+    .like("source", `${SIGNAL_KIND_PREFIX[kind]}%`)
+    .eq("status", "pending");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+export type ReportSection = { overview: string | null; items: BriefItem[]; practice: BriefPracticeRow | null };
+
+export type DailyReport = {
+  date: string;
+  news: ReportSection | null;
+  tools: ReportSection | null;
+  voices: ReportSection | null;
+  calendar: ReportSection | null;
+  /** 有报告的最近几天，用来翻往期。 */
+  recentDates: string[];
 };
 
-export async function getSignalPageExtras(userId: string, kind: SignalKind): Promise<SignalPageExtras> {
-  const [profile, brief] = await Promise.all([
-    supabaseAdmin.from("signal_profiles").select("context").eq("user_id", userId).maybeSingle(),
+/** 迁移 053 / 054 没跑时返回 "missing-schema"。 */
+export async function getDailyReport(userId: string, date: string): Promise<DailyReport | "missing-schema"> {
+  const [briefs, recent] = await Promise.all([
     supabaseAdmin
       .from("signal_briefs")
-      .select("items")
+      .select("kind, items, overview, practice")
       .eq("user_id", userId)
-      .eq("kind", kind)
-      .eq("brief_date", tokyoToday())
-      .maybeSingle(),
+      .eq("brief_date", date),
+    supabaseAdmin
+      .from("signal_briefs")
+      .select("brief_date")
+      .eq("user_id", userId)
+      .order("brief_date", { ascending: false })
+      .limit(20),
   ]);
-  const missing = [profile.error, brief.error].find((e) => e && /signal_(profiles|briefs)/.test(e.message));
-  if (missing) return { available: false, context: "", brief: null };
-  if (profile.error) throw new Error(profile.error.message);
-  if (brief.error) throw new Error(brief.error.message);
+  for (const r of [briefs, recent]) {
+    if (r.error && /signal_briefs|overview|practice/.test(r.error.message)) return "missing-schema";
+    if (r.error) throw new Error(r.error.message);
+  }
+
+  const section = (kind: SignalKind): ReportSection | null => {
+    const row = (briefs.data ?? []).find((b) => b.kind === kind);
+    return row
+      ? {
+          overview: (row.overview as string | null) ?? null,
+          items: row.items as BriefItem[],
+          practice: (row.practice as BriefPracticeRow | null) ?? null,
+        }
+      : null;
+  };
+
   return {
-    available: true,
-    context: (profile.data?.context as string | undefined) ?? "",
-    brief: (brief.data?.items as BriefItem[] | undefined) ?? null,
+    date,
+    news: section("news"),
+    tools: section("tools"),
+    voices: section("voices"),
+    calendar: section("calendar"),
+    recentDates: Array.from(new Set((recent.data ?? []).map((r) => r.brief_date as string))).slice(0, 7),
   };
 }
