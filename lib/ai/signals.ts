@@ -3107,3 +3107,81 @@ export async function writeWeeklyDigest(days: WeeklyDayInput[]): Promise<WeeklyD
     (value) => parseWeeklyDigest(value, dayOf)
   );
 }
+
+// ── GitHub 仓库：用中文说一句它能干什么 ─────────────────────────────────────────
+
+export type RepoInput = { name: string; description: string | null; language: string | null; topics: string[] };
+
+const REPO_EXPLAIN_PROMPT = `下面是 GitHub 上最近新建、星数涨得快的仓库，简介多半是英文。他不写代码为主，扫一眼英文简介很费劲，也看不出这东西能拿来干什么。
+
+每个仓库写一句中文（30 到 60 字），按这个顺序：
+1. 它是什么（一个命令行工具、一个网页应用、一个给 AI 用的插件、一个代码库……），
+2. 什么人拿它能做成什么事。写场景，不写定义。比如"做电商的人可以拿它把商品图的背景一键换掉"，而不是"一个图像处理框架"。
+- 简介太短、看不出用途的，就写"简介太少，看不出能干什么"。不许猜。
+- 只用简介、语言、标签里有的信息。不夸，不写"强大""高效""值得关注"。
+- 标签或简介显示它是拿来攻击、骚扰、破解别人东西的（raid、destroyer、crack、spam 之类），就直说它是干这个的，不许美化成"管理工具"。
+- 专有名词（产品名、技术名）可以保留英文，句子用简体中文。
+
+只输出 JSON：{"items":[{"name":"照抄仓库名","zh":"…"}]}`;
+
+/** 模型常把"作者/仓库"写成只有"仓库"：短名只对得上一个时也认。 */
+function matchRepoName(name: string, names: string[]): string | null {
+  if (names.includes(name)) return name;
+  const short = name.split("/").pop() ?? name;
+  const hits = names.filter((n) => n.split("/").pop() === short);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+export function parseRepoExplanations(value: unknown, names: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  // 模型偶尔不包一层 items，直接给数组
+  const items = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)
+      ? (value as { items: unknown[] }).items
+      : [];
+  for (const r of items) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const name = matchRepoName(typeof v.name === "string" ? v.name.trim() : "", names);
+    const zh = typeof v.zh === "string" ? v.zh.trim() : "";
+    if (!name || !zh || out.has(name)) continue;
+    // 某一句犯规（夸、用日文写）只丢那一句，不让整批作废
+    try {
+      assertNoBanned([zh]);
+      assertChinese([zh]);
+    } catch {
+      continue;
+    }
+    out.set(name, zh.slice(0, 120));
+  }
+  if (names.length > 0 && out.size === 0) throw new Error("一个仓库都没写出能用的中文");
+  return out;
+}
+
+/** 一批仓库各写一句中文"能干什么"。写不出的仓库不在返回的 Map 里。 */
+export async function explainRepos(repos: RepoInput[]): Promise<Map<string, string>> {
+  if (repos.length === 0) return new Map();
+  const names = repos.map((r) => r.name);
+  const contents = repos
+    .map((r) =>
+      [`- ${r.name}`, `  简介：${r.description?.trim() || "（没写）"}`, r.language ? `  语言：${r.language}` : "", r.topics.length ? `  标签：${r.topics.slice(0, 6).join(", ")}` : ""]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .join("\n");
+  return executeAiJson(
+    { operation: "github_explain", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验：name 照抄仓库名，zh 用简体中文，不许写夸奖的话。" : ""),
+      config: {
+        systemInstruction: REPO_EXPLAIN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 4000,
+      },
+    }),
+    (value) => parseRepoExplanations(value, names)
+  );
+}

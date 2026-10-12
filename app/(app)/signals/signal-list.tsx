@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
+import { isGithubSource, newsSourceLabel, splitRepoText, type SignalKind } from "@/lib/domains/signals/feeds";
 import { formatTokyoTime } from "@/lib/domains/signals/format";
 import { usableSummary } from "@/lib/domains/signals/summary";
 import { refreshSignals } from "./actions";
@@ -45,10 +45,12 @@ export function RefreshButton({ kind }: { kind: SignalKind }) {
   );
 }
 
-function SignalRow({ item, kind }: { item: NewsItem; kind: SignalKind }) {
+function SignalRow({ item }: { item: NewsItem }) {
   const [gone, setGone] = useState(false);
   if (gone) return null;
-  const summary = kind === "tools" ? item.raw_text : usableSummary(item.title, item.raw_text);
+  // GitHub 仓库：中文"能干什么"那一句当正文，英文原简介放小字；别的都按新闻处理
+  const repo = isGithubSource(item.source) ? splitRepoText(item.raw_text) : null;
+  const summary = repo ? repo.zh ?? repo.rest : usableSummary(item.title, item.raw_text);
 
   return (
     <li className="border-b py-5 last:border-b-0">
@@ -61,6 +63,7 @@ function SignalRow({ item, kind }: { item: NewsItem; kind: SignalKind }) {
         </Link>
       </h3>
       {summary && <p className="mt-1 text-sm leading-7">{summary}</p>}
+      {repo?.zh && repo.rest && <p className="mt-1 text-xs leading-6 text-muted-foreground">{repo.rest}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <Link href={`/signals/${item.id}`} className="text-primary underline-offset-4 hover:underline">
           看具体报告 →
@@ -81,7 +84,7 @@ function SignalRow({ item, kind }: { item: NewsItem; kind: SignalKind }) {
   );
 }
 
-export function SignalList({ items, kind }: { items: NewsItem[]; kind: SignalKind }) {
+export function SignalList({ items }: { items: NewsItem[] }) {
   if (items.length === 0) {
     return (
       <EmptyState
@@ -93,7 +96,7 @@ export function SignalList({ items, kind }: { items: NewsItem[]; kind: SignalKin
   return (
     <ul className="rounded-lg border bg-card px-5">
       {items.map((item) => (
-        <SignalRow key={item.id} item={item} kind={kind} />
+        <SignalRow key={item.id} item={item} />
       ))}
     </ul>
   );

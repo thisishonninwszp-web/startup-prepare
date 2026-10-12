@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dropBadSentences, parseWeeklyDigest, weekdayOf } from "@/lib/ai/signals";
+import { dropBadSentences, parseRepoExplanations, parseWeeklyDigest, weekdayOf } from "@/lib/ai/signals";
+import { splitRepoText } from "./feeds";
 import type { BriefItem } from "./brief";
 import { countFeedback } from "./feedback";
 import { describeMove, isUnusual, parseYahooChart, weeklyMove, type FastVariable } from "./fast";
@@ -188,5 +189,30 @@ describe("周报", () => {
 
   it("编了跟他的关系就不收", () => {
     expect(() => parseWeeklyDigest({ summary: "这一周的事跟你的工作关系很大。", threads: [] }, new Map())).toThrow();
+  });
+});
+
+describe("GitHub 仓库的中文一句", () => {
+  it("拆出中文那一句和英文原简介；老数据没有中文就整段当原简介", () => {
+    expect(splitRepoText("中文：拿来发邮件\nSelf-hosted · 语言：JS")).toEqual({ zh: "拿来发邮件", rest: "Self-hosted · 语言：JS" });
+    expect(splitRepoText("Self-hosted · 语言：JS")).toEqual({ zh: null, rest: "Self-hosted · 语言：JS" });
+  });
+
+  it("模型只写仓库短名也认；短名撞车、夸奖、日文的那一句丢掉", () => {
+    const names = ["a/mailer", "b/tool", "c/tool", "d/hype", "e/ja"];
+    const m = parseRepoExplanations(
+      [
+        { name: "mailer", zh: "一个自己搭的群发邮件系统，做电商的人可以拿它给老客户发新品通知。" },
+        { name: "tool", zh: "撞车了，不知道是哪个。" },
+        { name: "d/hype", zh: "一个很有潜力的工具。" },
+        { name: "e/ja", zh: "これはメールを送るためのツールです。" },
+      ],
+      names
+    );
+    expect(Array.from(m.keys())).toEqual(["a/mailer"]);
+  });
+
+  it("一个都对不上就算没写出来（让它重写一次）", () => {
+    expect(() => parseRepoExplanations({ items: [{ name: "zzz", zh: "随便" }] }, ["a/b"])).toThrow();
   });
 });

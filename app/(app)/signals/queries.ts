@@ -13,12 +13,17 @@ export type NewsItem = {
   fetched_at: string;
 };
 
+/** 只看这几个 source 前缀（"新工具"一类里，GitHub 仓库和"什么变得可能了"的新闻分开列）。 */
+function prefixFilter(kind: SignalKind, prefixes?: string[]): string {
+  return prefixes ? prefixes.map((p) => `source.like.${p}%`).join(",") : kindSourceFilter(kind);
+}
+
 /** 某个页签下没处理过的条目，按发布时间倒序。迁移 052 没跑时返回 null。 */
-export async function listPendingSignals(kind: SignalKind, limit = 60): Promise<NewsItem[] | null> {
+export async function listPendingSignals(kind: SignalKind, limit = 60, prefixes?: string[]): Promise<NewsItem[] | null> {
   const { data, error } = await supabaseAdmin
     .from("external_signals")
     .select("id, source, url, title, raw_text, published_at, fetched_at")
-    .or(kindSourceFilter(kind))
+    .or(prefixFilter(kind, prefixes))
     .eq("status", "pending")
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(limit);
@@ -36,11 +41,11 @@ export async function listPendingSignals(kind: SignalKind, limit = 60): Promise<
   });
 }
 
-export async function countPendingSignals(kind: SignalKind): Promise<number> {
+export async function countPendingSignals(kind: SignalKind, prefixes?: string[]): Promise<number> {
   const { count, error } = await supabaseAdmin
     .from("external_signals")
     .select("id", { count: "exact", head: true })
-    .or(kindSourceFilter(kind))
+    .or(prefixFilter(kind, prefixes))
     .eq("status", "pending");
   if (error) throw new Error(error.message);
   return count ?? 0;

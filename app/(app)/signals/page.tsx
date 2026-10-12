@@ -7,7 +7,7 @@ import { getSignalDetail } from "@/lib/domains/signals/analysis";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import type { BriefItem } from "@/lib/domains/signals/brief";
 import { getDigest, type Digest } from "@/lib/domains/signals/digest";
-import type { SignalKind } from "@/lib/domains/signals/feeds";
+import { GITHUB_SOURCE_PREFIX, type SignalKind } from "@/lib/domains/signals/feeds";
 import type { EarlierMention } from "@/lib/domains/signals/followups";
 import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
 import { emailConfig } from "@/lib/domains/signals/notify";
@@ -585,7 +585,7 @@ export default async function SignalsReportPage({
   const [report, newsCount, toolsCount, judgments, digest, feedback, fastAlerts] = await Promise.all([
     getDailyReport(user.id, date),
     countPendingSignals("news"),
-    countPendingSignals("tools"),
+    countPendingSignals("tools", [GITHUB_SOURCE_PREFIX]),
     // 迁移 055 没跑时练习整块不显示，报告照常
     listJudgments(user.id).catch((e: Error) => {
       if (/signal_judgments/.test(e.message)) return null;

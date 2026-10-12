@@ -54,6 +54,17 @@ export function isGithubSource(source: string): boolean {
   return source.startsWith(GITHUB_SOURCE_PREFIX);
 }
 
+/** raw_text 第一行是中文"能干什么"时的前缀（没写出来的仓库没有这一行）。 */
+export const REPO_ZH_PREFIX = "中文：";
+
+/** 拆出中文那一句和其余的原始说明。 */
+export function splitRepoText(rawText: string): { zh: string | null; rest: string } {
+  if (!rawText.startsWith(REPO_ZH_PREFIX)) return { zh: null, rest: rawText };
+  const nl = rawText.indexOf("\n");
+  if (nl < 0) return { zh: rawText.slice(REPO_ZH_PREFIX.length), rest: "" };
+  return { zh: rawText.slice(REPO_ZH_PREFIX.length, nl), rest: rawText.slice(nl + 1) };
+}
+
 const gnews = (q: string) =>
   `https://news.google.com/rss/search?q=${encodeURIComponent(q).replace(/%20/g, "+")}&hl=ja&gl=JP&ceid=JP:ja`;
 /** Google News 中文版。36氪 的官方 RSS 会被防爬页拦住，从这里搜它的文章。 */

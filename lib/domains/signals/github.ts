@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { GITHUB_SOURCE } from "./feeds";
+import { explainRepos } from "@/lib/ai";
+import { GITHUB_SOURCE, REPO_ZH_PREFIX } from "./feeds";
 
 /**
  * GitHub 新工具：用公开的搜索接口找最近 7 天新建、星数已经过线的仓库。
@@ -21,15 +22,16 @@ type Repo = {
   topics?: string[];
 };
 
-/** 仓库 → 一段给人和 AI 都能读的说明。 */
-export function describeRepo(repo: Pick<Repo, "description" | "language" | "stargazers_count" | "topics">): string {
+/** 仓库 → 一段给人和 AI 都能读的说明。有中文那一句就放在第一行。 */
+export function describeRepo(repo: Pick<Repo, "description" | "language" | "stargazers_count" | "topics">, zh?: string): string {
   const parts = [
     repo.description?.trim() || "（作者没写简介）",
     repo.language ? `语言：${repo.language}` : "",
     `星数：${repo.stargazers_count}`,
     repo.topics?.length ? `标签：${repo.topics.slice(0, 6).join(", ")}` : "",
   ];
-  return parts.filter(Boolean).join(" · ");
+  const line = parts.filter(Boolean).join(" · ");
+  return zh ? `${REPO_ZH_PREFIX}${zh}\n${line}` : line;
 }
 
 /** 仓库 README 的开头，去掉图片、徽章、HTML 和代码块，给详情页和 AI 看。拿不到返回空串。 */
@@ -75,12 +77,28 @@ export async function fetchGithubTools(): Promise<{ inserted: number }> {
   if (!res.ok) throw new Error(`GitHub ${res.status}`);
   const data = (await res.json()) as { items?: Repo[] };
 
-  const rows = (data.items ?? []).map((repo) => ({
+  // 已经记过的仓库不再花钱写中文（upsert 本来也不会覆盖它们）
+  const repos = data.items ?? [];
+  const { data: known } = await supabaseAdmin
+    .from("external_signals")
+    .select("source_id")
+    .eq("source", GITHUB_SOURCE)
+    .in("source_id", repos.map((r) => r.full_name));
+  const knownIds = new Set((known ?? []).map((r) => r.source_id as string));
+  const fresh = repos.filter((r) => !knownIds.has(r.full_name));
+  const zh = await explainRepos(
+    fresh.map((r) => ({ name: r.full_name, description: r.description, language: r.language, topics: r.topics ?? [] }))
+  ).catch((e) => {
+    console.error("github explain failed", e);
+    return new Map<string, string>();
+  });
+
+  const rows = fresh.map((repo) => ({
     source: GITHUB_SOURCE,
     source_id: repo.full_name,
     url: repo.html_url,
     title: repo.full_name,
-    raw_text: describeRepo(repo).slice(0, 2000),
+    raw_text: describeRepo(repo, zh.get(repo.full_name)).slice(0, 2000),
     published_at: repo.created_at,
   }));
   if (rows.length === 0) return { inserted: 0 };
