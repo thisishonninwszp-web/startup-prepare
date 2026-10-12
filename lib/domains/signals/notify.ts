@@ -36,7 +36,7 @@ export type DailyEmailInput = {
   practice: { question: string; headline: string } | null;
   overview: string | null;
   /** 每一节的精选（只要标题和两种提示）。 */
-  sections: { title: string; items: Pick<BriefItem, "headline" | "related_question">[] }[];
+  sections: { title: string; items: Pick<BriefItem, "headline" | "related_question" | "surprise">[] }[];
   dueCount: number;
   freshQuestions: { question: string; freshCount: number }[];
   url: string | null;
@@ -70,6 +70,7 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     lines.push(`【${s.title}】`);
     for (const item of s.items) {
       lines.push(`· ${item.headline}`);
+      if (item.surprise) lines.push(`  ↳ 意外：原本以为${item.surprise.expected}，结果${item.surprise.actual}。为什么？`);
       if (item.related_question) lines.push(`  ↳ 跟你在追的「${item.related_question.question}」有关`);
     }
     lines.push("");

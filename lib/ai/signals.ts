@@ -545,6 +545,8 @@ export type BriefPractice = {
   question: string;
   /** 到时候看什么来判断对错。 */
   checkHow: string;
+  /** 为什么它两个方向都有可能（各一个理由）—— 这道题值得判断的原因。早期数据没有。 */
+  whyUncertain?: string;
 };
 
 export type Brief = {
@@ -558,10 +560,15 @@ export type Brief = {
 };
 
 const PRACTICE_INSTRUCTION = `再出一道今天的练习题（practice）。他在练"读新闻、下判断、事后对账"。
-- 从你挑的 5 条里选最适合下判断的一条（index 用候选序号）。选后续会有公开消息能验证的事，不选已经尘埃落定的。
+- 从你挑的 5 条里选一条"关键不确定"的事（index 用候选序号）：
+  ①重要：结果会影响很多人或企业；②真的可能往两个方向走：有理由会，也有理由不会。
+  不选已经定了的事（已经通过的法规、已经公布的日程、已经发生的结果）—— 那些只需要知道，不需要判断。
+  也不选怎么判都无所谓的小事。后续要有公开消息能验证。
+- whyUncertain：一句话说清它为什么两个方向都有可能，各给一个理由（"会，因为……；不会，因为……"）。
 - question：一个几个月内能用事实检验的问题，问"会怎样"而不是"你怎么看"。要能回答成一句具体的话。
-  例："三个月后，日本大型地方银行的一年期定存利率会不会超过 0.5%？"
-  不要："你怎么看日银加息？"
+  句式："到某个时间点，某个具体的对象会不会做某件事？"或"到某个时间点，某个数字会不会过某条线？"
+  对象、事件、数字都从这条新闻里来，不要套用别的新闻。
+  不要："你怎么看这件事？"
 - checkHow：到时候去看什么来判断对错，一句话（看哪类新闻、哪个数字、哪家公司的公告）。
 `;
 
@@ -642,7 +649,7 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
     overview,
     ...picks.flatMap((p) => [p.headline, p.background, p.forYou]),
     ...more.map((m) => m.headline),
-    ...(practice ? [practice.question, practice.checkHow] : []),
+    ...(practice ? [practice.question, practice.checkHow, ...(practice.whyUncertain ? [practice.whyUncertain] : [])] : []),
   ];
   assertNoBanned(texts);
   assertChinese(texts);
@@ -658,7 +665,8 @@ function parsePractice(raw: unknown, picks: BriefPick[]): BriefPractice | null {
   const question = typeof v.question === "string" ? v.question.trim() : "";
   const checkHow = typeof v.checkHow === "string" ? v.checkHow.trim() : "";
   if (!question || !checkHow) return null;
-  return { index, question, checkHow };
+  const whyUncertain = typeof v.whyUncertain === "string" && v.whyUncertain.trim() ? v.whyUncertain.trim() : undefined;
+  return { index, question, checkHow, ...(whyUncertain ? { whyUncertain } : {}) };
 }
 
 /**
@@ -679,7 +687,7 @@ ${SIGNAL_SHARED_RULES}
 
 ${kind === "news" ? PRACTICE_INSTRUCTION : ""}
 ${MORE_INSTRUCTION}
-只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…"}' : ""}}`;
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
@@ -2546,5 +2554,123 @@ export async function sharpenSteps(input: {
       },
     }),
     (value) => parseSharpened(value, input.steps.length)
+  );
+}
+
+// ── 今天的意外（德鲁克：没有哪个领域比意外的成功提供更丰富的创新机会） ─────────────
+
+export type Surprise = {
+  index: number;
+  /** 大家原本以为会怎样。 */
+  expected: string;
+  /** 结果却怎样。 */
+  actual: string;
+  /** 材料里体现反差的原文（逐字），代码核对过。 */
+  quote: string;
+};
+
+const MAX_SURPRISES = 2;
+
+/**
+ * 原文核对只能证明那件事发生了，证明不了它出乎意料 —— "原本以为"可能是 AI 自己编的预期。
+ * 所以再请裁判看原文本身有没有写出反差（试过用"反而""むしろ"这类字眼来认，日文写法太多，认不全）。
+ * 6 条试验里：真意外 0.95–0.99，AI 编出来的 0.38，普通新闻 0.01–0.10。门槛 0.5。
+ */
+const SURPRISE_ABOVE = 0.5;
+
+const SURPRISE_PROMPT = `德鲁克说，机会最丰富的来源是"意外"：意外的成功、意外的失败、和大家原本预期反着来的结果。
+大多数人看到意外会忽略它，或者觉得是例外 —— 恰恰该停下来问"为什么"。
+
+从下面几条里找出最多 ${MAX_SURPRISES} 条真正的意外。必须是**材料本身写出了反差**：
+"降价反而利润大增""原以为……结果……""市场预期……实际……""明明……却……"。
+普通的增长、下跌、创新高，没有和预期对着干的，不算。宁可一条都不给。
+
+每条写：
+- index：序号。
+- expected：大家原本以为会怎样，一句话、30 字以内（只写材料里有依据的预期）。直接写预期的内容，不要以"大家以为""原本以为"开头。
+- actual：结果却怎样，一句话、30 字以内，不要以"结果"开头。
+- quote：材料里体现反差的那句原文，逐字照抄（不翻译、不改字，10 到 120 字）。
+  这句原文本身要写出反差（带着"反而""却""意外""むしろ""予想外""にもかかわらず"这类字眼）；
+  原文没写出反差、只是你觉得意外的，不算。
+用中文写 expected 和 actual。
+
+只输出 JSON：{"surprises":[{"index":序号,"expected":"…","actual":"…","quote":"…"}]}，没有就给 {"surprises":[]}`;
+
+export type SurpriseInput = { index: number; title: string; summary: string; body: string };
+
+/** 原文必须逐字出现在这一条的标题、简介或正文里（忽略空白），对不上的丢掉。 */
+export function parseSurprises(value: unknown, inputs: SurpriseInput[]): Surprise[] {
+  const raw = (value as { surprises?: unknown } | null)?.surprises;
+  if (!Array.isArray(raw)) throw new Error("缺少 surprises");
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const out: Surprise[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const index = typeof v.index === "number" ? v.index : Number(v.index);
+    const input = inputs.find((i) => i.index === index);
+    const expected = typeof v.expected === "string" ? v.expected.trim() : "";
+    const actual = typeof v.actual === "string" ? v.actual.trim() : "";
+    const quote = typeof v.quote === "string" ? v.quote.trim() : "";
+    if (!input || !expected || !actual || squash(quote).length < 6 || out.some((o) => o.index === index)) continue;
+    const haystack = squash(`${input.title}${input.summary}${input.body}`);
+    if (!haystack.includes(squash(quote))) continue;
+    const trim = (t: string) => t.replace(/[。．.，,]+$/, "");
+    out.push({ index, expected: trim(expected), actual: trim(actual), quote: quote.slice(0, 200) });
+    if (out.length >= MAX_SURPRISES) break;
+  }
+  if (out.length > 0) {
+    const texts = out.flatMap((o) => [o.expected, o.actual]);
+    assertNoBanned(texts);
+    assertChinese(texts);
+  }
+  return out;
+}
+
+/** 裁判判每段原文"有没有写出反差"的概率，只留过门槛的。缺答案的当没有。 */
+export function keepJudgedSurprises(surprises: Surprise[], result: JevResult): Surprise[] {
+  return surprises.filter((_, i) => secondOption(result.answers[`surprise_${i}`]) > SURPRISE_ABOVE);
+}
+
+export async function findSurprises(inputs: SurpriseInput[]): Promise<Surprise[]> {
+  const candidates = await draftSurprises(inputs);
+  if (candidates.length === 0) return [];
+  const questions: Record<string, JevQuestion> = {};
+  candidates.forEach((c, i) => {
+    questions[`surprise_${i}`] = {
+      type: "score",
+      instructions: `原文 [${i}]「${c.quote}」本身有没有写出一个和常理或预期相反的结果（比如降价反而利润增加、看好的产品很快关掉、一直在涨的突然转跌）？只看原文写了什么，不看你自己觉不觉得意外。`,
+      criteria: [
+        "没有：只是陈述发生了什么，或者是意料之中的变化",
+        "有：原文写出了和常理或预期相反的结果",
+      ],
+    };
+  });
+  // 裁判不可用时一条都不标：意外是要人停下来想的东西，标错了比不标糟
+  return executeJev(
+    { operation: "surprise_judge", module: "unknown", timeoutMs: 30_000 },
+    { state: candidates.map((c, i) => `[${i}] ${c.quote}`).join("\n"), questions },
+    (result) => keepJudgedSurprises(candidates, result)
+  );
+}
+
+async function draftSurprises(inputs: SurpriseInput[]): Promise<Surprise[]> {
+  if (inputs.length === 0) return [];
+  const contents = inputs
+    .map((i) => [`[${i.index}] ${i.title}`, i.summary ? `简介：${i.summary}` : "", i.body ? `正文：${i.body.slice(0, 1500)}` : ""].filter(Boolean).join("\n"))
+    .join("\n\n");
+  return executeAiJson(
+    { operation: "brief_surprises", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验。quote 必须逐字照抄材料原文；expected 和 actual 用中文。" : ""),
+      config: {
+        systemInstruction: SURPRISE_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1200,
+      },
+    }),
+    (value) => parseSurprises(value, inputs)
   );
 }

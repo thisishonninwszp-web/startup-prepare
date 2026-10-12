@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import {
   checkJapanComparisons,
   compareWithJapan,
+  findSurprises,
   generateSignalBrief,
   groundBrief,
   linkPicksToQuestions,
@@ -39,6 +40,8 @@ export type BriefPracticeRow = {
   signal_id: string;
   question: string;
   check_how: string;
+  /** 为什么它两个方向都有可能：练习题专挑"关键不确定"的事。早期数据没有。 */
+  why_uncertain?: string;
 };
 
 export type BriefItem = {
@@ -68,6 +71,8 @@ export type BriefItem = {
   japan_check?: AnalogCheck;
   /** 核实"日本这边"用的日语搜索词；页面上"自己去查"也用它。 */
   japan_query?: string;
+  /** 意外：材料本身写出了和预期反着来的结果（德鲁克说这是机会最丰富的来源）。原文由代码核对。 */
+  surprise?: { expected: string; actual: string; quote: string };
   /** 这条直接关系到他在追的哪个问题（问题驱动）。问题文字另存一份：问题改名或收起后，旧报告照样看得懂。 */
   related_question?: { id: string; question: string; why: string };
 };
@@ -296,7 +301,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   // 下面三件互不依赖，一起跑（cron 只有 60 秒）：
   // 中文媒体的那几条问"日本这边有没有"并上网核实；单独找最多两条真跟他连得上的；
   // 哪几条直接关系到他在追的问题。失败都只是少了那一行。
-  const [japan, personal, related] = await Promise.all([
+  const [japan, personal, related, surprises] = await Promise.all([
     compareAndCheckJapan(picks.filter((p) => candidates[p.index].china)).catch((e) => {
       console.error("brief japan comparison failed", e);
       return new Map<number, JapanComparison>();
@@ -312,7 +317,22 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       return links;
     })(),
     linkToQuestions(userId, picks),
+    // 意外只在世界和一线的人里找：日程是定好的事，工具没有"预期"可言
+    kind === "news" || kind === "voices"
+      ? findSurprises(
+          picks.map((p, i) => ({
+            index: p.index,
+            title: candidates[p.index].title,
+            summary: candidates[p.index].text,
+            body: bodies[i] ?? "",
+          }))
+        ).catch((e) => {
+          console.error("brief surprises failed", e);
+          return [];
+        })
+      : Promise.resolve([]),
   ]);
+  const surpriseOf = new Map(surprises.map((s) => [s.index, { expected: s.expected, actual: s.actual, quote: s.quote }]));
 
   const items: BriefItem[] = picks.map((p) => {
     const row = rows[p.index];
@@ -332,6 +352,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       japan_check: japan.get(p.index)?.check,
       japan_query: japan.get(p.index)?.query || undefined,
       related_question: related.get(p.index),
+      surprise: surpriseOf.get(p.index),
     };
   });
   // "也值得一看"跟精选存在同一个数组里，用 extra 标出来，不用加列
@@ -364,6 +385,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
               signal_id: rows[practice.index].id as string,
               question: practice.question,
               check_how: practice.checkHow,
+              why_uncertain: practice.whyUncertain,
             }
           : null,
       },

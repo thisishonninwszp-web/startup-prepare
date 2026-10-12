@@ -182,6 +182,19 @@ function ReportSectionView({
                         />
                       </div>
                     )}
+                    {item.surprise && (
+                      <div className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
+                        <p>
+                          <span className="font-medium text-primary">意外：</span>
+                          原本以为{item.surprise.expected.replace(/^(原本|大家)?(以为|预期)/, "")}，结果{item.surprise.actual.replace(/^结果/, "")}
+                        </p>
+                        <p className="text-muted-foreground">值得停下来问一句：为什么？</p>
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground">原文</summary>
+                          <p className="mt-1 text-muted-foreground">「{item.surprise.quote}」</p>
+                        </details>
+                      </div>
+                    )}
                     {earlier[item.signal_id] && <EarlierLine mention={earlier[item.signal_id]} />}
                     {item.related_question && (
                       <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
@@ -334,6 +347,12 @@ async function PracticeCard({
               </p>
               <HistoryPanel signalId={practice.signal_id} initial={usable?.history ?? null} />
             </div>
+            {practice.why_uncertain && (
+              <p className="mb-3 text-sm leading-7">
+                <span className="text-muted-foreground">为什么值得判断：</span>
+                {practice.why_uncertain}
+              </p>
+            )}
             <JudgmentForm signalId={practice.signal_id} question={practice.question} knownTags={knownTags} />
           </>
         )}

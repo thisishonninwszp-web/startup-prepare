@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -109,6 +109,12 @@ describe("parseBrief 的练习题", () => {
     expect(ok.practice).toEqual({ index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" });
     const off = parseBrief({ ...base, practice: { index: 1, question: "q", checkHow: "c" } }, 5);
     expect(off.practice).toBeNull();
+  });
+
+  it("练习题带上为什么两个方向都有可能（没有也收）", () => {
+    const why = "会，因为工资在涨；不会，因为银行存款太多不缺钱。";
+    const ok = parseBrief({ ...base, practice: { index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。", whyUncertain: why } }, 5);
+    expect(ok.practice?.whyUncertain).toBe(why);
   });
 
   it("没有练习题也收（工具报告）", () => {
@@ -665,5 +671,32 @@ describe("parseSharpened", () => {
       { i: 0, claim: "大和运输上调宅急便运费", watch: "看大和的价格公告" },
     ]);
     expect(() => parseSharpened({ steps: [{ i: 0, claim: "有七成的可能涨价", watch: "看公告" }] }, 1)).toThrow();
+  });
+});
+
+describe("parseSurprises", () => {
+  const inputs = [
+    { index: 2, title: "ワークマン 値下げで利益5割増", summary: "", body: "主力の作業服を1000円値下げしたところ、利益はむしろ約5割増えた。" },
+    { index: 4, title: "日銀が利上げ", summary: "", body: "政策金利を1.25%に引き上げた。" },
+  ];
+  it("原文对得上才收；序号不在、缺字段的丢掉", () => {
+    const out = parseSurprises(
+      {
+        surprises: [
+          { index: 2, expected: "降价会压低利润", actual: "利润反而增加了约五成", quote: "利益はむしろ約5割増えた" },
+          { index: 4, expected: "x", actual: "y", quote: "根本没有这句话这句话" },
+          { index: 9, expected: "x", actual: "y", quote: "利益はむしろ約5割増えた" },
+        ],
+      },
+      inputs
+    );
+    expect(out).toEqual([{ index: 2, expected: "降价会压低利润", actual: "利润反而增加了约五成", quote: "利益はむしろ約5割増えた" }]);
+    expect(parseSurprises({ surprises: [] }, inputs)).toEqual([]);
+  });
+
+  it("裁判判原文没写出反差的丢掉（预期多半是 AI 编的）", () => {
+    const s = (index: number) => ({ index, expected: "e", actual: "a", quote: "q" });
+    const res = { answers: { surprise_0: { probabilities: { "0": 0.01, "1": 0.99 } }, surprise_1: { probabilities: { "0": 0.62, "1": 0.38 } } } };
+    expect(keepJudgedSurprises([s(2), s(5), s(7)], res as unknown as Parameters<typeof keepJudgedSurprises>[1]).map((x) => x.index)).toEqual([2]);
   });
 });
