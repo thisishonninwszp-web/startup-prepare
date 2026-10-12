@@ -9,16 +9,20 @@ import {
   linkPicksToReader,
   type SignalReader,
   type AnalogCheck,
+  type CompareSide,
   type JapanComparison,
   type OpportunitySource,
+  type PestleDomain,
   type SituationFact,
 } from "@/lib/ai";
 import { tavilySearch } from "@/lib/external";
+import { mergeSources } from "./sources";
 import { fetchArticle } from "./article";
 import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
 import { balanceBySource, isChinaSource, isGithubSource, kindSourceFilter, newsSourceLabel, type SignalKind } from "./feeds";
 import { fetchGithubTools } from "./github";
+import { fetchCnAppChart } from "./app-chart";
 import { usableSummary } from "./summary";
 import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
 import { loadSituationFacts } from "./reader-facts";
@@ -56,6 +60,10 @@ export type BriefItem = {
   for_you: string;
   /** "跟你"：只有代码核对过确实连得上"关于他"时才有；早期数据没有这个字段。 */
   personal?: string;
+  /** "跟你"那一句说的是他的优势（处境让他比一般人更容易看懂或做成），不只是"有关"。 */
+  personal_edge?: boolean;
+  /** PESTLE 领域：一周下来查有没有长期漏掉的领域。 */
+  domain?: PestleDomain;
   /** 这件事的短标签（去重用）。早期数据没有。 */
   event?: string;
   /** true = "也值得一看"那一行：只有 headline，没有 background / for_you。 */
@@ -74,6 +82,14 @@ export type BriefItem = {
   japan_query?: string;
   /** 日本这边还没有时："为什么是现在"（最近什么变了让它可能，或者还缺什么）。 */
   japan_why_now?: string;
+  /** 查到日本已经有公司为这件事拉到投资（原文核对过）。 */
+  japan_funded?: { company: string; url: string; excerpt: string };
+  /** 反方向（日本的条目）：中国那边有没有同样的东西，以及核实、为什么是现在、有没有人拿到钱。 */
+  china_side?: string;
+  china_check?: AnalogCheck;
+  china_query?: string;
+  china_why_now?: string;
+  china_funded?: { company: string; url: string; excerpt: string };
   /** 德鲁克的创新机会来源（不协调、流程需要、结构变化、人口、认知、新知识）。 */
   opportunity?: OpportunitySource;
   /** 先例：这条是某个方向"有人试过的结果"时，它说明了什么。 */
@@ -137,24 +153,30 @@ const JAPAN_SEARCH_RESULTS = 3;
  * 核实失败就保留原来的说法、不带核实结果（页面上显示"没上网查过"）。
  */
 async function compareAndCheckJapan(
-  picks: { index: number; headline: string; background: string }[]
+  picks: { index: number; headline: string; background: string }[],
+  side: CompareSide = "japan"
 ): Promise<Map<number, JapanComparison>> {
   const result = new Map<number, JapanComparison>();
-  const comparisons = await compareWithJapan(picks);
+  if (picks.length === 0) return result;
+  const comparisons = await compareWithJapan(picks, side);
   for (const c of comparisons) result.set(c.index, c);
   try {
     const sources = await Promise.all(
       comparisons.map(async (c) => {
         const headline = picks.find((p) => p.index === c.index)?.headline ?? "";
-        try {
-          const found = await tavilySearch(c.query || `日本 ${headline}`, JAPAN_SEARCH_RESULTS);
-          return found.filter((r) => r.url && r.content);
-        } catch {
-          return [];
-        }
+        const query = c.query || `${side === "japan" ? "日本" : "中国"} ${headline}`;
+        // 再搜一次"××× 資金調達 / 融资"：那边有没有公司刚为这件事拉到投资（"没有"难证明，"有人刚拿到钱"好查）
+        const [found, funding] = await Promise.all([
+          tavilySearch(query, JAPAN_SEARCH_RESULTS).catch(() => []),
+          tavilySearch(`${query} ${side === "japan" ? "資金調達" : "融资"}`, JAPAN_SEARCH_RESULTS).catch(() => []),
+        ]);
+        return mergeSources([found, funding], JAPAN_SEARCH_RESULTS * 2);
       })
     );
-    const checked = await checkJapanComparisons(comparisons.map((comparison, i) => ({ comparison, sources: sources[i] })));
+    const checked = await checkJapanComparisons(
+      comparisons.map((comparison, i) => ({ comparison, sources: sources[i] })),
+      side
+    );
     for (const c of checked) result.set(c.index, c);
   } catch (e) {
     console.error("brief japan check failed, keeping unchecked", e);
@@ -293,7 +315,8 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
         summary: candidates[p.index].text,
         body: bodies[i],
         draft: { headline: p.headline, background: p.background, forYou: p.forYou },
-      }))
+      })),
+      kind === "news" || kind === "voices" || kind === "money"
     );
     for (const g of result.items) grounded.set(g.index, g);
     if (result.items.length > 0 && result.overview) overview = result.overview;
@@ -308,16 +331,23 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   // 下面三件互不依赖，一起跑（cron 只有 60 秒）：
   // 中文媒体的那几条问"日本这边有没有"并上网核实；单独找最多两条真跟他连得上的；
   // 哪几条直接关系到他在追的问题。失败都只是少了那一行。
-  const [japan, personal, related, surprises] = await Promise.all([
+  const [japan, chinaSide, personal, related, surprises] = await Promise.all([
     compareAndCheckJapan(picks.filter((p) => candidates[p.index].china)).catch((e) => {
       console.error("brief japan comparison failed", e);
       return new Map<number, JapanComparison>();
     }),
+    // 反方向只在"今天的世界"里问：日本的条目讲的是一种产品、服务或做法时，中国那边有没有
+    kind === "news"
+      ? compareAndCheckJapan(picks.filter((p) => !candidates[p.index].china), "china").catch((e) => {
+          console.error("brief china comparison failed", e);
+          return new Map<number, JapanComparison>();
+        })
+      : Promise.resolve(new Map<number, JapanComparison>()),
     (async () => {
-      const links = new Map<number, string>();
+      const links = new Map<number, { personal: string; edge?: boolean }>();
       try {
         const reader = await loadSignalReader(userId);
-        for (const link of await linkPicksToReader(picks, reader)) links.set(link.index, link.personal);
+        for (const link of await linkPicksToReader(picks, reader)) links.set(link.index, link);
       } catch (e) {
         console.error("brief personal links failed", e);
       }
@@ -351,7 +381,9 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       headline: p.headline,
       background: p.background,
       for_you: p.forYou,
-      personal: personal.get(p.index),
+      personal: personal.get(p.index)?.personal,
+      personal_edge: personal.get(p.index)?.edge || undefined,
+      domain: p.domain,
       event: p.event,
       grounded: grounded.has(p.index),
       basis: grounded.get(p.index)?.basis,
@@ -359,6 +391,12 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       japan_check: japan.get(p.index)?.check,
       japan_query: japan.get(p.index)?.query || undefined,
       japan_why_now: japan.get(p.index)?.whyNow,
+      japan_funded: japan.get(p.index)?.funded,
+      china_side: chinaSide.get(p.index)?.japan,
+      china_check: chinaSide.get(p.index)?.check,
+      china_query: chinaSide.get(p.index)?.query || undefined,
+      china_why_now: chinaSide.get(p.index)?.whyNow,
+      china_funded: chinaSide.get(p.index)?.funded,
       related_question: related.get(p.index),
       surprise: surpriseOf.get(p.index),
       opportunity: p.opportunity,
@@ -421,12 +459,12 @@ export type DailySignalsOutcome = {
 /** 抓新闻和 GitHub。6:30 的定时任务先抓好，7 点生成报告时就不用再抓（cron 只有 60 秒）。 */
 export async function fetchAllSignals(): Promise<{ news: number; tools: number; failed: string[] }> {
   const failed: string[] = [];
-  const [news, tools] = await Promise.allSettled([fetchDailyNews(), fetchGithubTools()]);
+  const [news, tools, apps] = await Promise.allSettled([fetchDailyNews(), fetchGithubTools(), fetchCnAppChart()]);
   if (news.status === "rejected") failed.push(`新闻：${String(news.reason)}`);
   else failed.push(...news.value.failed);
   if (tools.status === "rejected") failed.push(`GitHub：${String(tools.reason)}`);
   return {
-    news: news.status === "fulfilled" ? news.value.inserted : 0,
+    news: (news.status === "fulfilled" ? news.value.inserted : 0) + (apps.status === "fulfilled" ? apps.value : 0),
     tools: tools.status === "fulfilled" ? tools.value.inserted : 0,
     failed,
   };
@@ -444,12 +482,17 @@ async function fetchedRecently(): Promise<boolean> {
   return !error && (count ?? 0) > 0;
 }
 
-export async function runDailySignals(): Promise<DailySignalsOutcome> {
-  const failed: string[] = [];
-  // 6:30 那个定时任务已经抓过的话直接生成；没抓过（它失败了、或者手动触发）才在这里抓
-  const fetched = (await fetchedRecently()) ? { news: 0, tools: 0, failed: [] as string[] } : await fetchAllSignals();
-  failed.push(...fetched.failed);
+/**
+ * 五节分两个定时任务生成（Vercel 免费版每个任务 60 秒，五节一起要四五十秒，太险）：
+ * 6:30 那个任务抓完新闻接着生成"谁在掏钱"，7 点这个生成另外四节再发邮件（实测各三四十秒，留出余量）。
+ */
+export const EARLY_KINDS = ["money"] as const;
+const MORNING_KINDS = ["news", "calendar", "voices", "tools"] as const;
 
+/** 给最近一个月用过报告的人，生成这几节。 */
+export async function generateBriefsForRecentUsers(
+  kinds: readonly SignalKind[]
+): Promise<{ userIds: string[]; briefs: number; failed: string[] }> {
   const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
   const { data: recent, error } = await supabaseAdmin
     .from("signal_briefs")
@@ -457,18 +500,30 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
     .gte("brief_date", monthAgo);
   if (error) throw new Error(error.message);
   const userIds = Array.from(new Set((recent ?? []).map((r) => r.user_id as string)));
-
+  const failed: string[] = [];
   let briefs = 0;
-  const jobs = userIds.flatMap((userId) =>
-    (["news", "calendar", "voices", "money", "tools"] as const).map(async (kind) => {
-      try {
-        if ((await generateBrief(userId, kind)) !== null) briefs += 1;
-      } catch (e) {
-        failed.push(`精选（${kind}）：${e instanceof Error ? e.message : String(e)}`);
-      }
-    })
+  await Promise.all(
+    userIds.flatMap((userId) =>
+      kinds.map(async (kind) => {
+        try {
+          if ((await generateBrief(userId, kind)) !== null) briefs += 1;
+        } catch (e) {
+          failed.push(`精选（${kind}）：${e instanceof Error ? e.message : String(e)}`);
+        }
+      })
+    )
   );
-  await Promise.all(jobs);
+  return { userIds, briefs, failed };
+}
+
+export async function runDailySignals(): Promise<DailySignalsOutcome> {
+  const failed: string[] = [];
+  // 6:30 那个定时任务已经抓过的话直接生成；没抓过（它失败了、或者手动触发）才在这里抓
+  const fetched = (await fetchedRecently()) ? { news: 0, tools: 0, failed: [] as string[] } : await fetchAllSignals();
+  failed.push(...fetched.failed);
+
+  const { userIds, briefs, failed: briefFailed } = await generateBriefsForRecentUsers(MORNING_KINDS);
+  failed.push(...briefFailed);
 
   // 报告都好了再发提醒邮件。单用户阶段收信地址在环境变量里，所以只给一个人发。
   const emails: string[] = [];

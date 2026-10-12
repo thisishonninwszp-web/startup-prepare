@@ -30,6 +30,8 @@ export const MONEY_SOURCE_PREFIX = "money:";
 export const GITHUB_SOURCE_PREFIX = "github:";
 export const ABLE_SOURCE_PREFIX = "able:";
 export const GITHUB_SOURCE = `${GITHUB_SOURCE_PREFIX}new`;
+/** 中国 App Store 免费榜新上榜的 App（不走 RSS，见 app-chart.ts）；当中文媒体的候选。 */
+export const CN_APP_SOURCE = `${NEWS_SOURCE_PREFIX}cn_app_chart`;
 
 /** 每一类收哪些 source 前缀。"新工具"一节既收 GitHub 仓库，也收"什么变得可能了"的新闻。 */
 export const SIGNAL_KIND_PREFIXES: Record<SignalKind, string[]> = {
@@ -115,6 +117,7 @@ const RETIRED_LABELS: [string, string][] = [
 const LABELS = new Map<string, string>([
   ...RSS_FEEDS.map((f) => [rssSource(f), f.label] as const),
   [GITHUB_SOURCE, "GitHub 新仓库"],
+  [CN_APP_SOURCE, "中国 App 榜新上榜"],
   ...RETIRED_LABELS,
 ]);
 
@@ -123,7 +126,7 @@ export function newsSourceLabel(source: string): string {
   return LABELS.get(source) ?? source;
 }
 
-const CHINA_SOURCES = new Set(RSS_FEEDS.filter((f) => f.china).map(rssSource));
+const CHINA_SOURCES = new Set([...RSS_FEEDS.filter((f) => f.china).map(rssSource), CN_APP_SOURCE]);
 
 /** 这条是不是来自中文媒体。 */
 export function isChinaSource(source: string): boolean {

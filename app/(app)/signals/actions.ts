@@ -107,11 +107,11 @@ export async function keepSignal(id: string, note: string): Promise<string> {
  * 「中国有、日本还没有」里的一条记成观察。内容从存下的报告里重新读，不信前端传来的文字。
  * 进观察而不是另开一套：它会跟平时的观察一起进痛点雷达、进周复盘。
  */
-export async function recordJapanGapAction(signalId: string, note: string): Promise<string> {
+export async function recordJapanGapAction(signalId: string, note: string, side: "japan" | "china" = "japan"): Promise<string> {
   const userId = await requireUserId();
-  const gap = await findJapanGap(userId, signalId);
+  const gap = await findJapanGap(userId, signalId, side);
   if (!gap) throw new Error("清单里找不到这一条了");
-  const observation = await createObservation(gapObservationText(gap, note), [EXTERNAL_TAG]);
+  const observation = await createObservation(gapObservationText(gap, note, side), [EXTERNAL_TAG]);
   revalidatePath("/signals/gaps");
   revalidatePath("/capture");
   return observation.id;

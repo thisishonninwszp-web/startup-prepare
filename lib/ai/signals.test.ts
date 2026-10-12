@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -213,7 +213,16 @@ describe("parsePersonalLinks（报告的第二步：跟你）", () => {
       [0, 1, 2],
       reader
     );
-    expect(links).toEqual([{ index: 0, personal: "跟你的推荐率监测有关。" }]);
+    expect(links).toEqual([{ index: 0, personal: "跟你的推荐率监测有关。", link: "AI 推荐率监测" }]);
+  });
+
+  it("裁判判成只是沾边的丢掉", () => {
+    const res = { answers: { link_0: { probabilities: { "0": 0.98, "1": 0.02 } }, link_1: { probabilities: { "0": 0.02, "1": 0.98 } } } };
+    const kept = keepJudgedLinks(
+      [{ index: 0, personal: "可能会影响你的工作" }, { index: 3, personal: "推荐卡片上线直接改变推荐率口径" }],
+      res as unknown as Parameters<typeof keepJudgedLinks>[1]
+    );
+    expect(kept.map((k) => k.index)).toEqual([3]);
   });
 
   it("最多留两条；没有 links 字段不收", () => {
@@ -715,5 +724,27 @@ describe("parseWhyNow", () => {
     expect(parseWhyNow({ whyNow: "TikTok Shop 进了日本，平台已经搭好。" })).toBe("TikTok Shop 进了日本，平台已经搭好。");
     expect(parseWhyNow({})).toBe("");
     expect(() => parseWhyNow({ whyNow: "有七成的可能现在发生" })).toThrow();
+  });
+});
+
+describe("parseFunded", () => {
+  const sources = [{ title: "t", url: "https://x.jp/a", content: "株式会社イオは即配サービスのためシリーズAで5億円の資金調達を実施した。" }];
+  it("原文对得上、写着融资、有公司名才收", () => {
+    expect(parseFunded({ company: "イオ", excerpt: "シリーズAで5億円の資金調達を実施した", source: 1 }, sources)).toEqual({ company: "イオ", url: "https://x.jp/a", excerpt: "シリーズAで5億円の資金調達を実施した" });
+    expect(parseFunded({ company: "イオ", excerpt: "即配サービスのため", source: 1 }, sources)).toBeUndefined();
+    expect(parseFunded({ company: "", excerpt: "シリーズAで5億円の資金調達を実施した", source: 1 }, sources)).toBeUndefined();
+    expect(parseFunded(null, sources)).toBeUndefined();
+  });
+});
+
+describe("你的优势与 PESTLE 领域", () => {
+  it("跟你那一条可以标成优势", () => {
+    const links = parsePersonalLinks({ links: [{ index: 0, personal: "你会中文，能直接读中国原文", link: "在日本做电商广告", edge: true }] }, [0], ["在日本做电商广告的数据分析"]);
+    expect(links[0].edge).toBe(true);
+  });
+  it("领域只认 PESTLE 六种", () => {
+    const pick = (index: number, domain: string) => ({ index, event: `e${index}`, headline: "h", background: "b", forYou: "f", domain });
+    const { picks } = parseBrief({ overview: "今天", picks: [pick(0, "economic"), pick(1, "sports")] }, 3);
+    expect(picks.map((p) => p.domain)).toEqual(["economic", undefined]);
   });
 });

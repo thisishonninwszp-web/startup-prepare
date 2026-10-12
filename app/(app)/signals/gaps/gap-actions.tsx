@@ -7,7 +7,15 @@ import { Input } from "@/components/ui/input";
 import { recordJapanGapAction } from "../actions";
 
 /** 记成观察：写一句为什么想琢磨这条（可以不写）。已经记过的直接给去捕捉页的链接。 */
-export function GapActions({ signalId, observed }: { signalId: string; observed: boolean }) {
+export function GapActions({
+  signalId,
+  observed,
+  side = "japan",
+}: {
+  signalId: string;
+  observed: boolean;
+  side?: "japan" | "china";
+}) {
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<"idle" | "noting" | "kept">(observed ? "kept" : "idle");
   const [note, setNote] = useState("");
@@ -29,7 +37,7 @@ export function GapActions({ signalId, observed }: { signalId: string; observed:
           e.preventDefault();
           startTransition(async () => {
             try {
-              await recordJapanGapAction(signalId, note);
+              await recordJapanGapAction(signalId, note, side);
               setMode("kept");
             } catch (err) {
               setError(err instanceof Error ? err.message : "没记下来");

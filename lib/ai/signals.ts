@@ -461,7 +461,13 @@ export type BriefPick = {
   opportunity?: OpportunitySource;
   /** 先例：这条讲的是某个方向"有人试过的结果"时，一句话说它对想走这个方向的人说明了什么。 */
   precedent?: string;
+  /** PESTLE 领域（政治、经济、社会、技术、法律、环境）。 */
+  domain?: PestleDomain;
 };
+
+/** PESTLE：拿来查报告这一周有没有长期漏掉哪个领域（只当检查表，不当主干）。 */
+export const PESTLE_DOMAINS = ["political", "economic", "social", "technological", "legal", "environmental"] as const;
+export type PestleDomain = (typeof PESTLE_DOMAINS)[number];
 
 /** 德鲁克《创新与企业家精神》的七个来源，去掉"意外"（另有一步专门找、并由裁判核实）。 */
 export const OPPORTUNITY_SOURCES = ["incongruity", "process", "structure", "demographics", "perception", "knowledge"] as const;
@@ -490,6 +496,7 @@ const BRIEF_PROMPTS: Record<BriefKind, string> = {
 
 候选里标了"（中国）"的来自中文媒体。中国已经跑通、日本还没有的做法，往往几年后会来日本 ——
 这是读日文新闻看不到的东西。
+- 来源写着"中国 App 榜新上榜"的条目最多挑 1 条（只挑看得出一种新用法、新生意的）。
 - 只要有一条中国的条目讲的是一种做法、产品或消费上的变化（一家公司怎么做生意、一种新服务、人们开始怎么买东西），
   5 条里至少留 1 条中国的。政府发文、监管新规、股市、宏观数据都不算；一条合适的都没有就不留。
   （"日本这边有没有"会单独再问一次，这里不用写。）
@@ -608,6 +615,15 @@ const OPPORTUNITY_INSTRUCTION = `每条 picks 再写两个可选字段：
   用一句话写它对想走这个方向的人说明了什么（例："重资产自建仓的即时配送在日本撑不住，要靠和超市合作"）。不是就留空字符串。
 `;
 
+/** 除了"什么变得可能了"，每条都标一个 PESTLE 领域：一周下来看哪个领域一直没出现。 */
+const DOMAIN_INSTRUCTION = `每条 picks 再写 domain：这条主要属于哪个领域，只能选一个：
+"political"（政治、外交、安保）/"economic"（经济、金融、企业、产业）/"social"（社会、人口、生活方式、劳动）/
+"technological"（技术）/"legal"（法律、规制、制度）/"environmental"（环境、能源、气候、灾害）。
+`;
+
+/** 总述的最后一句：今天的消息主要落在德鲁克的哪种机会来源上。 */
+const OVERVIEW_LENS = `overview 的最后一句，点出今天这几条主要落在哪种机会来源上（人口在变、行业结构在变、流程卡住了、观念在变、新知识、现实和大家以为的不一样），哪种最多、说明了什么。`;
+
 /** allowEmpty：日程那一份，当天真没有带日期的消息时允许一条都不挑（不许硬凑）。 */
 const MORE_SIZE = 5;
 
@@ -653,6 +669,7 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
       ? (v.opportunity as OpportunitySource)
       : undefined;
     const precedent = typeof v.precedent === "string" && v.precedent.trim() ? v.precedent.trim() : undefined;
+    const domain = PESTLE_DOMAINS.includes(v.domain as PestleDomain) ? (v.domain as PestleDomain) : undefined;
     result.push({
       index,
       headline,
@@ -661,6 +678,7 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
       event,
       ...(opportunity ? { opportunity } : {}),
       ...(precedent ? { precedent } : {}),
+      ...(domain ? { domain } : {}),
     });
   }
   if (result.length === 0 && !allowEmpty) throw new Error("没有一条能对上候选序号");
@@ -728,9 +746,10 @@ ${SIGNAL_SHARED_RULES}
 另外写 overview：开头的一段总述，3 到 5 句，把挑出来的几条串起来讲${OVERVIEW_TOPIC[kind]}。第一句直接说今天最重要的那一件事是什么；每一句都要带一件具体的事（谁、做了什么）。不许用"持续演进""几个重要领域""值得注意的是"这类空开头，也不要逐条复述。
 
 ${kind === "news" ? PRACTICE_INSTRUCTION : ""}
-${kind === "news" || kind === "voices" || kind === "money" ? OPPORTUNITY_INSTRUCTION : ""}
+${kind === "news" || kind === "voices" || kind === "money" ? `${OPPORTUNITY_INSTRUCTION}\n${OVERVIEW_LENS}` : ""}
+${kind === "tools" ? "" : DOMAIN_INSTRUCTION}
 ${MORE_INSTRUCTION}
-只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}${kind === "tools" ? "" : ',"domain":"…"'}}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
@@ -1192,23 +1211,32 @@ export async function extractSituationFacts(declarations: string[]): Promise<Sit
 
 // ── 报告的第二步："跟你" ───────────────────────────────────────────────────
 
-export type PersonalLink = { index: number; personal: string };
+/** edge：他的处境让他在这件事上比一般人更有优势（会中文、在日本、做电商广告…，必须是处境事实里写着的）。 */
+export type PersonalLink = { index: number; personal: string; edge?: boolean; link?: string };
 
 const LINK_PROMPT = `下面是今天报告里的几条，和"关于他"的记录。找出真的跟他连得上的，最多 ${MAX_PERSONAL} 条。
 
-连得上的意思是：同一个行业、同一类问题、或者他记过的观察里直接提到过。
-"都跟 AI 有关""都是商业新闻"不算连得上。连不上的就不写，一条都没有就给空数组。宁缺毋滥。
+连得上的意思是：这条新闻能直接改变他手上某件事的做法或结论 —— 同一个行业、同一类问题、或者他记过的观察里直接提到过。
+"都跟 AI 有关""都是商业新闻"不算连得上；要写"可能会影响""可能有关""未来可能出现机会"才连得上的，也不算。
+连不上的就不写，一条都没有就给空数组。宁缺毋滥：大多数日子应该是零条或一条。
 
 每条写：
 - index：报告里那一条的序号。
 - personal：跟他有什么关系，一到两句，具体到他记录里的那件事。
 - link：逐字照抄"关于他"里你据以联系的那一条（或其中一段）。
 
+另写 edge：如果他记录里写着的处境（会的语言、所在的国家、做的行业和工作）让他在这件事上比一般人更有优势
+——更容易看懂、更容易做、或者别人很难做——就写 true，并在 personal 里说清是哪一点优势；只是"跟他有关"就写 false。
+优势必须是记录里写着的，不许自己推测他会什么。edge 为 true 的排在前面。
+
 不要用"作为未来的社长"这种套话。
 不要曲解他记录里的词：照原话的意思说，不要自己换成近似但意思不同的词（比如把"AI 推荐率监测"说成"AI 推荐系统"）。
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"links":[{"index":序号,"personal":"…","link":"…"}]}`;
+只输出 JSON：{"links":[{"index":序号,"personal":"…","link":"…","edge":false}]}`;
+
+/** "跟你"那一句如果靠这些说法才连得上，就是硬凑（2026-10 实测：倒闭潮→"可能影响你分析的新客比例"）。 */
+const HEDGED_LINK = /可能会?(影响|有关|关注|出现|遇到|带来)|或许|也许|未来如果|如果当地/;
 
 /** link 必须真在"关于他"里（忽略空白），序号必须是报告里的一条；最多留 MAX_PERSONAL 条。 */
 export function parsePersonalLinks(value: unknown, indices: number[], readerItems: string[]): PersonalLink[] {
@@ -1227,9 +1255,10 @@ export function parsePersonalLinks(value: unknown, indices: number[], readerItem
     const index = typeof v.index === "number" ? v.index : Number(v.index);
     const personal = typeof v.personal === "string" ? v.personal.trim() : "";
     const link = typeof v.link === "string" ? v.link.trim() : "";
-    if (!indices.includes(index) || seen.has(index) || !personal || !grounded(link)) continue;
+    // 理由里全是"可能会影响""可能有关"的，是硬凑出来的
+    if (!indices.includes(index) || seen.has(index) || !personal || !grounded(link) || HEDGED_LINK.test(personal)) continue;
     seen.add(index);
-    result.push({ index, personal });
+    result.push({ index, personal, link, ...(v.edge === true ? { edge: true } : {}) });
     if (result.length >= MAX_PERSONAL) break;
   }
   assertNoBanned(result.map((r) => r.personal));
@@ -1247,6 +1276,8 @@ export type JapanComparison = {
   query: string;
   /** 红杉的"为什么是现在"：日本这边还没有时，最近什么变了让它可能做成，或者还缺什么。 */
   whyNow?: string;
+  /** 资料里查到日本已经有公司为这件事拉到了投资（原文由代码核对）。"日本没有"难证明，"有人刚拿到钱在做"好查。 */
+  funded?: { company: string; url: string; excerpt: string };
   /** 上网核实的结果（跟历史参照同一种结构）；还没核实时没有。 */
   check?: AnalogCheck;
 };
@@ -1268,6 +1299,26 @@ japan 的写法：
 写成日本这边的说法，不要直译中国的产品名（例：微信的 AI 助手 → "LINE AI アシスタント 機能"；即时零售 → "即配 ネットスーパー 30分"）。
 
 只输出 JSON：{"items":[{"index":序号,"japan":"…","whyNow":"…","query":"…"}]}`;
+
+/** 反方向：日本做成、中国还没有的东西 —— 适合跨境电商，或者把日本的做法带去中国。 */
+const CHINA_PROMPT = `下面几条是日本正在发生的事。日本已经做成、中国还没有的东西，可能适合跨境电商卖给中国人，或者把这种做法带去中国。
+只回答讲的是一种产品、服务或商业做法的那几条；政治、外交、宏观数据、事故、人事、法规类的跳过，不写进 items。
+每一条回答一个问题：中国现在有没有同样的东西？
+
+japan 字段（沿用这个名字）的写法：
+- 第一句先给结论，只能用这四种开头之一："有，""有类似的，但没普及""没有""拿不准"。
+- 再用一两句说：有的话是什么样的（可以说一类服务，拿不准就别点名公司）；没有或没普及的话，可能卡在哪（法规、消费习惯、价格、渠道、信任）。
+- 不许写"值得借鉴""值得注意"这类空话；不要编中国公司或服务的名字。用中文写。
+
+结论是"没有"或"有类似的，但没普及"时，再写 whyNow：如果现在把它带去中国（或者通过跨境电商卖给中国人），
+最近哪些变化让它变得可能；还不行的话，还缺什么。一到两句。其余情况 whyNow 留空字符串。
+
+再写 query：用中文写的搜索词，3 到 6 个词，用来上网查"中国有没有这种东西"（写成中国这边的说法，不要直译日文名）。
+
+只输出 JSON：{"items":[{"index":序号,"japan":"…","whyNow":"…","query":"…"}]}`;
+
+/** 比较的方向：问"日本有没有"（中国的条目），还是问"中国有没有"（日本的条目）。 */
+export type CompareSide = "japan" | "china";
 
 const JAPAN_OPENERS = ["有，", "有类似的", "没有", "拿不准"];
 const JAPAN_FILLER = /需要关注|值得借鉴|值得注意|值得关注/;
@@ -1295,18 +1346,18 @@ export function parseJapanComparisons(value: unknown, inputs: JapanInput[]): Jap
 }
 
 /** 给精选里中文媒体的那几条各写一句"日本这边"。凭 AI 的印象，没上网查，页面上要标出来。 */
-export async function compareWithJapan(inputs: JapanInput[]): Promise<JapanComparison[]> {
+export async function compareWithJapan(inputs: JapanInput[], side: CompareSide = "japan"): Promise<JapanComparison[]> {
   if (inputs.length === 0) return [];
   const contents = inputs.map((i) => `[${i.index}] ${i.headline}\n${i.background}`).join("\n\n");
   return executeAiJson(
-    { operation: "brief_japan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    { operation: side === "japan" ? "brief_japan" : "brief_china", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
     (attempt) => ({
       model: MODEL,
       contents:
         contents +
         (attempt === 1 ? "\n\n上一次输出没通过校验：每条 japan 第一句必须以规定的四种开头之一起头，不许写空话。" : ""),
       config: {
-        systemInstruction: JAPAN_PROMPT,
+        systemInstruction: side === "japan" ? JAPAN_PROMPT : CHINA_PROMPT,
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 1500,
@@ -1327,12 +1378,28 @@ const JAPAN_CHECK_PROMPT = `你在核实几句"日本这边有没有"的说法�
 - japan：supported、unverified 时照抄原来的；corrected 时写改正后的，第一句仍然以"有，""有类似的，但没普及""没有""拿不准"之一开头，可以点名资料里出现的日本服务。
 - correction：只有 corrected 时写，一句话点出矛盾："原来说 X，资料里是 Y"。
 - basis：支撑或改正它的资料原文，逐字照抄（不翻译、不改字，每句 15 到 150 字），附资料编号 source。unverified 时给空数组。
+- funded：资料里如果写着日本有公司正在为这件事（或非常接近的事）拉投资、完成融资，写公司名 company、
+  逐字照抄写着融资的那句原文 excerpt（要出现"資金調達""出資""融资"这类字眼）和资料编号 source；没有就给 null。
 
 一律用简体中文写（basis 照抄原文，不用翻译）。不要编资料里没有的事实。
 
-只输出 JSON：{"items":[{"i":0,"status":"supported","japan":"…","correction":"","basis":[{"source":1,"excerpt":"…"}]}]}`;
+只输出 JSON：{"items":[{"i":0,"status":"supported","japan":"…","correction":"","basis":[{"source":1,"excerpt":"…"}],"funded":null}]}`;
 
 export type JapanSources = { comparison: JapanComparison; sources: SearchSource[] };
+
+/** 融资的原文必须逐字在那篇资料里、而且真的写着融资，公司名不能空；对不上就当没有。 */
+export function parseFunded(raw: unknown, sources: SearchSource[]): JapanComparison["funded"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const v = raw as Record<string, unknown>;
+  const src = sources[(typeof v.source === "number" ? v.source : Number(v.source)) - 1];
+  const company = typeof v.company === "string" ? v.company.trim() : "";
+  const excerpt = typeof v.excerpt === "string" ? v.excerpt.trim() : "";
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  if (!src || !company || squash(excerpt).length < 8) return undefined;
+  if (!squash(src.content).includes(squash(excerpt))) return undefined;
+  if (!/資金調達|調達|出資|融资|投資|ラウンド|funding|raised/i.test(excerpt)) return undefined;
+  return { company: company.slice(0, 60), url: src.url, excerpt: excerpt.slice(0, 200) };
+}
 
 /**
  * 原文必须逐字出现在这一句自己的那几篇资料里，否则不算。
@@ -1363,7 +1430,9 @@ export function parseJapanChecks(value: unknown, inputs: JapanSources[]): JapanC
       })
       .filter((b): b is { url: string; title: string; excerpt: string } => b !== null)
       .slice(0, 3);
-    const unverified: JapanComparison = { ...comparison, check: { status: "unverified", basis: [] } };
+    const funded = parseFunded(it?.funded, sources);
+    const withFunding = (c: JapanComparison): JapanComparison => (funded ? { ...c, funded } : c);
+    const unverified: JapanComparison = withFunding({ ...comparison, check: { status: "unverified", basis: [] } });
     if (!it || basis.length === 0 || (status !== "supported" && status !== "corrected")) return unverified;
     if (status === "corrected") {
       const correction = typeof it.correction === "string" ? it.correction.trim() : "";
@@ -1371,10 +1440,10 @@ export function parseJapanChecks(value: unknown, inputs: JapanSources[]): JapanC
       const valid = JAPAN_OPENERS.some((o) => japan.startsWith(o)) && !JAPAN_FILLER.test(japan);
       // 说改正了，却没改、没说哪里不一样、或改出来的不合格 —— 当成"查到出处"
       if (correction && valid && japan !== comparison.japan) {
-        return { ...comparison, japan, check: { status: "corrected", correction, basis } };
+        return withFunding({ ...comparison, japan, check: { status: "corrected", correction, basis } });
       }
     }
-    return { ...comparison, check: { status: "supported", basis } };
+    return withFunding({ ...comparison, check: { status: "supported", basis } });
   });
   const texts = out.flatMap((c) => [c.japan, c.check?.correction ?? ""]).filter(Boolean);
   assertNoBanned(texts);
@@ -1383,7 +1452,7 @@ export function parseJapanChecks(value: unknown, inputs: JapanSources[]): JapanC
 }
 
 /** 拿搜到的资料核实"日本这边"。一条资料都没搜到的直接标没查到，不调 AI。 */
-export async function checkJapanComparisons(inputs: JapanSources[]): Promise<JapanComparison[]> {
+export async function checkJapanComparisons(inputs: JapanSources[], side: CompareSide = "japan"): Promise<JapanComparison[]> {
   if (inputs.every((i) => i.sources.length === 0)) {
     return inputs.map(({ comparison }) => ({ ...comparison, check: { status: "unverified", basis: [] } }));
   }
@@ -1407,7 +1476,8 @@ export async function checkJapanComparisons(inputs: JapanSources[]): Promise<Jap
           ? "\n\n上一次输出没通过校验。basis 必须逐字照抄对应那句下面资料的原文，source 是资料编号；叙述用中文。"
           : ""),
       config: {
-        systemInstruction: JAPAN_CHECK_PROMPT,
+        // 反方向核实"中国有没有"：同一套规则，把"日本"换成"中国"
+        systemInstruction: side === "japan" ? JAPAN_CHECK_PROMPT : JAPAN_CHECK_PROMPT.replaceAll("日本", "中国"),
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 3000,
@@ -1450,7 +1520,45 @@ export async function linkPicksToReader(
       },
     }),
     (value) => parsePersonalLinks(value, picks.map((p) => p.index), items)
-  );
+  ).then((links) => judgePersonalLinks(links, picks));
+}
+
+/**
+ * 写"跟你"的模型总爱硬凑（"倒闭潮 → 可能影响你分析的新客比例"），提示词和字眼表都拦不全。
+ * 交给裁判判"这条新闻会不会直接改变他手上这件事的做法或结论"：
+ * 6 个例子里，硬凑的 0.00–0.02，真相关的 0.87–0.99。门槛 0.5；裁判不可用就一条都不标。
+ */
+const PERSONAL_ABOVE = 0.5;
+
+export function keepJudgedLinks(links: PersonalLink[], result: JevResult): PersonalLink[] {
+  return links.filter((_, i) => secondOption(result.answers[`link_${i}`]) > PERSONAL_ABOVE);
+}
+
+async function judgePersonalLinks(
+  links: PersonalLink[],
+  picks: { index: number; headline: string }[]
+): Promise<PersonalLink[]> {
+  if (links.length === 0) return [];
+  const questions: Record<string, JevQuestion> = {};
+  const state = links
+    .map((l, i) => {
+      const headline = picks.find((p) => p.index === l.index)?.headline ?? "";
+      questions[`link_${i}`] = {
+        type: "score",
+        instructions: `[${i}] 这条新闻会不会直接改变他手上这件事的做法或结论？只是同一个大领域、要靠"可能""未来""如果"才连得上的，算不会。`,
+        criteria: ["不会：只是沾边，要靠推测才连得上", "会：直接改变他手上这件事的做法或结论"],
+      };
+      return `[${i}] 他手上的事：${l.link ?? ""}\n新闻：${headline}\nAI 写的关系：${l.personal}`;
+    })
+    .join("\n\n");
+  try {
+    return await executeJev({ operation: "personal_judge", module: "unknown", timeoutMs: 30_000 }, { state, questions }, (result) =>
+      keepJudgedLinks(links, result)
+    );
+  } catch (e) {
+    console.error("personal link judge failed, dropping links", e);
+    return [];
+  }
 }
 
 // ── 往下推：多层推论 ───────────────────────────────────────────────────────
@@ -2028,7 +2136,11 @@ export function parseGroundedBrief(
   return { overview, items };
 }
 
-export async function groundBrief(inputs: GroundInput[]): Promise<{ overview: string; items: GroundedPick[] }> {
+export async function groundBrief(
+  inputs: GroundInput[],
+  /** 世界、一线、掏钱三节：重写总述时也要保留"最后一句点出机会来源"。 */
+  lens = false
+): Promise<{ overview: string; items: GroundedPick[] }> {
   const withBody = inputs.filter((i) => i.body);
   if (withBody.length === 0) return { overview: "", items: [] };
   const blocks = inputs
@@ -2050,7 +2162,7 @@ export async function groundBrief(inputs: GroundInput[]): Promise<{ overview: st
           ? "\n\n上一次输出没通过校验。basis 必须逐字照抄正文原文；背景只用正文里有的事实；用中文写。"
           : ""),
       config: {
-        systemInstruction: GROUND_PROMPT,
+        systemInstruction: lens ? `${GROUND_PROMPT}\n\n${OVERVIEW_LENS}` : GROUND_PROMPT,
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 5000,

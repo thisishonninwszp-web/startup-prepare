@@ -55,3 +55,14 @@ describe("记成观察", () => {
     expect(isGapObserved(gap, ["别的观察"])).toBe(false);
   });
 });
+
+describe("反方向：日本有、中国还没有", () => {
+  it("中国那边的结论单独收；两边互不混", () => {
+    const it2 = item({ signal_id: "jp", japan: undefined, japan_check: undefined, china_side: "没有。中国还没这种服务。", china_check: found });
+    expect(isJapanGap(it2, "china")).toBe(true);
+    expect(isJapanGap(it2, "japan")).toBe(false);
+    const gaps = collectJapanGaps([{ brief_date: "2026-10-12", items: [it2] }], "china");
+    expect(gaps[0].japan).toBe("没有。中国还没这种服务。");
+    expect(gapObservationText(gaps[0], "", "china")).toContain("日本有、中国还没有");
+  });
+});

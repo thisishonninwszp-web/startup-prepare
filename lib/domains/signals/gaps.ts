@@ -1,12 +1,12 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { EXTERNAL_TAG } from "@/app/(app)/ideas/types";
 import type { BriefItem } from "./brief";
-import { collectJapanGaps, isGapObserved, type JapanGap } from "./gaps-shared";
+import { collectJapanGaps, isGapObserved, type GapSide, type JapanGap } from "./gaps-shared";
 
 /** 往回翻多少份报告（一天一份）。 */
 const BRIEF_LOOKBACK = 120;
 
-async function loadGaps(userId: string): Promise<JapanGap[]> {
+async function loadGaps(userId: string, side: GapSide = "japan"): Promise<JapanGap[]> {
   const { data, error } = await supabaseAdmin
     .from("signal_briefs")
     .select("brief_date, items")
@@ -16,15 +16,16 @@ async function loadGaps(userId: string): Promise<JapanGap[]> {
     .limit(BRIEF_LOOKBACK);
   if (error) throw new Error(error.message);
   return collectJapanGaps(
-    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: (r.items as BriefItem[] | null) ?? [] }))
+    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: (r.items as BriefItem[] | null) ?? [] })),
+    side
   );
 }
 
 export type JapanGapRow = JapanGap & { observed: boolean };
 
 /** 清单 + 每条是不是已经记成过观察。 */
-export async function listJapanGaps(userId: string): Promise<JapanGapRow[]> {
-  const gaps = await loadGaps(userId);
+export async function listJapanGaps(userId: string, side: GapSide = "japan"): Promise<JapanGapRow[]> {
+  const gaps = await loadGaps(userId, side);
   if (gaps.length === 0) return [];
   const { data, error } = await supabaseAdmin
     .from("observations")
@@ -38,6 +39,6 @@ export async function listJapanGaps(userId: string): Promise<JapanGapRow[]> {
   return gaps.map((g) => ({ ...g, observed: isGapObserved(g, texts) }));
 }
 
-export async function findJapanGap(userId: string, signalId: string): Promise<JapanGap | null> {
-  return (await loadGaps(userId)).find((g) => g.signal_id === signalId) ?? null;
+export async function findJapanGap(userId: string, signalId: string, side: GapSide = "japan"): Promise<JapanGap | null> {
+  return (await loadGaps(userId, side)).find((g) => g.signal_id === signalId) ?? null;
 }

@@ -1,9 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase";
+import type { BriefItem } from "@/lib/domains/signals/brief";
+import { pestleCoverage } from "@/lib/domains/signals/coverage";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { changeOver, fetchSlowSeries, SLOW_VARIABLES, type SlowPoint, type SlowSeries } from "@/lib/domains/signals/slow";
+import {
+  changeOver,
+  fetchSlowSeries,
+  isMonthly,
+  SLOW_VARIABLES,
+  type SlowPoint,
+  type SlowSeries,
+} from "@/lib/domains/signals/slow";
 
 export const dynamic = "force-dynamic";
 // 世界银行的接口一次要十秒上下；取到的数据缓存一天
@@ -61,7 +71,13 @@ export default async function SlowVariablesPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const all = await Promise.all(SLOW_VARIABLES.map((v) => fetchSlowSeries(v)));
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const [all, week] = await Promise.all([
+    Promise.all(SLOW_VARIABLES.map((v) => fetchSlowSeries(v))),
+    supabaseAdmin.from("signal_briefs").select("items").eq("user_id", user.id).gte("brief_date", weekAgo),
+  ]);
+  const coverage = pestleCoverage((week.data ?? []).flatMap((r) => (r.items as BriefItem[] | null) ?? []));
+  const tagged = coverage.reduce((n, c) => n + c.count, 0);
 
   return (
     <PageContainer width="narrow">
@@ -79,7 +95,7 @@ export default async function SlowVariablesPage() {
       <ul className="space-y-6">
         {all.map((s) => {
           const last = s.points[s.points.length - 1];
-          const yearly = s.variable.source.type === "worldbank";
+          const yearly = !isMonthly(s);
           return (
             <li key={s.variable.key} className="rounded-lg border border-border bg-card p-4">
               <h2 className="text-base font-semibold">{s.variable.label}</h2>
@@ -114,9 +130,28 @@ export default async function SlowVariablesPage() {
         })}
       </ul>
 
+      <section className="mt-10 border-t pt-6">
+        <h2 className="text-base font-semibold">这一周的报告看了哪些领域</h2>
+        <p className="mt-1 text-xs leading-6 text-muted-foreground">
+          政治、经济、社会、技术、法律、环境各出现了几条。一直是零的那个，就是你长期没在看的地方。
+        </p>
+        {tagged === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">这一周的报告还没标领域（新功能，之后的报告会标）。</p>
+        ) : (
+          <ul className="mt-3 space-y-1 font-mono text-sm">
+            {coverage.map((c) => (
+              <li key={c.domain} className={c.count === 0 ? "text-primary" : ""}>
+                {c.label}：{c.count}
+                {c.count === 0 ? " · 这一周一条都没有" : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <p className="mt-8 text-xs leading-6 text-muted-foreground">
         这张单子可以加：想盯别的数字（比如跨境电商规模、访日游客数），告诉 Claude 指标名，有公开数据源的就能加一行。
-        有效求人倍率、实际工资在日本政府统计（e-Stat）里，要先注册一个免费的 appId。
+        有效求人倍率和实际工资暂时加不了：前者在 e-Stat 的接口里查不到，后者在接口上停在 2021 年，只能去厚生劳动省的网站看。
       </p>
     </PageContainer>
   );

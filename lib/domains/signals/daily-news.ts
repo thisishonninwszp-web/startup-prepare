@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { RSS_FEEDS, rssSource, SIGNAL_KIND_PREFIXES, type RssFeed } from "./feeds";
+import { CN_APP_SOURCE, RSS_FEEDS, rssSource, SIGNAL_KIND_PREFIXES, type RssFeed } from "./feeds";
 import { fetchHtml } from "./article";
 import { extractPageDescription, parseFeed } from "./rss";
 import { usableSummary, worthFetchingPage } from "./summary";
@@ -108,6 +108,8 @@ async function purgeStalePending(): Promise<number> {
       .from("external_signals")
       .delete()
       .like("source", `${prefix}%`)
+      // 中国 App 榜单记的是"见过哪些 App"，清掉就会把老面孔又当成新上榜
+      .neq("source", CN_APP_SOURCE)
       .eq("status", "pending")
       .lt("fetched_at", cutoff)
       .select("id");

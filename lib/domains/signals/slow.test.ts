@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeOver, parseFx, parseWorldBank, SLOW_VARIABLES } from "./slow";
+import { changeOver, parseEstat, parseFx, parseWorldBank, SLOW_VARIABLES } from "./slow";
 
 describe("慢变量", () => {
   it("世界银行：去掉空值，从旧到新", () => {
@@ -21,5 +21,18 @@ describe("慢变量", () => {
 
   it("每个慢变量都写了为什么值得盯", () => {
     for (const v of SLOW_VARIABLES) expect(v.why.length).toBeGreaterThan(10);
+  });
+});
+
+describe("e-Stat", () => {
+  it("只留月度的点，从旧到新，乘上换算倍数；年份合计和缺值跳过", () => {
+    const json = { GET_STATS_DATA: { STATISTICAL_DATA: { DATA_INF: { VALUE: [
+      { "@time": "2026000909", $: "3917" },
+      { "@time": "2026000000", $: "3900" },
+      { "@time": "2026000808", $: "3896" },
+      { "@time": "2026000707", $: "-" },
+    ] } } } };
+    expect(parseEstat(json, 0.1).map((p) => [p.date, Math.round(p.value * 10) / 10])).toEqual([["2026-08", 389.6], ["2026-09", 391.7]]);
+    expect(parseEstat(null)).toEqual([]);
   });
 });

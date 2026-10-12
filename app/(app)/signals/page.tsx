@@ -191,6 +191,14 @@ function ReportSectionView({
                           <span className="text-muted-foreground">日本这边：</span>
                           {item.japan}
                         </p>
+                        {item.japan_funded && (
+                          <p className="text-xs text-muted-foreground">
+                            日本已经有人拿到钱在做：{item.japan_funded.company}
+                            <a href={item.japan_funded.url} target="_blank" rel="noopener noreferrer" className="ml-1 text-primary underline-offset-4 hover:underline">
+                              原文 ↗
+                            </a>
+                          </p>
+                        )}
                         <SourceCheckView
                           check={item.japan_check}
                           searchQuery={item.japan_query || `日本 ${item.headline}`}
@@ -227,6 +235,29 @@ function ReportSectionView({
                         </details>
                       </div>
                     )}
+                    {/* 中国那边只在"没有、没普及"时显示：中国早就有的（比如豆芽）只是噪音 */}
+                    {item.china_side && /^(没有|有类似的)/.test(item.china_side) && (
+                      <div className="mt-2 text-sm leading-7">
+                        <p>
+                          <span className="text-muted-foreground">中国那边：</span>
+                          {item.china_side}
+                        </p>
+                        {item.china_funded && (
+                          <p className="text-xs text-muted-foreground">
+                            中国已经有人拿到钱在做：{item.china_funded.company}
+                            <a href={item.china_funded.url} target="_blank" rel="noopener noreferrer" className="ml-1 text-primary underline-offset-4 hover:underline">
+                              原文 ↗
+                            </a>
+                          </p>
+                        )}
+                        <SourceCheckView
+                          check={item.china_check}
+                          searchQuery={item.china_query || `中国 ${item.headline}`}
+                          unverifiedText="没查到出处，这句是 AI 凭印象说的。"
+                          uncheckedText="这句是 AI 凭印象说的，没上网查过。"
+                        />
+                      </div>
+                    )}
                     {earlier[item.signal_id] && <EarlierLine mention={earlier[item.signal_id]} />}
                     {item.related_question && (
                       <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
@@ -242,7 +273,7 @@ function ReportSectionView({
                     )}
                     {item.personal && (
                       <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
-                        <span className="text-muted-foreground">跟你：</span>
+                        <span className="text-muted-foreground">{item.personal_edge ? "你的优势：" : "跟你："}</span>
                         {item.personal}
                       </p>
                     )}
