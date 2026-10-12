@@ -10,6 +10,10 @@ import type { SignalKind } from "@/lib/domains/signals/feeds";
 import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
 import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
 import { countPendingSignals, getDailyReport, type ReportSection } from "./queries";
+import type { EarlierMention } from "@/lib/domains/signals/followups";
+import { emailConfig } from "@/lib/domains/signals/notify";
+import { EmailPanel } from "./email-panel";
+import { ListenButton } from "./listen-button";
 import { GenerateBriefButton } from "./brief-panel";
 import { ReaderPanel } from "./reader-panel";
 import { JudgmentForm, ResolveJudgment } from "./judgment-forms";
@@ -48,15 +52,51 @@ const SECTIONS: { kind: SignalKind; title: string; forYouLabel: string; empty: s
   },
 ];
 
+/** 这件事之前也上过报告：哪天、那次的标题；那次写过判断的话，把判断和对账情况摆出来。 */
+function EarlierLine({ mention }: { mention: EarlierMention }) {
+  const j = mention.judgment;
+  return (
+    <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-sm leading-7">
+      <p>
+        <span className="text-muted-foreground">
+          这件事{mention.times > 1 ? `之前上过 ${mention.times} 次报告，最近一次是` : "之前上过报告："}
+          {formatReportDate(mention.brief_date)}
+        </span>
+        <Link
+          href={`/signals/${mention.signal_id}`}
+          className="ml-1 underline-offset-4 transition-colors duration-150 hover:text-primary hover:underline"
+        >
+          「{mention.headline}」
+        </Link>
+      </p>
+      {j && (
+        <p>
+          <span className="text-muted-foreground">{formatReportDate(j.brief_date)}那次你判断：</span>
+          {j.judgment}
+          <span className="ml-1 font-mono text-xs text-muted-foreground">
+            {j.outcome === "pending" ? `· ${formatDueDate(j.due_at)}对账` : j.outcome === "hit" ? "· 看对了" : "· 看错了"}
+          </span>
+          {j.outcome === "pending" && (
+            <span className="block text-xs text-muted-foreground">今天这条，是在朝你判断的方向走，还是反过来？</span>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ReportSectionView({
   section,
   data,
   isToday,
   hiddenSignalId,
+  earlier,
 }: {
   section: (typeof SECTIONS)[number];
   data: ReportSection | null;
   isToday: boolean;
+  /** 之前的报告也出现过同一件事的条目。 */
+  earlier: Record<string, EarlierMention>;
   /** 今天的练习题还没写判断时，这一条的 AI 解读先藏起来。 */
   hiddenSignalId: string | null;
 }) {
@@ -142,6 +182,7 @@ function ReportSectionView({
                         />
                       </div>
                     )}
+                    {earlier[item.signal_id] && <EarlierLine mention={earlier[item.signal_id]} />}
                     {item.related_question && (
                       <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
                         <span className="text-muted-foreground">跟你在追的问题有关：</span>
@@ -343,6 +384,22 @@ export default async function SignalsReportPage({
   const practiceJudgment =
     practice && judgments ? judgments.find((j) => j.signal_id === practice.signal_id) ?? null : null;
   const hiddenSignalId = practice && judgments && !practiceJudgment ? practice.signal_id : null;
+  const mail = emailConfig();
+
+  // 念给他听的稿子：每一节的总述和每条的标题、背景。练习题那一条还没写判断时不念背景，免得剧透。
+  const listenScript =
+    report === "missing-schema"
+      ? []
+      : SECTIONS.flatMap((section) => {
+          const data = report[section.kind];
+          const items = (data?.items ?? []).filter((i) => !i.extra);
+          if (!data || items.length === 0) return [];
+          return [
+            section.title,
+            ...(data.overview ? [data.overview] : []),
+            ...items.map((i) => (i.signal_id === hiddenSignalId ? `${i.headline}。这条是今天的练习题，先自己判断。` : `${i.headline}。${i.background}`)),
+          ];
+        });
 
   return (
     <PageContainer width="narrow">
@@ -370,6 +427,9 @@ export default async function SignalsReportPage({
           </>
         }
       />
+      <div className="-mt-4 mb-8">
+        <ListenButton paragraphs={listenScript} />
+      </div>
 
       {report === "missing-schema" ? (
         <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-5 text-sm leading-7 text-status-validating">
@@ -429,11 +489,15 @@ export default async function SignalsReportPage({
               section={section}
               data={report[section.kind]}
               isToday={isToday}
+              earlier={report.earlier}
               hiddenSignalId={section.kind === "news" ? hiddenSignalId : null}
             />
           ))}
         </>
       )}
+      <footer className="mt-16 border-t pt-4">
+        <EmailPanel to={mail.ready ? mail.to : null} missing={mail.ready ? [] : mail.missing} />
+      </footer>
     </PageContainer>
   );
 }

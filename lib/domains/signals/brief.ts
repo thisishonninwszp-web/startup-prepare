@@ -12,7 +12,7 @@ import {
   type SituationFact,
 } from "@/lib/ai";
 import { tavilySearch } from "@/lib/external";
-import { fetchArticleBody } from "./article";
+import { fetchArticle } from "./article";
 import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
 import { balanceBySource, isChinaSource, newsSourceLabel, SIGNAL_KIND_PREFIX, type SignalKind } from "./feeds";
@@ -20,6 +20,7 @@ import { fetchGithubTools } from "./github";
 import { usableSummary } from "./summary";
 import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
 import { loadSituationFacts } from "./reader-facts";
+import { sendDailyEmail } from "./notify";
 
 /**
  * 每日精选：从最近一天半没处理过的条目里，让 AI 挑 5 条并写清楚为什么。
@@ -258,14 +259,18 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
 
   // 第二步：只给挑中的这几条抓正文（工具抓 README），按正文重写，原文依据由代码核对。
   // 抓不到正文、或重写没有一句依据对得上的，保留草稿并标"只根据标题和简介写的"。
-  const bodies = await Promise.all(
-    draft.picks.map((p) => {
+  // Google News 的跳转链接会先还原成原文地址再抓；还原出来的地址也换到报告里的"原文"链接上
+  const articles = await Promise.all(
+    draft.picks.map(async (p) => {
       const row = rows[p.index];
-      return kind === "tools"
-        ? fetchReadme((row.title as string | null) ?? "").catch(() => "")
-        : fetchArticleBody((row.url as string | null) ?? null);
+      if (kind === "tools") {
+        return { url: null, body: await fetchReadme((row.title as string | null) ?? "").catch(() => "") };
+      }
+      return fetchArticle((row.url as string | null) ?? null);
     })
   );
+  const bodies = articles.map((a) => a.body);
+  const resolvedUrl = new Map(draft.picks.map((p, i) => [p.index, articles[i].url]));
   const grounded = new Map<number, { headline: string; background: string; forYou: string; basis: string[] }>();
   let overview = draft.overview;
   try {
@@ -314,7 +319,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     return {
       signal_id: row.id as string,
       title: (row.title as string | null) ?? "",
-      url: (row.url as string | null) ?? null,
+      url: resolvedUrl.get(p.index) ?? (row.url as string | null) ?? null,
       source: newsSourceLabel(row.source as string),
       headline: p.headline,
       background: p.background,
@@ -372,6 +377,8 @@ export type DailySignalsOutcome = {
   news: number;
   tools: number;
   briefs: number;
+  /** 早上的提醒邮件发给了谁 / 为什么没发。 */
+  emails: string[];
   failed: string[];
 };
 
@@ -406,10 +413,22 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
   );
   await Promise.all(jobs);
 
+  // 报告都好了再发提醒邮件。单用户阶段收信地址在环境变量里，所以只给一个人发。
+  const emails: string[] = [];
+  if (userIds.length > 0) {
+    try {
+      const outcome = await sendDailyEmail(userIds[0]);
+      emails.push(outcome.sent ? `发给 ${outcome.to}` : `没发：${outcome.reason}`);
+    } catch (e) {
+      failed.push(`提醒邮件：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   return {
     news: news.status === "fulfilled" ? news.value.inserted : 0,
     tools: tools.status === "fulfilled" ? tools.value.inserted : 0,
     briefs,
+    emails,
     failed,
   };
 }

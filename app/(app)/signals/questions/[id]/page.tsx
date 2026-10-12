@@ -155,7 +155,15 @@ export default async function QuestionDetailPage({ params }: { params: { id: str
         <p className="mt-1 text-xs leading-6 text-muted-foreground">
           先把你的问题拆成几个小问题，每个小问题正反两个方向各上网搜一次；摘出来的原文都核对过确实在网页里。
           {research ? ` 上次查：${formatTokyoTime(question.researched_at)}。` : ""}
+          每天早上 6 点半会自动查一轮（问题多的时候轮流查，最久没查的先查）。
         </p>
+        {research?.freshCount !== undefined && (
+          <p className="mt-2 text-sm leading-7">
+            {research.freshCount > 0
+              ? `和上一轮比，新冒出来 ${research.freshCount} 条证据（标着「新」）。看看有没有哪条让你想改看法。`
+              : "和上一轮比，没有新冒出来的证据。"}
+          </p>
+        )}
         <div className="mt-3">
           <ResearchButton questionId={question.id} label={research ? "再查一轮" : "让 AI 查一轮"} />
         </div>

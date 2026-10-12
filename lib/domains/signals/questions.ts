@@ -12,6 +12,7 @@ import { tavilySearch } from "@/lib/external";
 import { researchHistory, verifyAnalog } from "./history";
 import type { BriefItem } from "./brief";
 import {
+  markFresh,
   MAX_USER_ANALOGS,
   relatedReportItems,
   type QuestionResearch,
@@ -206,13 +207,15 @@ export async function researchQuestion(userId: string, id: string): Promise<Ques
     console.error("key factors failed", e);
   }
 
-  // 他自己想到的类比不是这一轮查出来的，原样带过去
+  // 他自己想到的类比不是这一轮查出来的，原样带过去；上一轮没有的证据标成新的
+  const fresh = markFresh(subQuestions, question.research);
   const research: QuestionResearch = {
-    subQuestions,
+    subQuestions: fresh.subQuestions,
     keyFactors,
     history,
     basedOnView: view,
     userAnalogs: question.research?.userAnalogs,
+    freshCount: fresh.freshCount,
   };
   const { error } = await supabaseAdmin
     .from("signal_questions")
@@ -276,4 +279,39 @@ export async function listRelatedReports(userId: string, questionId: string): Pr
     (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: (r.items as BriefItem[] | null) ?? [] })),
     questionId
   );
+}
+
+/** 每天自动查：上次查过不到这么久的跳过。 */
+const DAILY_MIN_GAP_HOURS = 20;
+/** cron 只有 60 秒，一次查一轮要二三十秒：同时查几个，留出余量。 */
+const DAILY_CONCURRENCY = 2;
+
+/**
+ * 每天早上给所有在追的问题各查一轮（最久没查的先查）。查不完的明天接着查。
+ * 失败的只记下来，不影响别的问题。
+ */
+export async function runDailyQuestionResearch(): Promise<{ researched: number; failed: string[] }> {
+  const cutoff = new Date(Date.now() - DAILY_MIN_GAP_HOURS * 3_600_000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("signal_questions")
+    .select("id, user_id, researched_at")
+    .is("archived_at", null)
+    .or(`researched_at.is.null,researched_at.lt.${cutoff}`)
+    .order("researched_at", { ascending: true, nullsFirst: true })
+    .limit(DAILY_CONCURRENCY);
+  // 059 没跑就当没有问题
+  if (error) return { researched: 0, failed: /signal_questions/.test(error.message) ? [] : [error.message] };
+  const failed: string[] = [];
+  let researched = 0;
+  await Promise.all(
+    (data ?? []).map(async (q) => {
+      try {
+        await researchQuestion(q.user_id as string, q.id as string);
+        researched += 1;
+      } catch (e) {
+        failed.push(`${q.id}：${e instanceof Error ? e.message : String(e)}`);
+      }
+    })
+  );
+  return { researched, failed };
 }

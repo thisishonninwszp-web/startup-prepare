@@ -26,7 +26,28 @@ export type QuestionResearch = {
   basedOnView: string;
   /** 他自己想到的类比（AI 展开并核实过）。重查一轮时原样带过去；不进基准率。 */
   userAnalogs?: HistoricalAnalog[];
+  /** 上一轮以后新冒出来的证据有几条（第一轮查时没有这个字段）。 */
+  freshCount?: number;
 };
+
+/** 按链接比，把这一轮里上一轮没有的证据标成新的。上一轮没有就都不标（第一轮无所谓新旧）。 */
+export function markFresh(subQuestions: SubQuestionResult[], previous: QuestionResearch | null): {
+  subQuestions: SubQuestionResult[];
+  freshCount: number | undefined;
+} {
+  if (!previous) return { subQuestions, freshCount: undefined };
+  const seen = new Set(flattenEvidence(previous).map((e) => e.url));
+  let freshCount = 0;
+  const marked = subQuestions.map((s) => ({
+    ...s,
+    evidence: s.evidence.map((e) => {
+      const fresh = !seen.has(e.url);
+      if (fresh) freshCount += 1;
+      return fresh ? { ...e, fresh: true } : e;
+    }),
+  }));
+  return { subQuestions: marked, freshCount };
+}
 
 /** 一个问题最多存几条自己想到的类比。 */
 export const MAX_USER_ANALOGS = 5;

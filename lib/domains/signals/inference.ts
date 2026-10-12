@@ -5,6 +5,7 @@ import {
   extractStepEvidence,
   inferNextSteps,
   judgeInferenceSteps,
+  sharpenSteps,
   type JudgedTier,
   type StepEvidence,
 } from "@/lib/ai";
@@ -84,7 +85,41 @@ export async function expandInference(
   // 写推论的和判可能性的分开：Gemini 给自己写的结论打分几乎一律"较可能"，档位交给 Jev 判。
   // 给 Jev 看的是查到的事实，不是 Gemini 写的"为什么"（那段话最容易把判断往高处带）。
   // Jev 不可用（没配 Key、超时）时退回 Gemini 自己标的档位，并记下来是谁判的。
-  const tiers = await judgeWithRetry({ title: detail.title, summary: detail.summary, chain: claims, steps, evidence });
+  let tiers = await judgeWithRetry({ title: detail.title, summary: detail.summary, chain: claims, steps, evidence });
+
+  // 太泛的（不算车轱辘的那几条）打回去写具体一次，再请裁判判一遍；还泛就留着并标出来
+  if (tiers) {
+    const vagueIdx = steps.map((_, i) => i).filter((i) => tiers![i].vague && !tiers![i].restates && !tiers![i].specifies);
+    if (vagueIdx.length > 0) {
+      try {
+        const sharpened = await sharpenSteps({
+          title: detail.title,
+          chain: claims,
+          steps: vagueIdx.map((i) => ({ claim: steps[i].claim, watch: steps[i].watch })),
+        });
+        for (const s of sharpened) {
+          const i = vagueIdx[s.i];
+          steps[i] = { ...steps[i], claim: s.claim, watch: s.watch };
+        }
+        if (sharpened.length > 0) {
+          const rejudged = await judgeWithRetry({
+            title: detail.title,
+            summary: detail.summary,
+            chain: claims,
+            steps: sharpened.map((s) => steps[vagueIdx[s.i]]),
+            evidence: sharpened.map((s) => evidence[vagueIdx[s.i]]),
+          });
+          if (rejudged) {
+            const next = [...tiers];
+            sharpened.forEach((s, k) => (next[vagueIdx[s.i]] = rejudged[k]));
+            tiers = next;
+          }
+        }
+      } catch (e) {
+        console.error("sharpen failed, keeping vague steps", e);
+      }
+    }
+  }
 
   // 裁判把每一步分成三种：
   // - 把上一步说得更具体一点（"涨运费 → 大和上调宅急便运费"）：不当新的一步，挪进上一步的"具体可以盯"；
@@ -125,6 +160,7 @@ export async function expandInference(
       p: tiers ? tiers[i].p : undefined,
       restates: tiers?.[i]?.restates || undefined,
       specifies: tiers?.[i]?.specifies || undefined,
+      vague: tiers?.[i]?.vague || undefined,
       direction: dir,
       evidence: evidence[i].length > 0 ? evidence[i] : undefined,
     })),
@@ -266,4 +302,33 @@ export async function saveNodeBayes(signalId: string, nodeId: string, state: Bay
   const next = nodes.map((n) => (n.id === nodeId ? { ...n, bayes: clean } : n));
   await saveTree(signalId, next);
   return next;
+}
+
+/** 他标"这是车轱辘"或取消标记。 */
+export async function flagNode(signalId: string, nodeId: string, circular: boolean): Promise<InferenceNode[]> {
+  const { nodes } = await loadTree(signalId);
+  if (!nodes.some((n) => n.id === nodeId)) throw new Error("找不到这一步");
+  const next = nodes.map((n) => (n.id === nodeId ? { ...n, userFlag: circular ? ("circular" as const) : undefined } : n));
+  await saveTree(signalId, next);
+  return next;
+}
+
+/**
+ * 他标过的车轱辘，连同上一步，拿来重新校准裁判（对比裁判当时怎么判的）。
+ * 单用户阶段直接扫全表；条目两周后会被清，所以要校准就趁早导出。
+ */
+export async function listUserFlaggedSteps(): Promise<{ parent: string; claim: string; judgedAs: string }[]> {
+  const { data, error } = await supabaseAdmin.from("external_signals").select("title, inference").not("inference", "is", null);
+  if (error) throw new Error(error.message);
+  return (data ?? []).flatMap((row) => {
+    const nodes = (row.inference as InferenceNode[] | null) ?? [];
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    return nodes
+      .filter((n) => n.userFlag === "circular")
+      .map((n) => ({
+        parent: n.parent_id ? byId.get(n.parent_id)?.claim ?? "" : `新闻本身：${row.title ?? ""}`,
+        claim: n.claim,
+        judgedAs: n.restates ? "裁判也判成车轱辘" : n.specifies ? "裁判判成更具体一点" : "裁判漏掉了",
+      }));
+  });
 }

@@ -26,6 +26,13 @@ export type InferenceNode = {
   p?: number;
   /** 裁判认为这一步只是把上一步换了个说法（一层全是这种时才会留下来，并标出来）。 */
   restates?: boolean;
+  /** 打回去重写过还是太泛（到时候很难说清算不算发生了）。 */
+  vague?: boolean;
+  /**
+   * 他自己标的："这是车轱辘"（裁判漏掉的）。攒起来当以后重新校准裁判的例子 ——
+   * 比我编的十几个例子更接近他真实碰到的。
+   */
+  userFlag?: "circular";
   /** 裁判认为这一步只是把上一步说得更具体一点（已有的树上只标记；新推的会挪进上一步的 signals）。 */
   specifies?: boolean;
   /**
@@ -47,6 +54,8 @@ export type InferenceEvidence = {
   fact: string;
   excerpt: string;
   stance: "supports" | "contradicts" | "context";
+  /** 问题驱动：上一轮没有、这一轮新查到的。 */
+  fresh?: boolean;
 };
 
 export const STANCE_LABELS: Record<InferenceEvidence["stance"], string> = {

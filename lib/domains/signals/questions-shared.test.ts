@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeTags, tallyByTag, displayQuestion, type JudgmentRow } from "./practice-shared";
 import type { BriefItem } from "./brief";
-import { articleOutline, flattenEvidence, questionBetQuestion, relatedReportItems, type SignalQuestion } from "./questions-shared";
+import { articleOutline, flattenEvidence, markFresh, questionBetQuestion, relatedReportItems, type SignalQuestion } from "./questions-shared";
 
 const ev = (fact: string, stance: "supports" | "contradicts" | "context") => ({
   url: `https://example.jp/${fact.length}`,
@@ -103,5 +103,16 @@ describe("relatedReportItems", () => {
       "q1"
     );
     expect(out.map((o) => [o.signal_id, o.brief_date, o.headline])).toEqual([["a", "2026-10-12", "新的"]]);
+  });
+});
+
+describe("markFresh", () => {
+  it("上一轮没有的链接标成新的；第一轮不标", () => {
+    const prev = question.research!;
+    const next = [{ question: "q", evidence: [ev("TikTok Shop 2025 年 6 月在日本上线", "supports"), { ...ev("新的一条事实", "context"), url: "https://new.example" }] }];
+    const marked = markFresh(next, prev);
+    expect(marked.freshCount).toBe(1);
+    expect(marked.subQuestions[0].evidence.map((e) => !!e.fresh)).toEqual([false, true]);
+    expect(markFresh(next, null).freshCount).toBeUndefined();
   });
 });

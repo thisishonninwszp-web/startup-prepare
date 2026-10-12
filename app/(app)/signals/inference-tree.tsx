@@ -19,7 +19,7 @@ import {
   type InferenceNode,
 } from "@/lib/domains/signals/inference-shared";
 import { nodeBetQuestion } from "@/lib/domains/signals/practice-shared";
-import { expandInferenceAction, rejudgeLayerAction } from "./actions";
+import { expandInferenceAction, flagNodeAction, rejudgeLayerAction } from "./actions";
 import { BayesPanel } from "./bayes-panel";
 import { JudgmentForm } from "./judgment-forms";
 
@@ -55,6 +55,7 @@ export function EvidenceList({ evidence }: { evidence: InferenceEvidence[] }) {
       <ul className="mt-2 space-y-3 border-l-2 border-border pl-3">
         {evidence.map((e, i) => (
           <li key={i} className="leading-7">
+            {e.fresh && <span className="mr-1 font-mono text-xs text-primary">[新]</span>}
             <span className="mr-1 font-mono text-xs text-muted-foreground">[{STANCE_LABELS[e.stance]}]</span>
             {e.fact}
             <span className="block text-xs text-muted-foreground">原文：「{e.excerpt}」</span>
@@ -157,6 +158,13 @@ export function InferenceTree({
     });
   };
 
+  const flag = (nodeId: string, circular: boolean) =>
+    startTransition(async () => {
+      const result = await flagNodeAction(signalId, nodeId, circular);
+      if (result.ok) setNodes(result.nodes);
+      else setError(result.message);
+    });
+
   const expandControls = (parentId: string | null, depth: number) => {
     if (depth >= MAX_INFERENCE_DEPTH) {
       return (
@@ -219,6 +227,11 @@ export function InferenceTree({
             {chain.selfRated && <span className="text-xs text-muted-foreground">（链上有一步是 AI 自评的，这一格也不准）</span>}
           </div>
         )}
+        {n.vague && (
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            这一步说得太泛，到时候很难说清它算不算发生了。押之前，先把它改成一句能对账的话。
+          </p>
+        )}
         {n.specifies && !n.restates && (
           <p className="mt-1 text-xs leading-6 text-muted-foreground">
             裁判看来，这一步只是把上一步说得更具体一点，算不上往下推 —— 拿它当上一步的观察信号更合适。
@@ -271,6 +284,14 @@ export function InferenceTree({
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBayesOpen(bayesOpen === n.id ? null : n.id)}>
             {bayesOpen === n.id ? "收起" : n.bayes ? "看 / 改我算的可能性" : "算一算有多大可能"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-10 sm:h-8"
+            onClick={() => flag(n.id, n.userFlag !== "circular")}
+          >
+            {n.userFlag === "circular" ? "你标了车轱辘 · 取消" : "这是车轱辘"}
           </Button>
           {bets[n.claim] ? (
             <span className="text-xs text-primary">已经押了，{bets[n.claim]}对账</span>

@@ -7,13 +7,14 @@ import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import { fetchDailyNews } from "@/lib/domains/signals/daily-news";
 import { ensureSignalAnalysis, getSignalDetail, type StoredHistory } from "@/lib/domains/signals/analysis";
 import { ensureSignalHistory } from "@/lib/domains/signals/history";
-import { draftNodeBayes, expandInference, rejudgeLayer, saveNodeBayes } from "@/lib/domains/signals/inference";
+import { draftNodeBayes, expandInference, flagNode, rejudgeLayer, saveNodeBayes } from "@/lib/domains/signals/inference";
 import type { BayesState, InferenceNode } from "@/lib/domains/signals/inference-shared";
 import { generateBrief } from "@/lib/domains/signals/brief";
 import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
+import { sendDailyEmail } from "@/lib/domains/signals/notify";
 import {
   addUserAnalog,
   addView,
@@ -418,5 +419,30 @@ export async function rejudgeLayerAction(
     return { ok: true, nodes: await rejudgeLayer(signalId, parentId) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没重判成") };
+  }
+}
+
+/** 现在就把今天的报告发一封到邮箱，试试配好了没有。 */
+export async function sendTestEmailAction(): Promise<{ ok: true; to: string } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const outcome = await sendDailyEmail(userId);
+    return outcome.sent ? { ok: true, to: outcome.to } : { ok: false, message: outcome.reason };
+  } catch (error) {
+    return { ok: false, message: `没发出去：${errorMessage(error, "不知道为什么")}。多半是应用专用密码不对。` };
+  }
+}
+
+/** "这是车轱辘"：他标出裁判漏掉的车轱辘话（或取消标记）。 */
+export async function flagNodeAction(
+  signalId: string,
+  nodeId: string,
+  circular: boolean
+): Promise<{ ok: true; nodes: InferenceNode[] } | { ok: false; message: string }> {
+  await requireUserId();
+  try {
+    return { ok: true, nodes: await flagNode(signalId, nodeId, circular) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没标上") };
   }
 }

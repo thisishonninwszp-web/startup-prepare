@@ -64,6 +64,7 @@ export default async function QuestionsPage() {
                     <p className="mt-1 font-mono text-xs text-muted-foreground">
                       {q.researched_at ? `上次查：${formatTokyoTime(q.researched_at)}` : "还没查过"}
                       {q.views.length > 1 ? ` · 看法改过 ${q.views.length - 1} 次` : ""}
+                      {q.research?.freshCount ? ` · 新冒出来 ${q.research.freshCount} 条证据` : ""}
                     </p>
                   </Link>
                 </li>

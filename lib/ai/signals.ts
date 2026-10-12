@@ -1533,7 +1533,15 @@ export async function inferNextSteps(input: {
  * p：在上一步成立的前提下的可能（五档分布按代表值折算），只拿来算整条链，不显示。
  * restates：裁判认为这一步只是把上一步换个说法（"门票卖得多 → 收入增加"），算不上往下推。
  */
-export type JudgedTier = { likelihood: Likelihood; unsure: boolean; p: number; restates: boolean; specifies: boolean };
+export type JudgedTier = {
+  likelihood: Likelihood;
+  unsure: boolean;
+  p: number;
+  restates: boolean;
+  specifies: boolean;
+  /** 太泛：说的是一类变化或趋势（"日本经济会受到影响"），到时候说不清算不算发生了。 */
+  vague: boolean;
+};
 
 const RESTATE_CRITERIA = [
   "带进了新的人或新的机制，真的往下推了一步",
@@ -1564,6 +1572,17 @@ const SPECIFIES_CRITERIA = [
   "能断定：这一步发生就说明上一步一定发生了，它只是上一步的一个具体例子或换个说法",
 ];
 const SPECIFIES_ABOVE = 0.3;
+
+/**
+ * 太泛的推论是车轱辘的温床：上一步说得泛，下一步"说具体一点"就能冒充往下推。
+ * 裁判偏严，连"部分储户把钱转回银行"都会给到 0.6–0.8；真正空泛的（"日本经济会受到影响"）都在 0.85 以上。
+ * 门槛放 0.9，只拦真正空泛的，免得几乎每一步都要重写。
+ */
+const VAGUE_CRITERIA = [
+  "具体：说清了谁做了什么，到时候能看出它有没有发生",
+  "太泛：说的是一类变化或一种趋势，到时候很难说清它算不算发生了",
+];
+const VAGUE_ABOVE = 0.9;
 
 /** 一个二选一问题里"第二项"（车轱辘那一项）的概率；缺了就当 0，不因为它让整层判档作废。 */
 function secondOption(answer: unknown): number {
@@ -1603,7 +1622,8 @@ export function parseJudgedTiers(result: JevResult, count: number): JudgedTier[]
       secondOption(result.answers[`restate_${i}`]) > RESTATE_ABOVE ||
       secondOption(result.answers[`circular_${i}`]) > CIRCULAR_ABOVE;
     const specifies = secondOption(result.answers[`reverse_${i}`]) > SPECIFIES_ABOVE;
-    return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW, p, restates, specifies };
+    const vague = secondOption(result.answers[`concrete_${i}`]) > VAGUE_ABOVE;
+    return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW, p, restates, specifies, vague };
   });
 }
 
@@ -1645,6 +1665,11 @@ export async function judgeInferenceSteps(input: {
       type: "score",
       instructions: `上一步是「${parent}」。情况 [${i}]「${s.claim}」是真的往下推了一步，还是只是把上一步换个说法？`,
       criteria: RESTATE_CRITERIA,
+    };
+    questions[`concrete_${i}`] = {
+      type: "score",
+      instructions: `「${s.claim}」具体到能在新闻里看到吗——说清了谁、做了什么，到时候能从新闻或数字里看出它有没有发生？`,
+      criteria: VAGUE_CRITERIA,
     };
     questions[`reverse_${i}`] = {
       type: "score",
@@ -1787,6 +1812,8 @@ export type StepEvidence = {
   /** 原文摘录（逐字）。 */
   excerpt: string;
   stance: EvidenceStance;
+  /** 问题驱动：上一轮没有、这一轮新查到的（按链接比）。 */
+  fresh?: boolean;
 };
 
 export type SearchSource = { title: string; url: string; content: string };
@@ -2457,5 +2484,67 @@ export async function linkPicksToQuestions(
       },
     }),
     (value) => parseQuestionLinks(value, picks.map((p) => p.index), questions.length)
+  );
+}
+
+// ── 往下推：太泛的推论打回去写具体 ───────────────────────────────────────────
+
+const SHARPEN_PROMPT = `下面几条推论写得太泛，到时候很难说清它算不算发生了。把每一条改写得具体，意思不变：
+- 说清是谁（哪类公司、哪个行业、哪家机构，能点名就点名，拿不准就说一类具体的人或公司）、做了什么；
+- 改写后，到时候能从新闻或某个数字里看出它有没有发生；
+- 不许换成另一件事，不许夸大，不许写可能性的数字。
+- claim 还是一句话，60 字以内；点一两个名字就够，不要把能想到的公司全列上。
+同时改写 watch（怎么看出它在发生），一句话，具体到看哪类新闻、哪个数字。
+
+只输出 JSON：{"steps":[{"i":0,"claim":"…","watch":"…"}]}，i 是原来的编号。`;
+
+export function parseSharpened(value: unknown, count: number): { i: number; claim: string; watch: string }[] {
+  const raw = (value as { steps?: unknown } | null)?.steps;
+  if (!Array.isArray(raw)) throw new Error("缺少 steps");
+  const out: { i: number; claim: string; watch: string }[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const i = typeof v.i === "number" ? v.i : Number(v.i);
+    const claim = typeof v.claim === "string" ? v.claim.trim() : "";
+    const watch = typeof v.watch === "string" ? v.watch.trim() : "";
+    if (!Number.isInteger(i) || i < 0 || i >= count || !claim || !watch || out.some((o) => o.i === i)) continue;
+    out.push({ i, claim, watch });
+  }
+  const texts = out.flatMap((o) => [o.claim, o.watch]);
+  if (texts.some(mentionsNumericLikelihood)) throw new Error("写了可能性的数字");
+  assertNoBanned(texts);
+  assertChinese(texts);
+  return out;
+}
+
+/** 把太泛的几条改写具体（只改 claim 和 watch）。改不出来就返回空，调用方保留原样并标出来。 */
+export async function sharpenSteps(input: {
+  title: string;
+  chain: string[];
+  steps: { claim: string; watch: string }[];
+}): Promise<{ i: number; claim: string; watch: string }[]> {
+  if (input.steps.length === 0) return [];
+  const contents = [
+    `新闻：${input.title}`,
+    input.chain.length > 0 ? `前面已经推到的链：\n${input.chain.map((c, i) => `${i + 1}. ${c}`).join("\n")}` : "",
+    "要改写的几条：",
+    ...input.steps.map((s, i) => `[${i}] ${s.claim}（怎么看出来：${s.watch}）`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return executeAiJson(
+    { operation: "inference_sharpen", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验。严格按 JSON 字段重写，用中文。" : ""),
+      config: {
+        systemInstruction: SHARPEN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parseSharpened(value, input.steps.length)
   );
 }

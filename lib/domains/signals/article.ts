@@ -1,5 +1,6 @@
 import { extractArticleText } from "./rss";
 import { worthFetchingPage } from "./summary";
+import { isGoogleNewsUrl, resolveGoogleNewsUrl } from "./google-news";
 
 /**
  * 日本的网站还有不少是 Shift_JIS / EUC-JP（ITmedia 就是），一律按 UTF-8 解会变乱码。
@@ -39,9 +40,19 @@ export async function fetchHtml(url: string, timeoutMs: number): Promise<string>
   }
 }
 
+/**
+ * 拿文章正文，同时返回实际读的是哪个地址（Google News 的跳转链接会先还原成原文地址）。
+ * 拿不到正文 body 为空串，分析退回到标题 + 简介；还原不了 url 就是原来的。
+ */
+export async function fetchArticle(url: string | null): Promise<{ url: string | null; body: string }> {
+  if (!url) return { url, body: "" };
+  const target = isGoogleNewsUrl(url) ? await resolveGoogleNewsUrl(url) : url;
+  if (!target || !worthFetchingPage(target)) return { url, body: "" };
+  const html = await fetchHtml(target, 8_000);
+  return { url: target, body: html ? extractArticleText(html) : "" };
+}
+
 /** 单条深读时去拿文章正文。拿不到返回空串，分析退回到标题 + 简介。 */
 export async function fetchArticleBody(url: string | null): Promise<string> {
-  if (!url || !worthFetchingPage(url)) return "";
-  const html = await fetchHtml(url, 8_000);
-  return html ? extractArticleText(html) : "";
+  return (await fetchArticle(url)).body;
 }

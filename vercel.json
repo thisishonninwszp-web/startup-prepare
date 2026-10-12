@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/api/cron/ai-log-retention",
-      "schedule": "0 5 * * *"
+      "schedule": "30 21 * * *"
     },
     {
       "path": "/api/cron/daily-news",

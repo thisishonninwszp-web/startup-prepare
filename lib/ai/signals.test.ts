@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -262,6 +262,16 @@ describe("parseJudgedTiers（Jev 当裁判）", () => {
       restate_2: yes(0.2), circular_2: yes(0.42), // 真往下推
     });
     expect(parseJudgedTiers(res, 4).map((t) => t.restates)).toEqual([true, true, false, false]);
+  });
+
+  it("太泛：过 0.9 才算（裁判偏严，中等具体的会给到 0.6–0.8）", () => {
+    const tier = answer([0.1, 0.7, 0.1, 0.05, 0.05]);
+    const res = result({ step_0: tier, step_1: tier });
+    Object.assign(res.answers as Record<string, unknown>, {
+      concrete_0: { type: "score", probabilities: { "0": 0.05, "1": 0.95 } },
+      concrete_1: { type: "score", probabilities: { "0": 0.19, "1": 0.81 } },
+    });
+    expect(parseJudgedTiers(res, 2).map((t) => t.vague)).toEqual([true, false]);
   });
 
   it("更具体一点：反推那一问过 0.3 就标出来", () => {
@@ -646,5 +656,14 @@ describe("parseQuestionLinks 拦住沾边的", () => {
     expect(parseQuestionLinks({ links: [{ index: 0, question: 1, why: weak }] }, [0], 1)).toEqual([]);
     expect(parseQuestionLinks({ links: [{ index: 0, question: 1, why: "这可能间接影响运输业。" }] }, [0], 1)).toEqual([]);
     expect(parseQuestionLinks({ links: [{ index: 0, question: 1, why: "一家运送公司因司机不足破产。" }] }, [0], 1)).toHaveLength(1);
+  });
+});
+
+describe("parseSharpened", () => {
+  it("编号对得上、claim 和 watch 都有才收；写可能性数字就作废", () => {
+    expect(parseSharpened({ steps: [{ i: 0, claim: "大和运输上调宅急便运费", watch: "看大和的价格公告" }, { i: 5, claim: "x", watch: "y" }] }, 2)).toEqual([
+      { i: 0, claim: "大和运输上调宅急便运费", watch: "看大和的价格公告" },
+    ]);
+    expect(() => parseSharpened({ steps: [{ i: 0, claim: "有七成的可能涨价", watch: "看公告" }] }, 1)).toThrow();
   });
 });
