@@ -9,7 +9,9 @@ import type { BriefItem } from "./brief";
  */
 
 export type DigestPick = { signal_id: string; headline: string; why: string };
-export type Digest = { summary: string; picks: DigestPick[] };
+/** 可以往下推的一条（AI 推测的因果链，没检验过）。 */
+export type DigestChain = { signal_id: string; headline: string; steps: string[] };
+export type Digest = { summary: string; picks: DigestPick[]; chain?: DigestChain };
 
 const SECTION_TITLES: Record<string, string> = {
   news: "今天的世界",
@@ -23,14 +25,16 @@ const SECTION_TITLES: Record<string, string> = {
 export async function getDigest(userId: string, date: string): Promise<Digest | null | "missing-schema"> {
   const { data, error } = await supabaseAdmin
     .from("signal_briefs")
-    .select("overview, items")
+    .select("overview, items, practice")
     .eq("user_id", userId)
     .eq("brief_date", date)
     .eq("kind", "digest")
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return { summary: (data.overview as string) ?? "", picks: (data.items as DigestPick[] | null) ?? [] };
+  // 总览那一行没有练习题，practice 这一列拿来存"可以往下推的一条"，省一次迁移
+  const chain = (data.practice as DigestChain | null) ?? undefined;
+  return { summary: (data.overview as string) ?? "", picks: (data.items as DigestPick[] | null) ?? [], chain };
 }
 
 /** 生成（或重新生成）这一天的总览。那天一节报告都没有就返回 null。 */
@@ -60,11 +64,14 @@ export async function generateDigest(userId: string, date: string): Promise<Dige
   const digest: Digest = {
     summary: written.summary,
     picks: written.picks.map((p) => ({ signal_id: p.signalId, headline: headlineOf.get(p.signalId) ?? "", why: p.why })),
+    chain: written.chain
+      ? { signal_id: written.chain.signalId, headline: headlineOf.get(written.chain.signalId) ?? "", steps: written.chain.steps }
+      : undefined,
   };
   const { error: saveError } = await supabaseAdmin
     .from("signal_briefs")
     .upsert(
-      { user_id: userId, brief_date: date, kind: "digest", overview: digest.summary, items: digest.picks, practice: null },
+      { user_id: userId, brief_date: date, kind: "digest", overview: digest.summary, items: digest.picks, practice: digest.chain ?? null },
       { onConflict: "user_id,brief_date,kind" }
     );
   if (saveError) {

@@ -431,6 +431,18 @@ function DigestCard({ digest, date, canGenerate }: { digest: Digest | null; date
               </ul>
             </div>
           )}
+          {digest.chain && (
+            <div className="mt-4 border-t pt-3 text-sm leading-7">
+              <p className="text-muted-foreground">可以往下推的一条（这是推测，还没检验）：</p>
+              <p className="mt-1">{digest.chain.steps.join(" → ")}</p>
+              <Link
+                href={`/signals/${digest.chain.signal_id}?skip=1#inference`}
+                className="text-xs text-primary underline-offset-4 hover:underline"
+              >
+                去「往下推」里查证据、看每一步有多大可能 →
+              </Link>
+            </div>
+          )}
         </>
       ) : canGenerate ? (
         <div className="mt-3">

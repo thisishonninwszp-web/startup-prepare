@@ -2866,6 +2866,11 @@ export type DailyDigest = {
   summary: string;
   /** 最值得点开的几条。 */
   picks: { signalId: string; why: string }[];
+  /**
+   * 可以往下推的一条：AI 自己推的因果链（2 到 4 步）。总述里不许混进没检验过的因果，
+   * 推出来的单独放这里、标明是推测，点进去由"往下推"那套机制（正反查证据、裁判判档）检验。
+   */
+  chain?: { signalId: string; steps: string[] };
 };
 
 const MAX_DIGEST_PICKS = 3;
@@ -2883,9 +2888,14 @@ summary：4 到 6 句，像当面说话：
 
 picks：最多 ${MAX_DIGEST_PICKS} 条最值得点开的，signalId 照抄材料里的编号，why 一句话说这条本身为什么值得点开（它讲了什么关键的事），不写"跟你"。
 
+chain（可以不写）：如果今天有一条消息，能一步一步往下推出值得想的后果，就写出来：
+- signalId：从哪一条出发（照抄编号）。
+- steps：2 到 4 步，每步一句话，第一步是那条消息本身讲的事，后面每一步都要带进新的人或新的机制，不许换个说法原地打转。
+- 不写可能性的数字。这是推测，页面上会标明，并让他点进去用证据检验。没有值得推的就不写 chain。
+
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"summary":"…","picks":[{"signalId":"…","why":"…"}]}`;
+只输出 JSON：{"summary":"…","picks":[{"signalId":"…","why":"…"}],"chain":{"signalId":"…","steps":["…","…"]}}`;
 
 export function parseDigest(value: unknown, signalIds: string[]): DailyDigest {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
@@ -2907,7 +2917,27 @@ export function parseDigest(value: unknown, signalIds: string[]): DailyDigest {
   assertChinese(texts);
   // 写总览的模型没看过任何关于他的信息，一写"你"就是编的
   if (texts.some((t) => /跟你|你的|你做|你平时|你可以/.test(t))) throw new Error("总览里编了跟他的关系");
-  return { summary, picks };
+  return { summary, picks, ...parseDigestChain(v.chain, signalIds) };
+}
+
+/** 往下推的那条链：出发的编号要对得上，2 到 4 步，不许写可能性数字和"跟你"；不合格就当没写。 */
+export function parseDigestChain(raw: unknown, signalIds: string[]): { chain?: DailyDigest["chain"] } {
+  if (!raw || typeof raw !== "object") return {};
+  const v = raw as Record<string, unknown>;
+  const signalId = typeof v.signalId === "string" ? v.signalId.trim() : "";
+  const steps = (Array.isArray(v.steps) ? v.steps : [])
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 4);
+  if (!signalIds.includes(signalId) || steps.length < 2) return {};
+  if (steps.some((s) => mentionsNumericLikelihood(s) || /跟你|你的|你做/.test(s))) return {};
+  try {
+    assertNoBanned(steps);
+    assertChinese(steps);
+  } catch {
+    return {};
+  }
+  return { chain: { signalId, steps } };
 }
 
 export async function writeDailyDigest(sections: DigestSectionInput[]): Promise<DailyDigest> {

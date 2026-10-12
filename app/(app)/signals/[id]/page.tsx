@@ -170,7 +170,7 @@ export default async function SignalDetailPage({
           )}
 
           {!gated && detail.kind === "news" && inference !== "missing-schema" && (
-            <section className="mt-10 rounded-lg border bg-card p-5">
+            <section id="inference" className="mt-10 scroll-mt-4 rounded-lg border bg-card p-5">
               <h2 className="mb-4 text-base font-semibold">往下推</h2>
               <InferenceTree signalId={detail.id} initial={inference} bets={bets} />
             </section>

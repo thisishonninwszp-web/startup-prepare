@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -769,5 +769,17 @@ describe("parseDigest", () => {
 
   it("写了'跟你'就作废（写总览时没给它任何关于他的信息）", () => {
     expect(() => parseDigest({ summary: "今天日银加息。", picks: [{ signalId: "a", why: "跟你做的产品有关" }] }, ["a"])).toThrow();
+  });
+});
+
+describe("总览里可以往下推的一条", () => {
+  it("编号对得上、2 到 4 步才收；写可能性数字或跟你就当没写", () => {
+    expect(parseDigestChain({ signalId: "a", steps: ["日银加息", "中小企业贷款变贵", "招人更难"] }, ["a"])).toEqual({
+      chain: { signalId: "a", steps: ["日银加息", "中小企业贷款变贵", "招人更难"] },
+    });
+    expect(parseDigestChain({ signalId: "a", steps: ["只有一步"] }, ["a"])).toEqual({});
+    expect(parseDigestChain({ signalId: "zzz", steps: ["一", "二"] }, ["a"])).toEqual({});
+    expect(parseDigestChain({ signalId: "a", steps: ["日银加息", "有七成的可能贷款变贵"] }, ["a"])).toEqual({});
+    expect(parseDigestChain(undefined, ["a"])).toEqual({});
   });
 });
