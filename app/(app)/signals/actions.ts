@@ -13,6 +13,8 @@ import { generateBrief } from "@/lib/domains/signals/brief";
 import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
+import { findJapanGap } from "@/lib/domains/signals/gaps";
+import { gapObservationText } from "@/lib/domains/signals/gaps-shared";
 import {
   resolveJudgment,
   retryJudgmentFeedback,
@@ -87,6 +89,20 @@ export async function keepSignal(id: string, note: string): Promise<string> {
   if (updateError) throw new Error(updateError.message);
 
   revalidatePath("/signals");
+  revalidatePath("/capture");
+  return observation.id;
+}
+
+/**
+ * 「中国有、日本还没有」里的一条记成观察。内容从存下的报告里重新读，不信前端传来的文字。
+ * 进观察而不是另开一套：它会跟平时的观察一起进痛点雷达、进周复盘。
+ */
+export async function recordJapanGapAction(signalId: string, note: string): Promise<string> {
+  const userId = await requireUserId();
+  const gap = await findJapanGap(userId, signalId);
+  if (!gap) throw new Error("清单里找不到这一条了");
+  const observation = await createObservation(gapObservationText(gap, note), [EXTERNAL_TAG]);
+  revalidatePath("/signals/gaps");
   revalidatePath("/capture");
   return observation.id;
 }

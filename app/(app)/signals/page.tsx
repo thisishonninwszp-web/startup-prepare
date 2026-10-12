@@ -342,6 +342,9 @@ export default async function SignalsReportPage({
               <Link href="/signals/practice">判断账本</Link>
             </Button>
             <Button asChild variant="outline" size="sm">
+              <Link href="/signals/gaps">中国有、日本还没有</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
               <Link href="/signals/inbox">全部新闻 {newsCount}</Link>
             </Button>
             <Button asChild variant="outline" size="sm">
