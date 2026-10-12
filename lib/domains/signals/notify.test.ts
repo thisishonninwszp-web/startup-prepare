@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDailyEmail, emailConfig } from "./notify";
+import { buildDailyEmail, emailConfig, isMonday } from "./notify";
 
 describe("早上的提醒邮件", () => {
   it("没配就说缺什么；收信地址不填就发给自己", () => {
@@ -28,5 +28,14 @@ describe("早上的提醒邮件", () => {
     expect(text).toContain("↳ 跟你在追的「物流会不会倒一片」有关");
     expect(text).not.toContain("【新工具】");
     expect(text).toContain("https://app.example/signals");
+  });
+});
+
+describe("周一提一句慢变量", () => {
+  it("周一的邮件带慢变量链接，别的日子不带", () => {
+    const base = { practice: null, overview: null, sections: [], dueCount: 0, freshQuestions: [], url: "https://app.example" };
+    expect(isMonday("2026-10-12")).toBe(true);
+    expect(buildDailyEmail({ ...base, date: "2026-10-12" }).text).toContain("/signals/slow");
+    expect(buildDailyEmail({ ...base, date: "2026-10-13" }).text).not.toContain("/signals/slow");
   });
 });

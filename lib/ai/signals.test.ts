@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -109,6 +109,15 @@ describe("parseBrief 的练习题", () => {
     expect(ok.practice).toEqual({ index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" });
     const off = parseBrief({ ...base, practice: { index: 1, question: "q", checkHow: "c" } }, 5);
     expect(off.practice).toBeNull();
+  });
+
+  it("德鲁克的机会来源只认规定的几种；先例有就留", () => {
+    const { picks } = parseBrief(
+      { ...base, picks: [{ ...pick(0), opportunity: "demographics", precedent: "自建仓的即时配送撑不住" }, { ...pick(3), opportunity: "unexpected" }] },
+      5
+    );
+    expect(picks.map((p) => p.opportunity)).toEqual(["demographics", undefined]);
+    expect(picks[0].precedent).toBe("自建仓的即时配送撑不住");
   });
 
   it("练习题带上为什么两个方向都有可能（没有也收）", () => {
@@ -698,5 +707,13 @@ describe("parseSurprises", () => {
     const s = (index: number) => ({ index, expected: "e", actual: "a", quote: "q" });
     const res = { answers: { surprise_0: { probabilities: { "0": 0.01, "1": 0.99 } }, surprise_1: { probabilities: { "0": 0.62, "1": 0.38 } } } };
     expect(keepJudgedSurprises([s(2), s(5), s(7)], res as unknown as Parameters<typeof keepJudgedSurprises>[1]).map((x) => x.index)).toEqual([2]);
+  });
+});
+
+describe("parseWhyNow", () => {
+  it("有就留，没有是空串；写可能性数字就作废", () => {
+    expect(parseWhyNow({ whyNow: "TikTok Shop 进了日本，平台已经搭好。" })).toBe("TikTok Shop 进了日本，平台已经搭好。");
+    expect(parseWhyNow({})).toBe("");
+    expect(() => parseWhyNow({ whyNow: "有七成的可能现在发生" })).toThrow();
   });
 });

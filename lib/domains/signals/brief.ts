@@ -10,13 +10,14 @@ import {
   type SignalReader,
   type AnalogCheck,
   type JapanComparison,
+  type OpportunitySource,
   type SituationFact,
 } from "@/lib/ai";
 import { tavilySearch } from "@/lib/external";
 import { fetchArticle } from "./article";
 import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
-import { balanceBySource, isChinaSource, newsSourceLabel, SIGNAL_KIND_PREFIX, type SignalKind } from "./feeds";
+import { balanceBySource, isChinaSource, isGithubSource, kindSourceFilter, newsSourceLabel, type SignalKind } from "./feeds";
 import { fetchGithubTools } from "./github";
 import { usableSummary } from "./summary";
 import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
@@ -71,6 +72,12 @@ export type BriefItem = {
   japan_check?: AnalogCheck;
   /** 核实"日本这边"用的日语搜索词；页面上"自己去查"也用它。 */
   japan_query?: string;
+  /** 日本这边还没有时："为什么是现在"（最近什么变了让它可能，或者还缺什么）。 */
+  japan_why_now?: string;
+  /** 德鲁克的创新机会来源（不协调、流程需要、结构变化、人口、认知、新知识）。 */
+  opportunity?: OpportunitySource;
+  /** 先例：这条是某个方向"有人试过的结果"时，它说明了什么。 */
+  precedent?: string;
   /** 意外：材料本身写出了和预期反着来的结果（德鲁克说这是机会最丰富的来源）。原文由代码核对。 */
   surprise?: { expected: string; actual: string; quote: string };
   /** 这条直接关系到他在追的哪个问题（问题驱动）。问题文字另存一份：问题改名或收起后，旧报告照样看得懂。 */
@@ -236,7 +243,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   const { data, error } = await supabaseAdmin
     .from("external_signals")
     .select("id, source, title, url, raw_text")
-    .like("source", `${SIGNAL_KIND_PREFIX[kind]}%`)
+    .or(kindSourceFilter(kind))
     .eq("status", "pending")
     .gte("fetched_at", since)
     .order("published_at", { ascending: false, nullsFirst: false })
@@ -254,7 +261,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
 
   const candidates = rows.map((r) => ({
     title: (r.title as string | null) ?? "",
-    text: kind === "tools" ? (r.raw_text as string) : usableSummary(r.title as string, r.raw_text as string),
+    text: isGithubSource(r.source as string) ? (r.raw_text as string) : usableSummary(r.title as string, r.raw_text as string),
     source: newsSourceLabel(r.source as string),
     china: isChinaSource(r.source as string),
   }));
@@ -268,7 +275,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   const articles = await Promise.all(
     draft.picks.map(async (p) => {
       const row = rows[p.index];
-      if (kind === "tools") {
+      if (isGithubSource(row.source as string)) {
         return { url: null, body: await fetchReadme((row.title as string | null) ?? "").catch(() => "") };
       }
       return fetchArticle((row.url as string | null) ?? null);
@@ -318,7 +325,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     })(),
     linkToQuestions(userId, picks),
     // 意外只在世界和一线的人里找：日程是定好的事，工具没有"预期"可言
-    kind === "news" || kind === "voices"
+    kind === "news" || kind === "voices" || kind === "money"
       ? findSurprises(
           picks.map((p, i) => ({
             index: p.index,
@@ -351,8 +358,11 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       japan: japan.get(p.index)?.japan,
       japan_check: japan.get(p.index)?.check,
       japan_query: japan.get(p.index)?.query || undefined,
+      japan_why_now: japan.get(p.index)?.whyNow,
       related_question: related.get(p.index),
       surprise: surpriseOf.get(p.index),
+      opportunity: p.opportunity,
+      precedent: p.precedent,
     };
   });
   // "也值得一看"跟精选存在同一个数组里，用 extra 标出来，不用加列
@@ -408,12 +418,37 @@ export type DailySignalsOutcome = {
  * cron 每天跑一次：抓新闻、抓 GitHub，然后给最近一个月用过报告的人各生成四份。
  * 第一次要在页面上手动生成一次，之后每天早上自动出。
  */
-export async function runDailySignals(): Promise<DailySignalsOutcome> {
+/** 抓新闻和 GitHub。6:30 的定时任务先抓好，7 点生成报告时就不用再抓（cron 只有 60 秒）。 */
+export async function fetchAllSignals(): Promise<{ news: number; tools: number; failed: string[] }> {
   const failed: string[] = [];
   const [news, tools] = await Promise.allSettled([fetchDailyNews(), fetchGithubTools()]);
   if (news.status === "rejected") failed.push(`新闻：${String(news.reason)}`);
   else failed.push(...news.value.failed);
   if (tools.status === "rejected") failed.push(`GitHub：${String(tools.reason)}`);
+  return {
+    news: news.status === "fulfilled" ? news.value.inserted : 0,
+    tools: tools.status === "fulfilled" ? tools.value.inserted : 0,
+    failed,
+  };
+}
+
+/** 最近这么久之内抓过，就不再抓。 */
+const FRESH_FETCH_HOURS = 3;
+
+async function fetchedRecently(): Promise<boolean> {
+  const since = new Date(Date.now() - FRESH_FETCH_HOURS * 3_600_000).toISOString();
+  const { count, error } = await supabaseAdmin
+    .from("external_signals")
+    .select("id", { count: "exact", head: true })
+    .gte("fetched_at", since);
+  return !error && (count ?? 0) > 0;
+}
+
+export async function runDailySignals(): Promise<DailySignalsOutcome> {
+  const failed: string[] = [];
+  // 6:30 那个定时任务已经抓过的话直接生成；没抓过（它失败了、或者手动触发）才在这里抓
+  const fetched = (await fetchedRecently()) ? { news: 0, tools: 0, failed: [] as string[] } : await fetchAllSignals();
+  failed.push(...fetched.failed);
 
   const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
   const { data: recent, error } = await supabaseAdmin
@@ -425,7 +460,7 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
 
   let briefs = 0;
   const jobs = userIds.flatMap((userId) =>
-    (["news", "calendar", "voices", "tools"] as const).map(async (kind) => {
+    (["news", "calendar", "voices", "money", "tools"] as const).map(async (kind) => {
       try {
         if ((await generateBrief(userId, kind)) !== null) briefs += 1;
       } catch (e) {
@@ -447,8 +482,8 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
   }
 
   return {
-    news: news.status === "fulfilled" ? news.value.inserted : 0,
-    tools: tools.status === "fulfilled" ? tools.value.inserted : 0,
+    news: fetched.news,
+    tools: fetched.tools,
     briefs,
     emails,
     failed,

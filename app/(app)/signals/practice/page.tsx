@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { dueJudgments, listJudgments, tallyByTag, tallyJudgments } from "@/lib/domains/signals/practice";
+import { listUserFlaggedSteps } from "@/lib/domains/signals/inference";
 import { ResolveJudgment } from "../judgment-forms";
 import { formatDueDate, JudgmentView, outcomeLabel } from "../judgment-view";
 
@@ -18,10 +19,13 @@ export default async function JudgmentLedgerPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const judgments = await listJudgments(user.id).catch((e: Error) => {
-    if (/signal_judgments/.test(e.message)) return null;
-    throw e;
-  });
+  const [judgments, flagged] = await Promise.all([
+    listJudgments(user.id).catch((e: Error) => {
+      if (/signal_judgments/.test(e.message)) return null;
+      throw e;
+    }),
+    listUserFlaggedSteps().catch(() => []),
+  ]);
 
   return (
     <PageContainer width="narrow">
@@ -47,6 +51,24 @@ export default async function JudgmentLedgerPage() {
         />
       ) : (
         <Ledger judgments={judgments} />
+      )}
+
+      {flagged.length > 0 && (
+        <section className="mt-12 border-t pt-6">
+          <h2 className="text-base font-semibold">你标过的车轱辘</h2>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            往下推里你标出的「这是车轱辘」。攒够十来条，拿来对照裁判当时怎么判的，重新调它的门槛。
+          </p>
+          <ul className="mt-3 space-y-3 text-sm leading-7">
+            {flagged.map((f, i) => (
+              <li key={i} className="border-l-2 border-border pl-3">
+                <p className="text-muted-foreground">上一步：{f.parent}</p>
+                <p>这一步：{f.claim}</p>
+                <p className="font-mono text-xs text-muted-foreground">{f.judgedAs}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </PageContainer>
   );

@@ -16,7 +16,7 @@ const TABS: { kind: SignalKind; label: string; description: string }[] = [
   {
     kind: "news",
     label: "新闻",
-    description: "Yahoo!、科技媒体，加上利率汇率、融资和新业务的关键词。按发布时间排，最新的在上面。",
+    description: "Yahoo!、科技媒体、中文媒体，加上利率汇率的关键词。按发布时间排，最新的在上面。",
   },
   {
     kind: "calendar",
@@ -29,9 +29,14 @@ const TABS: { kind: SignalKind; label: string; description: string }[] = [
     description: "一线干活的人自己在讨论的麻烦（はてブ热门、note #経営），以及招人难、人手不足的报道。",
   },
   {
+    kind: "money",
+    label: "掏钱",
+    description: "创业公司融资、众筹达成目标、政府补助金公募、事业承继和 M&A。",
+  },
+  {
     kind: "tools",
-    label: "工具",
-    description: "GitHub 上最近 7 天新建、星数涨得快的仓库。",
+    label: "新可能",
+    description: "GitHub 上最近 7 天新建、星数涨得快的仓库，以及 AI 降价、规制缓和、日本首次提供的服务。",
   },
 ];
 

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { SIGNAL_KIND_PREFIX, type SignalKind } from "@/lib/domains/signals/feeds";
+import { kindSourceFilter, type SignalKind } from "@/lib/domains/signals/feeds";
 import type { BriefItem, BriefPracticeRow } from "@/lib/domains/signals/brief";
 import { findEarlierMentions, type EarlierJudgment, type EarlierMention } from "@/lib/domains/signals/followups";
 
@@ -18,7 +18,7 @@ export async function listPendingSignals(kind: SignalKind, limit = 60): Promise<
   const { data, error } = await supabaseAdmin
     .from("external_signals")
     .select("id, source, url, title, raw_text, published_at, fetched_at")
-    .like("source", `${SIGNAL_KIND_PREFIX[kind]}%`)
+    .or(kindSourceFilter(kind))
     .eq("status", "pending")
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(limit);
@@ -40,7 +40,7 @@ export async function countPendingSignals(kind: SignalKind): Promise<number> {
   const { count, error } = await supabaseAdmin
     .from("external_signals")
     .select("id", { count: "exact", head: true })
-    .like("source", `${SIGNAL_KIND_PREFIX[kind]}%`)
+    .or(kindSourceFilter(kind))
     .eq("status", "pending");
   if (error) throw new Error(error.message);
   return count ?? 0;
@@ -54,6 +54,7 @@ export type DailyReport = {
   tools: ReportSection | null;
   voices: ReportSection | null;
   calendar: ReportSection | null;
+  money: ReportSection | null;
   /** 有报告的最近几天，用来翻往期。 */
   recentDates: string[];
   /** 今天的条目里，之前的报告也出现过同一件事的：signal_id → 上次的情况。 */
@@ -133,6 +134,7 @@ export async function getDailyReport(userId: string, date: string): Promise<Dail
     tools: section("tools"),
     voices: section("voices"),
     calendar: section("calendar"),
+    money: section("money"),
     recentDates: Array.from(new Set((recent.data ?? []).map((r) => r.brief_date as string))).slice(0, 7),
   };
 }

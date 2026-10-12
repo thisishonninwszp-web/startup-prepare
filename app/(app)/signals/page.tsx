@@ -11,6 +11,7 @@ import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
 import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
 import { countPendingSignals, getDailyReport, type ReportSection } from "./queries";
 import type { EarlierMention } from "@/lib/domains/signals/followups";
+import type { BriefItem } from "@/lib/domains/signals/brief";
 import { emailConfig } from "@/lib/domains/signals/notify";
 import { EmailPanel } from "./email-panel";
 import { ListenButton } from "./listen-button";
@@ -45,12 +46,28 @@ const SECTIONS: { kind: SignalKind; title: string; forYouLabel: string; empty: s
     empty: "今天这一节还没整理。",
   },
   {
+    kind: "money",
+    title: "谁在掏钱",
+    forYouLabel: "钱流向哪里",
+    empty: "今天这一节还没整理。",
+  },
+  {
     kind: "tools",
-    title: "今天的新工具",
-    forYouLabel: "你可以试",
+    title: "什么变得可能了",
+    forYouLabel: "多了什么选项",
     empty: "今天的工具报告还没生成。",
   },
 ];
+
+/** 德鲁克七个来源的叫法（"意外"单独显示，不在这里）。 */
+const OPPORTUNITY_LABELS: Record<NonNullable<BriefItem["opportunity"]>, string> = {
+  incongruity: "不协调（现实和大家以为的不一样）",
+  process: "流程上的需要（某个环节卡住了）",
+  structure: "行业结构在变",
+  demographics: "人口在变",
+  perception: "观念在变",
+  knowledge: "新知识、新技术",
+};
 
 /** 这件事之前也上过报告：哪天、那次的标题；那次写过判断的话，把判断和对账情况摆出来。 */
 function EarlierLine({ mention }: { mention: EarlierMention }) {
@@ -180,6 +197,21 @@ function ReportSectionView({
                           unverifiedText="没查到出处，这句是 AI 凭印象说的。"
                           uncheckedText="这句是 AI 凭印象说的，没上网查过。"
                         />
+                      </div>
+                    )}
+                    {(item.opportunity || item.precedent) && (
+                      <div className="mt-2 space-y-1 text-sm leading-7">
+                        {item.opportunity && (
+                          <p className="font-mono text-xs text-muted-foreground">
+                            机会来源 · {OPPORTUNITY_LABELS[item.opportunity]}
+                          </p>
+                        )}
+                        {item.precedent && (
+                          <p>
+                            <span className="text-muted-foreground">先例：</span>
+                            {item.precedent}
+                          </p>
+                        )}
                       </div>
                     )}
                     {item.surprise && (
@@ -425,7 +457,7 @@ export default async function SignalsReportPage({
       <PageHeader
         eyebrow={`Daily report · ${date}`}
         title={isToday ? "今日报告" : `${formatReportDate(date)}的报告`}
-        description="每天先做一道练习：读一条新闻，写下你的判断，再看 AI 怎么拆。下面是今天的世界、已经定了的未来、一线的人在头疼什么，还有新工具。"
+        description="每天先做一道练习：读一条新闻，写下你的判断，再看 AI 怎么拆。下面是今天的世界、已经定了的未来、一线的人在头疼什么、谁在掏钱，以及什么变得可能了。"
         actions={
           <>
             <Button asChild variant="outline" size="sm">
@@ -436,6 +468,12 @@ export default async function SignalsReportPage({
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link href="/signals/questions">我在追的问题</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/signals/precedents">先例</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/signals/slow">慢变量</Link>
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link href="/signals/inbox">全部新闻 {newsCount}</Link>

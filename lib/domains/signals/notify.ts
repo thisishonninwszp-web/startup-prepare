@@ -42,11 +42,17 @@ export type DailyEmailInput = {
   url: string | null;
 };
 
+/** 慢变量一周看一次：周一的邮件里提一句。 */
+export function isMonday(date: string): boolean {
+  return new Date(`${date}T12:00:00+09:00`).getUTCDay() === 1;
+}
+
 const SECTION_TITLES: Record<string, string> = {
   news: "今天的世界",
   calendar: "已经定了的未来",
   voices: "谁在头疼什么",
-  tools: "新工具",
+  money: "谁在掏钱",
+  tools: "什么变得可能了",
 };
 
 /** 邮件正文（纯文本）。像一张便条：先说今天要做的一件事，再列标题，点进去看。 */
@@ -73,6 +79,11 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
       if (item.surprise) lines.push(`  ↳ 意外：原本以为${item.surprise.expected}，结果${item.surprise.actual}。为什么？`);
       if (item.related_question) lines.push(`  ↳ 跟你在追的「${item.related_question.question}」有关`);
     }
+    lines.push("");
+  }
+  if (isMonday(input.date)) {
+    lines.push("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。");
+    if (input.url) lines.push(`${input.url}/signals/slow`);
     lines.push("");
   }
   if (input.url) lines.push(`打开今天的报告：${input.url}/signals`);
@@ -108,7 +119,7 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
     date,
     practice: practiceRow ? { question: practiceRow.question, headline: practiceItem?.headline ?? "" } : null,
     overview: (news?.overview as string | null) ?? null,
-    sections: ["news", "calendar", "voices", "tools"].map((kind) => ({
+    sections: ["news", "calendar", "voices", "money", "tools"].map((kind) => ({
       title: SECTION_TITLES[kind],
       items: ((byKind.get(kind)?.items as BriefItem[] | null) ?? [])
         .filter((i) => !i.extra)

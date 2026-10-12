@@ -396,7 +396,64 @@ async function gatherWeeklySources(
     }
   }
 
+  sources.push(...(await gatherSignalSources(userId, from, until)));
   return sources;
+}
+
+/**
+ * 外部信号这一周留下的东西：读新闻写下的判断、到期对过账的判断、在追的问题上改过的看法。
+ * 判断力校准正是周复盘的事 —— 这周判断了什么、哪些看对了看错了、哪个看法被证据推动了。
+ * 迁移 055 / 059 没跑时对应的那一块跳过，不影响复盘。
+ */
+async function gatherSignalSources(userId: string, from: string, until: string): Promise<SourceRow[]> {
+  const out: SourceRow[] = [];
+  const [written, resolved, views] = await Promise.all([
+    supabaseAdmin
+      .from("signal_judgments")
+      .select("id, news_title, question, judgment, created_at, predictions!inner(due_at, confidence)")
+      .eq("user_id", userId)
+      .gte("created_at", from)
+      .lt("created_at", until),
+    supabaseAdmin
+      .from("predictions")
+      .select("id, text, due_at, made_at, outcome, resolved_at, note")
+      .eq("user_id", userId)
+      .eq("source_type", "signal")
+      .gte("resolved_at", from)
+      .lt("resolved_at", until),
+    supabaseAdmin
+      .from("signal_question_views")
+      .select("id, view, reason, created_at, signal_questions!inner(question)")
+      .eq("user_id", userId)
+      .gte("created_at", from)
+      .lt("created_at", until),
+  ]);
+  for (const row of written.error ? [] : written.data ?? []) {
+    out.push({
+      type: "signal_judgment",
+      id: row.id as string,
+      label: `读新闻写下的判断 · ${row.news_title}`,
+      snapshot: { question: row.question, judgment: row.judgment, created_at: row.created_at, prediction: row.predictions },
+    });
+  }
+  for (const row of resolved.error ? [] : resolved.data ?? []) {
+    out.push({
+      type: "signal_resolved",
+      id: row.id as string,
+      label: `判断对账 · ${row.outcome === "hit" ? "看对了" : "看错了"}`,
+      snapshot: row,
+    });
+  }
+  for (const row of views.error ? [] : views.data ?? []) {
+    const q = (Array.isArray(row.signal_questions) ? row.signal_questions[0] : row.signal_questions) as { question: string } | null;
+    out.push({
+      type: "question_view",
+      id: row.id as string,
+      label: `在追的问题上改了看法 · ${q?.question ?? ""}`,
+      snapshot: { view: row.view, reason: row.reason, created_at: row.created_at },
+    });
+  }
+  return out;
 }
 
 async function gatherMonthlySources(

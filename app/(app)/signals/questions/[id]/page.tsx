@@ -196,6 +196,13 @@ export default async function QuestionDetailPage({ params }: { params: { id: str
               </ol>
             </div>
 
+            {research.whyNow && (
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground">为什么是现在</h3>
+                <p className="mt-1 text-base leading-8">{research.whyNow}</p>
+              </div>
+            )}
+
             {research.keyFactors.length > 0 && (
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">决定答案的几个因素</h3>

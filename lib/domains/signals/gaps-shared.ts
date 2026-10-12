@@ -19,6 +19,8 @@ export type JapanGap = {
   japan: string;
   check: AnalogCheck;
   event?: string;
+  /** 为什么是现在（或者还缺什么）。 */
+  whyNow?: string;
 };
 
 const GAP_OPENERS = ["没有", "有类似的"];
@@ -47,6 +49,7 @@ export function collectJapanGaps(briefs: { brief_date: string; items: BriefItem[
         japan: item.japan!,
         check: item.japan_check!,
         event: item.event,
+        whyNow: item.japan_why_now,
       });
     }
   }

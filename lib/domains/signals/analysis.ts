@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { analyzeNewsItem, analyzeToolItem, type NewsAnalysis, type ToolAnalysis } from "@/lib/ai";
 import { fetchArticleBody } from "./article";
 import { loadSignalReader } from "./brief";
-import { newsSourceLabel, signalKindOf } from "./feeds";
+import { isGithubSource, newsSourceLabel } from "./feeds";
 import { fetchReadme } from "./github";
 import { usableSummary } from "./summary";
 import type { VerifiedBook } from "./books";
@@ -50,7 +50,8 @@ export async function getSignalDetail(id: string): Promise<SignalDetail | null |
   if (!data) return null;
   const source = data.source as string;
   // "谁在头疼什么"、日程的条目也是文章，按新闻的方式读
-  const kind = signalKindOf(source) === "tools" ? "tools" : "news";
+  // "什么变得可能了"的新闻也在新工具那一节，但它是文章，按新闻的方式读；只有 GitHub 仓库读 README
+  const kind = isGithubSource(source) ? "tools" : "news";
   const title = (data.title as string | null) ?? "";
   return {
     id: data.id as string,

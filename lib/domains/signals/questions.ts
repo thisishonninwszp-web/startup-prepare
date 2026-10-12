@@ -201,8 +201,9 @@ export async function researchQuestion(userId: string, id: string): Promise<Ques
 
   const facts = subQuestions.flatMap((s) => s.evidence).map((e: StepEvidence) => e.fact);
   let keyFactors: KeyFactor[] = [];
+  let whyNow = "";
   try {
-    keyFactors = await analyzeKeyFactors({ ...input, facts });
+    ({ keyFactors, whyNow } = await analyzeKeyFactors({ ...input, facts }));
   } catch (e) {
     console.error("key factors failed", e);
   }
@@ -216,6 +217,7 @@ export async function researchQuestion(userId: string, id: string): Promise<Ques
     basedOnView: view,
     userAnalogs: question.research?.userAnalogs,
     freshCount: fresh.freshCount,
+    ...(whyNow ? { whyNow } : {}),
   };
   const { error } = await supabaseAdmin
     .from("signal_questions")

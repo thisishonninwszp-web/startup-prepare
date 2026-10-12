@@ -52,6 +52,12 @@ export default async function JapanGapsPage() {
                   <span className="text-muted-foreground">日本这边：</span>
                   {g.japan}
                 </p>
+                {g.whyNow && (
+                  <p className="mt-2 text-sm leading-7">
+                    <span className="text-muted-foreground">为什么是现在：</span>
+                    {g.whyNow}
+                  </p>
+                )}
                 <div className="mt-1">
                   <SourceCheckView
                     check={g.check}

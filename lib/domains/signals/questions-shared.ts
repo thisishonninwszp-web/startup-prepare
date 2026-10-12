@@ -28,6 +28,8 @@ export type QuestionResearch = {
   userAnalogs?: HistoricalAnalog[];
   /** 上一轮以后新冒出来的证据有几条（第一轮查时没有这个字段）。 */
   freshCount?: number;
+  /** 为什么是现在（或者为什么还不是时候），根据查到的事实写。 */
+  whyNow?: string;
 };
 
 /** 按链接比，把这一轮里上一轮没有的证据标成新的。上一轮没有就都不标（第一轮无所谓新旧）。 */
@@ -123,6 +125,8 @@ export function articleOutline(q: SignalQuestion): string {
     parts.push("## 决定答案的几个因素", "", ...research.keyFactors.map((f) => `- ${f.factor}：${f.now}`), "");
     parts.push("## 出现什么情况，我会改主意", "", ...research.keyFactors.map((f) => `- ${f.watch}`), "");
   }
+
+  if (research?.whyNow) parts.push("## 为什么是现在", "", research.whyNow, "");
 
   const analogs = [...(research?.userAnalogs ?? []), ...(research?.history?.analogs ?? [])];
   if (analogs.length > 0) {

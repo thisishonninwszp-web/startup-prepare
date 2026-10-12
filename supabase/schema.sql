@@ -5486,3 +5486,13 @@ alter table signal_judgments add column if not exists question_id uuid reference
 
 create index if not exists idx_signal_judgments_question
   on signal_judgments (question_id);
+
+-- ============================================================================
+-- 060：外部信号报告加第五节"谁在掏钱"（signal_briefs.kind 加 money）
+-- ============================================================================
+
+alter table signal_briefs drop constraint if exists signal_briefs_kind_check;
+do $$ begin
+  alter table signal_briefs add constraint signal_briefs_kind_check
+    check (kind in ('news', 'tools', 'voices', 'calendar', 'money'));
+exception when duplicate_object then null; end $$;

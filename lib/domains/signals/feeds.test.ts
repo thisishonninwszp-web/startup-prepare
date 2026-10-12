@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { authorKey, isLiteratureNdc, mainTitle, normalizeTitle } from "./books";
-import { balanceBySource, isChinaSource, newsSourceLabel, RSS_FEEDS, rssSource, signalKindOf } from "./feeds";
+import { balanceBySource, isChinaSource, isGithubSource, kindSourceFilter, newsSourceLabel, RSS_FEEDS, rssSource, signalKindOf } from "./feeds";
 import { contactPerson } from "./format";
 
 describe("signalKindOf", () => {
@@ -9,6 +9,8 @@ describe("signalKindOf", () => {
     expect(signalKindOf("voice:hatena_it")).toBe("voices");
     expect(signalKindOf("plan:egov_comment")).toBe("calendar");
     expect(signalKindOf("github:new")).toBe("tools");
+    expect(signalKindOf("able:gnews_dereg")).toBe("tools");
+    expect(signalKindOf("money:gnews_funding")).toBe("money");
   });
 
   it("每个源都有不重复的 source 和标签", () => {
@@ -75,5 +77,16 @@ describe("contactPerson", () => {
     expect(contactPerson("可以找物流公司负责招聘或运营的高管聊聊，了解他们如何应对人手短缺。")).toBe("物流公司负责招聘或运营的高管");
     expect(contactPerson("你可以和在中小制造业做财务的人聊")).toBe("在中小制造业做财务的人");
     expect(contactPerson("在中小制造业做财务的人")).toBe("在中小制造业做财务的人");
+  });
+});
+
+describe("一节可以收几个前缀", () => {
+  it("新工具一节收 GitHub 和 able；RSS 的 tools 源落库用 able:", () => {
+    expect(kindSourceFilter("tools")).toBe("source.like.github:%,source.like.able:%");
+    expect(kindSourceFilter("money")).toBe("source.like.money:%");
+    const able = RSS_FEEDS.find((f) => f.kind === "tools")!;
+    expect(rssSource(able).startsWith("able:")).toBe(true);
+    expect(isGithubSource("github:new")).toBe(true);
+    expect(isGithubSource("able:gnews_dereg")).toBe(false);
   });
 });

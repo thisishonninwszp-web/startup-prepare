@@ -457,7 +457,15 @@ export type BriefPick = {
   forYou: string;
   /** 这是哪件事的短标签（"日银加息"）。代码按它去重：同一件事的几篇报道、后续反应只留一条。 */
   event: string;
+  /** 德鲁克的创新机会来源（"意外"另有一步专门找）。拿不准、都不算的不标。 */
+  opportunity?: OpportunitySource;
+  /** 先例：这条讲的是某个方向"有人试过的结果"时，一句话说它对想走这个方向的人说明了什么。 */
+  precedent?: string;
 };
+
+/** 德鲁克《创新与企业家精神》的七个来源，去掉"意外"（另有一步专门找、并由裁判核实）。 */
+export const OPPORTUNITY_SOURCES = ["incongruity", "process", "structure", "demographics", "perception", "knowledge"] as const;
+export type OpportunitySource = (typeof OPPORTUNITY_SOURCES)[number];
 
 /** "也值得一看"：只有一句中文标题，不写背景。 */
 export type BriefMore = { index: number; event: string; headline: string };
@@ -467,7 +475,7 @@ const MAX_PERSONAL = 2;
 
 const BRIEF_SIZE = 5;
 
-export type BriefKind = "news" | "tools" | "voices" | "calendar";
+export type BriefKind = "news" | "tools" | "voices" | "calendar" | "money";
 
 const BRIEF_PROMPTS: Record<BriefKind, string> = {
   news: `你每天早上帮一个人从几十条新闻里挑出 ${BRIEF_SIZE} 条最值得读的。
@@ -491,16 +499,33 @@ const BRIEF_PROMPTS: Record<BriefKind, string> = {
 - headline：一句话说发生了什么。
 - background：为什么重要、来龙去脉，3 到 4 句，让不懂这个领域的人也能看懂。
 - forYou：这件事主要影响哪一类人或企业、怎么影响，一到两句。直接写"物流公司会……""地方银行要……"，不写"你"，也不写"如果你在 XX 行业"。`,
-  tools: `你每天帮一个人从几十个 GitHub 新仓库里挑出 ${BRIEF_SIZE} 个最值得看的工具，让他跟上时代。
+  tools: `你每天帮一个人挑出 ${BRIEF_SIZE} 条"什么变得可能了"，让他跟上时代。
+候选有两种：GitHub 上的新仓库（来源写着 GitHub），和"什么变得可能了"的新闻（AI 降价、规制缓和、日本首次提供的服务）。
 
 挑的标准：
-- 能直接拿来用、能解决一类真实问题的工具，优先于纯研究代码、作业、清单类仓库。
-- 代表一个新趋势的（比如 AI agent 的新用法），哪怕他暂时用不上。
+- 仓库：能直接拿来用、能解决一类真实问题的，优先于纯研究代码、作业、清单类仓库；代表一个新趋势的也可以。
+- 新闻：一件以前做不了、做不起、不让做的事，现在能做了（API 价格砍半、某个行业的规制放开、某种服务第一次在日本提供）。
+  只是新品发布、营销活动的不挑。
+- 两种都要有：只要候选里有合格的"新闻"，5 条里至少留 1 条。
 
 每条写：
-- headline：一句话说这是什么。
-- background：它能拿来做什么、为什么现在有很多人关注它，3 到 4 句。
-- forYou：可以拿它试的一件具体的事，一个周末能做完，一句话。`,
+- headline：一句话说这是什么（仓库）或什么变得可能了（新闻）。
+- background：它能拿来做什么、为什么是现在，3 到 4 句。
+- forYou：仓库写可以拿它试的一件具体的事（一个周末能做完）；新闻写哪类人或生意现在多了一个选项，一句话。`,
+  money: `你每天帮一个人从几十条消息里挑出最多 ${BRIEF_SIZE} 条"谁在掏钱"。
+抱怨不花钱，掏钱才是真的：钱往哪里流，比谁在说什么更能看出真需求。
+材料有四种：创业公司融资、众筹达成目标、政府补助金公募、事业承继和 M&A。
+
+挑的标准：
+- 能看出"谁、为了什么、掏了多少"的：投资人押注什么（融资）、普通人愿意为什么新东西付钱（众筹）、
+  政府要花钱推动什么（补助金）、谁在买下别人的生意、为什么（事业承继、M&A）。
+- 同一类钱（比如好几家 AI 公司融资）只留最能说明趋势的一条。
+不挑：粉丝应援、演出、文化财修缮这类靠情分筹的钱；上市公司的常规财报；补助金的申请攻略广告。
+
+每条写：
+- headline：一句话说谁掏钱、为了什么。
+- background：钱的来龙去脉，以及它说明了什么需求，3 到 4 句。
+- forYou：这笔钱流向哪里，对哪类人或生意意味着什么，一到两句。不写"你"。`,
   voices: `你每天帮一个人从几十条材料里挑出最多 ${BRIEF_SIZE} 条"谁在头疼什么"。
 材料来自一线干活的人自己写、自己转发的文章（はてブ热门、note #経営）、"招不到人、人手不足"的报道，
 以及倒产的消息（倒产新闻、東京商工リサーチ / 帝国データバンク 的统计）。
@@ -533,9 +558,10 @@ const BRIEF_PROMPTS: Record<BriefKind, string> = {
 
 const OVERVIEW_TOPIC: Record<BriefKind, string> = {
   news: "今天世界上发生了什么、整体在往哪个方向变",
-  tools: "今天大家在做什么样的工具、透露出什么趋势",
+  tools: "今天什么变得可能了：大家在做什么样的工具，哪些以前做不了的事现在能做了",
   voices: "今天一线的人普遍卡在哪里、这些麻烦有什么共同点",
   calendar: "接下来几个月有哪些已经定了的变化、哪些人要开始准备（一条都没有就直说这批消息里没有写明日期的变化）",
+  money: "今天钱往哪里流：投资人、消费者、政府各在为什么掏钱",
 };
 
 export type BriefPractice = {
@@ -570,6 +596,16 @@ const PRACTICE_INSTRUCTION = `再出一道今天的练习题（practice）。他
   对象、事件、数字都从这条新闻里来，不要套用别的新闻。
   不要："你怎么看这件事？"
 - checkHow：到时候去看什么来判断对错，一句话（看哪类新闻、哪个数字、哪家公司的公告）。
+`;
+
+/** 世界、一线、掏钱三节：每条标德鲁克的机会来源，以及是不是"有人试过的结果"。 */
+const OPPORTUNITY_INSTRUCTION = `每条 picks 再写两个可选字段：
+- opportunity：按德鲁克说的创新机会来源，这条属于哪一种，只能选一个：
+  "incongruity"（不协调：现实和大家以为的不一样）/"process"（流程上的需要：某个环节卡住了）/
+  "structure"（行业或市场的结构在变）/"demographics"（人口在变）/"perception"（人们的观念和认知在变）/
+  "knowledge"（新知识、新技术）/"none"（都不算）。拿不准就写 "none"。"意外"另有一步专门找，这里不用标。
+- precedent：如果这条讲的是某个方向"有人试过的结果"（撤退、停服、转型、失败，或者在别处做成了），
+  用一句话写它对想走这个方向的人说明了什么（例："重资产自建仓的即时配送在日本撑不住，要靠和超市合作"）。不是就留空字符串。
 `;
 
 /** allowEmpty：日程那一份，当天真没有带日期的消息时允许一条都不挑（不许硬凑）。 */
@@ -613,12 +649,18 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
     const event = typeof v.event === "string" && v.event.trim() ? v.event.trim().slice(0, 30) : headline;
     // 同一件事（标签相同或互相包含）只留排在前面的那条
     if (result.some((r) => sameEvent(r.event, event))) continue;
+    const opportunity = OPPORTUNITY_SOURCES.includes(v.opportunity as OpportunitySource)
+      ? (v.opportunity as OpportunitySource)
+      : undefined;
+    const precedent = typeof v.precedent === "string" && v.precedent.trim() ? v.precedent.trim() : undefined;
     result.push({
       index,
       headline,
       background: requireString(v, "background"),
       forYou: requireString(v, "forYou"),
       event,
+      ...(opportunity ? { opportunity } : {}),
+      ...(precedent ? { precedent } : {}),
     });
   }
   if (result.length === 0 && !allowEmpty) throw new Error("没有一条能对上候选序号");
@@ -647,7 +689,7 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
   const practice = parsePractice((value as { practice?: unknown }).practice, picks);
   const texts = [
     overview,
-    ...picks.flatMap((p) => [p.headline, p.background, p.forYou]),
+    ...picks.flatMap((p) => [p.headline, p.background, p.forYou, ...(p.precedent ? [p.precedent] : [])]),
     ...more.map((m) => m.headline),
     ...(practice ? [practice.question, practice.checkHow, ...(practice.whyUncertain ? [practice.whyUncertain] : [])] : []),
   ];
@@ -686,8 +728,9 @@ ${SIGNAL_SHARED_RULES}
 另外写 overview：开头的一段总述，3 到 5 句，把挑出来的几条串起来讲${OVERVIEW_TOPIC[kind]}。第一句直接说今天最重要的那一件事是什么；每一句都要带一件具体的事（谁、做了什么）。不许用"持续演进""几个重要领域""值得注意的是"这类空开头，也不要逐条复述。
 
 ${kind === "news" ? PRACTICE_INSTRUCTION : ""}
+${kind === "news" || kind === "voices" || kind === "money" ? OPPORTUNITY_INSTRUCTION : ""}
 ${MORE_INSTRUCTION}
-只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
@@ -1202,6 +1245,8 @@ export type JapanComparison = {
   japan: string;
   /** 用日语写的搜索词，拿去查"日本有没有这种东西"。 */
   query: string;
+  /** 红杉的"为什么是现在"：日本这边还没有时，最近什么变了让它可能做成，或者还缺什么。 */
+  whyNow?: string;
   /** 上网核实的结果（跟历史参照同一种结构）；还没核实时没有。 */
   check?: AnalogCheck;
 };
@@ -1215,10 +1260,14 @@ japan 的写法：
 - 如果这条讲的是政府发文、监管规定，就比的是"日本有没有同样的规定"。
 - 不许写"日本企业需要关注""值得借鉴""值得注意"这类空话；不要编日本公司或服务的名字。用中文写。
 
+结论是"没有"或"有类似的，但没普及"时，再写 whyNow（红杉看创业项目必问的"为什么是现在"）：
+如果现在有人在日本做这件事，最近哪些变化让它变得可能（法规、价格、人口、技术、习惯）；还不行的话，还缺什么。一到两句。
+结论是"有，"或"拿不准"时 whyNow 留空字符串。
+
 再写 query：用日语写的搜索词，3 到 6 个词，用来上网查"日本有没有这种东西"。
 写成日本这边的说法，不要直译中国的产品名（例：微信的 AI 助手 → "LINE AI アシスタント 機能"；即时零售 → "即配 ネットスーパー 30分"）。
 
-只输出 JSON：{"items":[{"index":序号,"japan":"…","query":"…"}]}`;
+只输出 JSON：{"items":[{"index":序号,"japan":"…","whyNow":"…","query":"…"}]}`;
 
 const JAPAN_OPENERS = ["有，", "有类似的", "没有", "拿不准"];
 const JAPAN_FILLER = /需要关注|值得借鉴|值得注意|值得关注/;
@@ -1237,10 +1286,11 @@ export function parseJapanComparisons(value: unknown, inputs: JapanInput[]): Jap
     if (!wanted.has(index) || out.some((o) => o.index === index)) continue;
     if (!JAPAN_OPENERS.some((o) => japan.startsWith(o)) || JAPAN_FILLER.test(japan)) continue;
     const query = typeof v.query === "string" ? v.query.trim().slice(0, 80) : "";
-    out.push({ index, japan, query });
+    const whyNow = typeof v.whyNow === "string" && v.whyNow.trim() ? v.whyNow.trim() : undefined;
+    out.push({ index, japan, query, ...(whyNow ? { whyNow } : {}) });
   }
-  assertNoBanned(out.map((o) => o.japan));
-  assertChineseAllowingNames(out.map((o) => o.japan));
+  assertNoBanned(out.flatMap((o) => [o.japan, o.whyNow ?? ""]).filter(Boolean));
+  assertChineseAllowingNames(out.flatMap((o) => [o.japan, o.whyNow ?? ""]).filter(Boolean));
   return out;
 }
 
@@ -2296,12 +2346,15 @@ const KEY_FACTORS_PROMPT = `你帮一个人追一个他自己提的问题。下�
 - watch：出现什么情况，这个因素就变了。要具体到能在新闻里看到（谁做了什么、哪个数字过了多少）。
 - evidence：用到的事实编号。
 
+另外写 whyNow（红杉看创业项目必问的"为什么是现在"）：这件事为什么现在会发生（或者为什么还不是时候）——
+最近哪些变化让它变得可能，或者还缺什么。一到两句，只根据上面的事实；事实不够就直说还看不出来。
+
 铁律：
 - 他写了看法的话，至少一个因素要是"最可能让他看错的"。不许迎合他。
 - 不许给因素打分、排权重，不许写任何可能性的百分比或"几成"。
 - 不要编事实里没有的数字和公司。
 
-只输出 JSON：{"keyFactors":[{"factor":"…","now":"…","watch":"…","evidence":[1,3]}]}`;
+只输出 JSON：{"keyFactors":[{"factor":"…","now":"…","watch":"…","evidence":[1,3]}],"whyNow":"…"}`;
 
 export function parseKeyFactors(value: unknown, evidenceCount: number): KeyFactor[] {
   const raw = (value as { keyFactors?: unknown } | null)?.keyFactors;
@@ -2329,7 +2382,20 @@ export function parseKeyFactors(value: unknown, evidenceCount: number): KeyFacto
   return result;
 }
 
-export async function analyzeKeyFactors(input: QuestionInput & { facts: string[] }): Promise<KeyFactor[]> {
+/** 关键因素那一步顺带写的"为什么是现在"；没写就是空串。 */
+export function parseWhyNow(value: unknown): string {
+  const v = (value as { whyNow?: unknown } | null)?.whyNow;
+  const text = typeof v === "string" ? v.trim() : "";
+  if (!text) return "";
+  assertNoBanned([text]);
+  assertChinese([text]);
+  if (mentionsNumericLikelihood(text)) throw new Error("写了可能性的数字");
+  return text;
+}
+
+export async function analyzeKeyFactors(
+  input: QuestionInput & { facts: string[] }
+): Promise<{ keyFactors: KeyFactor[]; whyNow: string }> {
   const contents = [
     `今天是 ${new Date().toISOString().slice(0, 10)}。`,
     questionContext(input),
@@ -2349,7 +2415,7 @@ export async function analyzeKeyFactors(input: QuestionInput & { facts: string[]
         maxOutputTokens: 2000,
       },
     }),
-    (value) => parseKeyFactors(value, input.facts.length)
+    (value) => ({ keyFactors: parseKeyFactors(value, input.facts.length), whyNow: parseWhyNow(value) })
   );
 }
 

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { RSS_FEEDS, rssSource, SIGNAL_KIND_PREFIX, type RssFeed } from "./feeds";
+import { RSS_FEEDS, rssSource, SIGNAL_KIND_PREFIXES, type RssFeed } from "./feeds";
 import { fetchHtml } from "./article";
 import { extractPageDescription, parseFeed } from "./rss";
 import { usableSummary, worthFetchingPage } from "./summary";
@@ -103,7 +103,7 @@ export async function fetchDailyNews(): Promise<DailyNewsOutcome> {
 async function purgeStalePending(): Promise<number> {
   const cutoff = new Date(Date.now() - PENDING_TTL_DAYS * 86_400_000).toISOString();
   let purged = 0;
-  for (const prefix of Object.values(SIGNAL_KIND_PREFIX)) {
+  for (const prefix of Object.values(SIGNAL_KIND_PREFIXES).flat()) {
     const { data, error } = await supabaseAdmin
       .from("external_signals")
       .delete()
