@@ -252,11 +252,16 @@ describe("parseJudgedTiers（Jev 当裁判）", () => {
     expect(tiers[1].p).toBeLessThan(0.4);
   });
 
-  it("换说法：第二档概率更高就标出来；这一问缺了就当不是", () => {
-    const res = result({ step_0: answer([0.1, 0.7, 0.1, 0.05, 0.05]), step_1: answer([0.1, 0.7, 0.1, 0.05, 0.05]) });
-    (res.answers as Record<string, unknown>).restate_0 = { type: "score", probabilities: { "0": 0.21, "1": 0.79 } };
-    const tiers = parseJudgedTiers(res, 2);
-    expect(tiers.map((t) => t.restates)).toEqual([true, false]);
+  it("车轱辘：相邻换说法过 0.45、或绕回前面过 0.5 就标出来；两问都缺就当不是", () => {
+    const tier = answer([0.1, 0.7, 0.1, 0.05, 0.05]);
+    const res = result({ step_0: tier, step_1: tier, step_2: tier, step_3: tier });
+    const yes = (p: number) => ({ type: "score", probabilities: { "0": 1 - p, "1": p } });
+    Object.assign(res.answers as Record<string, unknown>, {
+      restate_0: yes(0.47), circular_0: yes(0.1), // 相邻换说法，刚过门槛
+      restate_1: yes(0.06), circular_1: yes(0.97), // 绕回两步前
+      restate_2: yes(0.2), circular_2: yes(0.42), // 真往下推
+    });
+    expect(parseJudgedTiers(res, 4).map((t) => t.restates)).toEqual([true, true, false, false]);
   });
 
   it("两头的档也认得", () => {

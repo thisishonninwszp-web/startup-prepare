@@ -1540,6 +1540,26 @@ const RESTATE_CRITERIA = [
   "只是把上一步换个说法，或者是它不言自明的同义后果",
 ];
 
+/**
+ * 车轱辘话有两种，用两个问题分别抓（14 个已知答案的例子上试过：单用哪一个都会漏）：
+ * - 相邻两步换个说法（"门票卖得多 → 收入增加"）：只和上一步比，最准；
+ * - 绕回前面某一步（"银行加存款利率 → 储户转钱 → 银行存款利率更高"）：要看整条链，问"是不是自动成立"。
+ * 任一个判中就算。相邻那一问门槛放到 0.45：真往下推的步骤在这一问上都很低，离门槛很远。
+ */
+const CIRCULAR_CRITERIA = [
+  "需要有人做出新的决定或出现新的条件，它才会发生",
+  "前面成立它就自动成立，等于把前面某一步换个说法或说得更具体",
+];
+const RESTATE_ABOVE = 0.45;
+const CIRCULAR_ABOVE = 0.5;
+
+/** 一个二选一问题里"第二项"（车轱辘那一项）的概率；缺了就当 0，不因为它让整层判档作废。 */
+function secondOption(answer: unknown): number {
+  const probs = (answer as { probabilities?: Record<string, unknown> } | undefined)?.probabilities;
+  const v = probs?.["1"];
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
 const TIER_CRITERIA = [
   "很可能：在前面这些都成立的情况下，这一步几乎一定会发生",
   "较可能：多半会发生",
@@ -1567,10 +1587,9 @@ export function parseJudgedTiers(result: JevResult, count: number): JudgedTier[]
     const top = Math.max(...probs);
     const total = probs.reduce((a, b) => a + b, 0) || 1;
     const p = probs.reduce((acc, v, level) => acc + (v / total) * TIER_VALUE[LIKELIHOOD_ORDER[level]], 0);
-    // 换说法这一问缺了就当不是（不因为它让整层判档作废）
-    const restate = result.answers[`restate_${i}`] as Record<string, unknown> | undefined;
-    const rp = restate?.probabilities as Record<string, unknown> | undefined;
-    const restates = typeof rp?.["1"] === "number" && typeof rp?.["0"] === "number" && (rp["1"] as number) > (rp["0"] as number);
+    const restates =
+      secondOption(result.answers[`restate_${i}`]) > RESTATE_ABOVE ||
+      secondOption(result.answers[`circular_${i}`]) > CIRCULAR_ABOVE;
     return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW, p, restates };
   });
 }
@@ -1613,6 +1632,11 @@ export async function judgeInferenceSteps(input: {
       type: "score",
       instructions: `上一步是「${parent}」。情况 [${i}]「${s.claim}」是真的往下推了一步，还是只是把上一步换个说法？`,
       criteria: RESTATE_CRITERIA,
+    };
+    questions[`circular_${i}`] = {
+      type: "score",
+      instructions: `假设新闻和前面那些都已经成立。情况 [${i}]「${s.claim}」是不是不需要任何人做出新的决定、不需要任何新的条件，就自动成立（等于把前面某一步换个说法或说得更具体）？`,
+      criteria: CIRCULAR_CRITERIA,
     };
   });
 
