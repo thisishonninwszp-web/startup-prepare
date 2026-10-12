@@ -12,6 +12,7 @@ import { verifyBooks } from "./books";
  * AI 擅长想到"哪几次像"，不擅长记准细节（年份、利率调到多少、后来怎样）。
  * 所以先让它提参照，再逐条上网核实：查到出处的附原文；和它记的不一样的按原文改正、写明哪里不一样；
  * 没查到的标"凭记忆写的"。"这类事通常会怎样"只用查到出处的那几次归纳。
+ * 每一次参照都写"像在哪、不像在哪"（《Thinking in Time》的做法）：错误的类比几乎都错在不像的地方。
  */
 
 const SEARCH_RESULTS_PER_ANALOG = 3;
@@ -25,15 +26,14 @@ async function searchAnalog(analog: HistoricalAnalog) {
   }
 }
 
-export async function ensureSignalHistory(id: string): Promise<StoredHistory> {
-  const detail = await getSignalDetail(id);
-  if (detail === "missing-schema") throw new Error("迁移 056 还没跑");
-  if (!detail) throw new Error("这条已经不在了（两周没动的会被清掉）");
-  if (detail.history) return detail.history;
-  if (detail.kind === "tools") throw new Error("工具没有历史参照");
-
-  const body = detail.excerpt ?? (await fetchArticleBody(detail.url));
-  const raw = await findHistoricalAnalogs({ title: detail.title, summary: detail.summary, body });
+/** 找参照 → 逐条上网核实 → 核实荐书。新闻详情和问题驱动共用。 */
+export async function researchHistory(input: {
+  title: string;
+  summary: string;
+  body: string;
+  subject?: "news" | "question";
+}): Promise<StoredHistory> {
+  const raw = await findHistoricalAnalogs(input);
 
   // 历史核实和荐书核实互不依赖，一起跑
   const [checked, books] = await Promise.all([
@@ -53,7 +53,18 @@ export async function ensureSignalHistory(id: string): Promise<StoredHistory> {
     verifyBooks(raw.books),
   ]);
 
-  const history: StoredHistory = { ...raw, analogs: checked.analogs, baseRate: checked.baseRate, books };
+  return { ...raw, analogs: checked.analogs, baseRate: checked.baseRate, books };
+}
+
+export async function ensureSignalHistory(id: string): Promise<StoredHistory> {
+  const detail = await getSignalDetail(id);
+  if (detail === "missing-schema") throw new Error("迁移 056 还没跑");
+  if (!detail) throw new Error("这条已经不在了（两周没动的会被清掉）");
+  if (detail.history) return detail.history;
+  if (detail.kind === "tools") throw new Error("工具没有历史参照");
+
+  const body = detail.excerpt ?? (await fetchArticleBody(detail.url));
+  const history = await researchHistory({ title: detail.title, summary: detail.summary, body });
   const { error } = await supabaseAdmin.from("external_signals").update({ history }).eq("id", id);
   if (error) throw new Error(error.message);
   return history;

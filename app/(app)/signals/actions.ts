@@ -14,6 +14,13 @@ import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
+import {
+  addView,
+  archiveQuestion,
+  createQuestion,
+  researchQuestion,
+  updateCriterion,
+} from "@/lib/domains/signals/questions";
 import { gapObservationText } from "@/lib/domains/signals/gaps-shared";
 import {
   resolveJudgment,
@@ -161,17 +168,20 @@ export async function generateBriefNow(
 
 /** 先写判断：存进 predictions + signal_judgments，再让 AI 挑刺。 */
 export async function submitJudgmentAction(input: {
-  signalId: string;
+  signalId?: string;
+  questionId?: string;
   question: string;
   judgment: string;
   horizon: HorizonKey;
   confidence: ConfidenceKey | null;
+  tags?: string[];
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
     await submitJudgment({ userId, ...input });
     revalidatePath("/signals");
-    revalidatePath(`/signals/${input.signalId}`);
+    if (input.signalId) revalidatePath(`/signals/${input.signalId}`);
+    if (input.questionId) revalidatePath(`/signals/questions/${input.questionId}`);
     revalidatePath("/signals/practice");
     return { ok: true };
   } catch (error) {
@@ -308,5 +318,67 @@ export async function createContactPlanAction(
     return { ok: true, canvasId: data.id as string };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没建上") };
+  }
+}
+
+// ── 问题驱动 ────────────────────────────────────────────────────────────────
+
+type ActionResult<T = object> = ({ ok: true } & T) | { ok: false; message: string };
+
+export async function createQuestionAction(question: string, criterion: string): Promise<ActionResult<{ id: string }>> {
+  const userId = await requireUserId();
+  try {
+    const id = await createQuestion(userId, question, criterion);
+    revalidatePath("/signals/questions");
+    return { ok: true, id };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "问题没存上") };
+  }
+}
+
+export async function updateCriterionAction(questionId: string, criterion: string): Promise<ActionResult> {
+  const userId = await requireUserId();
+  try {
+    await updateCriterion(userId, questionId, criterion);
+    revalidatePath(`/signals/questions/${questionId}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没存上") };
+  }
+}
+
+export async function addViewAction(questionId: string, view: string, reason: string): Promise<ActionResult> {
+  const userId = await requireUserId();
+  try {
+    await addView(userId, questionId, view, reason);
+    revalidatePath(`/signals/questions/${questionId}`);
+    revalidatePath("/signals/questions");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "看法没存上") };
+  }
+}
+
+/** 查一轮：拆小问题、分头上网查、列关键因素、附历史参照。要花半分钟左右。 */
+export async function researchQuestionAction(questionId: string): Promise<ActionResult> {
+  const userId = await requireUserId();
+  try {
+    await researchQuestion(userId, questionId);
+    revalidatePath(`/signals/questions/${questionId}`);
+    revalidatePath("/signals/questions");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这一轮没查成") };
+  }
+}
+
+export async function archiveQuestionAction(questionId: string): Promise<ActionResult> {
+  const userId = await requireUserId();
+  try {
+    await archiveQuestion(userId, questionId);
+    revalidatePath("/signals/questions");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没收起来") };
   }
 }

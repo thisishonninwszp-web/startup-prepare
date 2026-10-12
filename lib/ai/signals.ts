@@ -872,6 +872,10 @@ export type HistoricalAnalog = {
   what: string;
   /** 之后实际怎样了。 */
   after: string;
+  /** 这次和那次像在哪（《Thinking in Time》：每个类比都要分开列像和不像）。早期缓存没有。 */
+  alike?: string;
+  /** 这次和那次不像在哪 —— 错误的类比几乎都错在这里。早期缓存没有。 */
+  unlike?: string;
   /** 用来上网核实这一次的搜索词（具体到时间和对象）。 */
   query?: string;
   /** 上网核实的结果；早期缓存的数据没有。 */
@@ -922,6 +926,10 @@ const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得
    - when：年份或时期。
    - what：当时发生了什么，一到两句。
    - after：之后几个月到几年里实际怎样了，一到两句。这是最重要的部分。
+   - alike：这次和那次像在哪，一句话，要具体（同样是谁、在什么处境下、做了什么）。
+   - unlike：这次和那次不像在哪，一句话 —— 挑最可能让结果不一样的那个差别。
+     错误的类比几乎都错在"不像"的地方，这一句不许空着，也不许写"时代不同"这种空话。
+     alike 和 unlike 都直接写那一点，不要用"这次和那次像在""不像在"开头（页面上已经有"像的地方""不像的地方"的标题）。
    - query：用来上网核实这一次的搜索词，具体到时间和对象，不要写成一句话。
      日本的事用日文（如 "日銀 2006年7月 ゼロ金利解除 その後"），中国的事用中文，其他用英文。
 2. baseRate：只用近现代（modern）的那几次归纳"这类事通常会怎样"，两到三句。古代的事不能拿来当基准。几次结果不一样就直说不一样，以及取决于什么。
@@ -938,7 +946,14 @@ const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得
 - 找不到真正相似的事，就只给 1 个最接近的，并在 baseRate 里说明参照性有限。
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"analogs":[{"era":"modern","when":"…","what":"…","after":"…","query":"…"}],"baseRate":"…","different":"…","books":[{"title":"…","originalTitle":"…","author":"…","why":"…"}]}`;
+只输出 JSON：{"analogs":[{"era":"modern","when":"…","what":"…","after":"…","alike":"…","unlike":"…","query":"…"}],"baseRate":"…","different":"…","books":[{"title":"…","originalTitle":"…","author":"…","why":"…"}]}`;
+
+/** 去掉"这次和中国当时的情况像在，"这类套话开头（页面上已经有"像的地方"标题）。空的返回 undefined。 */
+export function trimAnalogLead(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const text = raw.trim().replace(/^这次和[^，,：:]{0,20}?(不像|像)(的地方)?(在|是)?[，,：:]\s*/, "");
+  return text || undefined;
+}
 
 export function parseSignalHistory(value: unknown): SignalHistory {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
@@ -951,6 +966,8 @@ export function parseSignalHistory(value: unknown): SignalHistory {
       when: requireString(a, "when"),
       what: requireString(a, "what"),
       after: requireString(a, "after"),
+      alike: trimAnalogLead(a.alike),
+      unlike: trimAnalogLead(a.unlike),
       query: typeof a.query === "string" && a.query.trim() ? a.query.trim().slice(0, 120) : undefined,
     }))
     // 古代的最多留一条，排在最后
@@ -980,7 +997,12 @@ export function parseSignalHistory(value: unknown): SignalHistory {
     books,
   };
   // 书名、作者名常是外文，只检查叙述部分有没有用中文
-  const prose = [result.baseRate, result.different, ...analogs.flatMap((a) => [a.what, a.after]), ...books.map((b) => b.why)];
+  const prose = [
+    result.baseRate,
+    result.different,
+    ...analogs.flatMap((a) => [a.what, a.after, a.alike ?? "", a.unlike ?? ""]).filter(Boolean),
+    ...books.map((b) => b.why),
+  ];
   assertNoBanned(prose);
   assertChinese(prose);
   return result;
@@ -990,12 +1012,23 @@ export async function findHistoricalAnalogs(input: {
   title: string;
   summary: string;
   body: string;
+  /** question：不是一条新闻，是他要一直追的一个问题（问题驱动），title 是问题，summary 是"怎么才算"和他的看法。 */
+  subject?: "news" | "question";
 }): Promise<SignalHistory> {
-  const contents = [
-    `新闻标题：${input.title}`,
-    `新闻简介：${input.summary || "（没有）"}`,
-    `正文节选：${input.body ? input.body.slice(0, 2000) : "（拿不到正文）"}`,
-  ].join("\n");
+  const contents =
+    input.subject === "question"
+      ? [
+          `这次不是一条新闻，是他要一直追的一个问题。做法一样：找历史上相似的事、归纳这类事通常怎样。`,
+          `问题：${input.title}`,
+          input.summary ? `补充：${input.summary}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : [
+          `新闻标题：${input.title}`,
+          `新闻简介：${input.summary || "（没有）"}`,
+          `正文节选：${input.body ? input.body.slice(0, 2000) : "（拿不到正文）"}`,
+        ].join("\n");
 
   return executeAiJson(
     { operation: "signal_history", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
@@ -1972,5 +2005,219 @@ export async function checkAnalogs(inputs: AnalogSources[]): Promise<{ analogs: 
       },
     }),
     (value) => parseAnalogChecks(value, inputs)
+  );
+}
+
+// ── 问题驱动：他带着问题，AI 分头去查 ───────────────────────────────────────
+// 借鉴 GPT Researcher（先把问题拆成几个小问题，分头查）和 Metaculus forecasting-tools（列出决定结果的关键因素）。
+// 不打分：关键因素只写"现在什么情况""出现什么会变"，不给权重、不给可能性数字（原则 1）。
+
+export type QuestionInput = {
+  question: string;
+  /** 怎么才算（可以为空）。 */
+  criterion: string;
+  /** 他现在的看法（还没写就为空）。 */
+  view: string;
+};
+
+export type SubQuestionPlan = {
+  /** 一个能用资料回答的小问题。 */
+  question: string;
+  /** 搜索词：照着问题去搜。 */
+  query: string;
+  /** 反方向的搜索词：专门找可能推翻他看法的资料。只照一个方向搜，搜到的几乎全是支持的。 */
+  counterQuery: string;
+};
+
+const MIN_SUB_QUESTIONS = 3;
+const MAX_SUB_QUESTIONS = 5;
+
+const PLAN_PROMPT = `你帮一个人追一个他自己提的问题。先别急着回答，把它拆成 ${MIN_SUB_QUESTIONS} 到 ${MAX_SUB_QUESTIONS} 个小问题，每个小问题都要能用上网查到的资料回答。
+
+拆的方法：
+- 想想要回答这个大问题，必须先知道哪几件事（现在的情况、已经有人试过什么、卡在哪、钱和人从哪来、政策怎么管）。
+- 至少一个小问题专门去找"可能推翻他看法"的东西。他还没写看法，就找"最可能让这件事不发生"的东西。
+- 小问题要具体到对象，比如"TikTok Shop 在日本上线一年卖得怎样"，不要"电商的趋势如何"。
+
+每个小问题写：
+- question：一句中文的小问题。只用中文写（产品名、公司名可以保留原文，比如 TikTok Shop），不要夹日文句子。
+- query：搜索词，3 到 6 个词。讲日本的事用日文，讲中国的事用中文，其他用英文。
+- counterQuery：反方向的搜索词（找失败、撤退、反对、数据不好看的资料），语言规则同上。
+
+只输出 JSON：{"subQuestions":[{"question":"…","query":"…","counterQuery":"…"}]}`;
+
+export function parseQuestionPlan(value: unknown): SubQuestionPlan[] {
+  const raw = (value as { subQuestions?: unknown } | null)?.subQuestions;
+  if (!Array.isArray(raw)) throw new Error("缺少 subQuestions");
+  const out: SubQuestionPlan[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const question = typeof v.question === "string" ? v.question.trim() : "";
+    const query = typeof v.query === "string" ? v.query.trim().slice(0, 120) : "";
+    const counterQuery = typeof v.counterQuery === "string" ? v.counterQuery.trim().slice(0, 120) : "";
+    if (!question || !query) continue;
+    if (out.some((o) => o.question === question)) continue;
+    out.push({ question, query, counterQuery });
+  }
+  if (out.length < MIN_SUB_QUESTIONS) throw new Error(`小问题不到 ${MIN_SUB_QUESTIONS} 个`);
+  const result = out.slice(0, MAX_SUB_QUESTIONS);
+  assertNoBanned(result.map((r) => r.question));
+  assertChineseAllowingNames(result.map((r) => r.question));
+  return result;
+}
+
+function questionContext(input: QuestionInput): string {
+  return [
+    `他的问题：${input.question}`,
+    input.criterion ? `怎么才算：${input.criterion}` : "",
+    input.view ? `他现在的看法：${input.view}` : "他还没写自己的看法。",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function planQuestionResearch(input: QuestionInput): Promise<SubQuestionPlan[]> {
+  return executeAiJson(
+    { operation: "question_plan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        questionContext(input) +
+        (attempt === 1 ? `\n\n上一次输出没通过校验：小问题要有 ${MIN_SUB_QUESTIONS} 到 ${MAX_SUB_QUESTIONS} 个，用中文写，每个都要有 query。` : ""),
+      config: {
+        systemInstruction: PLAN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 512 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    parseQuestionPlan
+  );
+}
+
+const QUESTION_EVIDENCE_PROMPT = `你帮一个人查一个小问题。给你小问题、他现在的看法（可能没有），和几篇上网搜到的资料。
+从资料里抽出能回答这个小问题的**事实**，最多 ${MAX_EVIDENCE_PER_STEP} 条。
+
+每条写：
+- source：资料的编号（数字）。
+- fact：用中文写一句具体的事实（谁、做了什么、什么时候、多少）。
+- excerpt：资料里支撑这条事实的原文，逐字照抄，不要翻译、不要改字，30 到 120 字。
+- stance：这条事实对**他现在的看法**是 "supports"（支持）、"contradicts"（反对）还是 "context"（背景）。
+  他还没写看法时，一律写 "context"。
+
+铁律：
+- 只抽资料里真写了的。没写的不要补，不要推测。
+- 跟小问题无关的资料直接跳过；讲的是别的国家、别的事的也跳过。一条都没有就给空数组，不要凑。
+- 反对他看法的事实和支持的一样重要，看到就要抽。
+- 同一件事只留一条最具体的。
+
+只输出 JSON：{"evidence":[{"source":1,"fact":"…","excerpt":"…","stance":"context"}]}`;
+
+/** 一个小问题的证据。来源编号和原文摘录由 parseStepEvidence 核对；没写看法时立场一律当背景。 */
+export async function extractQuestionEvidence(
+  subQuestion: string,
+  view: string,
+  sources: SearchSource[]
+): Promise<StepEvidence[]> {
+  if (sources.length === 0) return [];
+  const blocks = sources
+    .map((src, i) => `【资料 ${i + 1}】${src.title}\n${src.url}\n${src.content.slice(0, 2500)}`)
+    .join("\n\n");
+  const evidence = await executeAiJson(
+    { operation: "question_evidence", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        `小问题：${subQuestion}\n他现在的看法：${view || "（还没写）"}\n\n${blocks}` +
+        (attempt === 1 ? "\n\n上一次输出没通过校验。excerpt 必须逐字照抄资料原文，source 必须是资料编号。" : ""),
+      config: {
+        systemInstruction: QUESTION_EVIDENCE_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parseStepEvidence(value, sources)
+  );
+  return view ? evidence : evidence.map((e) => ({ ...e, stance: "context" as const }));
+}
+
+export type KeyFactor = {
+  /** 决定这个问题答案的一个因素。 */
+  factor: string;
+  /** 这个因素现在是什么情况（只根据查到的事实）。 */
+  now: string;
+  /** 出现什么情况，这个因素就变了 —— 也就是"什么会让他改主意"。 */
+  watch: string;
+  /** 撑着 now 的那几条证据（全局编号，从 1 开始）。 */
+  evidence: number[];
+};
+
+const MAX_KEY_FACTORS = 4;
+
+const KEY_FACTORS_PROMPT = `你帮一个人追一个他自己提的问题。下面是他的问题，和 AI 分头查到的事实（每条有编号）。
+找出 2 到 ${MAX_KEY_FACTORS} 个**决定这个问题答案的关键因素**。
+
+每个因素写：
+- factor：这个因素是什么，一句话（例："日本消费者信不信主播推荐的东西"）。
+- now：这个因素现在是什么情况（今天的日期见材料开头，已经发生的事用过去时）。只根据下面的事实写，并在 evidence 里写出用到了哪几条（编号）。事实里没有就写"还没查到"，evidence 给空数组。
+- watch：出现什么情况，这个因素就变了。要具体到能在新闻里看到（谁做了什么、哪个数字过了多少）。
+- evidence：用到的事实编号。
+
+铁律：
+- 他写了看法的话，至少一个因素要是"最可能让他看错的"。不许迎合他。
+- 不许给因素打分、排权重，不许写任何可能性的百分比或"几成"。
+- 不要编事实里没有的数字和公司。
+
+只输出 JSON：{"keyFactors":[{"factor":"…","now":"…","watch":"…","evidence":[1,3]}]}`;
+
+export function parseKeyFactors(value: unknown, evidenceCount: number): KeyFactor[] {
+  const raw = (value as { keyFactors?: unknown } | null)?.keyFactors;
+  if (!Array.isArray(raw)) throw new Error("缺少 keyFactors");
+  const out: KeyFactor[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const factor = typeof v.factor === "string" ? v.factor.trim() : "";
+    const now = typeof v.now === "string" ? v.now.trim() : "";
+    const watch = typeof v.watch === "string" ? v.watch.trim() : "";
+    if (!factor || !now || !watch) continue;
+    // 编号对不上的丢掉；说了"现在怎样"却一条证据都对不上，就改成"还没查到"，不让它冒充有依据
+    const evidence = (Array.isArray(v.evidence) ? v.evidence : [])
+      .map((n) => (typeof n === "number" ? n : Number(n)))
+      .filter((n, i, all) => Number.isInteger(n) && n >= 1 && n <= evidenceCount && all.indexOf(n) === i);
+    out.push({ factor, now: evidence.length > 0 ? now : "还没查到。", watch, evidence });
+  }
+  if (out.length === 0) throw new Error("一个关键因素都没有");
+  const result = out.slice(0, MAX_KEY_FACTORS);
+  const texts = result.flatMap((f) => [f.factor, f.now, f.watch]);
+  assertNoBanned(texts);
+  assertChinese(texts);
+  if (texts.some(mentionsNumericLikelihood)) throw new Error("写了可能性的数字");
+  return result;
+}
+
+export async function analyzeKeyFactors(input: QuestionInput & { facts: string[] }): Promise<KeyFactor[]> {
+  const contents = [
+    `今天是 ${new Date().toISOString().slice(0, 10)}。`,
+    questionContext(input),
+    input.facts.length > 0 ? `查到的事实：\n${input.facts.map((f, i) => `[${i + 1}] ${f}`).join("\n")}` : "这次什么事实都没查到。",
+  ].join("\n\n");
+  return executeAiJson(
+    { operation: "question_key_factors", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1 ? "\n\n上一次输出没通过校验：每个因素都要有 factor、now、watch，用中文写，不许写可能性的数字。" : ""),
+      config: {
+        systemInstruction: KEY_FACTORS_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 512 },
+        maxOutputTokens: 2000,
+      },
+    }),
+    (value) => parseKeyFactors(value, input.facts.length)
   );
 }

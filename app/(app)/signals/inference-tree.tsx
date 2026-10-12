@@ -43,7 +43,7 @@ export function LikelihoodMeter({ likelihood, unsure }: { likelihood: InferenceL
 }
 
 /** 上网查到的事实：默认收起，标题上就写着支持几条、反对几条。 */
-function EvidenceList({ evidence }: { evidence: InferenceEvidence[] }) {
+export function EvidenceList({ evidence }: { evidence: InferenceEvidence[] }) {
   const count = (stance: InferenceEvidence["stance"]) => evidence.filter((e) => e.stance === stance).length;
   return (
     <details className="mt-1 text-sm">

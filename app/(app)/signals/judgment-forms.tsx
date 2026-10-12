@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CONFIDENCE_LEVELS,
   HORIZONS,
+  normalizeTags,
   type ConfidenceKey,
   type HorizonKey,
 } from "@/lib/domains/signals/practice-shared";
@@ -23,12 +24,19 @@ import {
  */
 export function JudgmentForm({
   signalId,
+  questionId,
   question,
   questionLabel,
   initialJudgment = "",
   submitLabel = "写下，然后看答案",
+  knownTags = [],
 }: {
-  signalId: string;
+  /** 对着一条新闻下的判断。和 questionId 二选一。 */
+  signalId?: string;
+  /** 对着自己在追的问题下的判断。 */
+  questionId?: string;
+  /** 用过的标签，给出来点选。 */
+  knownTags?: string[];
   /** 存进账本的问题。 */
   question: string;
   /** 界面上显示的问题；不给就显示 question。 */
@@ -42,14 +50,18 @@ export function JudgmentForm({
   const [judgment, setJudgment] = useState(initialJudgment);
   const [horizon, setHorizon] = useState<HorizonKey>("3m");
   const [confidence, setConfidence] = useState<ConfidenceKey | null>(null);
+  const [tagText, setTagText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const tags = normalizeTags(tagText);
+  const toggleTag = (tag: string) =>
+    setTagText((tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag]).join(" "));
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         startTransition(async () => {
-          const result = await submitJudgmentAction({ signalId, question, judgment, horizon, confidence });
+          const result = await submitJudgmentAction({ signalId, questionId, question, judgment, horizon, confidence, tags });
           if (result.ok) {
             setError(null);
             router.refresh();
@@ -105,6 +117,35 @@ export function JudgmentForm({
             ))}
           </div>
           <span className="hidden text-xs text-muted-foreground sm:inline">可以不选</span>
+        </div>
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
+          <span className="shrink-0 text-muted-foreground sm:w-24 sm:pt-1.5">
+            标签<span className="ml-2 text-xs">可以不填</span>
+          </span>
+          <div className="flex-1">
+            <Input
+              value={tagText}
+              onChange={(e) => setTagText(e.target.value)}
+              placeholder="空格分开，比如：中国做法 日本经济"
+              maxLength={80}
+            />
+            {knownTags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {knownTags.slice(0, 12).map((t) => (
+                  <Button
+                    key={t}
+                    type="button"
+                    size="sm"
+                    className="h-8"
+                    variant={tags.includes(t) ? "secondary" : "ghost"}
+                    onClick={() => toggleTag(t)}
+                  >
+                    {t}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

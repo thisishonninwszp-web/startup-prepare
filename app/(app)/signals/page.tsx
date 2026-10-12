@@ -8,7 +8,7 @@ import { getSignalDetail } from "@/lib/domains/signals/analysis";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import type { SignalKind } from "@/lib/domains/signals/feeds";
 import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
-import { dueJudgments, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
+import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
 import { countPendingSignals, getDailyReport, type ReportSection } from "./queries";
 import { GenerateBriefButton } from "./brief-panel";
 import { ReaderPanel } from "./reader-panel";
@@ -241,10 +241,12 @@ async function PracticeCard({
   practice,
   title,
   judgment,
+  knownTags,
 }: {
   practice: NonNullable<ReportSection["practice"]>;
   title: string;
   judgment: JudgmentRow | null;
+  knownTags: string[];
 }) {
   const detail = await getSignalDetail(practice.signal_id);
   const usable = detail && detail !== "missing-schema" ? detail : null;
@@ -279,7 +281,7 @@ async function PracticeCard({
               </p>
               <HistoryPanel signalId={practice.signal_id} initial={usable?.history ?? null} />
             </div>
-            <JudgmentForm signalId={practice.signal_id} question={practice.question} />
+            <JudgmentForm signalId={practice.signal_id} question={practice.question} knownTags={knownTags} />
           </>
         )}
         {judgment && (
@@ -345,6 +347,9 @@ export default async function SignalsReportPage({
               <Link href="/signals/gaps">中国有、日本还没有</Link>
             </Button>
             <Button asChild variant="outline" size="sm">
+              <Link href="/signals/questions">我在追的问题</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
               <Link href="/signals/inbox">全部新闻 {newsCount}</Link>
             </Button>
             <Button asChild variant="outline" size="sm">
@@ -391,7 +396,12 @@ export default async function SignalsReportPage({
             <>
               {isToday && <DueJudgments rows={dueJudgments(judgments)} />}
               {practice && practiceItem && (
-                <PracticeCard practice={practice} title={practiceItem.title} judgment={practiceJudgment} />
+                <PracticeCard
+                  practice={practice}
+                  title={practiceItem.title}
+                  judgment={practiceJudgment}
+                  knownTags={knownTags(judgments)}
+                />
               )}
               {isToday && report.news && !practice && (
                 <p className="mb-8 text-sm leading-7 text-muted-foreground">

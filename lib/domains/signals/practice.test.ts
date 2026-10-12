@@ -18,6 +18,8 @@ const row = (over: Partial<JudgmentRow>): JudgmentRow => ({
   judgment: "广告预算会先被砍",
   feedback: null,
   created_at: "2026-10-01T00:00:00Z",
+  tags: [],
+  question_id: null,
   due_at: "2026-11-01T00:00:00Z",
   outcome: "pending",
   confidence: null,

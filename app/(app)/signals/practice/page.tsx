@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { dueJudgments, listJudgments, tallyJudgments } from "@/lib/domains/signals/practice";
+import { dueJudgments, listJudgments, tallyByTag, tallyJudgments } from "@/lib/domains/signals/practice";
 import { ResolveJudgment } from "../judgment-forms";
 import { formatDueDate, JudgmentView, outcomeLabel } from "../judgment-view";
 
@@ -54,6 +54,7 @@ export default async function JudgmentLedgerPage() {
 
 function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeof listJudgments>>> }) {
   const tally = tallyJudgments(judgments);
+  const byTag = tallyByTag(judgments);
   const due = dueJudgments(judgments);
   const resolvedCount = tally.hit + tally.miss;
 
@@ -69,6 +70,26 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
           ? `已经对过账的只有 ${resolvedCount} 条，太少，现在看不出你准不准。先攒着。`
           : "只记次数，不算准确率：一个数字会让你忘了每一条是怎么错的。往下翻着看。"}
       </p>
+
+      {byTag.length > 0 && (
+        <section className="mb-10">
+          <h2 className="text-base font-semibold">按标签</h2>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            看你在哪类事上写得多、各对了几次。同样只记次数：哪类事你总看错，往下翻那几条看是怎么错的。
+          </p>
+          <ul className="mt-3 space-y-1 font-mono text-sm">
+            {byTag.map((t) => (
+              <li key={t.tag} className="flex flex-wrap gap-x-4">
+                <span className="min-w-24">#{t.tag}</span>
+                <span className="text-muted-foreground">写了 {t.total}</span>
+                <span>看对了 {t.hit}</span>
+                <span>看错了 {t.miss}</span>
+                <span className="text-muted-foreground">还在等 {t.pending}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {due.length > 0 && (
         <section className="mb-10">
@@ -93,7 +114,14 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
               {formatDueDate(j.created_at)} · {outcomeLabel(j.outcome)}
             </p>
             <p className="mt-1 text-sm">
-              {j.signal_id ? (
+              {j.question_id ? (
+                <Link
+                  href={`/signals/questions/${j.question_id}`}
+                  className="transition-colors duration-150 hover:text-primary"
+                >
+                  {j.news_title}
+                </Link>
+              ) : j.signal_id ? (
                 <Link
                   href={`/signals/${j.signal_id}`}
                   className="transition-colors duration-150 hover:text-primary"

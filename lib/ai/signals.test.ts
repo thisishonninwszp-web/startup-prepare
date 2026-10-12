@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, trimAnalogLead, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -510,5 +510,51 @@ describe("parseJapanChecks", () => {
     );
     expect(bad[0].check?.status).toBe("supported");
     expect(bad[0].japan).toBe(comparison.japan);
+  });
+});
+
+describe("问题驱动的解析", () => {
+  it("小问题不到 3 个不收；重复的、缺搜索词的丢掉", () => {
+    const sq = (question: string, query = "q") => ({ question, query, counterQuery: "c" });
+    expect(() => parseQuestionPlan({ subQuestions: [sq("一"), sq("二")] })).toThrow();
+    const plan = parseQuestionPlan({ subQuestions: [sq("日本人信不信主播"), sq("日本人信不信主播"), sq("没有搜索词", ""), sq("乐天为什么撤"), sq("TikTok 卖得怎样")] });
+    expect(plan.map((p) => p.question)).toEqual(["日本人信不信主播", "乐天为什么撤", "TikTok 卖得怎样"]);
+  });
+
+  it("关键因素：编号对不上的丢掉，没有依据的改成还没查到；写可能性数字就作废", () => {
+    const factors = parseKeyFactors(
+      {
+        keyFactors: [
+          { factor: "日本人信不信主播", now: "大多数人还在观望", watch: "TikTok Shop 成交翻倍", evidence: [1, 9] },
+          { factor: "配送成本", now: "很高", watch: "有人做到 30 分钟送达还赚钱", evidence: [] },
+        ],
+      },
+      2
+    );
+    expect(factors[0].evidence).toEqual([1]);
+    expect(factors[1].now).toBe("还没查到。");
+    expect(() =>
+      parseKeyFactors({ keyFactors: [{ factor: "因素", now: "有七成的可能会来", watch: "看数据", evidence: [1] }] }, 1)
+    ).toThrow();
+  });
+
+  it("历史参照带上像在哪、不像在哪", () => {
+    const h = parseSignalHistory({
+      analogs: [{ era: "modern", when: "2018 年", what: "PayPay 上线", after: "两年铺满日本", alike: "都来自中国的做法", unlike: "PayPay 有政府返点和巨额补贴", query: "PayPay 2018" }],
+      baseRate: "有大资本推的才铺得开。",
+      different: "这次没有补贴。",
+      books: [],
+    });
+    expect(h.analogs[0].alike).toBe("都来自中国的做法");
+    expect(h.analogs[0].unlike).toBe("PayPay 有政府返点和巨额补贴");
+  });
+});
+
+describe("trimAnalogLead", () => {
+  it("去掉「这次和……像在，」这类开头，正文留着", () => {
+    expect(trimAnalogLead("这次和中国当时的情况像在，都有新兴的即时配送模式")).toBe("都有新兴的即时配送模式");
+    expect(trimAnalogLead("这次和欧美当时不像在，日本城市密度更高")).toBe("日本城市密度更高");
+    expect(trimAnalogLead("都来自中国的做法")).toBe("都来自中国的做法");
+    expect(trimAnalogLead("  ")).toBeUndefined();
   });
 });

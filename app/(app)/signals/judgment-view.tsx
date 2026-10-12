@@ -27,6 +27,7 @@ export function JudgmentView({ judgment, showQuestion = true }: { judgment: Judg
       <p className="mt-2 font-mono text-xs text-muted-foreground">
         {formatDueDate(judgment.due_at)} 对账{confidence ? ` · ${confidence}` : ""}
         {judgment.outcome !== "pending" ? ` · ${outcomeLabel(judgment.outcome)}` : ""}
+        {judgment.tags.length > 0 ? ` · ${judgment.tags.map((t) => `#${t}`).join(" ")}` : ""}
       </p>
       {judgment.note && <p className="mt-1 text-sm leading-7">后来：{judgment.note}</p>}
 

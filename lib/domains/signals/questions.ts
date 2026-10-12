@@ -1,0 +1,207 @@
+import { supabaseAdmin } from "@/lib/supabase";
+import {
+  analyzeKeyFactors,
+  extractQuestionEvidence,
+  planQuestionResearch,
+  type KeyFactor,
+  type QuestionInput,
+  type StepEvidence,
+} from "@/lib/ai";
+import { tavilySearch } from "@/lib/external";
+import { researchHistory } from "./history";
+import type { QuestionResearch, QuestionView, SignalQuestion, SubQuestionResult } from "./questions-shared";
+
+export * from "./questions-shared";
+
+/**
+ * 问题驱动：现在是报告问你，这里是你问报告。
+ * 他手上常驻几个自己的问题，AI 围绕这几个问题查证据；他隔几天看一次，更新自己的看法。
+ */
+
+const MAX_QUESTION_LENGTH = 200;
+const MAX_TEXT_LENGTH = 500;
+/** 每个小问题正反两个方向各搜几条。 */
+const SEARCH_RESULTS_PER_SIDE = 3;
+
+const QUESTION_COLUMNS = "id, question, criterion, research, researched_at, created_at";
+
+/** 迁移 059 没跑时返回 "missing-schema"。 */
+export async function listQuestions(userId: string): Promise<SignalQuestion[] | "missing-schema"> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_questions")
+    .select(QUESTION_COLUMNS)
+    .eq("user_id", userId)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (/signal_questions/.test(error.message)) return "missing-schema";
+    throw new Error(error.message);
+  }
+  const ids = (data ?? []).map((q) => q.id as string);
+  const views = ids.length > 0 ? await loadViews(ids) : new Map<string, QuestionView[]>();
+  return (data ?? []).map((q) => toQuestion(q, views.get(q.id as string) ?? []));
+}
+
+export async function getQuestion(userId: string, id: string): Promise<SignalQuestion | null | "missing-schema"> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_questions")
+    .select(QUESTION_COLUMNS)
+    .eq("id", id)
+    .eq("user_id", userId)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (error) {
+    if (/signal_questions/.test(error.message)) return "missing-schema";
+    throw new Error(error.message);
+  }
+  if (!data) return null;
+  const views = await loadViews([id]);
+  return toQuestion(data, views.get(id) ?? []);
+}
+
+async function loadViews(questionIds: string[]): Promise<Map<string, QuestionView[]>> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_question_views")
+    .select("id, question_id, view, reason, created_at")
+    .in("question_id", questionIds)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const map = new Map<string, QuestionView[]>();
+  for (const r of data ?? []) {
+    const list = map.get(r.question_id as string) ?? [];
+    list.push({ id: r.id as string, view: r.view as string, reason: r.reason as string, created_at: r.created_at as string });
+    map.set(r.question_id as string, list);
+  }
+  return map;
+}
+
+function toQuestion(row: Record<string, unknown>, views: QuestionView[]): SignalQuestion {
+  return {
+    id: row.id as string,
+    question: row.question as string,
+    criterion: (row.criterion as string) ?? "",
+    research: (row.research as QuestionResearch | null) ?? null,
+    researched_at: (row.researched_at as string | null) ?? null,
+    created_at: row.created_at as string,
+    views,
+  };
+}
+
+export async function createQuestion(userId: string, question: string, criterion: string): Promise<string> {
+  const q = question.trim().slice(0, MAX_QUESTION_LENGTH);
+  if (q.length < 4) throw new Error("写一个完整的问题");
+  const { data, error } = await supabaseAdmin
+    .from("signal_questions")
+    .insert({ user_id: userId, question: q, criterion: criterion.trim().slice(0, MAX_TEXT_LENGTH) })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
+}
+
+export async function updateCriterion(userId: string, id: string, criterion: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("signal_questions")
+    .update({ criterion: criterion.trim().slice(0, MAX_TEXT_LENGTH) })
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+/** 写下或更新看法：只增不改，旧的看法留着。 */
+export async function addView(userId: string, questionId: string, view: string, reason: string): Promise<void> {
+  const v = view.trim().slice(0, MAX_TEXT_LENGTH);
+  if (v.length < 2) throw new Error("写一句你的看法");
+  const question = await getQuestion(userId, questionId);
+  if (!question || question === "missing-schema") throw new Error("找不到这个问题");
+  if (question.views[0]?.view === v) throw new Error("和现在的看法一样，没有改");
+  const { error } = await supabaseAdmin.from("signal_question_views").insert({
+    question_id: questionId,
+    user_id: userId,
+    view: v,
+    reason: reason.trim().slice(0, MAX_TEXT_LENGTH),
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** 不追了：收起来，不删（押进账本的判断还连着它）。 */
+export async function archiveQuestion(userId: string, id: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("signal_questions")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+async function searchSide(query: string) {
+  if (!query) return [];
+  try {
+    return (await tavilySearch(query, SEARCH_RESULTS_PER_SIDE)).filter((r) => r.url && r.content);
+  } catch {
+    return [];
+  }
+}
+
+/** 一个小问题：正反两个方向各搜一次 → 抽事实（来源和摘录由代码核对）。失败就是空证据，不拖垮整轮。 */
+async function researchSubQuestion(
+  plan: { question: string; query: string; counterQuery: string },
+  view: string
+): Promise<SubQuestionResult> {
+  try {
+    const [pro, con] = await Promise.all([searchSide(plan.query), searchSide(plan.counterQuery)]);
+    const seen = new Set<string>();
+    const sources = [...pro, ...con].filter((r) => !seen.has(r.url) && seen.add(r.url));
+    return { question: plan.question, evidence: await extractQuestionEvidence(plan.question, view, sources) };
+  } catch (e) {
+    console.error("sub-question research failed", e);
+    return { question: plan.question, evidence: [] };
+  }
+}
+
+/**
+ * 查一轮：拆小问题 → 每个小问题正反各搜、抽事实 → 根据事实列关键因素；历史参照同时跑。
+ * 整轮覆盖上一轮。查的时候照着他现在的看法分支持/反对。
+ */
+export async function researchQuestion(userId: string, id: string): Promise<QuestionResearch> {
+  const question = await getQuestion(userId, id);
+  if (question === "missing-schema") throw new Error("迁移 059 还没跑");
+  if (!question) throw new Error("找不到这个问题");
+  const view = question.views[0]?.view ?? "";
+  const input: QuestionInput = { question: question.question, criterion: question.criterion, view };
+
+  const [subQuestions, history] = await Promise.all([
+    (async () => {
+      const plan = await planQuestionResearch(input);
+      return Promise.all(plan.map((p) => researchSubQuestion(p, view)));
+    })(),
+    researchHistory({
+      title: question.question,
+      summary: [question.criterion && `怎么才算：${question.criterion}`, view && `他现在的看法：${view}`]
+        .filter(Boolean)
+        .join("；"),
+      body: "",
+      subject: "question",
+    }).catch((e) => {
+      console.error("question history failed", e);
+      return null;
+    }),
+  ]);
+
+  const facts = subQuestions.flatMap((s) => s.evidence).map((e: StepEvidence) => e.fact);
+  let keyFactors: KeyFactor[] = [];
+  try {
+    keyFactors = await analyzeKeyFactors({ ...input, facts });
+  } catch (e) {
+    console.error("key factors failed", e);
+  }
+
+  const research: QuestionResearch = { subQuestions, keyFactors, history, basedOnView: view };
+  const { error } = await supabaseAdmin
+    .from("signal_questions")
+    .update({ research, researched_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return research;
+}

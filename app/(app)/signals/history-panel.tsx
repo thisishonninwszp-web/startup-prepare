@@ -7,7 +7,7 @@ import type { StoredHistory } from "@/lib/domains/signals/analysis";
 import { ensureHistoryAction } from "./actions";
 import { SourceCheckView } from "./check-view";
 
-function HistoryView({ history }: { history: StoredHistory }) {
+export function HistoryView({ history }: { history: StoredHistory }) {
   return (
     <div className="space-y-6">
       <div>
@@ -29,6 +29,22 @@ function HistoryView({ history }: { history: StoredHistory }) {
                 <span className="text-muted-foreground">后来：</span>
                 {a.after}
               </p>
+              {(a.alike || a.unlike) && (
+                <dl className="mt-1 space-y-1 text-sm leading-7">
+                  {a.alike && (
+                    <div>
+                      <dt className="inline text-muted-foreground">像的地方：</dt>
+                      <dd className="inline">{a.alike}</dd>
+                    </div>
+                  )}
+                  {a.unlike && (
+                    <div>
+                      <dt className="inline text-muted-foreground">不像的地方：</dt>
+                      <dd className="inline">{a.unlike}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
               <SourceCheckView
                 check={a.check}
                 searchQuery={`${a.when} ${a.what}`}
