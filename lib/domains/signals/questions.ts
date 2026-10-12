@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   analyzeKeyFactors,
+  expandUserAnalog,
   extractQuestionEvidence,
   planQuestionResearch,
   type KeyFactor,
@@ -8,8 +9,14 @@ import {
   type StepEvidence,
 } from "@/lib/ai";
 import { tavilySearch } from "@/lib/external";
-import { researchHistory } from "./history";
-import type { QuestionResearch, QuestionView, SignalQuestion, SubQuestionResult } from "./questions-shared";
+import { researchHistory, verifyAnalog } from "./history";
+import {
+  MAX_USER_ANALOGS,
+  type QuestionResearch,
+  type QuestionView,
+  type SignalQuestion,
+  type SubQuestionResult,
+} from "./questions-shared";
 
 export * from "./questions-shared";
 
@@ -196,7 +203,14 @@ export async function researchQuestion(userId: string, id: string): Promise<Ques
     console.error("key factors failed", e);
   }
 
-  const research: QuestionResearch = { subQuestions, keyFactors, history, basedOnView: view };
+  // 他自己想到的类比不是这一轮查出来的，原样带过去
+  const research: QuestionResearch = {
+    subQuestions,
+    keyFactors,
+    history,
+    basedOnView: view,
+    userAnalogs: question.research?.userAnalogs,
+  };
   const { error } = await supabaseAdmin
     .from("signal_questions")
     .update({ research, researched_at: new Date().toISOString() })
@@ -204,4 +218,41 @@ export async function researchQuestion(userId: string, id: string): Promise<Ques
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
   return research;
+}
+
+/**
+ * 他自己想到的类比：AI 展开成一条完整的参照（只展开他说的那件事），再走同一套上网核实。
+ * 要先查过一轮（类比挂在这一轮的结果上）。
+ */
+export async function addUserAnalog(userId: string, id: string, userText: string): Promise<void> {
+  const text = userText.trim().slice(0, 200);
+  if (text.length < 2) throw new Error("写一下是哪一次的事");
+  const question = await getQuestion(userId, id);
+  if (question === "missing-schema") throw new Error("迁移 059 还没跑");
+  if (!question) throw new Error("找不到这个问题");
+  if (!question.research) throw new Error("先让 AI 查一轮，再加自己的类比");
+  const existing = question.research.userAnalogs ?? [];
+  if (existing.length >= MAX_USER_ANALOGS) throw new Error(`最多放 ${MAX_USER_ANALOGS} 条自己的类比`);
+
+  const analog = await verifyAnalog(await expandUserAnalog({ question: question.question, userText: text }));
+  const research: QuestionResearch = { ...question.research, userAnalogs: [...existing, analog] };
+  const { error } = await supabaseAdmin
+    .from("signal_questions")
+    .update({ research })
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+/** 删掉一条自己想到的类比。 */
+export async function removeUserAnalog(userId: string, id: string, index: number): Promise<void> {
+  const question = await getQuestion(userId, id);
+  if (!question || question === "missing-schema" || !question.research) throw new Error("找不到这个问题");
+  const userAnalogs = (question.research.userAnalogs ?? []).filter((_, i) => i !== index);
+  const { error } = await supabaseAdmin
+    .from("signal_questions")
+    .update({ research: { ...question.research, userAnalogs } })
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
 }

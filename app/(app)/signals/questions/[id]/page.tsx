@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { formatTokyoTime } from "@/lib/domains/signals/format";
 import { knownTags, listJudgments, listQuestionBets } from "@/lib/domains/signals/practice";
 import { articleOutline, flattenEvidence, getQuestion, questionBetQuestion } from "@/lib/domains/signals/questions";
-import { HistoryView } from "../../history-panel";
+import { AnalogItem, HistoryView } from "../../history-panel";
 import { EvidenceList } from "../../inference-tree";
 import { JudgmentForm } from "../../judgment-forms";
 import { JudgmentView } from "../../judgment-view";
@@ -14,7 +14,9 @@ import {
   ArchiveQuestionButton,
   CriterionForm,
   OutlinePanel,
+  RemoveUserAnalogButton,
   ResearchButton,
+  UserAnalogForm,
   ViewForm,
 } from "../question-forms";
 
@@ -190,6 +192,27 @@ export default async function QuestionDetailPage({ params }: { params: { id: str
                 <HistoryView history={research.history} />
               </div>
             )}
+
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground">你想到的类比</h3>
+              <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                你脑子里冒出来的「这跟那次很像」，往往比 AI 找的更贴。写一句是哪一次，AI 展开、上网核实，再写出像和不像。
+                它不算进上面的「这类事通常会怎样」，免得你的直觉替自己作证。
+              </p>
+              {(research.userAnalogs ?? []).length > 0 && (
+                <ol className="mt-3 space-y-4">
+                  {(research.userAnalogs ?? []).map((a, i) => (
+                    <li key={i} className="border-l-2 border-primary pl-3">
+                      <AnalogItem analog={a} />
+                      <RemoveUserAnalogButton questionId={question.id} index={i} />
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <div className="mt-3">
+                <UserAnalogForm questionId={question.id} />
+              </div>
+            </div>
           </div>
         )}
       </section>

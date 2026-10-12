@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, trimAnalogLead, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, trimAnalogLead, whenSpan, parseUserAnalog, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -556,5 +556,38 @@ describe("trimAnalogLead", () => {
     expect(trimAnalogLead("这次和欧美当时不像在，日本城市密度更高")).toBe("日本城市密度更高");
     expect(trimAnalogLead("都来自中国的做法")).toBe("都来自中国的做法");
     expect(trimAnalogLead("  ")).toBeUndefined();
+  });
+});
+
+describe("历史参照必须是一件具体的事", () => {
+  it("whenSpan：具体年份是 0，区间算跨度，年代算 10，没有年份算无穷大", () => {
+    expect(whenSpan("2018 年 10 月")).toBe(0);
+    expect(whenSpan("2015–2018 年")).toBe(3);
+    expect(whenSpan("2010 年代后期")).toBe(10);
+    expect(whenSpan("1990s")).toBe(10);
+    expect(whenSpan("明治初期")).toBe(Infinity);
+  });
+
+  it("跨度太大、主语含糊的近现代参照丢掉；古代的不管；一条近现代都不剩就作废", () => {
+    const base = { baseRate: "b", different: "d", books: [] };
+    const a = (when: string, what: string, era = "modern") => ({ era, when, what, after: "后来怎样", unlike: "不一样的地方" });
+    const h = parseSignalHistory({
+      ...base,
+      analogs: [
+        a("2018 年", "PayPay 上线返现"),
+        a("2010 年代", "中国移动支付普及"),
+        a("2016 年", "一些中国游戏公司进入日本"),
+        a("北宋", "王安石变法", "ancient"),
+      ],
+    });
+    expect(h.analogs.map((x) => x.what)).toEqual(["PayPay 上线返现", "王安石变法"]);
+    expect(() => parseSignalHistory({ ...base, analogs: [a("2000 年代初期", "便利店普及")] })).toThrow();
+  });
+
+  it("自己想到的类比：标成 user，不像的地方不许空着", () => {
+    const u = parseUserAnalog({ era: "modern", when: "2018 年 10 月", what: "PayPay 上线", after: "两年铺开", alike: "都是新支付方式", unlike: "PayPay 有巨额返现", query: "PayPay 2018", altQuery: "PayPay 2018 campaign" });
+    expect(u.source).toBe("user");
+    expect(u.altQuery).toBe("PayPay 2018 campaign");
+    expect(() => parseUserAnalog({ when: "2018 年", what: "PayPay 上线", after: "两年铺开", unlike: "" })).toThrow();
   });
 });

@@ -1,4 +1,4 @@
-import type { KeyFactor, StepEvidence } from "@/lib/ai/signals";
+import type { HistoricalAnalog, KeyFactor, StepEvidence } from "@/lib/ai/signals";
 import type { StoredHistory } from "./analysis";
 import { QUESTION_BET_PREFIX } from "./practice-shared";
 
@@ -23,7 +23,12 @@ export type QuestionResearch = {
   history: StoredHistory | null;
   /** 这一轮是照着哪一版看法查的（证据的支持/反对都是相对它说的）。没写看法时为空。 */
   basedOnView: string;
+  /** 他自己想到的类比（AI 展开并核实过）。重查一轮时原样带过去；不进基准率。 */
+  userAnalogs?: HistoricalAnalog[];
 };
+
+/** 一个问题最多存几条自己想到的类比。 */
+export const MAX_USER_ANALOGS = 5;
 
 export type QuestionView = {
   id: string;
@@ -97,9 +102,10 @@ export function articleOutline(q: SignalQuestion): string {
     parts.push("## 出现什么情况，我会改主意", "", ...research.keyFactors.map((f) => `- ${f.watch}`), "");
   }
 
-  if (research?.history && research.history.analogs.length > 0) {
+  const analogs = [...(research?.userAnalogs ?? []), ...(research?.history?.analogs ?? [])];
+  if (analogs.length > 0) {
     parts.push("## 历史上类似的事", "");
-    for (const a of research.history.analogs) {
+    for (const a of analogs) {
       parts.push(`- ${a.when}：${a.what} 后来：${a.after}`);
       if (a.alike) parts.push(`  - 像的地方：${a.alike}`);
       if (a.unlike) parts.push(`  - 不像的地方：${a.unlike}`);

@@ -15,9 +15,11 @@ import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
 import {
+  addUserAnalog,
   addView,
   archiveQuestion,
   createQuestion,
+  removeUserAnalog,
   researchQuestion,
   updateCriterion,
 } from "@/lib/domains/signals/questions";
@@ -380,5 +382,28 @@ export async function archiveQuestionAction(questionId: string): Promise<ActionR
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没收起来") };
+  }
+}
+
+/** 自己想到的类比：AI 展开、上网核实，挂在这个问题上。 */
+export async function addUserAnalogAction(questionId: string, text: string): Promise<ActionResult> {
+  const userId = await requireUserId();
+  try {
+    await addUserAnalog(userId, questionId, text);
+    revalidatePath(`/signals/questions/${questionId}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这条类比没加上") };
+  }
+}
+
+export async function removeUserAnalogAction(questionId: string, index: number): Promise<ActionResult> {
+  const userId = await requireUserId();
+  try {
+    await removeUserAnalog(userId, questionId, index);
+    revalidatePath(`/signals/questions/${questionId}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没删掉") };
   }
 }

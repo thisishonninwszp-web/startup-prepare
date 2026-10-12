@@ -878,6 +878,10 @@ export type HistoricalAnalog = {
   unlike?: string;
   /** 用来上网核实这一次的搜索词（具体到时间和对象）。 */
   query?: string;
+  /** 换一种语言的搜索词：一种语言搜不到能逐字核对的原文时，另一种常能搜到。 */
+  altQuery?: string;
+  /** user：他自己想到的类比（问题驱动），AI 只负责展开和核实，不进基准率。 */
+  source?: "user";
   /** 上网核实的结果；早期缓存的数据没有。 */
   check?: AnalogCheck;
 };
@@ -921,10 +925,16 @@ const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得
      中国近现代可以想想：改革开放与价格双轨制、90 年代国企改革与下岗潮、2015 年股灾、房地产调控等。
    - 古代的事：era 写 "ancient"，最多 1 次，只在真的能说明"人和制度会怎么反应"时才给。
      比如王安石变法（好政策在执行中走样）、宋代交子滥发、明代白银流入与断流。
+   每一次都必须是**一件具体的事**，不是一类现象：
+   - 有一个具名的主体（哪家公司、哪项政策、哪个产品）；
+   - 有一个具体的年份（近现代的事不许写"2010 年代""2000 年代初期"这种十年一档的说法，也不许写跨度超过 3 年的区间）；
+   - 有一个看得见的结果（用户数、价格、倒闭、撤退、法案通过）。
+   好的例子："2018 年 PayPay 上线，靠 100 亿日元返现，两年内注册用户破 3000 万。"
+   不好的例子："2010 年代中国移动支付快速普及，周边国家开始模仿。"（没有主体、没有具体年份，搜不到能核对的原文）
    每次写：
    - era："modern" 或 "ancient"。
-   - when：年份或时期。
-   - what：当时发生了什么，一到两句。
+   - when：具体年份或年月，比如"2018 年 10 月"。
+   - what：当时发生了什么，一到两句，点出主体的名字。
    - after：之后几个月到几年里实际怎样了，一到两句。这是最重要的部分。
    - alike：这次和那次像在哪，一句话，要具体（同样是谁、在什么处境下、做了什么）。
    - unlike：这次和那次不像在哪，一句话 —— 挑最可能让结果不一样的那个差别。
@@ -932,6 +942,7 @@ const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得
      alike 和 unlike 都直接写那一点，不要用"这次和那次像在""不像在"开头（页面上已经有"像的地方""不像的地方"的标题）。
    - query：用来上网核实这一次的搜索词，具体到时间和对象，不要写成一句话。
      日本的事用日文（如 "日銀 2006年7月 ゼロ金利解除 その後"），中国的事用中文，其他用英文。
+   - altQuery：同一件事换一种语言的搜索词：日本和中国的事用英文，欧美的事用日文。
 2. baseRate：只用近现代（modern）的那几次归纳"这类事通常会怎样"，两到三句。古代的事不能拿来当基准。几次结果不一样就直说不一样，以及取决于什么。
 3. different：这次和过去比，有什么明显不同，可能让结果不一样，一到两句。
 4. books：0 到 2 本能帮他看懂这类事的书。
@@ -946,13 +957,29 @@ const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得
 - 找不到真正相似的事，就只给 1 个最接近的，并在 baseRate 里说明参照性有限。
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"analogs":[{"era":"modern","when":"…","what":"…","after":"…","alike":"…","unlike":"…","query":"…"}],"baseRate":"…","different":"…","books":[{"title":"…","originalTitle":"…","author":"…","why":"…"}]}`;
+只输出 JSON：{"analogs":[{"era":"modern","when":"…","what":"…","after":"…","alike":"…","unlike":"…","query":"…","altQuery":"…"}],"baseRate":"…","different":"…","books":[{"title":"…","originalTitle":"…","author":"…","why":"…"}]}`;
 
 /** 去掉"这次和中国当时的情况像在，"这类套话开头（页面上已经有"像的地方"标题）。空的返回 undefined。 */
 export function trimAnalogLead(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const text = raw.trim().replace(/^这次和[^，,：:]{0,20}?(不像|像)(的地方)?(在|是)?[，,：:]\s*/, "");
   return text || undefined;
+}
+
+/** 主语含糊（"一些视频网站""不少企业"）的参照说的是一类现象，搜不到能核对的原文。 */
+const VAGUE_SUBJECT = /一些|某些|不少|许多|各种|若干/;
+
+/** 近现代参照的时间最多跨几年。 */
+const MAX_ANALOG_SPAN_YEARS = 3;
+
+/**
+ * 一个时间写法跨了几年："2018 年 10 月" → 0，"2015–2018 年" → 3，"2010 年代" → 10，没有四位年份 → 无穷大。
+ */
+export function whenSpan(when: string): number {
+  if (/\d{4}\s*年代|\d0s\b/.test(when)) return 10;
+  const years = Array.from(when.matchAll(/(1[0-9]|20)\d{2}/g)).map((m) => Number(m[0]));
+  if (years.length === 0) return Infinity;
+  return Math.max(...years) - Math.min(...years);
 }
 
 export function parseSignalHistory(value: unknown): SignalHistory {
@@ -969,7 +996,10 @@ export function parseSignalHistory(value: unknown): SignalHistory {
       alike: trimAnalogLead(a.alike),
       unlike: trimAnalogLead(a.unlike),
       query: typeof a.query === "string" && a.query.trim() ? a.query.trim().slice(0, 120) : undefined,
+      altQuery: typeof a.altQuery === "string" && a.altQuery.trim() ? a.altQuery.trim().slice(0, 120) : undefined,
     }))
+    // 近现代的必须是具体某一年的一件事："2010 年代""2015–2018 年"这种一整类现象搜不到能核对的原文，丢掉
+    .filter((a) => a.era === "ancient" || (whenSpan(a.when) <= MAX_ANALOG_SPAN_YEARS && !VAGUE_SUBJECT.test(a.what)))
     // 古代的最多留一条，排在最后
     .filter((a, i, all) => a.era === "modern" || all.findIndex((x) => x.era === "ancient") === i)
     .sort((a, b) => (a.era === b.era ? 0 : a.era === "modern" ? -1 : 1))
@@ -2219,5 +2249,63 @@ export async function analyzeKeyFactors(input: QuestionInput & { facts: string[]
       },
     }),
     (value) => parseKeyFactors(value, input.facts.length)
+  );
+}
+
+// ── 他自己想到的类比 ───────────────────────────────────────────────────────
+
+const USER_ANALOG_PROMPT = `他在追一个问题，自己想到了一个历史上像的事，只写了一句话。你把这一句展开成一条完整的参照，好让代码上网核实。
+
+规则：
+- 只展开他说的那一件事，不许换成另一件你觉得更像的事。他说得含糊（比如只写了"PayPay"），就按最常被提到的那一次理解。
+- when：具体年份或年月。
+- what：当时发生了什么，一到两句，点出主体的名字。
+- after：之后几个月到几年里实际怎样了，一到两句。记不清就少写，绝不编数字。
+- alike：这件事和他的问题像在哪，一句话，直接写那一点。
+- unlike：不像在哪，一句话 —— 挑最可能让结果不一样的那个差别。不许空着，不许写"时代不同"这种空话。
+- query：核实这件事的搜索词，具体到时间和对象。日本的事用日文，中国的事用中文，其他用英文。
+- altQuery：同一件事换一种语言的搜索词：日本和中国的事用英文，欧美的事用日文。
+- era：1900 年以后的写 "modern"，更早的写 "ancient"。
+一律用简体中文写（搜索词除外）。
+
+只输出 JSON：{"era":"modern","when":"…","what":"…","after":"…","alike":"…","unlike":"…","query":"…","altQuery":"…"}`;
+
+export function parseUserAnalog(value: unknown): HistoricalAnalog {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const a = value as Record<string, unknown>;
+  const analog: HistoricalAnalog = {
+    era: a.era === "ancient" ? "ancient" : "modern",
+    when: requireString(a, "when"),
+    what: requireString(a, "what"),
+    after: requireString(a, "after"),
+    alike: trimAnalogLead(a.alike),
+    unlike: trimAnalogLead(a.unlike),
+    query: typeof a.query === "string" && a.query.trim() ? a.query.trim().slice(0, 120) : undefined,
+    altQuery: typeof a.altQuery === "string" && a.altQuery.trim() ? a.altQuery.trim().slice(0, 120) : undefined,
+    source: "user",
+  };
+  if (!analog.unlike) throw new Error("缺少不像的地方");
+  const prose = [analog.what, analog.after, analog.alike ?? "", analog.unlike].filter(Boolean);
+  assertNoBanned(prose);
+  assertChineseAllowingNames(prose);
+  return analog;
+}
+
+export async function expandUserAnalog(input: { question: string; userText: string }): Promise<HistoricalAnalog> {
+  return executeAiJson(
+    { operation: "user_analog", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        `他的问题：${input.question}\n他想到的类比：${input.userText}` +
+        (attempt === 1 ? "\n\n上一次输出没通过校验：每个字段都要有，unlike 不许空着，用中文写。" : ""),
+      config: {
+        systemInstruction: USER_ANALOG_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1000,
+      },
+    }),
+    parseUserAnalog
   );
 }

@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  addUserAnalogAction,
   addViewAction,
   archiveQuestionAction,
   createQuestionAction,
+  removeUserAnalogAction,
   researchQuestionAction,
   updateCriterionAction,
 } from "../actions";
@@ -234,5 +236,61 @@ export function OutlinePanel({ outline }: { outline: string }) {
         {copied ? "复制好了" : "复制"}
       </Button>
     </div>
+  );
+}
+
+/** 你想到哪一次跟这个像：一句话就行，AI 展开、上网核实，写出像和不像。 */
+export function UserAnalogForm({ questionId }: { questionId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="flex flex-col gap-2 sm:flex-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        startTransition(async () => {
+          const result = await addUserAnalogAction(questionId, text);
+          if (result.ok) {
+            setText("");
+            setError(null);
+            router.refresh();
+          } else setError(result.message);
+        });
+      }}
+    >
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="你想到哪一次跟这个像？比如：PayPay 2018 年铺开"
+        maxLength={200}
+      />
+      <Button type="submit" size="sm" className="h-10 shrink-0 sm:h-9" disabled={pending || text.trim().length < 2}>
+        {pending ? "在展开、上网核实…" : "加上，去核实"}
+      </Button>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </form>
+  );
+}
+
+export function RemoveUserAnalogButton({ questionId, index }: { questionId: string; index: number }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-8 px-2 text-xs"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const result = await removeUserAnalogAction(questionId, index);
+          if (result.ok) router.refresh();
+        })
+      }
+    >
+      {pending ? "删除中…" : "删掉这条"}
+    </Button>
   );
 }

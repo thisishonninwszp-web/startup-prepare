@@ -4,6 +4,7 @@ import { tavilySearch } from "@/lib/external";
 import { getSignalDetail, type StoredHistory } from "./analysis";
 import { fetchArticleBody } from "./article";
 import { verifyBooks } from "./books";
+import { mergeSources } from "./sources";
 
 /**
  * 历史上类似的事：第一次点开时生成，存进 external_signals.history，之后直接读。
@@ -13,16 +14,36 @@ import { verifyBooks } from "./books";
  * 所以先让它提参照，再逐条上网核实：查到出处的附原文；和它记的不一样的按原文改正、写明哪里不一样；
  * 没查到的标"凭记忆写的"。"这类事通常会怎样"只用查到出处的那几次归纳。
  * 每一次参照都写"像在哪、不像在哪"（《Thinking in Time》的做法）：错误的类比几乎都错在不像的地方。
+ * 每一次都用两种语言各搜一次：日本、中国的事只用本国语言搜，常常搜不到能逐字核对的原文。
  */
 
-const SEARCH_RESULTS_PER_ANALOG = 3;
+const SEARCH_RESULTS_PER_QUERY = 3;
+/** 两种语言的结果合起来最多交给核实几篇。 */
+const MAX_SOURCES_PER_ANALOG = 5;
 
-async function searchAnalog(analog: HistoricalAnalog) {
+async function searchOne(query: string) {
   try {
-    const results = await tavilySearch(analog.query || `${analog.when} ${analog.what}`, SEARCH_RESULTS_PER_ANALOG);
-    return results.filter((r) => r.url && r.content);
+    return await tavilySearch(query, SEARCH_RESULTS_PER_QUERY);
   } catch {
     return [];
+  }
+}
+
+async function searchAnalog(analog: HistoricalAnalog) {
+  const primary = analog.query || `${analog.when} ${analog.what}`;
+  const groups = await Promise.all([searchOne(primary), analog.altQuery ? searchOne(analog.altQuery) : Promise.resolve([])]);
+  return mergeSources(groups, MAX_SOURCES_PER_ANALOG);
+}
+
+/** 核实单独一条参照（他自己想到的类比）。核实失败就标没查到出处，不冒充核实过。 */
+export async function verifyAnalog(analog: HistoricalAnalog): Promise<HistoricalAnalog> {
+  try {
+    const sources = await searchAnalog(analog);
+    const { analogs } = await checkAnalogs([{ analog, sources }]);
+    return { ...analogs[0], source: analog.source };
+  } catch (e) {
+    console.error("analog check failed", e);
+    return { ...analog, check: { status: "unverified", basis: [] } };
   }
 }
 

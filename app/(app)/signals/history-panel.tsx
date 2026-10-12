@@ -3,9 +3,49 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { HistoricalAnalog } from "@/lib/ai/signals";
 import type { StoredHistory } from "@/lib/domains/signals/analysis";
 import { ensureHistoryAction } from "./actions";
 import { SourceCheckView } from "./check-view";
+
+/** 一次参照：什么时候、发生了什么、后来怎样、像和不像、核实结果。历史参照和"你想到的类比"共用。 */
+export function AnalogItem({ analog: a }: { analog: HistoricalAnalog }) {
+  return (
+    <>
+      {a.era === "ancient" && <p className="mb-1 text-xs text-muted-foreground">古代的启发 · 只是类比，不算基准</p>}
+      <p className="font-mono text-xs text-muted-foreground">{a.when}</p>
+      <p className="text-base leading-8">{a.what}</p>
+      <p className="text-base leading-8">
+        <span className="text-muted-foreground">后来：</span>
+        {a.after}
+      </p>
+      {(a.alike || a.unlike) && (
+        <dl className="mt-1 space-y-1 text-sm leading-7">
+          {a.alike && (
+            <div>
+              <dt className="inline text-muted-foreground">像的地方：</dt>
+              <dd className="inline">{a.alike}</dd>
+            </div>
+          )}
+          {a.unlike && (
+            <div>
+              <dt className="inline text-muted-foreground">不像的地方：</dt>
+              <dd className="inline">{a.unlike}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+      <SourceCheckView
+        check={a.check}
+        searchQuery={a.query || `${a.when} ${a.what}`}
+        unverifiedText={
+          a.source === "user" ? "没查到出处。AI 展开时补的细节（年份、后来怎样）可能不准。" : "没查到出处，这一条是 AI 凭记忆写的。"
+        }
+        uncheckedText="AI 也会记错。"
+      />
+    </>
+  );
+}
 
 export function HistoryView({ history }: { history: StoredHistory }) {
   return (
@@ -20,37 +60,7 @@ export function HistoryView({ history }: { history: StoredHistory }) {
         <ol className="mt-2 space-y-4">
           {history.analogs.map((a, i) => (
             <li key={i} className="border-l-2 border-border pl-3">
-              {a.era === "ancient" && (
-                <p className="mb-1 text-xs text-muted-foreground">古代的启发 · 只是类比，不算基准</p>
-              )}
-              <p className="font-mono text-xs text-muted-foreground">{a.when}</p>
-              <p className="text-base leading-8">{a.what}</p>
-              <p className="text-base leading-8">
-                <span className="text-muted-foreground">后来：</span>
-                {a.after}
-              </p>
-              {(a.alike || a.unlike) && (
-                <dl className="mt-1 space-y-1 text-sm leading-7">
-                  {a.alike && (
-                    <div>
-                      <dt className="inline text-muted-foreground">像的地方：</dt>
-                      <dd className="inline">{a.alike}</dd>
-                    </div>
-                  )}
-                  {a.unlike && (
-                    <div>
-                      <dt className="inline text-muted-foreground">不像的地方：</dt>
-                      <dd className="inline">{a.unlike}</dd>
-                    </div>
-                  )}
-                </dl>
-              )}
-              <SourceCheckView
-                check={a.check}
-                searchQuery={`${a.when} ${a.what}`}
-                unverifiedText="没查到出处，这一条是 AI 凭记忆写的。"
-                uncheckedText="AI 也会记错。"
-              />
+              <AnalogItem analog={a} />
             </li>
           ))}
         </ol>
