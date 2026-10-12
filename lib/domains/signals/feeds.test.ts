@@ -21,7 +21,7 @@ describe("signalKindOf", () => {
 describe("balanceBySource", () => {
   it("各源轮流取，发稿多的源挤不掉发稿少的", () => {
     const rows = [
-      ...Array.from({ length: 6 }, (_, i) => ({ source: "news:yahoo_top", id: `y${i}` })),
+      ...Array.from({ length: 6 }, (_, i) => ({ source: "news:yahoo_domestic", id: `y${i}` })),
       { source: "news:tmtpost", id: "t0" },
       { source: "voice:tsr", id: "s0" },
     ];
@@ -42,7 +42,7 @@ describe("isChinaSource", () => {
   it("只认中文媒体", () => {
     expect(isChinaSource("news:tmtpost")).toBe(true);
     expect(isChinaSource("news:gnews_36kr")).toBe(true);
-    expect(isChinaSource("news:yahoo_top")).toBe(false);
+    expect(isChinaSource("news:yahoo_domestic")).toBe(false);
   });
 });
 

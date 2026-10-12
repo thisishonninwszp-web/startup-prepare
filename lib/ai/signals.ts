@@ -2,6 +2,7 @@ import { type ExternalSignal, type RealityCheckResult, type TavilyResult } from 
 import { FIRST_INQUIRY_QUESTION } from "./core";
 import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/lib/ai-gateway";
 import { MODEL, generateContent } from "./shared";
+import { TIER_VALUE } from "@/lib/domains/signals/inference-shared";
 
 // ---------------------------------------------------------------------------
 // 外部雷达（Phase D）：把 Tavily 检索结果嚼成对抗管线的原料（不做 feed、不排名）
@@ -477,7 +478,7 @@ const BRIEF_PROMPTS: Record<BriefKind, string> = {
 - 能看出"钱往哪里流、谁遇到了新麻烦、什么变便宜了"的事。
 - 众筹达成目标的报道（Makuake、CAMPFIRE）是"有人真掏钱"的证据：挑能看出一类新需求的产品，
   不挑粉丝应援、演出、游戏制作、文化财修缮这类靠情分筹钱的。
-不挑：单纯的事件、犯罪、八卦。
+不挑：单纯的事件、犯罪、八卦、体育比赛、娱乐明星、动漫游戏新作、天气。
 
 候选里标了"（中国）"的来自中文媒体。中国已经跑通、日本还没有的做法，往往几年后会来日本 ——
 这是读日文新闻看不到的东西。
@@ -1438,6 +1439,8 @@ const INFERENCE_PROMPT = `你帮一个人练"顺着一条消息往下推"。给�
 - 不写百分比、不写"概率为 X"、不写任何表示可能性的数字。只用上面五档。
 - 这几种情况要真的不一样（不同的人、不同的方向），不要同一件事换个说法。
 - 不重复链上已经出现过的结论，往前推，不要原地打转。
+- 每一步都要带进**新的人或新的机制**。只是把上一步换个说法、或者写它的同义后果（"门票卖得多 → 球队收入增加"），不算往下推，不许写。
+- 这一步要和整条链连起来看：不光接上最后一步，也要和新闻本身、链上前面每一步都对得上。前面某一步把范围限定了（"如果夺冠"），后面就不能当它一定发生。
 - 考虑幅度：小变化（比如利率只动 0.25 个百分点、一家公司的小动作）通常推不出大后果。
   幅度不够大、不足以导致下一步的，就标 "unlikely"，并在 why 里说清楚为什么幅度不够。
 ${SIGNAL_SHARED_RULES}
@@ -1526,7 +1529,16 @@ export async function inferNextSteps(input: {
  * 它几乎一律标"较可能"。Jev 只回档位分布、不生成文字，正好当裁判。
  * 页面只显示档位，不显示 Jev 的数字（原则 1：精确性偏误）；分布太平就标"拿不准"。
  */
-export type JudgedTier = { likelihood: Likelihood; unsure: boolean };
+/**
+ * p：在上一步成立的前提下的可能（五档分布按代表值折算），只拿来算整条链，不显示。
+ * restates：裁判认为这一步只是把上一步换个说法（"门票卖得多 → 收入增加"），算不上往下推。
+ */
+export type JudgedTier = { likelihood: Likelihood; unsure: boolean; p: number; restates: boolean };
+
+const RESTATE_CRITERIA = [
+  "带进了新的人或新的机制，真的往下推了一步",
+  "只是把上一步换个说法，或者是它不言自明的同义后果",
+];
 
 const TIER_CRITERIA = [
   "很可能：在前面这些都成立的情况下，这一步几乎一定会发生",
@@ -1553,7 +1565,13 @@ export function parseJudgedTiers(result: JevResult, count: number): JudgedTier[]
       return v;
     });
     const top = Math.max(...probs);
-    return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW };
+    const total = probs.reduce((a, b) => a + b, 0) || 1;
+    const p = probs.reduce((acc, v, level) => acc + (v / total) * TIER_VALUE[LIKELIHOOD_ORDER[level]], 0);
+    // 换说法这一问缺了就当不是（不因为它让整层判档作废）
+    const restate = result.answers[`restate_${i}`] as Record<string, unknown> | undefined;
+    const rp = restate?.probabilities as Record<string, unknown> | undefined;
+    const restates = typeof rp?.["1"] === "number" && typeof rp?.["0"] === "number" && (rp["1"] as number) > (rp["0"] as number);
+    return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW, p, restates };
   });
 }
 
@@ -1584,11 +1602,17 @@ export async function judgeInferenceSteps(input: {
     .join("\n");
 
   const questions: Record<string, JevQuestion> = {};
+  const parent = input.chain.length > 0 ? input.chain[input.chain.length - 1] : `新闻本身：${input.title}`;
   input.steps.forEach((s, i) => {
     questions[`step_${i}`] = {
       type: "score",
       instructions: `在新闻和前面那些都成立的前提下，情况 [${i}]「${s.claim}」发生的可能性有多大？要考虑变化的幅度够不够大。`,
       criteria: TIER_CRITERIA,
+    };
+    questions[`restate_${i}`] = {
+      type: "score",
+      instructions: `上一步是「${parent}」。情况 [${i}]「${s.claim}」是真的往下推了一步，还是只是把上一步换个说法？`,
+      criteria: RESTATE_CRITERIA,
     };
   });
 

@@ -43,7 +43,8 @@ const gnewsZh = (q: string) =>
 
 export const RSS_FEEDS: RssFeed[] = [
   // 世界
-  { kind: "news", key: "yahoo_top", label: "Yahoo! 主要", url: "https://news.yahoo.co.jp/rss/topics/top-picks.xml" },
+  // 不用 Yahoo「主要」：它混着体育和娱乐（棒球速报、驿传、动漫）。「国内」是政治、社会、政策
+  { kind: "news", key: "yahoo_domestic", label: "Yahoo! 国内", url: "https://news.yahoo.co.jp/rss/topics/domestic.xml" },
   { kind: "news", key: "yahoo_business", label: "Yahoo! 経済", url: "https://news.yahoo.co.jp/rss/topics/business.xml" },
   { kind: "news", key: "yahoo_it", label: "Yahoo! IT", url: "https://news.yahoo.co.jp/rss/topics/it.xml" },
   { kind: "news", key: "yahoo_world", label: "Yahoo! 国際", url: "https://news.yahoo.co.jp/rss/topics/world.xml" },
@@ -80,6 +81,7 @@ export function rssSource(feed: RssFeed): string {
 
 /** 已经撤掉的源：表里还留着它们抓过的行（两周后清掉），显示时照样给个名字。 */
 const RETIRED_LABELS: [string, string][] = [
+  ["news:yahoo_top", "Yahoo! 主要"],
   ["news:gnews_career", "Google News 転職・副業"],
   ["voice:note_career", "note #転職"],
 ];

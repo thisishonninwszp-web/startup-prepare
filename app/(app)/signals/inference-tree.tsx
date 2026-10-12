@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  chainLikelihood,
+  chainTo,
   childrenOf,
   evidenceRatio,
   formatPercent,
@@ -17,7 +19,7 @@ import {
   type InferenceNode,
 } from "@/lib/domains/signals/inference-shared";
 import { nodeBetQuestion } from "@/lib/domains/signals/practice-shared";
-import { expandInferenceAction } from "./actions";
+import { expandInferenceAction, rejudgeLayerAction } from "./actions";
 import { BayesPanel } from "./bayes-panel";
 import { JudgmentForm } from "./judgment-forms";
 
@@ -144,6 +146,17 @@ export function InferenceTree({
     });
   };
 
+  const rejudge = (parentId: string | null) => {
+    setPendingId(parentId);
+    setError(null);
+    startTransition(async () => {
+      const result = await rejudgeLayerAction(signalId, parentId);
+      if (result.ok) setNodes(result.nodes);
+      else setError(result.message);
+      setPendingId(undefined);
+    });
+  };
+
   const expandControls = (parentId: string | null, depth: number) => {
     if (depth >= MAX_INFERENCE_DEPTH) {
       return (
@@ -185,63 +198,93 @@ export function InferenceTree({
     );
   };
 
-  const renderNode = (n: InferenceNode) => (
-    <li key={n.id}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="font-mono text-xs text-muted-foreground">第 {n.depth} 层</span>
-        <LikelihoodMeter likelihood={n.likelihood} unsure={n.unsure} />
-        {n.bayes && (
-          <span className="font-mono text-xs text-primary">
-            你算的：{formatPercent(posterior(n.bayes.prior, n.bayes.evidence.map(evidenceRatio)))}
-          </span>
-        )}
-      </div>
-      <p className="mt-1 text-base font-medium leading-8">{n.claim}</p>
-      <p className="text-sm leading-7">
-        <span className="text-muted-foreground">为什么：</span>
-        {n.why}
-      </p>
-      <p className="text-sm leading-7">
-        <span className="text-muted-foreground">怎么看出它在发生：</span>
-        {n.watch}
-      </p>
-      {n.evidence && n.evidence.length > 0 ? (
-        <EvidenceList evidence={n.evidence} />
-      ) : (
-        <p className="mt-1 text-xs text-muted-foreground">没查到相关的事实，这一步的档位只能凭推理判断。</p>
-      )}
-
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBayesOpen(bayesOpen === n.id ? null : n.id)}>
-          {bayesOpen === n.id ? "收起" : n.bayes ? "看 / 改我算的可能性" : "算一算有多大可能"}
-        </Button>
-        {bets[n.claim] ? (
-          <span className="text-xs text-primary">已经押了，{bets[n.claim]}对账</span>
-        ) : (
-          <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBetOpen(betOpen === n.id ? null : n.id)}>
-            {betOpen === n.id ? "不押了" : "押这一条"}
-          </Button>
-        )}
-      </div>
-      {betOpen === n.id && !bets[n.claim] && (
-        <div className="mt-2 rounded-md bg-muted/50 p-4">
-          <JudgmentForm
-            signalId={signalId}
-            question={nodeBetQuestion(n.claim)}
-            questionLabel="你觉得这一步会不会发生？改成你自己的说法，越具体越好对账。"
-            initialJudgment={n.claim}
-            submitLabel="押下，进判断账本"
-          />
+  const renderNode = (n: InferenceNode) => {
+    const chain = n.depth > 1 ? chainLikelihood(chainTo(nodes, n.id)) : null;
+    return (
+      <li key={n.id}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-mono text-xs text-muted-foreground">第 {n.depth} 层</span>
+          <span className="text-xs text-muted-foreground">{n.depth > 1 ? "上一步成立的话：" : "从新闻出发："}</span>
+          <LikelihoodMeter likelihood={n.likelihood} unsure={n.unsure} />
+          {n.bayes && (
+            <span className="font-mono text-xs text-primary">
+              你算的：{formatPercent(posterior(n.bayes.prior, n.bayes.evidence.map(evidenceRatio)))}
+            </span>
+          )}
         </div>
-      )}
-      {bayesOpen === n.id && (
-        <BayesPanel signalId={signalId} node={n} onSaved={(next) => setNodes(next)} />
-      )}
+        {chain && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-xs text-muted-foreground">从新闻一路推到这里，每一步都发生：</span>
+            <LikelihoodMeter likelihood={chain.likelihood} />
+            {chain.selfRated && <span className="text-xs text-muted-foreground">（链上有一步是 AI 自评的，这一格也不准）</span>}
+          </div>
+        )}
+        {n.restates && (
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            裁判看来，这一步只是把上一步换了个说法，算不上往下推。顺着它再推，容易原地打转。
+          </p>
+        )}
+        {n.judged_by === "gemini" && (
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            这一步的档位是写推论的 AI 给自己打的（当时裁判没调通），它几乎总是偏乐观。
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto px-1 py-0 text-xs"
+              disabled={busy}
+              onClick={() => rejudge(n.parent_id)}
+            >
+              {pendingId === n.parent_id ? "在重判…" : "请裁判重判这一层"}
+            </Button>
+          </p>
+        )}
+        <p className="mt-1 text-base font-medium leading-8">{n.claim}</p>
+        <p className="text-sm leading-7">
+          <span className="text-muted-foreground">为什么：</span>
+          {n.why}
+        </p>
+        <p className="text-sm leading-7">
+          <span className="text-muted-foreground">怎么看出它在发生：</span>
+          {n.watch}
+        </p>
+        {n.evidence && n.evidence.length > 0 ? (
+          <EvidenceList evidence={n.evidence} />
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground">没查到相关的事实，这一步的档位只能凭推理判断。</p>
+        )}
 
-      {expandControls(n.id, n.depth)}
-      {renderChildren(n.id)}
-    </li>
-  );
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBayesOpen(bayesOpen === n.id ? null : n.id)}>
+            {bayesOpen === n.id ? "收起" : n.bayes ? "看 / 改我算的可能性" : "算一算有多大可能"}
+          </Button>
+          {bets[n.claim] ? (
+            <span className="text-xs text-primary">已经押了，{bets[n.claim]}对账</span>
+          ) : (
+            <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBetOpen(betOpen === n.id ? null : n.id)}>
+              {betOpen === n.id ? "不押了" : "押这一条"}
+            </Button>
+          )}
+        </div>
+        {betOpen === n.id && !bets[n.claim] && (
+          <div className="mt-2 rounded-md bg-muted/50 p-4">
+            <JudgmentForm
+              signalId={signalId}
+              question={nodeBetQuestion(n.claim)}
+              questionLabel="你觉得这一步会不会发生？改成你自己的说法，越具体越好对账。"
+              initialJudgment={n.claim}
+              submitLabel="押下，进判断账本"
+            />
+          </div>
+        )}
+        {bayesOpen === n.id && (
+          <BayesPanel signalId={signalId} node={n} onSaved={(next) => setNodes(next)} />
+        )}
+
+        {expandControls(n.id, n.depth)}
+        {renderChildren(n.id)}
+      </li>
+    );
+  };
 
   const renderChildren = (parentId: string | null) => {
     const kids = childrenOf(nodes, parentId);

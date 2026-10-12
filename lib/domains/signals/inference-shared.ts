@@ -19,6 +19,13 @@ export type InferenceNode = {
   judged_by?: "jev" | "gemini";
   /** Jev 的分布太平、自己也拿不准。只显示这句话，不显示它的数字。 */
   unsure?: boolean;
+  /**
+   * 在上一步成立的前提下，这一步发生的可能（由代码从 Jev 的五档分布折算，0–1）。
+   * 只用来算"整条链"的档位，页面上不显示这个数（原则 1）。早期数据没有，按档位的代表值算。
+   */
+  p?: number;
+  /** 裁判认为这一步只是把上一步换了个说法（一层全是这种时才会留下来，并标出来）。 */
+  restates?: boolean;
   /** 用户给的方向（"往广告行业推""如果日元反而贬值"）；这组节点是按它推出来的。 */
   direction?: string;
   /** 用户在这一步上算过的贝叶斯（先验和证据强度都由用户确认）。 */
@@ -67,6 +74,40 @@ export const LIKELIHOOD_FILLED: Record<InferenceLikelihood, number> = {
   unlikely: 2,
   very_unlikely: 1,
 };
+
+/** 每一档的代表值：把 Jev 的五档分布折成一个可能，再沿着链连乘。只在代码里用，不显示。 */
+export const TIER_VALUE: Record<InferenceLikelihood, number> = {
+  very_likely: 0.9,
+  likely: 0.7,
+  possible: 0.5,
+  unlikely: 0.3,
+  very_unlikely: 0.1,
+};
+
+/** 一个可能（0–1）落在哪一档。 */
+export function tierOf(p: number): InferenceLikelihood {
+  if (p >= 0.8) return "very_likely";
+  if (p >= 0.6) return "likely";
+  if (p >= 0.4) return "possible";
+  if (p >= 0.2) return "unlikely";
+  return "very_unlikely";
+}
+
+export type ChainLikelihood = {
+  likelihood: InferenceLikelihood;
+  /** 链上有一步不是裁判判的（AI 自评偏乐观），整条链的档位也不可信。 */
+  selfRated: boolean;
+};
+
+/**
+ * 整条链：从新闻推到这一步，前面每一步都得发生。
+ * 每一步的档位是"上一步成立的话，这一步多可能"，所以越往下越像"当然会"；
+ * 整条链要把每一步连乘起来 —— 三个"较可能"连在一起，就只剩"不太可能"。
+ */
+export function chainLikelihood(chain: InferenceNode[]): ChainLikelihood {
+  const joint = chain.reduce((acc, n) => acc * (n.p ?? TIER_VALUE[n.likelihood]), 1);
+  return { likelihood: tierOf(joint), selfRated: chain.some((n) => n.judged_by === "gemini") };
+}
 
 /** 从根到某个节点的整条链（含它自己）。 */
 export function chainTo(nodes: InferenceNode[], id: string | null): InferenceNode[] {

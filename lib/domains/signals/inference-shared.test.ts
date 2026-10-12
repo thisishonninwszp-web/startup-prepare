@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  chainLikelihood,
   chainTo,
+  tierOf,
   childrenOf,
   evidenceRatio,
   formatPercent,
@@ -69,5 +71,32 @@ describe("五档", () => {
     expect(LIKELIHOOD_LABELS.possible).toBe("一半一半");
     expect(LIKELIHOOD_FILLED.very_likely).toBe(5);
     expect(LIKELIHOOD_FILLED.very_unlikely).toBe(1);
+  });
+});
+
+describe("整条链的档位", () => {
+  const node = (over: Partial<InferenceNode>): InferenceNode => ({
+    id: "n",
+    parent_id: null,
+    depth: 1,
+    claim: "c",
+    why: "w",
+    watch: "w",
+    likelihood: "likely",
+    ...over,
+  });
+
+  it("每一步都是较可能，连成三步就只剩不太可能", () => {
+    const chain = [node({}), node({ depth: 2 }), node({ depth: 3 })];
+    expect(chainLikelihood(chain)).toEqual({ likelihood: "unlikely", selfRated: false });
+  });
+
+  it("有 p 就用 p；链上有 AI 自评的一步要标出来", () => {
+    expect(chainLikelihood([node({ p: 0.95 }), node({ p: 0.9, depth: 2 })]).likelihood).toBe("very_likely");
+    expect(chainLikelihood([node({ judged_by: "gemini" })]).selfRated).toBe(true);
+  });
+
+  it("tierOf 的分界", () => {
+    expect([0.85, 0.65, 0.45, 0.25, 0.1].map(tierOf)).toEqual(["very_likely", "likely", "possible", "unlikely", "very_unlikely"]);
   });
 });

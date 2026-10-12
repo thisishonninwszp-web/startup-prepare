@@ -7,7 +7,7 @@ import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import { fetchDailyNews } from "@/lib/domains/signals/daily-news";
 import { ensureSignalAnalysis, getSignalDetail, type StoredHistory } from "@/lib/domains/signals/analysis";
 import { ensureSignalHistory } from "@/lib/domains/signals/history";
-import { draftNodeBayes, expandInference, saveNodeBayes } from "@/lib/domains/signals/inference";
+import { draftNodeBayes, expandInference, rejudgeLayer, saveNodeBayes } from "@/lib/domains/signals/inference";
 import type { BayesState, InferenceNode } from "@/lib/domains/signals/inference-shared";
 import { generateBrief } from "@/lib/domains/signals/brief";
 import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
@@ -405,5 +405,18 @@ export async function removeUserAnalogAction(questionId: string, index: number):
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没删掉") };
+  }
+}
+
+/** 请裁判重判某一层里 AI 自评的那几步。 */
+export async function rejudgeLayerAction(
+  signalId: string,
+  parentId: string | null
+): Promise<{ ok: true; nodes: InferenceNode[] } | { ok: false; message: string }> {
+  await requireUserId();
+  try {
+    return { ok: true, nodes: await rejudgeLayer(signalId, parentId) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没重判成") };
   }
 }

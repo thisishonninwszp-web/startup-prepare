@@ -83,16 +83,19 @@ export async function expandInference(
   // 写推论的和判可能性的分开：Gemini 给自己写的结论打分几乎一律"较可能"，档位交给 Jev 判。
   // 给 Jev 看的是查到的事实，不是 Gemini 写的"为什么"（那段话最容易把判断往高处带）。
   // Jev 不可用（没配 Key、超时）时退回 Gemini 自己标的档位，并记下来是谁判的。
-  let tiers: JudgedTier[] | null = null;
-  try {
-    tiers = await judgeInferenceSteps({ title: detail.title, summary: detail.summary, chain: claims, steps, evidence });
-  } catch (e) {
-    console.error("inference judge failed, falling back to generator tiers", e);
-  }
+  const tiers = await judgeWithRetry({ title: detail.title, summary: detail.summary, chain: claims, steps, evidence });
+
+  // 裁判判成"只是把上一步换个说法"的丢掉（"门票卖得多 → 收入增加"不算往下推）；
+  // 一层全是这种时才留下来，并标出来，免得点了"往下推"什么都没有
+  const keep = steps.map((_, i) => !tiers?.[i]?.restates);
+  const anyKept = keep.some(Boolean);
 
   const next: InferenceNode[] = [
     ...nodes,
-    ...steps.map((s, i) => ({
+    ...steps
+      .map((s, i) => ({ s, i }))
+      .filter(({ i }) => !anyKept || keep[i])
+      .map(({ s, i }) => ({
       id: randomUUID(),
       parent_id: parentId,
       depth,
@@ -102,10 +105,64 @@ export async function expandInference(
       likelihood: tiers ? tiers[i].likelihood : s.likelihood,
       judged_by: tiers ? ("jev" as const) : ("gemini" as const),
       unsure: tiers ? tiers[i].unsure : undefined,
+      p: tiers ? tiers[i].p : undefined,
+      restates: tiers?.[i]?.restates || undefined,
       direction: dir,
       evidence: evidence[i].length > 0 ? evidence[i] : undefined,
     })),
   ];
+  await saveTree(signalId, next);
+  return next;
+}
+
+/** Jev 偶尔超时或网络抖一下：失败了再试一次，还不行才退回 Gemini 自评（页面上会标出来，可以重判）。 */
+async function judgeWithRetry(input: Parameters<typeof judgeInferenceSteps>[0]): Promise<JudgedTier[] | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await judgeInferenceSteps(input);
+    } catch (e) {
+      console.error(`inference judge failed (attempt ${attempt + 1})`, e);
+    }
+  }
+  return null;
+}
+
+/**
+ * 请裁判重判：某一层里是 Gemini 自评的那几步，交给 Jev 重新判档（看的还是查到的事实）。
+ * 用于 Jev 当时没调通、退回了自评的情况。
+ */
+export async function rejudgeLayer(
+  signalId: string,
+  parentId: string | null,
+  /** true：这一层全部重判（补上"是不是换说法"的标记）；默认只重判 AI 自评的。 */
+  all = false
+): Promise<InferenceNode[]> {
+  const { detail, nodes } = await loadTree(signalId);
+  const targets = childrenOf(nodes, parentId).filter((n) => all || n.judged_by === "gemini");
+  if (targets.length === 0) return nodes;
+  const tiers = await judgeWithRetry({
+    title: detail.title,
+    summary: detail.summary,
+    chain: chainTo(nodes, parentId).map((n) => n.claim),
+    steps: targets.map((n) => ({
+      claim: n.claim,
+      why: n.why,
+      watch: n.watch,
+      likelihood: n.likelihood,
+      query: "",
+      counterQuery: "",
+    })),
+    evidence: targets.map((n) => n.evidence ?? []),
+  });
+  if (!tiers) throw new Error("裁判这次也没调通，过一会儿再试");
+  const judged = new Map(targets.map((n, i) => [n.id, tiers[i]]));
+  const next = nodes.map((n) => {
+    const t = judged.get(n.id);
+    // 已经在树上的节点只标记、不删（可能押过、算过贝叶斯）
+    return t
+      ? { ...n, likelihood: t.likelihood, unsure: t.unsure, p: t.p, restates: t.restates || undefined, judged_by: "jev" as const }
+      : n;
+  });
   await saveTree(signalId, next);
   return next;
 }

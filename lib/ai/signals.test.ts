@@ -243,10 +243,20 @@ describe("parseJudgedTiers（Jev 当裁判）", () => {
       result({ step_0: answer([0.05, 0.68, 0.2, 0.05, 0.02]), step_1: answer([0.02, 0.08, 0.3, 0.45, 0.15]) }),
       2
     );
-    expect(tiers).toEqual([
+    expect(tiers.map(({ likelihood, unsure }) => ({ likelihood, unsure }))).toEqual([
       { likelihood: "likely", unsure: false },
       { likelihood: "unlikely", unsure: true },
     ]);
+    // p 是按每档代表值折算的可能，只拿来连乘整条链：0.05×0.9 + 0.68×0.7 + 0.2×0.5 + 0.05×0.3 + 0.02×0.1 = 0.638
+    expect(tiers[0].p).toBeCloseTo(0.638, 3);
+    expect(tiers[1].p).toBeLessThan(0.4);
+  });
+
+  it("换说法：第二档概率更高就标出来；这一问缺了就当不是", () => {
+    const res = result({ step_0: answer([0.1, 0.7, 0.1, 0.05, 0.05]), step_1: answer([0.1, 0.7, 0.1, 0.05, 0.05]) });
+    (res.answers as Record<string, unknown>).restate_0 = { type: "score", probabilities: { "0": 0.21, "1": 0.79 } };
+    const tiers = parseJudgedTiers(res, 2);
+    expect(tiers.map((t) => t.restates)).toEqual([true, false]);
   });
 
   it("两头的档也认得", () => {
