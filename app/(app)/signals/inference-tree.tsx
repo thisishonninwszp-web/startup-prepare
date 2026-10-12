@@ -219,6 +219,11 @@ export function InferenceTree({
             {chain.selfRated && <span className="text-xs text-muted-foreground">（链上有一步是 AI 自评的，这一格也不准）</span>}
           </div>
         )}
+        {n.specifies && !n.restates && (
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            裁判看来，这一步只是把上一步说得更具体一点，算不上往下推 —— 拿它当上一步的观察信号更合适。
+          </p>
+        )}
         {n.restates && (
           <p className="mt-1 text-xs leading-6 text-muted-foreground">
             裁判看来，这一步只是把上一步换了个说法，算不上往下推。顺着它再推，容易原地打转。
@@ -247,6 +252,16 @@ export function InferenceTree({
           <span className="text-muted-foreground">怎么看出它在发生：</span>
           {n.watch}
         </p>
+        {n.signals && n.signals.length > 0 && (
+          <div className="text-sm leading-7">
+            <span className="text-muted-foreground">具体可以盯：</span>
+            <ul className="ml-4 list-disc">
+              {n.signals.map((sig) => (
+                <li key={sig}>{sig}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {n.evidence && n.evidence.length > 0 ? (
           <EvidenceList evidence={n.evidence} />
         ) : (

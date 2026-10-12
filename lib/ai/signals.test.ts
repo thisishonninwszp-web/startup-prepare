@@ -264,6 +264,16 @@ describe("parseJudgedTiers（Jev 当裁判）", () => {
     expect(parseJudgedTiers(res, 4).map((t) => t.restates)).toEqual([true, true, false, false]);
   });
 
+  it("更具体一点：反推那一问过 0.3 就标出来", () => {
+    const tier = answer([0.1, 0.7, 0.1, 0.05, 0.05]);
+    const res = result({ step_0: tier, step_1: tier });
+    Object.assign(res.answers as Record<string, unknown>, {
+      reverse_0: { type: "score", probabilities: { "0": 0.57, "1": 0.43 } },
+      reverse_1: { type: "score", probabilities: { "0": 0.96, "1": 0.04 } },
+    });
+    expect(parseJudgedTiers(res, 2).map((t) => t.specifies)).toEqual([true, false]);
+  });
+
   it("两头的档也认得", () => {
     const tiers = parseJudgedTiers(result({ step_0: answer([0.8, 0.1, 0.05, 0.03, 0.02]) }), 1);
     expect(tiers[0].likelihood).toBe("very_likely");

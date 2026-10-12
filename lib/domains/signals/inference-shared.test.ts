@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   chainLikelihood,
   chainTo,
+  foldIntoSignals,
   tierOf,
   childrenOf,
   evidenceRatio,
@@ -98,5 +99,19 @@ describe("整条链的档位", () => {
 
   it("tierOf 的分界", () => {
     expect([0.85, 0.65, 0.45, 0.25, 0.1].map(tierOf)).toEqual(["very_likely", "likely", "possible", "unlikely", "very_unlikely"]);
+  });
+});
+
+describe("foldIntoSignals", () => {
+  const node = (id: string, signals?: string[]): InferenceNode => ({
+    id, parent_id: null, depth: 1, claim: "c", why: "w", watch: "w", likelihood: "likely", signals,
+  });
+  it("挪进上一步的具体信号，去重、最多 5 条；第一层没有上一步就不动", () => {
+    const nodes = [node("a", ["大和上调运费"]), node("b")];
+    const next = foldIntoSignals(nodes, "a", ["大和上调运费", "佐川上调运费"]);
+    expect(next[0].signals).toEqual(["大和上调运费", "佐川上调运费"]);
+    expect(next[1].signals).toBeUndefined();
+    expect(foldIntoSignals(nodes, null, ["x"])).toBe(nodes);
+    expect(foldIntoSignals(nodes, "a", ["1", "2", "3", "4", "5", "6"])[0].signals).toHaveLength(5);
   });
 });

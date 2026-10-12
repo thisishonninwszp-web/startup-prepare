@@ -14,6 +14,7 @@ import { fetchArticleBody } from "./article";
 import {
   chainTo,
   childrenOf,
+  foldIntoSignals,
   clampRatio,
   EVIDENCE_STRENGTHS,
   MAX_INFERENCE_DEPTH,
@@ -85,16 +86,32 @@ export async function expandInference(
   // Jev 不可用（没配 Key、超时）时退回 Gemini 自己标的档位，并记下来是谁判的。
   const tiers = await judgeWithRetry({ title: detail.title, summary: detail.summary, chain: claims, steps, evidence });
 
-  // 裁判判成"只是把上一步换个说法"的丢掉（"门票卖得多 → 收入增加"不算往下推）；
-  // 一层全是这种时才留下来，并标出来，免得点了"往下推"什么都没有
-  const keep = steps.map((_, i) => !tiers?.[i]?.restates);
-  const anyKept = keep.some(Boolean);
+  // 裁判把每一步分成三种：
+  // - 把上一步说得更具体一点（"涨运费 → 大和上调宅急便运费"）：不当新的一步，挪进上一步的"具体可以盯"；
+  //   第一层没有上一步可挪，当成换说法处理；
+  // - 换个说法、绕回前面（"门票卖得多 → 收入增加"）：丢掉；
+  // - 真往下推：留下。
+  // 一层全被挑掉时才都留下来并标出来，免得点了"往下推"什么都没有。
+  const route = steps.map((_, i) => {
+    const t = tiers?.[i];
+    if (t?.specifies && parentId) return "fold" as const;
+    if (t?.restates || t?.specifies) return "drop" as const;
+    return "keep" as const;
+  });
+  const anyKept = route.includes("keep");
+  const base = anyKept
+    ? foldIntoSignals(
+        nodes,
+        parentId,
+        steps.filter((_, i) => route[i] === "fold").map((s) => s.claim)
+      )
+    : nodes;
 
   const next: InferenceNode[] = [
-    ...nodes,
+    ...base,
     ...steps
       .map((s, i) => ({ s, i }))
-      .filter(({ i }) => !anyKept || keep[i])
+      .filter(({ i }) => !anyKept || route[i] === "keep")
       .map(({ s, i }) => ({
       id: randomUUID(),
       parent_id: parentId,
@@ -107,6 +124,7 @@ export async function expandInference(
       unsure: tiers ? tiers[i].unsure : undefined,
       p: tiers ? tiers[i].p : undefined,
       restates: tiers?.[i]?.restates || undefined,
+      specifies: tiers?.[i]?.specifies || undefined,
       direction: dir,
       evidence: evidence[i].length > 0 ? evidence[i] : undefined,
     })),
@@ -160,7 +178,15 @@ export async function rejudgeLayer(
     const t = judged.get(n.id);
     // 已经在树上的节点只标记、不删（可能押过、算过贝叶斯）
     return t
-      ? { ...n, likelihood: t.likelihood, unsure: t.unsure, p: t.p, restates: t.restates || undefined, judged_by: "jev" as const }
+      ? {
+          ...n,
+          likelihood: t.likelihood,
+          unsure: t.unsure,
+          p: t.p,
+          restates: t.restates || undefined,
+          specifies: t.specifies || undefined,
+          judged_by: "jev" as const,
+        }
       : n;
   });
   await saveTree(signalId, next);

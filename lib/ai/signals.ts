@@ -1533,7 +1533,7 @@ export async function inferNextSteps(input: {
  * p：在上一步成立的前提下的可能（五档分布按代表值折算），只拿来算整条链，不显示。
  * restates：裁判认为这一步只是把上一步换个说法（"门票卖得多 → 收入增加"），算不上往下推。
  */
-export type JudgedTier = { likelihood: Likelihood; unsure: boolean; p: number; restates: boolean };
+export type JudgedTier = { likelihood: Likelihood; unsure: boolean; p: number; restates: boolean; specifies: boolean };
 
 const RESTATE_CRITERIA = [
   "带进了新的人或新的机制，真的往下推了一步",
@@ -1552,6 +1552,18 @@ const CIRCULAR_CRITERIA = [
 ];
 const RESTATE_ABOVE = 0.45;
 const CIRCULAR_ABOVE = 0.5;
+
+/**
+ * 第三种：把上一步说得更具体一点（"物流公司会涨运费 → 大和上调宅急便运费"）。
+ * 用反推来认：知道这一步发生了，就能断定上一步也发生了 —— 它是上一步的一个特例。
+ * 真正的后果反推不回去（周边餐馆生意好，可能有别的原因）。真往下推的步骤在这一问上都 ≤0.04，门槛放 0.3。
+ * 认出来的不丢：它正好是上一步的观察信号，挪过去。
+ */
+const SPECIFIES_CRITERIA = [
+  "不能断定：这一步可能由别的原因引起，它是上一步之后的新后果",
+  "能断定：这一步发生就说明上一步一定发生了，它只是上一步的一个具体例子或换个说法",
+];
+const SPECIFIES_ABOVE = 0.3;
 
 /** 一个二选一问题里"第二项"（车轱辘那一项）的概率；缺了就当 0，不因为它让整层判档作废。 */
 function secondOption(answer: unknown): number {
@@ -1590,7 +1602,8 @@ export function parseJudgedTiers(result: JevResult, count: number): JudgedTier[]
     const restates =
       secondOption(result.answers[`restate_${i}`]) > RESTATE_ABOVE ||
       secondOption(result.answers[`circular_${i}`]) > CIRCULAR_ABOVE;
-    return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW, p, restates };
+    const specifies = secondOption(result.answers[`reverse_${i}`]) > SPECIFIES_ABOVE;
+    return { likelihood: LIKELIHOOD_ORDER[probs.indexOf(top)], unsure: top < JEV_UNSURE_BELOW, p, restates, specifies };
   });
 }
 
@@ -1632,6 +1645,11 @@ export async function judgeInferenceSteps(input: {
       type: "score",
       instructions: `上一步是「${parent}」。情况 [${i}]「${s.claim}」是真的往下推了一步，还是只是把上一步换个说法？`,
       criteria: RESTATE_CRITERIA,
+    };
+    questions[`reverse_${i}`] = {
+      type: "score",
+      instructions: `如果你只知道「${s.claim}」真的发生了，能不能由此断定「${parent}」也一定发生了？`,
+      criteria: SPECIFIES_CRITERIA,
     };
     questions[`circular_${i}`] = {
       type: "score",

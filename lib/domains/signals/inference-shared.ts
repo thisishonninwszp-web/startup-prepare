@@ -26,6 +26,13 @@ export type InferenceNode = {
   p?: number;
   /** 裁判认为这一步只是把上一步换了个说法（一层全是这种时才会留下来，并标出来）。 */
   restates?: boolean;
+  /** 裁判认为这一步只是把上一步说得更具体一点（已有的树上只标记；新推的会挪进上一步的 signals）。 */
+  specifies?: boolean;
+  /**
+   * 具体可以盯的信号：下一层里"只是把这一步说得更具体一点"的那几条，挪到这里。
+   * 作为新的一步它是车轱辘，作为"怎么看出这一步在发生"却刚好。
+   */
+  signals?: string[];
   /** 用户给的方向（"往广告行业推""如果日元反而贬值"）；这组节点是按它推出来的。 */
   direction?: string;
   /** 用户在这一步上算过的贝叶斯（先验和证据强度都由用户确认）。 */
@@ -107,6 +114,19 @@ export type ChainLikelihood = {
 export function chainLikelihood(chain: InferenceNode[]): ChainLikelihood {
   const joint = chain.reduce((acc, n) => acc * (n.p ?? TIER_VALUE[n.likelihood]), 1);
   return { likelihood: tierOf(joint), selfRated: chain.some((n) => n.judged_by === "gemini") };
+}
+
+/** 一个节点最多攒几条具体信号。 */
+const MAX_SIGNALS = 5;
+
+/** 把"更具体一点"的几条挪进 parentId 那一步的 signals（去重、最多 5 条）。parentId 为空（第一层）时什么都不做。 */
+export function foldIntoSignals(nodes: InferenceNode[], parentId: string | null, claims: string[]): InferenceNode[] {
+  if (!parentId || claims.length === 0) return nodes;
+  return nodes.map((n) =>
+    n.id === parentId
+      ? { ...n, signals: Array.from(new Set([...(n.signals ?? []), ...claims])).slice(0, MAX_SIGNALS) }
+      : n
+  );
 }
 
 /** 从根到某个节点的整条链（含它自己）。 */
