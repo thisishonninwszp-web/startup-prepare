@@ -8,7 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CONFIDENCE_LEVELS,
   HORIZONS,
+  LONG_HORIZONS,
+  MISS_REASONS,
   normalizeTags,
+  type MissReason,
   type ConfidenceKey,
   type HorizonKey,
 } from "@/lib/domains/signals/practice-shared";
@@ -51,6 +54,7 @@ export function JudgmentForm({
   const [horizon, setHorizon] = useState<HorizonKey>("3m");
   const [confidence, setConfidence] = useState<ConfidenceKey | null>(null);
   const [tagText, setTagText] = useState("");
+  const [milestone, setMilestone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const tags = normalizeTags(tagText);
   const toggleTag = (tag: string) =>
@@ -61,7 +65,16 @@ export function JudgmentForm({
       onSubmit={(e) => {
         e.preventDefault();
         startTransition(async () => {
-          const result = await submitJudgmentAction({ signalId, questionId, question, judgment, horizon, confidence, tags });
+          const result = await submitJudgmentAction({
+            signalId,
+            questionId,
+            question,
+            judgment,
+            horizon,
+            confidence,
+            tags,
+            milestone: LONG_HORIZONS.includes(horizon) ? milestone : undefined,
+          });
           if (result.ok) {
             setError(null);
             router.refresh();
@@ -98,6 +111,22 @@ export function JudgmentForm({
             ))}
           </div>
         </div>
+        {LONG_HORIZONS.includes(horizon) && (
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
+            <span className="shrink-0 text-muted-foreground sm:w-24 sm:pt-1.5">中途的苗头</span>
+            <div className="flex-1">
+              <Input
+                value={milestone}
+                onChange={(e) => setMilestone(e.target.value)}
+                placeholder="半年内能看到什么迹象，说明你在朝对的方向走？（可以不填）"
+                maxLength={200}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                要等{HORIZONS[horizon].label.replace("后", "")}才能对账，太久了。填了就自动多押一条半年后对账的，中途也有反馈。
+              </p>
+            </div>
+          </div>
+        )}
         <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <span className="shrink-0 text-muted-foreground sm:w-24">
             有多大把握<span className="ml-2 text-xs sm:hidden">可以不选</span>
@@ -164,12 +193,13 @@ export function ResolveJudgment({ predictionId }: { predictionId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState("");
+  const [askingWhy, setAskingWhy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const resolve = (outcome: "hit" | "miss") =>
+  const resolve = (outcome: "hit" | "miss", reason?: MissReason) =>
     startTransition(async () => {
       try {
-        await resolveJudgmentAction(predictionId, outcome, note);
+        await resolveJudgmentAction(predictionId, outcome, note, reason);
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "没记上");
@@ -188,10 +218,29 @@ export function ResolveJudgment({ predictionId }: { predictionId: string }) {
         <Button size="sm" variant="outline" disabled={pending} onClick={() => resolve("hit")}>
           看对了
         </Button>
-        <Button size="sm" variant="outline" disabled={pending} onClick={() => resolve("miss")}>
+        <Button size="sm" variant="outline" disabled={pending} onClick={() => setAskingWhy(true)}>
           看错了
         </Button>
       </div>
+      {askingWhy && (
+        <div className="basis-full rounded-md bg-muted/50 p-3 text-sm sm:mt-1">
+          <p className="mb-2 text-muted-foreground">错在哪一步？选最接近的一个：</p>
+          <div className="flex flex-col gap-1.5">
+            {(Object.keys(MISS_REASONS) as MissReason[]).map((r) => (
+              <Button
+                key={r}
+                size="sm"
+                variant="ghost"
+                className="h-auto justify-start whitespace-normal py-1.5 text-left"
+                disabled={pending}
+                onClick={() => resolve("miss", r)}
+              >
+                {MISS_REASONS[r]}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );

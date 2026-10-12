@@ -20,7 +20,7 @@ import { mergeSources } from "./sources";
 import { fetchArticle } from "./article";
 import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
-import { balanceBySource, isChinaSource, isGithubSource, kindSourceFilter, newsSourceLabel, type SignalKind } from "./feeds";
+import { balanceBySource, isChinaSource, isGithubSource, isUsSource, kindSourceFilter, newsSourceLabel, type SignalKind } from "./feeds";
 import { fetchGithubTools } from "./github";
 import { fetchCnAppChart } from "./app-chart";
 import { usableSummary } from "./summary";
@@ -87,6 +87,8 @@ export type BriefItem = {
   japan_funded?: { company: string; url: string; excerpt: string };
   /** 反方向（日本的条目）：中国那边有没有同样的东西，以及核实、为什么是现在、有没有人拿到钱。 */
   china_side?: string;
+  /** 出发地：中文媒体 china、美国媒体 us；日本的不写。japan 那组字段对两者都是"日本这边"。 */
+  origin?: "china" | "us";
   china_check?: AnalogCheck;
   china_query?: string;
   china_why_now?: string;
@@ -165,11 +167,11 @@ async function compareAndCheckJapan(
     const sources = await Promise.all(
       comparisons.map(async (c) => {
         const headline = picks.find((p) => p.index === c.index)?.headline ?? "";
-        const query = c.query || `${side === "japan" ? "日本" : "中国"} ${headline}`;
+        const query = c.query || `${side === "china" ? "中国" : "日本"} ${headline}`;
         // 再搜一次"××× 資金調達 / 融资"：那边有没有公司刚为这件事拉到投资（"没有"难证明，"有人刚拿到钱"好查）
         const [found, funding] = await Promise.all([
           tavilySearch(query, JAPAN_SEARCH_RESULTS).catch(() => []),
-          tavilySearch(`${query} ${side === "japan" ? "資金調達" : "融资"}`, JAPAN_SEARCH_RESULTS).catch(() => []),
+          tavilySearch(`${query} ${side === "china" ? "融资" : "資金調達"}`, JAPAN_SEARCH_RESULTS).catch(() => []),
         ]);
         return mergeSources([found, funding], JAPAN_SEARCH_RESULTS * 2);
       })
@@ -287,6 +289,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     text: isGithubSource(r.source as string) ? (r.raw_text as string) : usableSummary(r.title as string, r.raw_text as string),
     source: newsSourceLabel(r.source as string),
     china: isChinaSource(r.source as string),
+    us: isUsSource(r.source as string),
   }));
   // 第一步：只看标题和简介挑 5 条、起草（不给 AI 看任何关于他的信息）
   const draft = await generateSignalBrief(kind, candidates);
@@ -333,13 +336,19 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   // 中文媒体的那几条问"日本这边有没有"并上网核实；单独找最多两条真跟他连得上的；
   // 哪几条直接关系到他在追的问题。失败都只是少了那一行。
   const [japan, chinaSide, personal, related, surprises] = await Promise.all([
-    compareAndCheckJapan(picks.filter((p) => candidates[p.index].china)).catch((e) => {
-      console.error("brief japan comparison failed", e);
-      return new Map<number, JapanComparison>();
-    }),
+    // 中国的条目和美国的条目都问"日本有没有"，结果放在同一组字段里，origin 区分出发地
+    Promise.all([
+      compareAndCheckJapan(picks.filter((p) => candidates[p.index].china)),
+      compareAndCheckJapan(picks.filter((p) => candidates[p.index].us), "us"),
+    ])
+      .then(([cn, us]) => new Map([...Array.from(cn), ...Array.from(us)]))
+      .catch((e) => {
+        console.error("brief japan comparison failed", e);
+        return new Map<number, JapanComparison>();
+      }),
     // 反方向只在"今天的世界"里问：日本的条目讲的是一种产品、服务或做法时，中国那边有没有
     kind === "news"
-      ? compareAndCheckJapan(picks.filter((p) => !candidates[p.index].china), "china").catch((e) => {
+      ? compareAndCheckJapan(picks.filter((p) => !candidates[p.index].china && !candidates[p.index].us), "china").catch((e) => {
           console.error("brief china comparison failed", e);
           return new Map<number, JapanComparison>();
         })
@@ -388,6 +397,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       event: p.event,
       grounded: grounded.has(p.index),
       basis: grounded.get(p.index)?.basis,
+      origin: candidates[p.index].china ? "china" : candidates[p.index].us ? "us" : undefined,
       japan: japan.get(p.index)?.japan,
       japan_check: japan.get(p.index)?.check,
       japan_query: japan.get(p.index)?.query || undefined,

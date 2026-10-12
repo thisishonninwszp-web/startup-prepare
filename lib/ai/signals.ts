@@ -444,6 +444,8 @@ export type BriefCandidate = {
   source: string;
   /** 来自中文媒体：报告里多写一句"日本这边有没有"。 */
   china?: boolean;
+  /** 美国媒体（Hacker News、TechCrunch）。 */
+  us?: boolean;
 };
 
 export type BriefPick = {
@@ -1317,8 +1319,20 @@ japan 字段（沿用这个名字）的写法：
 
 只输出 JSON：{"items":[{"index":序号,"japan":"…","whyNow":"…","query":"…"}]}`;
 
-/** 比较的方向：问"日本有没有"（中国的条目），还是问"中国有没有"（日本的条目）。 */
-export type CompareSide = "japan" | "china";
+/**
+ * 美国的条目（Hacker News、TechCrunch）也问"日本有没有"：美国先出现、日本还没有的做法，同样常常几年后才来。
+ * 和中国那一版同一套写法，只把出发地换掉、例子换成美国的。
+ */
+const US_PROMPT = JAPAN_PROMPT.replace(
+  "下面几条是中国正在发生的事。中国已经跑通、日本还没有的做法，往往几年后会来日本。",
+  "下面几条是美国正在发生的事。美国先出现、日本还没有的做法、产品、商业模式，往往几年后会来日本。\n只回答讲的是一种产品、服务或商业做法的那几条；纯技术讨论、政治、事故、人事类的跳过，不写进 items。"
+).replace(
+  "不要直译中国的产品名（例：微信的 AI 助手 → \"LINE AI アシスタント 機能\"；即时零售 → \"即配 ネットスーパー 30分\"）",
+  "不要直译美国的产品名（例：DoorDash 的店铺代送 → \"フードデリバリー 小売 代行\"；按用量收费的 SaaS → \"従量課金 SaaS 日本\"）"
+);
+
+/** 比较的方向：问"日本有没有"（中国的条目 japan、美国的条目 us），还是问"中国有没有"（日本的条目）。 */
+export type CompareSide = "japan" | "china" | "us";
 
 const JAPAN_OPENERS = ["有，", "有类似的", "没有", "拿不准"];
 const JAPAN_FILLER = /需要关注|值得借鉴|值得注意|值得关注/;
@@ -1350,14 +1364,14 @@ export async function compareWithJapan(inputs: JapanInput[], side: CompareSide =
   if (inputs.length === 0) return [];
   const contents = inputs.map((i) => `[${i.index}] ${i.headline}\n${i.background}`).join("\n\n");
   return executeAiJson(
-    { operation: side === "japan" ? "brief_japan" : "brief_china", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    { operation: `brief_${side}`, module: "unknown", outputMode: "json", timeoutMs: 30_000 },
     (attempt) => ({
       model: MODEL,
       contents:
         contents +
         (attempt === 1 ? "\n\n上一次输出没通过校验：每条 japan 第一句必须以规定的四种开头之一起头，不许写空话。" : ""),
       config: {
-        systemInstruction: side === "japan" ? JAPAN_PROMPT : CHINA_PROMPT,
+        systemInstruction: side === "japan" ? JAPAN_PROMPT : side === "us" ? US_PROMPT : CHINA_PROMPT,
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 1500,
@@ -1477,7 +1491,7 @@ export async function checkJapanComparisons(inputs: JapanSources[], side: Compar
           : ""),
       config: {
         // 反方向核实"中国有没有"：同一套规则，把"日本"换成"中国"
-        systemInstruction: side === "japan" ? JAPAN_CHECK_PROMPT : JAPAN_CHECK_PROMPT.replaceAll("日本", "中国"),
+        systemInstruction: side === "china" ? JAPAN_CHECK_PROMPT.replaceAll("日本", "中国") : JAPAN_CHECK_PROMPT,
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 3000,
@@ -2968,5 +2982,128 @@ export async function writeDailyDigest(sections: DigestSectionInput[]): Promise<
       },
     }),
     (value) => parseDigest(value, ids)
+  );
+}
+
+// ── 周报：七天的报告连起来看，哪些事一直在冒、哪些事只响了一天 ──────────────────
+
+export type WeeklyDayInput = {
+  date: string;
+  /** 那天的总览；没生成就用各节总述拼起来。 */
+  summary: string;
+  items: { signalId: string; headline: string }[];
+};
+
+export type WeeklyThread = { title: string; note: string; signalIds: string[] };
+
+export type WeeklyDigest = {
+  /** 5 到 8 句：这一周世界上的主线。 */
+  summary: string;
+  /** 这一周里不止一天冒出来的事；每条至少引用两个不同日子的消息（代码核对）。 */
+  threads: WeeklyThread[];
+};
+
+const MAX_WEEKLY_THREADS = 4;
+
+const WEEKLY_PROMPT = `你是他身边一个懂行的老同事。他这一周每天都看了报告，但每天看的是碎片。你把七天连起来看，跟他讲这一周到底发生了什么。
+
+summary：5 到 8 句，像当面说话：
+- 先讲这一周的主线：哪件事从周初响到周末，中间有没有变化（变大、变小、换了说法）。
+- 再讲只响了一天就没下文的大事 —— 它们可能是噪音，也可能是还没发酵，直说你分不清就写分不清。
+- 只用材料里有的事实，绝不许自己推出因果或结论（"可能是因为""这说明""这意味着""标志着""这会影响""这可能会""是……的表现"都不许写，只说发生了什么）；不同的事不许硬连。
+- 材料里的日期是报告的日子，不一定是事情发生的日子。要提就写成"周日的报告里""到了周一"，直接写周几，不加括号；材料里没有的日子不许提。
+- 不要逐日复述，不要"本周报告包括……"这种目录式开头，不要空话。
+- 你不知道他是做什么的：不许写"你""跟你""你的工作"。
+
+threads：最多 ${MAX_WEEKLY_THREADS} 条"这一周不止一天冒出来的事"：
+- title：一句话说是什么事（具体，带主体）。
+- note：一句话说这几天里它怎么变的（先是……后来……）。只写材料里有的。
+- signalIds：照抄材料里括号中的编号，至少要来自两个不同的日子。凑不出两个日子的就不算一条线，不要写。
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"summary":"…","threads":[{"title":"…","note":"…","signalIds":["…","…"]}]}`;
+
+const WEEKDAY_NAMES = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+/** "2026-10-12" → "周一"。 */
+export function weekdayOf(date: string): string {
+  return WEEKDAY_NAMES[new Date(`${date}T12:00:00Z`).getUTCDay()];
+}
+
+/** 周报里自己推因果的说法。 */
+const WEEKLY_SELF_CAUSE = /可能是因为|或许是因为|这说明|这意味着|说明了|标志着|这可能会|这会|将会影响|的表现/;
+
+/** 这句话有没有毛病：自己推了因果，或者提了材料里没有的日子。 */
+function weeklySentenceBad(sentence: string, present: Set<string>): boolean {
+  if (WEEKLY_SELF_CAUSE.test(sentence)) return true;
+  const days = (sentence.match(/周[一二三四五六日天]/g) ?? []).map((d) => (d === "周天" ? "周日" : d));
+  return days.some((d) => !present.has(d));
+}
+
+/** 按句号切开，去掉有毛病的句子（只去那一句，不整段作废 —— 整段作废的话十次有五次写不出来）。 */
+export function dropBadSentences(text: string, present: Set<string>): string {
+  return (text.match(/[^。！？]+[。！？]?/g) ?? [])
+    .filter((x) => x.trim() && !weeklySentenceBad(x, present))
+    .join("")
+    .trim();
+}
+
+/**
+ * dayOf：编号 → 日期。一条线引用的编号要来自至少两个不同的日子，否则丢掉。
+ * 提到的周几必须是材料里有报告的那几天（模型爱把两天的材料写成"周二、周三、周四都有后续"），
+ * 也不许自己推因果；犯了的那一句去掉，正文去光了才算没写出来。
+ */
+export function parseWeeklyDigest(value: unknown, dayOf: Map<string, string>): WeeklyDigest {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const present = new Set(Array.from(dayOf.values()).map(weekdayOf));
+  const summary = dropBadSentences(requireString(v, "summary"), present);
+  if (!summary) throw new Error("周报正文每一句都有毛病（自己推因果，或者提了材料里没有的日子）");
+  const threads: WeeklyThread[] = [];
+  for (const r of Array.isArray(v.threads) ? v.threads : []) {
+    if (!r || typeof r !== "object") continue;
+    const t = r as Record<string, unknown>;
+    const title = typeof t.title === "string" ? t.title.trim() : "";
+    const note = typeof t.note === "string" ? dropBadSentences(t.note.trim(), present) : "";
+    const signalIds = Array.from(
+      new Set((Array.isArray(t.signalIds) ? t.signalIds : []).filter((x): x is string => typeof x === "string" && dayOf.has(x.trim())).map((x) => x.trim()))
+    );
+    const days = new Set(signalIds.map((id) => dayOf.get(id)));
+    if (!title || !note || days.size < 2) continue;
+    threads.push({ title, note, signalIds });
+    if (threads.length >= MAX_WEEKLY_THREADS) break;
+  }
+  const texts = [summary, ...threads.flatMap((t) => [t.title, t.note])];
+  assertNoBanned(texts);
+  assertChinese(texts);
+  if (texts.some((t) => /跟你|你的|你做|你平时|你可以/.test(t))) throw new Error("周报里编了跟他的关系");
+  return { summary, threads: threads.filter((t) => !weeklySentenceBad(t.title, present)) };
+}
+
+export async function writeWeeklyDigest(days: WeeklyDayInput[]): Promise<WeeklyDigest> {
+  const usable = days.filter((d) => d.items.length > 0);
+  if (usable.length < 2) throw new Error("这一周有报告的日子不到两天，连不起来");
+  const contents = usable
+    .map((d) => [`【${d.date}（${weekdayOf(d.date)}）】`, d.summary ? `那天的总览：${d.summary}` : "", ...d.items.map((i) => `- (${i.signalId}) ${i.headline}`)].filter(Boolean).join("\n"))
+    .join("\n\n");
+  const dayOf = new Map(usable.flatMap((d) => d.items.map((i) => [i.signalId, d.date] as const)));
+  return executeAiJson(
+    { operation: "brief_weekly", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验：signalIds 必须照抄括号里的编号，每条线至少来自两个不同的日子；只能提材料里标着的那几天（周几）；不许自己推因果；用中文写。"
+          : ""),
+      config: {
+        systemInstruction: WEEKLY_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2000,
+      },
+    }),
+    (value) => parseWeeklyDigest(value, dayOf)
   );
 }

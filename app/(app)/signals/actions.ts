@@ -15,6 +15,8 @@ import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
 import { generateDigest } from "@/lib/domains/signals/digest";
+import { generateWeekly } from "@/lib/domains/signals/weekly";
+import { setFeedback, type FeedbackKind } from "@/lib/domains/signals/feedback";
 import { sendDailyEmail } from "@/lib/domains/signals/notify";
 import {
   addUserAnalog,
@@ -25,13 +27,15 @@ import {
   researchQuestion,
   updateCriterion,
 } from "@/lib/domains/signals/questions";
-import { gapObservationText } from "@/lib/domains/signals/gaps-shared";
+import { gapIdeaDraft, gapObservationText, type GapSide } from "@/lib/domains/signals/gaps-shared";
+import { createIdeaFromTheme } from "../ideas/actions";
 import {
   resolveJudgment,
   retryJudgmentFeedback,
   submitJudgment,
   type ConfidenceKey,
   type HorizonKey,
+  type MissReason,
 } from "@/lib/domains/signals/practice";
 import { createObservation } from "../capture/actions";
 import { EXTERNAL_TAG } from "../ideas/types";
@@ -108,7 +112,7 @@ export async function keepSignal(id: string, note: string): Promise<string> {
  * 「中国有、日本还没有」里的一条记成观察。内容从存下的报告里重新读，不信前端传来的文字。
  * 进观察而不是另开一套：它会跟平时的观察一起进痛点雷达、进周复盘。
  */
-export async function recordJapanGapAction(signalId: string, note: string, side: "japan" | "china" = "japan"): Promise<string> {
+export async function recordJapanGapAction(signalId: string, note: string, side: GapSide = "japan"): Promise<string> {
   const userId = await requireUserId();
   const gap = await findJapanGap(userId, signalId, side);
   if (!gap) throw new Error("清单里找不到这一条了");
@@ -179,6 +183,7 @@ export async function submitJudgmentAction(input: {
   horizon: HorizonKey;
   confidence: ConfidenceKey | null;
   tags?: string[];
+  milestone?: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
@@ -197,10 +202,11 @@ export async function submitJudgmentAction(input: {
 export async function resolveJudgmentAction(
   predictionId: string,
   outcome: "hit" | "miss",
-  note: string
+  note: string,
+  missReason?: MissReason
 ): Promise<void> {
   const userId = await requireUserId();
-  await resolveJudgment(userId, predictionId, outcome, note);
+  await resolveJudgment(userId, predictionId, outcome, note, missReason);
   revalidatePath("/signals");
   revalidatePath("/signals/practice");
 }
@@ -457,5 +463,53 @@ export async function generateDigestAction(date: string): Promise<{ ok: true } |
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "总览没写出来") };
+  }
+}
+
+/** 中日差距清单里的一条，变成想法模块里的一个想法（状态"观察"，预填有依据的两格）。返回想法 id。 */
+export async function gapToIdeaAction(
+  signalId: string,
+  side: GapSide = "japan"
+): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const gap = await findJapanGap(userId, signalId, side);
+    if (!gap) throw new Error("清单里找不到这一条了");
+    const draft = gapIdeaDraft(gap, side);
+    const idea = await createIdeaFromTheme(draft.title, draft.hypothesis, draft.tags);
+    revalidatePath("/ideas");
+    return { ok: true, id: idea.id };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没变成想法") };
+  }
+}
+
+/** 这一节今天有没有用。 */
+export async function setFeedbackAction(
+  date: string,
+  kind: string,
+  useful: boolean
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  if (!["news", "calendar", "voices", "money", "tools"].includes(kind)) return { ok: false, message: "不认识这一节" };
+  try {
+    await setFeedback(userId, date, kind as FeedbackKind, useful);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
+  }
+}
+
+/** 生成（或重新生成）某一周的周报。 */
+export async function generateWeeklyAction(weekStart: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return { ok: false, message: "日期不对" };
+  try {
+    const weekly = await generateWeekly(userId, weekStart);
+    if (!weekly) return { ok: false, message: "那一周有报告的日子不到两天，连不起来" };
+    revalidatePath("/signals/week");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "周报没写出来") };
   }
 }

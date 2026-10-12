@@ -5506,3 +5506,31 @@ do $$ begin
   alter table signal_briefs add constraint signal_briefs_kind_check
     check (kind in ('news', 'tools', 'voices', 'calendar', 'money', 'digest'));
 exception when duplicate_object then null; end $$;
+
+-- ============================================================================
+-- 062：判断错在哪一步（miss_reason）、每节有没有用（signal_feedback）、周报（kind 加 weekly）
+-- ============================================================================
+
+alter table signal_judgments add column if not exists miss_reason text
+  check (miss_reason in ('info', 'reasoning', 'timing', 'emotion', 'luck'));
+
+create table if not exists signal_feedback (
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  brief_date  date not null,
+  kind        text not null,
+  useful      boolean not null,
+  created_at  timestamptz not null default now(),
+  primary key (user_id, brief_date, kind)
+);
+
+alter table signal_feedback enable row level security;
+
+drop policy if exists "signal_feedback_owner" on signal_feedback;
+create policy "signal_feedback_owner" on signal_feedback
+  for all using (auth.uid() = user_id);
+
+alter table signal_briefs drop constraint if exists signal_briefs_kind_check;
+do $$ begin
+  alter table signal_briefs add constraint signal_briefs_kind_check
+    check (kind in ('news', 'tools', 'voices', 'calendar', 'money', 'digest', 'weekly'));
+exception when duplicate_object then null; end $$;

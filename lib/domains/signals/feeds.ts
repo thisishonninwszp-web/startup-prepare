@@ -21,6 +21,8 @@ export type RssFeed = {
   url: string;
   /** 中文媒体。报告里会多问一句"日本这边有没有"。 */
   china?: true;
+  /** 美国媒体。同样多问一句"日本这边有没有"（美国有、日本还没有）。 */
+  us?: true;
 };
 
 export const NEWS_SOURCE_PREFIX = "news:";
@@ -65,8 +67,8 @@ export const RSS_FEEDS: RssFeed[] = [
   { kind: "news", key: "yahoo_business", label: "Yahoo! 経済", url: "https://news.yahoo.co.jp/rss/topics/business.xml" },
   { kind: "news", key: "yahoo_it", label: "Yahoo! IT", url: "https://news.yahoo.co.jp/rss/topics/it.xml" },
   { kind: "news", key: "yahoo_world", label: "Yahoo! 国際", url: "https://news.yahoo.co.jp/rss/topics/world.xml" },
-  { kind: "news", key: "hackernews", label: "Hacker News", url: "https://news.ycombinator.com/rss" },
-  { kind: "news", key: "techcrunch", label: "TechCrunch", url: "https://techcrunch.com/feed/" },
+  { kind: "news", key: "hackernews", label: "Hacker News", url: "https://news.ycombinator.com/rss", us: true },
+  { kind: "news", key: "techcrunch", label: "TechCrunch", url: "https://techcrunch.com/feed/", us: true },
   { kind: "news", key: "itmedia", label: "ITmedia", url: "https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml" },
   { kind: "news", key: "gigazine", label: "GIGAZINE", url: "https://gigazine.net/news/rss_2.0/" },
   { kind: "news", key: "gnews_rates", label: "Google News 金利・為替", url: gnews("FRB OR 日銀 OR 利上げ OR 為替") },
@@ -127,6 +129,13 @@ export function newsSourceLabel(source: string): string {
 }
 
 const CHINA_SOURCES = new Set([...RSS_FEEDS.filter((f) => f.china).map(rssSource), CN_APP_SOURCE]);
+
+const US_SOURCES = new Set(RSS_FEEDS.filter((f) => f.us).map(rssSource));
+
+/** 这条是不是来自美国媒体。 */
+export function isUsSource(source: string): boolean {
+  return US_SOURCES.has(source);
+}
 
 /** 这条是不是来自中文媒体。 */
 export function isChinaSource(source: string): boolean {

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { describeMove, unusualFastMoves } from "./fast";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { BriefItem, BriefPracticeRow } from "./brief";
 import { tokyoToday } from "./brief";
@@ -41,6 +42,8 @@ export type DailyEmailInput = {
   sections: { title: string; items: Pick<BriefItem, "headline" | "related_question" | "surprise">[] }[];
   dueCount: number;
   freshQuestions: { question: string; freshCount: number }[];
+  /** 这一周动得不寻常的快变量（已经写成一句话）。 */
+  fastAlerts?: string[];
   url: string | null;
 };
 
@@ -68,6 +71,7 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
   if (input.practice) {
     lines.push("今天的练习", `读这一条：${input.practice.headline}`, `问题：${input.practice.question}`, "先写下你的判断，再看 AI 怎么拆。", "");
   }
+  if (input.fastAlerts && input.fastAlerts.length > 0) lines.push("这一周动得不寻常的：", ...input.fastAlerts.map((a) => `· ${a}`), "");
   if (input.dueCount > 0) lines.push(`有 ${input.dueCount} 条判断到期了，去对一下账。`, "");
   for (const q of input.freshQuestions) {
     lines.push(`你在追的「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`);
@@ -87,6 +91,8 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
   if (isMonday(input.date)) {
     lines.push("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。");
     if (input.url) lines.push(`${input.url}/signals/slow`);
+    lines.push("上一周的周报也可以看了：七天连起来，哪件事一直在响、哪件只响了一天。");
+    if (input.url) lines.push(`${input.url}/signals/week`);
     lines.push("");
   }
   if (input.url) lines.push(`打开今天的报告：${input.url}/signals`);
@@ -108,9 +114,10 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   const newsItems = ((news?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra);
   const practiceItem = practiceRow ? newsItems.find((i) => i.signal_id === practiceRow.signal_id) : undefined;
 
-  const [judgments, questions] = await Promise.all([
+  const [judgments, questions, fast] = await Promise.all([
     listJudgments(userId).catch(() => []),
     supabaseAdmin.from("signal_questions").select("question, research").eq("user_id", userId).is("archived_at", null),
+    unusualFastMoves().catch(() => []),
   ]);
   const freshQuestions = (questions.error ? [] : questions.data ?? [])
     .map((q) => ({
@@ -133,6 +140,7 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
     })),
     dueCount: dueJudgments(judgments).length,
     freshQuestions,
+    fastAlerts: fast.map(describeMove),
     url: appUrl(),
   };
 }

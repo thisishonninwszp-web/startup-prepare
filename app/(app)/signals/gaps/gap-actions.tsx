@@ -4,7 +4,9 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { recordJapanGapAction } from "../actions";
+import { useRouter } from "next/navigation";
+import { gapToIdeaAction, recordJapanGapAction } from "../actions";
+import type { GapSide } from "@/lib/domains/signals/gaps-shared";
 
 /** 记成观察：写一句为什么想琢磨这条（可以不写）。已经记过的直接给去捕捉页的链接。 */
 export function GapActions({
@@ -14,7 +16,7 @@ export function GapActions({
 }: {
   signalId: string;
   observed: boolean;
-  side?: "japan" | "china";
+  side?: GapSide;
 }) {
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<"idle" | "noting" | "kept">(observed ? "kept" : "idle");
@@ -66,8 +68,38 @@ export function GapActions({
   }
 
   return (
-    <Button variant="outline" size="sm" className="h-10 sm:h-8" onClick={() => setMode("noting")}>
-      记成观察
-    </Button>
+    <span className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" size="sm" className="h-10 sm:h-8" onClick={() => setMode("noting")}>
+        记成观察
+      </Button>
+      <ToIdeaButton signalId={signalId} side={side} />
+    </span>
+  );
+}
+
+/** 一步到位：变成想法模块里的一个想法，打开它去补目标用户、痛点、愿付多少。 */
+function ToIdeaButton({ signalId, side }: { signalId: string; side: GapSide }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-10 sm:h-8"
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const r = await gapToIdeaAction(signalId, side);
+            if (r.ok) router.push(`/ideas/${r.id}`);
+            else setError(r.message);
+          })
+        }
+      >
+        {pending ? "在建…" : "变成一个想法 →"}
+      </Button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </>
   );
 }

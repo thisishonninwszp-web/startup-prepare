@@ -8,8 +8,11 @@ import {
   GENERIC_QUESTION,
   displayQuestion,
   HORIZONS,
+  LONG_HORIZONS,
+  milestoneQuestion,
   NODE_BET_PREFIX,
   normalizeTags,
+  type MissReason,
   type ConfidenceKey,
   type HorizonKey,
   type JudgmentRow,
@@ -33,7 +36,7 @@ type PredictionJoin = {
 };
 
 const SELECT =
-  "id, signal_id, question_id, tags, prediction_id, news_title, news_url, question, judgment, feedback, created_at, predictions!inner(due_at, outcome, confidence, resolved_at, note)";
+  "id, signal_id, question_id, tags, miss_reason, prediction_id, news_title, news_url, question, judgment, feedback, created_at, predictions!inner(due_at, outcome, confidence, resolved_at, note)";
 /** 迁移 059 还没跑时退回的列（没有 tags / question_id）。 */
 const SELECT_LEGACY =
   "id, signal_id, prediction_id, news_title, news_url, question, judgment, feedback, created_at, predictions!inner(due_at, outcome, confidence, resolved_at, note)";
@@ -44,7 +47,7 @@ async function selectJudgments<T>(
 ): Promise<T | null> {
   const first = await build(SELECT);
   if (!first.error) return first.data;
-  if (!/tags|question_id/.test(first.error.message)) throw new Error(first.error.message);
+  if (!/tags|question_id|miss_reason/.test(first.error.message)) throw new Error(first.error.message);
   const legacy = await build(SELECT_LEGACY);
   if (legacy.error) throw new Error(legacy.error.message);
   return legacy.data;
@@ -69,6 +72,7 @@ function flatten(row: Record<string, unknown>): JudgmentRow {
     note: p.note,
     tags: (row.tags as string[] | null) ?? [],
     question_id: (row.question_id as string | null) ?? null,
+    miss_reason: (row.miss_reason as JudgmentRow["miss_reason"]) ?? null,
   };
 }
 
@@ -124,6 +128,8 @@ export async function submitJudgment(input: {
   horizon: HorizonKey;
   confidence: ConfidenceKey | null;
   tags?: string[];
+  /** 一年以上的判断：半年内就能看到的苗头，填了就自动多押一条半年后对账的。 */
+  milestone?: string;
 }): Promise<JudgmentRow> {
   const judgment = input.judgment.trim();
   if (judgment.length < 4) throw new Error("写一句完整的判断，哪怕很粗糙");
@@ -190,6 +196,25 @@ export async function submitJudgment(input: {
 
   const saved = await findJudgment(input.userId, subject, question);
   if (!saved) throw new Error("判断没存上");
+
+  // 长期判断：另押一条半年内能看到的苗头，长期判断中途也有反馈
+  const milestone = input.milestone?.trim();
+  if (milestone && milestone.length >= 4 && LONG_HORIZONS.includes(input.horizon)) {
+    try {
+      await submitJudgment({
+        userId: input.userId,
+        signalId: input.signalId,
+        questionId: input.questionId,
+        question: milestoneQuestion(question),
+        judgment: milestone,
+        horizon: "6m",
+        confidence: null,
+        tags: input.tags,
+      });
+    } catch (e) {
+      console.error("milestone bet failed", e);
+    }
+  }
   return saved;
 }
 
@@ -268,7 +293,8 @@ export async function resolveJudgment(
   userId: string,
   predictionId: string,
   outcome: "hit" | "miss",
-  note: string
+  note: string,
+  missReason?: MissReason
 ): Promise<void> {
   const { error } = await supabaseAdmin
     .from("predictions")
@@ -278,6 +304,14 @@ export async function resolveJudgment(
     .eq("source_type", "signal")
     .eq("outcome", "pending");
   if (error) throw new Error(error.message);
+  // 看错的原因记在判断那一行；062 没跑就跳过，对账本身已经记下了
+  if (outcome === "miss" && missReason) {
+    await supabaseAdmin
+      .from("signal_judgments")
+      .update({ miss_reason: missReason })
+      .eq("prediction_id", predictionId)
+      .eq("user_id", userId);
+  }
 }
 
 /** 挑刺当时失败了，补一次。 */

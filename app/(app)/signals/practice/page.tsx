@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { dueJudgments, listJudgments, tallyByTag, tallyJudgments } from "@/lib/domains/signals/practice";
+import { dueJudgments, listJudgments, tallyByTag, tallyJudgments, tallyMissReasons } from "@/lib/domains/signals/practice";
 import { listUserFlaggedSteps } from "@/lib/domains/signals/inference";
 import { ResolveJudgment } from "../judgment-forms";
 import { formatDueDate, JudgmentView, outcomeLabel } from "../judgment-view";
@@ -77,6 +77,7 @@ export default async function JudgmentLedgerPage() {
 function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeof listJudgments>>> }) {
   const tally = tallyJudgments(judgments);
   const byTag = tallyByTag(judgments);
+  const missReasons = tallyMissReasons(judgments).filter((m) => m.count > 0);
   const due = dueJudgments(judgments);
   const resolvedCount = tally.hit + tally.miss;
 
@@ -92,6 +93,20 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
           ? `已经对过账的只有 ${resolvedCount} 条，太少，现在看不出你准不准。先攒着。`
           : "只记次数，不算准确率：一个数字会让你忘了每一条是怎么错的。往下翻着看。"}
       </p>
+
+      {missReasons.length > 0 && (
+        <section className="mb-10">
+          <h2 className="text-base font-semibold">看错的时候，错在哪一步</h2>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">只数次数。哪一类最多，下次判断时就在那一步多停一下。</p>
+          <ul className="mt-3 space-y-1 text-sm">
+            {missReasons.map((m) => (
+              <li key={m.reason}>
+                <span className="font-mono">{m.count}</span> 次 · {m.label}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {byTag.length > 0 && (
         <section className="mb-10">

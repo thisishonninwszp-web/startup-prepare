@@ -27,19 +27,35 @@ export type JapanGap = {
 
 const GAP_OPENERS = ["没有", "有类似的"];
 
-/** japan：中国有、日本还没有（中国的条目问"日本有没有"）；china：日本有、中国还没有（反方向）。 */
-export type GapSide = "japan" | "china";
+/**
+ * japan：中国有、日本还没有（中国的条目问"日本有没有"）；china：日本有、中国还没有（反方向）；
+ * us：美国有、日本还没有（美国的条目问"日本有没有"，和 japan 共用同一组字段，靠 origin 分开）。
+ */
+export type GapSide = "japan" | "china" | "us";
 
 /** 一条报告条目在某个方向上的比较结果（两个方向存在不同的字段里）。 */
 function sideOf(item: BriefItem, side: GapSide) {
-  return side === "japan"
-    ? { text: item.japan, check: item.japan_check, whyNow: item.japan_why_now, funded: item.japan_funded }
-    : { text: item.china_side, check: item.china_check, whyNow: item.china_why_now, funded: item.china_funded };
+  return side === "china"
+    ? { text: item.china_side, check: item.china_check, whyNow: item.china_why_now, funded: item.china_funded }
+    : { text: item.japan, check: item.japan_check, whyNow: item.japan_why_now, funded: item.japan_funded };
+}
+
+/** 两个"问日本有没有"的方向靠出发地分开；老数据没有 origin，都算中国的。 */
+function originMatches(item: BriefItem, side: GapSide): boolean {
+  if (side === "us") return item.origin === "us";
+  if (side === "japan") return item.origin !== "us";
+  return true;
+}
+
+/** 每个方向上"那边 / 这边"叫什么。 */
+export function gapPlaces(side: GapSide): { there: string; here: string } {
+  if (side === "china") return { there: "日本", here: "中国" };
+  return { there: side === "us" ? "美国" : "中国", here: "日本" };
 }
 
 export function isJapanGap(item: BriefItem, side: GapSide = "japan"): boolean {
   const s = sideOf(item, side);
-  if (item.extra || !s.text || !s.check) return false;
+  if (item.extra || !s.text || !s.check || !originMatches(item, side)) return false;
   if (s.check.status === "unverified") return false;
   return GAP_OPENERS.some((o) => s.text!.startsWith(o));
 }
@@ -75,13 +91,30 @@ export function collectJapanGaps(briefs: { brief_date: string; items: BriefItem[
 export function gapObservationText(gap: JapanGap, note: string, side: GapSide = "japan"): string {
   return [
     note.trim(),
-    side === "japan" ? `中国有、日本还没有：${gap.headline}` : `日本有、中国还没有：${gap.headline}`,
-    side === "japan" ? `日本这边：${gap.japan}` : `中国那边：${gap.japan}`,
+    `${gapPlaces(side).there}有、${gapPlaces(side).here}还没有：${gap.headline}`,
+    `${gapPlaces(side).here}这边：${gap.japan}`,
     `读到：${gap.title}（${gap.source}）`,
     gap.url ?? "",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * 变成一个想法时预填的内容：只填清单里有依据的两格（替代方案 = 这边现在怎样，方案 = 把那边的做法搬过来），
+ * 目标用户、痛点、愿付多少留给他自己写 —— 那几格才是要去验证的。状态是"观察"，不跳级。
+ */
+export function gapIdeaDraft(gap: JapanGap, side: GapSide = "japan") {
+  const { there, here } = gapPlaces(side);
+  return {
+    title: `${here}版：${gap.headline}`.slice(0, 60),
+    hypothesis: {
+      alternative: `${here}这边：${gap.japan}`,
+      solution: `把${there}已经跑通的做法带到${here}：${gap.headline}`,
+      ...(gap.whyNow ? { why_insufficient: `为什么是现在：${gap.whyNow}` } : {}),
+    },
+    tags: ["外部", side === "us" ? "美日差距" : "中日差距"],
+  };
 }
 
 /** 这条是不是已经记成过观察：观察正文里出现过它的链接或那句话。 */

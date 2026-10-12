@@ -403,11 +403,12 @@ async function gatherWeeklySources(
 /**
  * 外部信号这一周留下的东西：读新闻写下的判断、到期对过账的判断、在追的问题上改过的看法。
  * 判断力校准正是周复盘的事 —— 这周判断了什么、哪些看对了看错了、哪个看法被证据推动了。
- * 迁移 055 / 059 没跑时对应的那一块跳过，不影响复盘。
+ * 再加上这一周的外部信号周报（世界这周的主线），写复盘时能对照"我这周在想什么、世界这周在发生什么"。
+ * 迁移 055 / 059 / 062 没跑时对应的那一块跳过，不影响复盘。
  */
 async function gatherSignalSources(userId: string, from: string, until: string): Promise<SourceRow[]> {
   const out: SourceRow[] = [];
-  const [written, resolved, views] = await Promise.all([
+  const [written, resolved, views, weeklies] = await Promise.all([
     supabaseAdmin
       .from("signal_judgments")
       .select("id, news_title, question, judgment, created_at, predictions!inner(due_at, confidence)")
@@ -427,6 +428,14 @@ async function gatherSignalSources(userId: string, from: string, until: string):
       .eq("user_id", userId)
       .gte("created_at", from)
       .lt("created_at", until),
+    // 周报的 brief_date 是那周的周一
+    supabaseAdmin
+      .from("signal_briefs")
+      .select("id, brief_date, overview, items")
+      .eq("user_id", userId)
+      .eq("kind", "weekly")
+      .gte("brief_date", from.slice(0, 10))
+      .lt("brief_date", until.slice(0, 10)),
   ]);
   for (const row of written.error ? [] : written.data ?? []) {
     out.push({
@@ -451,6 +460,14 @@ async function gatherSignalSources(userId: string, from: string, until: string):
       id: row.id as string,
       label: `在追的问题上改了看法 · ${q?.question ?? ""}`,
       snapshot: { view: row.view, reason: row.reason, created_at: row.created_at },
+    });
+  }
+  for (const row of weeklies.error ? [] : weeklies.data ?? []) {
+    out.push({
+      type: "signal_weekly",
+      id: row.id as string,
+      label: `外部信号周报 · ${row.brief_date} 起的一周`,
+      snapshot: { summary: row.overview, threads: row.items },
     });
   }
   return out;

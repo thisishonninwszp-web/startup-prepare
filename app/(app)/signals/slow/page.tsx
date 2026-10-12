@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { BriefItem } from "@/lib/domains/signals/brief";
 import { pestleCoverage } from "@/lib/domains/signals/coverage";
+import { describeMove, fetchFastMoves, isUnusual } from "@/lib/domains/signals/fast";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import {
@@ -72,9 +73,10 @@ export default async function SlowVariablesPage() {
   if (!user) notFound();
 
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
-  const [all, week] = await Promise.all([
+  const [all, week, fast] = await Promise.all([
     Promise.all(SLOW_VARIABLES.map((v) => fetchSlowSeries(v))),
     supabaseAdmin.from("signal_briefs").select("items").eq("user_id", user.id).gte("brief_date", weekAgo),
+    fetchFastMoves(),
   ]);
   const coverage = pestleCoverage((week.data ?? []).flatMap((r) => (r.items as BriefItem[] | null) ?? []));
   const tagged = coverage.reduce((n, c) => n + c.count, 0);
@@ -129,6 +131,25 @@ export default async function SlowVariablesPage() {
           );
         })}
       </ul>
+
+      <section className="mt-10 border-t pt-6">
+        <h2 className="text-base font-semibold">快变量</h2>
+        <p className="mt-1 text-xs leading-6 text-muted-foreground">
+          每天都在动的几个数。平时不用看；哪一项一周动得近两年里少见，报告最上面和邮件里会提一句。只说动得大不大，不说接下来往哪走。
+        </p>
+        {fast.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">这次没取到数据，晚点再来看。</p>
+        ) : (
+          <ul className="mt-3 space-y-2 text-sm leading-7">
+            {fast.map((m) => (
+              <li key={m.variable.key} className={isUnusual(m) ? "text-primary" : ""}>
+                {describeMove(m)}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-2 text-xs text-muted-foreground">数据：Yahoo Finance 周线</p>
+      </section>
 
       <section className="mt-10 border-t pt-6">
         <h2 className="text-base font-semibold">这一周的报告看了哪些领域</h2>

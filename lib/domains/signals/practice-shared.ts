@@ -5,11 +5,32 @@ import type { JudgmentFeedback } from "@/lib/ai";
  */
 
 export const HORIZONS = {
+  "3d": { label: "三天后", days: 3 },
   "1m": { label: "一个月后", days: 30 },
   "3m": { label: "三个月后", days: 91 },
   "6m": { label: "半年后", days: 182 },
+  "1y": { label: "一年后", days: 365 },
+  "3y": { label: "三年后", days: 1095 },
 } as const;
 export type HorizonKey = keyof typeof HORIZONS;
+
+/** 一年以上的判断要等很久才能对账：可以另写一个半年内就能看到的"苗头"，自动多押一条。 */
+export const LONG_HORIZONS: HorizonKey[] = ["1y", "3y"];
+export const MILESTONE_PREFIX = "【苗头】";
+
+export function milestoneQuestion(question: string): string {
+  return `${MILESTONE_PREFIX}${question}`;
+}
+
+/** 看错时选的原因：几个月后看自己总栽在哪一类上。只数次数。 */
+export const MISS_REASONS = {
+  info: "信息不够：有个关键事实当时不知道",
+  reasoning: "推理断了：前提对，中间想当然了",
+  timing: "时间估错：会发生，只是比我想的慢或快",
+  emotion: "被情绪带了：我希望它发生（或不发生）",
+  luck: "纯属意外：谁也料不到的事打乱了",
+} as const;
+export type MissReason = keyof typeof MISS_REASONS;
 
 /** 把握度只给三档，由用户自己选；它唯一的用途是和实际对错对账。 */
 export const CONFIDENCE_LEVELS = {
@@ -40,7 +61,18 @@ export type JudgmentRow = {
   tags: string[];
   /** 从问题页押进来的判断连着的问题（这种没有对应的新闻）。 */
   question_id: string | null;
+  /** 看错时选的原因（迁移 062 之前没有）。 */
+  miss_reason?: MissReason | null;
 };
+
+/** 看错的那几条，每种原因各几次。 */
+export function tallyMissReasons(rows: JudgmentRow[]): { reason: MissReason; label: string; count: number }[] {
+  return (Object.keys(MISS_REASONS) as MissReason[]).map((reason) => ({
+    reason,
+    label: MISS_REASONS[reason],
+    count: rows.filter((r) => r.outcome === "miss" && r.miss_reason === reason).length,
+  }));
+}
 
 const MAX_TAGS = 5;
 const MAX_TAG_LENGTH = 12;
@@ -114,5 +146,6 @@ export const QUESTION_BET_PREFIX = "【我的问题】";
 export function displayQuestion(question: string): string {
   if (isNodeBet(question)) return `往下推的一步会不会发生：${question.slice(NODE_BET_PREFIX.length)}`;
   if (question.startsWith(QUESTION_BET_PREFIX)) return `我在追的问题：${question.slice(QUESTION_BET_PREFIX.length)}`;
+  if (question.startsWith(MILESTONE_PREFIX)) return `长期判断的中途苗头：${displayQuestion(question.slice(MILESTONE_PREFIX.length))}`;
   return question;
 }

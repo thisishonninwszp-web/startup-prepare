@@ -24,6 +24,11 @@ const SIDE_TEXT: Record<GapSide, { here: string; there: string; empty: string }>
     there: "日本",
     empty: "报告里日本的产品、服务或做法，查下来中国还没有或没普及的，会攒在这里。过几天再来看。",
   },
+  us: {
+    here: "日本",
+    there: "美国",
+    empty: "Hacker News、TechCrunch 上的产品和做法，查到出处、确认日本还没有或没普及的才会进来。过几天再来看。",
+  },
 };
 
 function GapList({ gaps, side }: { gaps: JapanGapRow[]; side: GapSide }) {
@@ -107,7 +112,11 @@ export default async function JapanGapsPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [toJapan, toChina] = await Promise.all([listJapanGaps(user.id, "japan"), listJapanGaps(user.id, "china")]);
+  const [toJapan, fromUs, toChina] = await Promise.all([
+    listJapanGaps(user.id, "japan"),
+    listJapanGaps(user.id, "us"),
+    listJapanGaps(user.id, "china"),
+  ]);
 
   return (
     <PageContainer width="narrow">
@@ -117,12 +126,21 @@ export default async function JapanGapsPage() {
         </Link>
       </p>
       <PageHeader
-        eyebrow="China ⇄ Japan"
-        title="中国有、日本还没有"
-        description="每天报告里中国的那几条，上网查下来日本还没有、或者有但没普及的，都攒在这里；反过来，日本有、中国还没有的也攒着。哪条让你想多琢磨一下，就记成观察，周复盘时会再看到它。"
+        eyebrow="Gaps"
+        title="那边有、这边还没有"
+        description="每天报告里中国和美国的那几条，上网查下来日本还没有、或者有但没普及的，都攒在这里；反过来，日本有、中国还没有的也攒着。哪条让你想多琢磨一下，就记成观察，或者直接变成一个想法。"
       />
 
+      <h2 className="mb-4 text-xl font-semibold">中国有、日本还没有</h2>
       <GapList gaps={toJapan} side="japan" />
+
+      <section className="mt-12 border-t pt-6">
+        <h2 className="text-xl font-semibold">美国有、日本还没有</h2>
+        <p className="mb-4 mt-1 text-sm leading-7 text-muted-foreground">
+          美国先出现的产品和做法，日本常常晚几年。只收讲产品、服务、生意做法的，纯技术讨论不收。
+        </p>
+        <GapList gaps={fromUs} side="us" />
+      </section>
 
       <section className="mt-12 border-t pt-6">
         <h2 className="text-xl font-semibold">反过来：日本有、中国还没有</h2>

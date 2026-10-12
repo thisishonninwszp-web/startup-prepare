@@ -23,6 +23,9 @@ import { formatDueDate, JudgmentView } from "./judgment-view";
 import { ListenButton } from "./listen-button";
 import { ReaderPanel } from "./reader-panel";
 import { SectionTabs } from "./section-tabs";
+import { SectionFeedback } from "./section-feedback";
+import { getFeedback } from "@/lib/domains/signals/feedback";
+import { describeMove, unusualFastMoves } from "@/lib/domains/signals/fast";
 import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
@@ -57,9 +60,11 @@ const OPPORTUNITY_LABELS: Record<NonNullable<BriefItem["opportunity"]>, string> 
 const LINKS: { href: string; label: string }[] = [
   { href: "/signals/practice", label: "判断账本" },
   { href: "/signals/questions", label: "我在追的问题" },
-  { href: "/signals/gaps", label: "中国⇄日本" },
+  { href: "/signals/gaps", label: "那边有、这边没有" },
   { href: "/signals/precedents", label: "先例" },
   { href: "/signals/slow", label: "慢变量" },
+  { href: "/signals/week", label: "周报" },
+  { href: "/signals/sources", label: "信息源体检" },
 ];
 
 /** 这件事之前也上过报告：哪天、那次的标题；那次写过判断的话，把判断和对账情况摆出来。 */
@@ -165,7 +170,7 @@ function ReportItem({
     item.personal ? (item.personal_edge ? "你的优势" : "跟你") : null,
     earlier ? "之前上过" : null,
     item.precedent ? "先例" : null,
-    showChina || (item.japan && /^(没有|有类似的)/.test(item.japan)) ? "中日差距" : null,
+    showChina || (item.japan && /^(没有|有类似的)/.test(item.japan)) ? (item.origin === "us" ? "美日差距" : "中日差距") : null,
   ].filter((x): x is string => !!x);
 
   return (
@@ -315,10 +320,15 @@ function ReportSectionView({
   isToday,
   hiddenSignalId,
   earlier,
+  date,
+  feedback,
 }: {
   section: (typeof SECTIONS)[number];
   data: ReportSection | null;
   isToday: boolean;
+  date: string;
+  /** 这一节今天点过的"有用 / 没用"。 */
+  feedback?: boolean;
   /** 之前的报告也出现过同一件事的条目。 */
   earlier: Record<string, EarlierMention>;
   /** 今天的练习题还没写判断时，这一条的 AI 解读先藏起来。 */
@@ -397,11 +407,10 @@ function ReportSectionView({
               </ul>
             </details>
           )}
-          {isToday && (
-            <div className="mt-6 flex justify-end">
-              <GenerateBriefButton kind={section.kind} regenerate />
-            </div>
-          )}
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+            <SectionFeedback date={date} kind={section.kind} initial={feedback} />
+            {isToday && <GenerateBriefButton kind={section.kind} regenerate />}
+          </div>
         </>
       )}
     </section>
@@ -573,7 +582,7 @@ export default async function SignalsReportPage({
   const today = tokyoToday();
   const date = isReportDate(searchParams.date) ? searchParams.date : today;
   const isToday = date === today;
-  const [report, newsCount, toolsCount, judgments, digest] = await Promise.all([
+  const [report, newsCount, toolsCount, judgments, digest, feedback, fastAlerts] = await Promise.all([
     getDailyReport(user.id, date),
     countPendingSignals("news"),
     countPendingSignals("tools"),
@@ -583,6 +592,8 @@ export default async function SignalsReportPage({
       throw e;
     }),
     getDigest(user.id, date).catch(() => null),
+    getFeedback(user.id, date),
+    isToday ? unusualFastMoves().catch(() => []) : Promise.resolve([]),
   ]);
 
   const practice = report !== "missing-schema" ? report.news?.practice ?? null : null;
@@ -658,6 +669,19 @@ export default async function SignalsReportPage({
         </div>
       ) : (
         <>
+          {fastAlerts.length > 0 && (
+            <div className="mb-6 rounded-lg border border-border bg-card p-4 text-sm leading-7">
+              <p className="font-medium">这一周动得不寻常的</p>
+              <ul className="mt-1 space-y-1">
+                {fastAlerts.map((m) => (
+                  <li key={m.variable.key}>{describeMove(m)}</li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs text-muted-foreground">
+                只是说它动得大，不说它接下来往哪走。想知道为什么动，翻翻今天的世界那一节。
+              </p>
+            </div>
+          )}
           <DigestCard digest={digest === "missing-schema" ? null : digest} date={date} canGenerate={isToday && hasAnySection} />
           <div className="mb-8">
             <ListenButton paragraphs={listenScript} />
@@ -699,6 +723,8 @@ export default async function SignalsReportPage({
                   isToday={isToday}
                   earlier={report.earlier}
                   hiddenSignalId={section.kind === "news" ? hiddenSignalId : null}
+                  date={date}
+                  feedback={feedback[section.kind as keyof typeof feedback]}
                 />
               ),
             }))}
