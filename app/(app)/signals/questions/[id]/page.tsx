@@ -5,7 +5,14 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatTokyoTime } from "@/lib/domains/signals/format";
 import { knownTags, listJudgments, listQuestionBets } from "@/lib/domains/signals/practice";
-import { articleOutline, flattenEvidence, getQuestion, questionBetQuestion } from "@/lib/domains/signals/questions";
+import {
+  articleOutline,
+  flattenEvidence,
+  getQuestion,
+  listRelatedReports,
+  questionBetQuestion,
+} from "@/lib/domains/signals/questions";
+import { formatReportDate } from "@/lib/domains/signals/format";
 import { AnalogItem, HistoryView } from "../../history-panel";
 import { EvidenceList } from "../../inference-tree";
 import { JudgmentForm } from "../../judgment-forms";
@@ -43,9 +50,10 @@ export default async function QuestionDetailPage({ params }: { params: { id: str
   }
   if (!question) notFound();
 
-  const [bets, allJudgments] = await Promise.all([
+  const [bets, allJudgments, related] = await Promise.all([
     listQuestionBets(user.id, question.id),
     listJudgments(user.id).catch(() => []),
+    listRelatedReports(user.id, question.id).catch(() => []),
   ]);
   const current = question.views[0];
   const research = question.research;
@@ -105,6 +113,38 @@ export default async function QuestionDetailPage({ params }: { params: { id: str
             <div className="mt-3">
               <ViewForm questionId={question.id} hasView={false} />
             </div>
+          </>
+        )}
+      </section>
+
+      {/* 每日报告里碰到的 */}
+      <section className="mb-10">
+        <h2 className="text-base font-semibold">每日报告里碰到的</h2>
+        {related.length === 0 ? (
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">
+            这里空着。之后每天的报告里，直接关系到这个问题的新闻会在这里攒起来 —— 宁缺毋滥，沾边的不算。
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              最近两个月的报告里，有 {related.length} 条直接关系到这个问题。看完想想：你的看法要不要改？
+            </p>
+            <ul className="mt-3 space-y-3">
+              {related.map((r) => (
+                <li key={r.signal_id} className="border-l-2 border-border pl-3 leading-7">
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {formatReportDate(r.brief_date)} · {r.source}
+                  </p>
+                  <Link
+                    href={`/signals/${r.signal_id}`}
+                    className="text-base transition-colors duration-150 hover:text-primary"
+                  >
+                    {r.headline}
+                  </Link>
+                  <p className="text-sm text-muted-foreground">{r.why}</p>
+                </li>
+              ))}
+            </ul>
           </>
         )}
       </section>

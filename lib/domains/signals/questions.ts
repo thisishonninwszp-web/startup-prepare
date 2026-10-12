@@ -10,9 +10,12 @@ import {
 } from "@/lib/ai";
 import { tavilySearch } from "@/lib/external";
 import { researchHistory, verifyAnalog } from "./history";
+import type { BriefItem } from "./brief";
 import {
   MAX_USER_ANALOGS,
+  relatedReportItems,
   type QuestionResearch,
+  type RelatedReportItem,
   type QuestionView,
   type SignalQuestion,
   type SubQuestionResult,
@@ -255,4 +258,22 @@ export async function removeUserAnalog(userId: string, id: string, index: number
     .eq("id", id)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
+}
+
+/** 往回翻多少天的报告，找"跟这个问题有关"的条目。 */
+const RELATED_LOOKBACK_DAYS = 60;
+
+/** 最近的每日报告里，标过跟这个问题有关的那几条。 */
+export async function listRelatedReports(userId: string, questionId: string): Promise<RelatedReportItem[]> {
+  const since = new Date(Date.now() - RELATED_LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const { data, error } = await supabaseAdmin
+    .from("signal_briefs")
+    .select("brief_date, items")
+    .eq("user_id", userId)
+    .gte("brief_date", since);
+  if (error) throw new Error(error.message);
+  return relatedReportItems(
+    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: (r.items as BriefItem[] | null) ?? [] })),
+    questionId
+  );
 }

@@ -2309,3 +2309,87 @@ export async function expandUserAnalog(input: { question: string; userText: stri
     parseUserAnalog
   );
 }
+
+// ── 报告认得他在追的问题 ─────────────────────────────────────────────────────
+
+export type QuestionLink = {
+  /** 报告里那一条的候选序号。 */
+  index: number;
+  /** 问题在传进来的列表里的位置（从 0 开始）；代码再换成问题 id，不让 AI 碰 id。 */
+  question: number;
+  /** 这条和那个问题怎么连上的，一句话。 */
+  why: string;
+};
+
+/** 理由里出现这些说法，说明 AI 自己也知道连得勉强。 */
+const WEAK_LINK = /未(明确|直接|提到|提及)|没有?(明确|直接)?(提到|提及|说明)|并未|间接|可能间接|虽然[^。]{0,20}(没|未|不是)/;
+
+/** 一份报告最多标几条：标得多了，就没有哪条是真要紧的了。 */
+const MAX_QUESTION_LINKS = 3;
+
+const QUESTION_LINK_PROMPT = `他手上有几个自己在一直追的问题，今天的报告挑了几条新闻。
+找出今天哪几条**直接关系到**他的某个问题，最多 ${MAX_QUESTION_LINKS} 条。
+
+什么算"直接关系"：
+- 这条新闻本身就是回答这个问题的一条证据（支持他的看法、或者打他的脸）；
+- 或者它改变了这个问题里的一个关键条件（比如问题问"即时零售会不会普及"，新闻是"某配送公司撤出日本"）。
+只是同一个大领域、沾点边的，不算；如果你要写"虽然没提到……""间接……"才能连上，那就不算。宁可一条都不标，不许硬凑 —— 硬凑的提示会让他以后不再相信这一行。
+
+每条写：
+- index：新闻的序号。
+- question：问题的编号（Q 后面的数字）。
+- why：一句话说清楚怎么连上的（这条讲了什么事实，对这个问题意味着什么）。不夸、不打气，不写"值得关注"。
+每条新闻最多连一个问题。
+
+只输出 JSON：{"links":[{"index":序号,"question":编号,"why":"…"}]}，一条都没有就给 {"links":[]}`;
+
+export function parseQuestionLinks(value: unknown, pickIndexes: number[], questionCount: number): QuestionLink[] {
+  const raw = (value as { links?: unknown } | null)?.links;
+  if (!Array.isArray(raw)) throw new Error("缺少 links");
+  const out: QuestionLink[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const index = typeof v.index === "number" ? v.index : Number(v.index);
+    const question = typeof v.question === "number" ? v.question : Number(String(v.question).replace(/^Q/i, ""));
+    const why = typeof v.why === "string" ? v.why.trim() : "";
+    if (!pickIndexes.includes(index) || !Number.isInteger(question) || question < 1 || question > questionCount) continue;
+    // 理由里自己承认牵强（"虽然没提到物流业""间接"），就是沾边，不标
+    if (!why || WEAK_LINK.test(why) || out.some((o) => o.index === index)) continue;
+    out.push({ index, question: question - 1, why });
+    if (out.length >= MAX_QUESTION_LINKS) break;
+  }
+  if (out.length > 0) {
+    assertNoBanned(out.map((o) => o.why));
+    assertChinese(out.map((o) => o.why));
+  }
+  return out;
+}
+
+export async function linkPicksToQuestions(
+  picks: { index: number; headline: string; background: string }[],
+  questions: { question: string; view: string }[]
+): Promise<QuestionLink[]> {
+  if (picks.length === 0 || questions.length === 0) return [];
+  const contents = [
+    "他在追的问题：",
+    ...questions.map((q, i) => `[Q${i + 1}] ${q.question}${q.view ? `（他现在的看法：${q.view}）` : ""}`),
+    "",
+    "今天的报告：",
+    ...picks.map((p) => `[${p.index}] ${p.headline}\n${p.background}`),
+  ].join("\n");
+  return executeAiJson(
+    { operation: "brief_question_links", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验。严格按 JSON 字段重写，用中文写 why。" : ""),
+      config: {
+        systemInstruction: QUESTION_LINK_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 800,
+      },
+    }),
+    (value) => parseQuestionLinks(value, picks.map((p) => p.index), questions.length)
+  );
+}

@@ -1,6 +1,7 @@
 import type { HistoricalAnalog, KeyFactor, StepEvidence } from "@/lib/ai/signals";
 import type { StoredHistory } from "./analysis";
 import { QUESTION_BET_PREFIX } from "./practice-shared";
+import type { BriefItem } from "./brief";
 
 /**
  * 问题驱动里浏览器端也要用的部分：类型和纯函数，不碰数据库。
@@ -115,4 +116,38 @@ export function articleOutline(q: SignalQuestion): string {
 
   parts.push("---", "证据由 AI 上网查找，原文摘录已核对出处；看法是我自己的。");
   return parts.join("\n");
+}
+
+/** 每日报告里标过"跟这个问题有关"的一条。 */
+export type RelatedReportItem = {
+  brief_date: string;
+  signal_id: string;
+  headline: string;
+  url: string | null;
+  source: string;
+  why: string;
+};
+
+/** 从最近的报告里挑出标过这个问题的那几条，从新到旧；同一条新闻只留最新的一次。 */
+export function relatedReportItems(
+  briefs: { brief_date: string; items: BriefItem[] }[],
+  questionId: string
+): RelatedReportItem[] {
+  const out: RelatedReportItem[] = [];
+  const sorted = [...briefs].sort((a, b) => b.brief_date.localeCompare(a.brief_date));
+  for (const brief of sorted) {
+    for (const item of brief.items) {
+      if (item.related_question?.id !== questionId) continue;
+      if (out.some((o) => o.signal_id === item.signal_id)) continue;
+      out.push({
+        brief_date: brief.brief_date,
+        signal_id: item.signal_id,
+        headline: item.headline,
+        url: item.url,
+        source: item.source,
+        why: item.related_question.why,
+      });
+    }
+  }
+  return out;
 }

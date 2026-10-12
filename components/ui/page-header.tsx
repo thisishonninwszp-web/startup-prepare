@@ -33,7 +33,8 @@ export function PageHeader({
             <p className="mt-1 text-sm text-muted-foreground">{description}</p>
           )}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {/* 按钮多了在手机上折行，不撑出横向滚动 */}
+        {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </header>
   )

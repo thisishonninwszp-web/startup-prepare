@@ -4,6 +4,7 @@ import {
   compareWithJapan,
   generateSignalBrief,
   groundBrief,
+  linkPicksToQuestions,
   linkPicksToReader,
   type SignalReader,
   type AnalogCheck,
@@ -66,7 +67,54 @@ export type BriefItem = {
   japan_check?: AnalogCheck;
   /** 核实"日本这边"用的日语搜索词；页面上"自己去查"也用它。 */
   japan_query?: string;
+  /** 这条直接关系到他在追的哪个问题（问题驱动）。问题文字另存一份：问题改名或收起后，旧报告照样看得懂。 */
+  related_question?: { id: string; question: string; why: string };
 };
+
+/** 报告认得的问题：最近建的几个没收起的问题，连同现在的看法。 */
+const MAX_LINKED_QUESTIONS = 8;
+
+async function loadActiveQuestions(userId: string): Promise<{ id: string; question: string; view: string }[]> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_questions")
+    .select("id, question")
+    .eq("user_id", userId)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .limit(MAX_LINKED_QUESTIONS);
+  // 059 没跑就当没有问题
+  if (error) return [];
+  const ids = (data ?? []).map((q) => q.id as string);
+  if (ids.length === 0) return [];
+  const { data: views } = await supabaseAdmin
+    .from("signal_question_views")
+    .select("question_id, view, created_at")
+    .in("question_id", ids)
+    .order("created_at", { ascending: false });
+  const latest = new Map<string, string>();
+  for (const v of views ?? []) {
+    if (!latest.has(v.question_id as string)) latest.set(v.question_id as string, v.view as string);
+  }
+  return (data ?? []).map((q) => ({ id: q.id as string, question: q.question as string, view: latest.get(q.id as string) ?? "" }));
+}
+
+/** 今天哪几条直接关系到他在追的问题。失败或没有问题就是空的，报告照常。 */
+async function linkToQuestions(
+  userId: string,
+  picks: { index: number; headline: string; background: string }[]
+): Promise<Map<number, { id: string; question: string; why: string }>> {
+  const result = new Map<number, { id: string; question: string; why: string }>();
+  try {
+    const questions = await loadActiveQuestions(userId);
+    for (const link of await linkPicksToQuestions(picks, questions)) {
+      const q = questions[link.question];
+      if (q) result.set(link.index, { id: q.id, question: q.question, why: link.why });
+    }
+  } catch (e) {
+    console.error("brief question links failed", e);
+  }
+  return result;
+}
 
 /** 每句"日本这边"搜几篇资料来核实。 */
 const JAPAN_SEARCH_RESULTS = 3;
@@ -240,9 +288,10 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     return g ? { ...p, headline: g.headline, background: g.background, forYou: g.forYou } : p;
   });
 
-  // 下面两件互不依赖，一起跑（cron 只有 60 秒）：
-  // 中文媒体的那几条问"日本这边有没有"并上网核实；单独找最多两条真跟他连得上的。失败都只是少了那一行。
-  const [japan, personal] = await Promise.all([
+  // 下面三件互不依赖，一起跑（cron 只有 60 秒）：
+  // 中文媒体的那几条问"日本这边有没有"并上网核实；单独找最多两条真跟他连得上的；
+  // 哪几条直接关系到他在追的问题。失败都只是少了那一行。
+  const [japan, personal, related] = await Promise.all([
     compareAndCheckJapan(picks.filter((p) => candidates[p.index].china)).catch((e) => {
       console.error("brief japan comparison failed", e);
       return new Map<number, JapanComparison>();
@@ -257,6 +306,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       }
       return links;
     })(),
+    linkToQuestions(userId, picks),
   ]);
 
   const items: BriefItem[] = picks.map((p) => {
@@ -276,6 +326,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       japan: japan.get(p.index)?.japan,
       japan_check: japan.get(p.index)?.check,
       japan_query: japan.get(p.index)?.query || undefined,
+      related_question: related.get(p.index),
     };
   });
   // "也值得一看"跟精选存在同一个数组里，用 extra 标出来，不用加列

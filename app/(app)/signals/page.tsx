@@ -142,6 +142,18 @@ function ReportSectionView({
                         />
                       </div>
                     )}
+                    {item.related_question && (
+                      <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
+                        <span className="text-muted-foreground">跟你在追的问题有关：</span>
+                        <Link
+                          href={`/signals/questions/${item.related_question.id}`}
+                          className="text-primary underline-offset-4 hover:underline"
+                        >
+                          {item.related_question.question} →
+                        </Link>
+                        <span className="block">{item.related_question.why}</span>
+                      </p>
+                    )}
                     {item.personal && (
                       <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
                         <span className="text-muted-foreground">跟你：</span>

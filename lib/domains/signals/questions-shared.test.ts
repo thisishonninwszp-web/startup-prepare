@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeTags, tallyByTag, displayQuestion, type JudgmentRow } from "./practice-shared";
-import { articleOutline, flattenEvidence, questionBetQuestion, type SignalQuestion } from "./questions-shared";
+import type { BriefItem } from "./brief";
+import { articleOutline, flattenEvidence, questionBetQuestion, relatedReportItems, type SignalQuestion } from "./questions-shared";
 
 const ev = (fact: string, stance: "supports" | "contradicts" | "context") => ({
   url: `https://example.jp/${fact.length}`,
@@ -78,5 +79,29 @@ describe("标签", () => {
 describe("押自己的问题", () => {
   it("账本里显示成人话", () => {
     expect(displayQuestion(questionBetQuestion("中国哪些做法会来日本"))).toBe("我在追的问题：中国哪些做法会来日本");
+  });
+});
+
+describe("relatedReportItems", () => {
+  it("只挑标过这个问题的，从新到旧，同一条新闻只留最新一次", () => {
+    const item = (signal_id: string, qid: string | null, headline = "h") =>
+      ({
+        signal_id,
+        title: "t",
+        url: null,
+        source: "s",
+        headline,
+        background: "",
+        for_you: "",
+        related_question: qid ? { id: qid, question: "q", why: `why-${signal_id}` } : undefined,
+      }) as BriefItem;
+    const out = relatedReportItems(
+      [
+        { brief_date: "2026-10-10", items: [item("a", "q1", "旧的"), item("b", "q2")] },
+        { brief_date: "2026-10-12", items: [item("a", "q1", "新的"), item("c", null)] },
+      ],
+      "q1"
+    );
+    expect(out.map((o) => [o.signal_id, o.brief_date, o.headline])).toEqual([["a", "2026-10-12", "新的"]]);
   });
 });

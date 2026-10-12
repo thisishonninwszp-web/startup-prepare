@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, trimAnalogLead, whenSpan, parseUserAnalog, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -589,5 +589,37 @@ describe("历史参照必须是一件具体的事", () => {
     expect(u.source).toBe("user");
     expect(u.altQuery).toBe("PayPay 2018 campaign");
     expect(() => parseUserAnalog({ when: "2018 年", what: "PayPay 上线", after: "两年铺开", unlike: "" })).toThrow();
+  });
+});
+
+describe("parseQuestionLinks", () => {
+  it("序号和问题编号都要对得上；每条新闻只连一个问题；最多 3 条；问题编号换成从 0 开始", () => {
+    const links = parseQuestionLinks(
+      {
+        links: [
+          { index: 2, question: 1, why: "TikTok Shop 成交翻倍，是直播带货来日本的直接证据。" },
+          { index: 2, question: 2, why: "重复的这条丢掉。" },
+          { index: 9, question: 1, why: "序号不在今天的报告里。" },
+          { index: 4, question: "Q3", why: "问题编号越界。" },
+          { index: 5, question: "Q2", why: "某配送公司撤出日本，即时零售少了一家。" },
+        ],
+      },
+      [2, 4, 5],
+      2
+    );
+    expect(links).toEqual([
+      { index: 2, question: 0, why: "TikTok Shop 成交翻倍，是直播带货来日本的直接证据。" },
+      { index: 5, question: 1, why: "某配送公司撤出日本，即时零售少了一家。" },
+    ]);
+    expect(parseQuestionLinks({ links: [] }, [1], 1)).toEqual([]);
+  });
+});
+
+describe("parseQuestionLinks 拦住沾边的", () => {
+  it("理由里自己承认牵强的不标", () => {
+    const weak = "全国因人手不足倒闭的企业数量创新高，尽管新闻未明确指出物流业，但对小型运输公司也有影响。";
+    expect(parseQuestionLinks({ links: [{ index: 0, question: 1, why: weak }] }, [0], 1)).toEqual([]);
+    expect(parseQuestionLinks({ links: [{ index: 0, question: 1, why: "这可能间接影响运输业。" }] }, [0], 1)).toEqual([]);
+    expect(parseQuestionLinks({ links: [{ index: 0, question: 1, why: "一家运送公司因司机不足破产。" }] }, [0], 1)).toHaveLength(1);
   });
 });
