@@ -843,6 +843,21 @@ export type HistoricalAnalog = {
   what: string;
   /** 之后实际怎样了。 */
   after: string;
+  /** 用来上网核实这一次的搜索词（具体到时间和对象）。 */
+  query?: string;
+  /** 上网核实的结果；早期缓存的数据没有。 */
+  check?: AnalogCheck;
+};
+
+export type AnalogCheckStatus = "supported" | "corrected" | "unverified";
+
+export type AnalogCheck = {
+  /** supported：查到出处；corrected：查到了，但和 AI 记的不一样，已按原文改；unverified：没查到出处。 */
+  status: AnalogCheckStatus;
+  /** corrected 时：AI 记成了什么、原文是什么。 */
+  correction?: string;
+  /** 代码核对过、确实在网页里的原文。 */
+  basis: { url: string; title: string; excerpt: string }[];
 };
 
 export type BookPick = {
@@ -878,6 +893,8 @@ const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得
    - when：年份或时期。
    - what：当时发生了什么，一到两句。
    - after：之后几个月到几年里实际怎样了，一到两句。这是最重要的部分。
+   - query：用来上网核实这一次的搜索词，具体到时间和对象，不要写成一句话。
+     日本的事用日文（如 "日銀 2006年7月 ゼロ金利解除 その後"），中国的事用中文，其他用英文。
 2. baseRate：只用近现代（modern）的那几次归纳"这类事通常会怎样"，两到三句。古代的事不能拿来当基准。几次结果不一样就直说不一样，以及取决于什么。
 3. different：这次和过去比，有什么明显不同，可能让结果不一样，一到两句。
 4. books：0 到 2 本能帮他看懂这类事的书。
@@ -892,7 +909,7 @@ const HISTORY_PROMPT = `你帮一个人练"读新闻、下判断"。预测做得
 - 找不到真正相似的事，就只给 1 个最接近的，并在 baseRate 里说明参照性有限。
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"analogs":[{"when":"…","what":"…","after":"…"}],"baseRate":"…","different":"…","books":[{"title":"…","originalTitle":"…","author":"…","why":"…"}]}`;
+只输出 JSON：{"analogs":[{"era":"modern","when":"…","what":"…","after":"…","query":"…"}],"baseRate":"…","different":"…","books":[{"title":"…","originalTitle":"…","author":"…","why":"…"}]}`;
 
 export function parseSignalHistory(value: unknown): SignalHistory {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
@@ -905,6 +922,7 @@ export function parseSignalHistory(value: unknown): SignalHistory {
       when: requireString(a, "when"),
       what: requireString(a, "what"),
       after: requireString(a, "after"),
+      query: typeof a.query === "string" && a.query.trim() ? a.query.trim().slice(0, 120) : undefined,
     }))
     // 古代的最多留一条，排在最后
     .filter((a, i, all) => a.era === "modern" || all.findIndex((x) => x.era === "ancient") === i)
@@ -1623,5 +1641,134 @@ export async function groundBrief(inputs: GroundInput[]): Promise<{ overview: st
       },
     }),
     (value) => parseGroundedBrief(value, inputs)
+  );
+}
+
+// ── 历史参照：上网逐条核实 ─────────────────────────────────────────────────
+
+const ANALOG_CHECK_PROMPT = `你在核实一份"历史上类似的事"。每一次参照下面附了几篇上网搜到的资料。
+逐条核对，重点核对"后来怎样"（after）—— 这是最重要、也最容易记错的部分。
+
+每一次参照输出：
+- i：参照的编号。
+- status：
+  "supported"：资料里能找到支撑（时间、发生了什么、后来怎样大体对得上）。
+  "corrected"：只有参照里写的某个事实和资料**相互矛盾**时才用（年份不对、数字不对、结果正好相反）。按资料改正 when / what / after。
+    资料只是比参照多讲了一些细节、或者参照没写某个细节 —— 这不算矛盾，一律用 "supported"。宁可少用 corrected。
+    资料讲的是另一次同类的事（比如另一年的加息）—— 那不是改正，是搜错了，用 "unverified"，不要把两件事拼在一起。
+  "unverified"：资料里找不到能支撑它的内容。
+- when / what / after：supported 时照抄原来的；corrected 时写改正后的；unverified 时照抄原来的。
+  when 只写时间（如 "2006 年 7 月"），不要把发生了什么也塞进去。
+- correction：只有 corrected 时写，一句话点出矛盾："原来写的是 X，资料里是 Y"（X 和 Y 必须是互相冲突的两个说法）。
+- basis：支撑或改正它的资料原文，逐字照抄（不翻译、不改字，每句 15 到 150 字），附资料编号 source。unverified 时给空数组。
+
+另外写 baseRate：只用 supported 和 corrected 的那几次（古代的不算），两到三句归纳"这类事通常会怎样"。
+一次都没有就写"这次的参照都没查到出处，下面只能当线索，不能当基准。"
+
+一律用简体中文写（basis 照抄原文，不用翻译）。不要编资料里没有的事实。
+
+只输出 JSON：{"analogs":[{"i":0,"status":"supported","when":"…","what":"…","after":"…","correction":"","basis":[{"source":1,"excerpt":"…"}]}],"baseRate":"…"}`;
+
+export type AnalogSources = { analog: HistoricalAnalog; sources: SearchSource[] };
+
+/** 两个时间里第一个四位年份相差几年；任意一边没有年份就当 0。 */
+export function yearShift(a: string, b: string): number {
+  const year = (t: string) => Number(t.match(/(1[0-9]|20)\d{2}/)?.[0] ?? NaN);
+  const x = year(a);
+  const y = year(b);
+  return Number.isFinite(x) && Number.isFinite(y) ? Math.abs(x - y) : 0;
+}
+
+/**
+ * 原文必须逐字出现在对应参照自己的那几篇资料里，否则不算。
+ * 说"查到了"或"改正了"却拿不出一句对得上的原文，降成 unverified，内容退回 AI 原来写的。
+ */
+export function parseAnalogChecks(
+  value: unknown,
+  inputs: AnalogSources[]
+): { analogs: HistoricalAnalog[]; baseRate: string } {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const baseRate = requireString(v, "baseRate");
+  const raw = Array.isArray(v.analogs) ? v.analogs : [];
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const byI = new Map<number, Record<string, unknown>>();
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const it = r as Record<string, unknown>;
+    const i = typeof it.i === "number" ? it.i : Number(it.i);
+    if (Number.isInteger(i) && !byI.has(i)) byI.set(i, it);
+  }
+  const analogs = inputs.map(({ analog, sources }, i): HistoricalAnalog => {
+    const it = byI.get(i);
+    const status = it?.status;
+    const basis = (Array.isArray(it?.basis) ? (it?.basis as unknown[]) : [])
+      .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
+      .map((b) => {
+        const src = sources[(typeof b.source === "number" ? b.source : Number(b.source)) - 1];
+        const excerpt = typeof b.excerpt === "string" ? b.excerpt.trim() : "";
+        if (!src || squash(excerpt).length < 8 || !squash(src.content).includes(squash(excerpt))) return null;
+        return { url: src.url, title: src.title, excerpt: excerpt.slice(0, 300) };
+      })
+      .filter((b): b is { url: string; title: string; excerpt: string } => b !== null)
+      .slice(0, 3);
+    const unverified: HistoricalAnalog = { ...analog, check: { status: "unverified", basis: [] } };
+    if (!it || basis.length === 0 || (status !== "supported" && status !== "corrected")) return unverified;
+    if (status === "corrected") {
+      const correction = typeof it.correction === "string" ? it.correction.trim() : "";
+      const pick = (val: unknown, orig: string, max = 400) =>
+        typeof val === "string" && val.trim() && val.trim().length <= max ? val.trim() : orig;
+      // when 只放时间；超过 25 个字说明把"发生了什么"也塞进去了，保留原来的
+      const when = pick(it.when, analog.when, 25);
+      const what = pick(it.what, analog.what);
+      const after = pick(it.after, analog.after);
+      const changed = when !== analog.when || what !== analog.what || after !== analog.after;
+      // 说改正了，却什么都没改（或没说哪里不一样）—— 那就是"查到出处"，不是"记错了"
+      if (correction && changed) {
+        // 改正前后年份差一年以上，说明换成了另一次事件（搜错了），不是记错了：退回原文、标没查到出处
+        if (yearShift(analog.when, when) > 1) return unverified;
+        return { ...analog, when, what, after, check: { status: "corrected", correction, basis } };
+      }
+    }
+    return { ...analog, check: { status: "supported", basis } };
+  });
+  const texts = [
+    baseRate,
+    ...analogs.flatMap((a) => [a.what, a.after, a.check?.correction ?? ""]).filter(Boolean),
+  ];
+  assertNoBanned(texts);
+  assertChinese(texts);
+  return { analogs, baseRate };
+}
+
+export async function checkAnalogs(inputs: AnalogSources[]): Promise<{ analogs: HistoricalAnalog[]; baseRate: string }> {
+  const blocks = inputs
+    .map(({ analog, sources }, i) =>
+      [
+        `【参照 ${i}】（${analog.era === "ancient" ? "古代" : "近现代"}）${analog.when}：${analog.what}`,
+        `后来：${analog.after}`,
+        sources.length > 0
+          ? sources.map((src, j) => `  [资料 ${j + 1}] ${src.title}\n  ${src.url}\n  ${src.content.slice(0, 1200)}`).join("\n")
+          : "  （没搜到资料）",
+      ].join("\n")
+    )
+    .join("\n\n");
+  return executeAiJson(
+    { operation: "history_check", module: "unknown", outputMode: "json", timeoutMs: 50_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        blocks +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验。basis 必须逐字照抄对应参照下面那几篇资料的原文，source 是资料编号；叙述用中文。"
+          : ""),
+      config: {
+        systemInstruction: ANALOG_CHECK_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 4000,
+      },
+    }),
+    (value) => parseAnalogChecks(value, inputs)
   );
 }

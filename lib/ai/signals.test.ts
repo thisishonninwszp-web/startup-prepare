@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -371,5 +371,87 @@ describe("parseGroundedBrief（读正文重写）", () => {
 
   it("没有总述不收", () => {
     expect(() => parseGroundedBrief({ items: [item({})] }, inputs)).toThrow("overview");
+  });
+});
+
+describe("parseAnalogChecks（历史参照逐条核实）", () => {
+  const analog = (when: string, after: string) => ({ era: "modern" as const, when, what: "日银解除零利率。", after });
+  const inputs = [
+    {
+      analog: analog("2006 年 7 月", "银行很快大幅上调了存款利率。"),
+      sources: [{ title: "日銀", url: "https://example.jp/2006", content: "2006年7月14日、日本銀行はゼロ金利政策を解除し、無担保コール翌日物金利を0.25%に引き上げた。" }],
+    },
+    {
+      analog: analog("2000 年 8 月", "之后经济再次衰退，2001 年回到量化宽松。"),
+      sources: [{ title: "Wiki", url: "https://example.jp/2000", content: "2000年8月にゼロ金利を解除したが、2001年3月に量的緩和政策を導入した。" }],
+    },
+    { analog: analog("1989 年", "泡沫破裂。"), sources: [] },
+  ];
+
+  it("查到出处的标 supported，改正的写明哪里不一样，拿不出原文的降成 unverified", () => {
+    const r = parseAnalogChecks(
+      {
+        baseRate: "解除零利率之后，日银往往很快又回到宽松。",
+        analogs: [
+          { i: 0, status: "corrected", when: "2006 年 7 月 14 日", what: "日银解除零利率，把利率调到 0.25%。", after: "银行很快大幅上调了存款利率。", correction: "原来没写具体日期，资料里是 7 月 14 日。", basis: [{ source: 1, excerpt: "ゼロ金利政策を解除し、無担保コール翌日物金利を0.25%に引き上げた" }] },
+          { i: 1, status: "supported", basis: [{ source: 1, excerpt: "2001年3月に量的緩和政策を導入した" }] },
+          { i: 2, status: "supported", basis: [{ source: 1, excerpt: "根本不存在的资料原文内容" }] },
+        ],
+      },
+      inputs
+    );
+    expect(r.analogs.map((a) => a.check?.status)).toEqual(["corrected", "supported", "unverified"]);
+    expect(r.analogs[0].when).toBe("2006 年 7 月 14 日");
+    expect(r.analogs[1].check?.basis[0].url).toBe("https://example.jp/2000");
+    expect(r.analogs[2].after).toBe("泡沫破裂。");
+  });
+
+  it("说改正了却没写哪里不一样，按 supported 算，内容不改", () => {
+    const r = parseAnalogChecks(
+      { baseRate: "这类事通常很快又回到宽松。", analogs: [{ i: 0, status: "corrected", when: "1999 年", basis: [{ source: 1, excerpt: "日本銀行はゼロ金利政策を解除し" }] }] },
+      inputs.slice(0, 1)
+    );
+    expect(r.analogs[0].check?.status).toBe("supported");
+    expect(r.analogs[0].when).toBe("2006 年 7 月");
+  });
+});
+
+describe("parseAnalogChecks 的兜底", () => {
+  const inputs = [{
+    analog: { era: "modern" as const, when: "2000 年 8 月", what: "日银解除零利率。", after: "2001 年回到宽松。" },
+    sources: [{ title: "Yahoo", url: "https://example.jp/a", content: "2000年8月に日銀はゼロ金利政策の解除を決定した。" }],
+  }];
+  const basis = [{ source: 1, excerpt: "2000年8月に日銀はゼロ金利政策の解除を決定した" }];
+
+  it("说改正了但内容一个字没改，算查到出处", () => {
+    const r = parseAnalogChecks({ baseRate: "解除零利率后往往又回到宽松。", analogs: [{ i: 0, status: "corrected", when: "2000 年 8 月", what: "日银解除零利率。", after: "2001 年回到宽松。", correction: "资料里多讲了细节。", basis }] }, inputs);
+    expect(r.analogs[0].check?.status).toBe("supported");
+  });
+
+  it("when 写串了（塞进了发生了什么）就保留原来的时间", () => {
+    const r = parseAnalogChecks({ baseRate: "解除零利率后往往又回到宽松。", analogs: [{ i: 0, status: "corrected", when: "2000 年 8 月：日本银行在维持零利率政策近一年半后上调利率", what: "日银解除零利率。", after: "2001 年 3 月改为量化宽松。", correction: "原来写的是回到宽松，资料里是改为量化宽松。", basis }] }, inputs);
+    expect(r.analogs[0].when).toBe("2000 年 8 月");
+    expect(r.analogs[0].check?.status).toBe("corrected");
+  });
+});
+
+describe("历史参照：搜错了不能拼成一件事", () => {
+  it("yearShift 取四位年份比较", () => {
+    expect(yearShift("2018 年", "2022 年 3 月")).toBe(4);
+    expect(yearShift("2006 年 7 月", "2006年7月14日")).toBe(0);
+    expect(yearShift("大约 90 年代初", "1991 年")).toBe(0);
+  });
+
+  it("改正前后年份差一年以上 → 当作搜到了另一件事，退回原文、标没查到出处", () => {
+    const inputs = [{
+      analog: { era: "modern" as const, when: "2018 年", what: "美联储持续加息。", after: "美股年底回调，2019 年转向降息。" },
+      sources: [{ title: "Nikkei", url: "https://example.jp/fed", content: "FRBは2022年3月、3年ぶりの利上げに踏み切った。" }],
+    }];
+    const r = parseAnalogChecks(
+      { baseRate: "这次的参照都没查到出处。", analogs: [{ i: 0, status: "corrected", when: "2022 年 3 月", what: "美联储三年来首次加息。", after: "美股年底回调，2019 年转向降息。", correction: "原来写的是 2018 年，资料里是 2022 年。", basis: [{ source: 1, excerpt: "FRBは2022年3月、3年ぶりの利上げに踏み切った" }] }] },
+      inputs
+    );
+    expect(r.analogs[0].check?.status).toBe("unverified");
+    expect(r.analogs[0].when).toBe("2018 年");
   });
 });

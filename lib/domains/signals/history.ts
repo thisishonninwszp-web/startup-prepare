@@ -1,13 +1,30 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { findHistoricalAnalogs } from "@/lib/ai";
+import { checkAnalogs, findHistoricalAnalogs, type HistoricalAnalog } from "@/lib/ai";
+import { tavilySearch } from "@/lib/external";
 import { getSignalDetail, type StoredHistory } from "./analysis";
 import { fetchArticleBody } from "./article";
 import { verifyBooks } from "./books";
 
 /**
- * 历史上类似的事：第一次点开时生成，荐书核实过之后存进 external_signals.history，之后直接读。
+ * 历史上类似的事：第一次点开时生成，存进 external_signals.history，之后直接读。
  * 写判断之前就能看 —— 先看"这类事通常怎样"，是练判断的正确顺序。
+ *
+ * AI 擅长想到"哪几次像"，不擅长记准细节（年份、利率调到多少、后来怎样）。
+ * 所以先让它提参照，再逐条上网核实：查到出处的附原文；和它记的不一样的按原文改正、写明哪里不一样；
+ * 没查到的标"凭记忆写的"。"这类事通常会怎样"只用查到出处的那几次归纳。
  */
+
+const SEARCH_RESULTS_PER_ANALOG = 3;
+
+async function searchAnalog(analog: HistoricalAnalog) {
+  try {
+    const results = await tavilySearch(analog.query || `${analog.when} ${analog.what}`, SEARCH_RESULTS_PER_ANALOG);
+    return results.filter((r) => r.url && r.content);
+  } catch {
+    return [];
+  }
+}
+
 export async function ensureSignalHistory(id: string): Promise<StoredHistory> {
   const detail = await getSignalDetail(id);
   if (detail === "missing-schema") throw new Error("迁移 056 还没跑");
@@ -17,8 +34,26 @@ export async function ensureSignalHistory(id: string): Promise<StoredHistory> {
 
   const body = detail.excerpt ?? (await fetchArticleBody(detail.url));
   const raw = await findHistoricalAnalogs({ title: detail.title, summary: detail.summary, body });
-  const history: StoredHistory = { ...raw, books: await verifyBooks(raw.books) };
 
+  // 历史核实和荐书核实互不依赖，一起跑
+  const [checked, books] = await Promise.all([
+    (async () => {
+      try {
+        const sources = await Promise.all(raw.analogs.map(searchAnalog));
+        return await checkAnalogs(raw.analogs.map((analog, i) => ({ analog, sources: sources[i] })));
+      } catch (e) {
+        // 核实失败就照 AI 原来写的存，但每条标成没查到出处，不冒充核实过
+        console.error("history check failed", e);
+        return {
+          analogs: raw.analogs.map((a) => ({ ...a, check: { status: "unverified" as const, basis: [] } })),
+          baseRate: raw.baseRate,
+        };
+      }
+    })(),
+    verifyBooks(raw.books),
+  ]);
+
+  const history: StoredHistory = { ...raw, analogs: checked.analogs, baseRate: checked.baseRate, books };
   const { error } = await supabaseAdmin.from("external_signals").update({ history }).eq("id", id);
   if (error) throw new Error(error.message);
   return history;
