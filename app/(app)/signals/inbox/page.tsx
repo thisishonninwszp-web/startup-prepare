@@ -35,7 +35,7 @@ const TABS: { kind: SignalKind; label: string; description: string }[] = [
   },
   {
     kind: "tools",
-    label: "新可能",
+    label: "工具",
     description: "GitHub 上最近 7 天新建、星数涨得快的仓库，以及 AI 降价、规制缓和、日本首次提供的服务。",
   },
 ];

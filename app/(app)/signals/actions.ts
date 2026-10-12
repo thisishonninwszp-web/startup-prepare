@@ -14,6 +14,7 @@ import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
+import { generateDigest } from "@/lib/domains/signals/digest";
 import { sendDailyEmail } from "@/lib/domains/signals/notify";
 import {
   addUserAnalog,
@@ -444,5 +445,17 @@ export async function flagNodeAction(
     return { ok: true, nodes: await flagNode(signalId, nodeId, circular) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没标上") };
+  }
+}
+
+/** 今日总览：还没生成就现在生成（报告页第一次打开时自动调）。 */
+export async function generateDigestAction(date: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await generateDigest(userId, date);
+    revalidatePath("/signals");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "总览没写出来") };
   }
 }

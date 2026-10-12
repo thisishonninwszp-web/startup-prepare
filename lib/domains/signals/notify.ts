@@ -33,6 +33,8 @@ function appUrl(env: Record<string, string | undefined> = process.env): string |
 
 export type DailyEmailInput = {
   date: string;
+  /** 今日总览（有就放在最前面）。 */
+  digest?: string;
   practice: { question: string; headline: string } | null;
   overview: string | null;
   /** 每一节的精选（只要标题和两种提示）。 */
@@ -52,7 +54,7 @@ const SECTION_TITLES: Record<string, string> = {
   calendar: "已经定了的未来",
   voices: "谁在头疼什么",
   money: "谁在掏钱",
-  tools: "什么变得可能了",
+  tools: "新工具和新可能",
 };
 
 /** 邮件正文（纯文本）。像一张便条：先说今天要做的一件事，再列标题，点进去看。 */
@@ -62,6 +64,7 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     ? `${date}的报告 · 今天的练习：${input.practice.question.slice(0, 40)}`
     : `${date}的报告好了`;
   const lines: string[] = [];
+  if (input.digest) lines.push(input.digest, "");
   if (input.practice) {
     lines.push("今天的练习", `读这一条：${input.practice.headline}`, `问题：${input.practice.question}`, "先写下你的判断，再看 AI 怎么拆。", "");
   }
@@ -99,6 +102,7 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) return null;
   const byKind = new Map(data.map((b) => [b.kind as string, b]));
+  const digest = (byKind.get("digest")?.overview as string | null) ?? undefined;
   const news = byKind.get("news");
   const practiceRow = (news?.practice as BriefPracticeRow | null) ?? null;
   const newsItems = ((news?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra);
@@ -117,6 +121,7 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
 
   return {
     date,
+    digest,
     practice: practiceRow ? { question: practiceRow.question, headline: practiceItem?.headline ?? "" } : null,
     overview: (news?.overview as string | null) ?? null,
     sections: ["news", "calendar", "voices", "money", "tools"].map((kind) => ({

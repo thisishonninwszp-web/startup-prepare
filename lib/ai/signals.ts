@@ -2852,3 +2852,91 @@ async function draftSurprises(inputs: SurpriseInput[]): Promise<Surprise[]> {
     (value) => parseSurprises(value, inputs)
   );
 }
+
+// ── 今日总览：看完五节，像一个懂行的人跟他讲几句 ─────────────────────────────────
+
+export type DigestSectionInput = {
+  title: string;
+  overview: string;
+  items: { signalId: string; headline: string; surprise?: boolean }[];
+};
+
+export type DailyDigest = {
+  /** 4 到 6 句：今天世界上发生了什么、彼此有什么联系。 */
+  summary: string;
+  /** 最值得点开的几条。 */
+  picks: { signalId: string; why: string }[];
+};
+
+const MAX_DIGEST_PICKS = 3;
+
+const DIGEST_PROMPT = `你是他身边一个懂行的老同事。他今天没空把五份报告一份份看完，你看完了，用几句话跟他讲今天世界上发生了什么。
+
+summary：4 到 6 句，像当面说话：
+- 先讲今天最重要的一两件事。
+- 只有真的是同一件事的不同面时才连起来讲（比如人手不足同时出现在倒产、外国司机、自助收银里）；
+  不相干的事就分开说，绝不许自己推出因果或结论（"A 说明 B 比 C 更有效""这暴露了 X 和 Y 的矛盾"这类，材料里没这么说就不许写）。
+- 再用一句说"钱往哪里流"和"一线的人在疼什么"有没有对上；对不上就直说对不上。
+- 最后一句点出今天最值得停下来想一想的那件事（意外、或者两个方向都有可能的事）。
+- 不要逐条复述，不要"今天的报告包括……"这种目录式开头，不要"值得关注""持续演进"这类空话。只用材料里有的事实。
+- 你不知道他是做什么的：不许写"你""跟你""你的工作"，不许推测他关心什么。
+
+picks：最多 ${MAX_DIGEST_PICKS} 条最值得点开的，signalId 照抄材料里的编号，why 一句话说这条本身为什么值得点开（它讲了什么关键的事），不写"跟你"。
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"summary":"…","picks":[{"signalId":"…","why":"…"}]}`;
+
+export function parseDigest(value: unknown, signalIds: string[]): DailyDigest {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const summary = requireString(v, "summary");
+  const raw = Array.isArray(v.picks) ? v.picks : [];
+  const picks: DailyDigest["picks"] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const p = r as Record<string, unknown>;
+    const signalId = typeof p.signalId === "string" ? p.signalId.trim() : "";
+    const why = typeof p.why === "string" ? p.why.trim() : "";
+    if (!signalIds.includes(signalId) || !why || picks.some((x) => x.signalId === signalId)) continue;
+    picks.push({ signalId, why });
+    if (picks.length >= MAX_DIGEST_PICKS) break;
+  }
+  const texts = [summary, ...picks.map((p) => p.why)];
+  assertNoBanned(texts);
+  assertChinese(texts);
+  // 写总览的模型没看过任何关于他的信息，一写"你"就是编的
+  if (texts.some((t) => /跟你|你的|你做|你平时|你可以/.test(t))) throw new Error("总览里编了跟他的关系");
+  return { summary, picks };
+}
+
+export async function writeDailyDigest(sections: DigestSectionInput[]): Promise<DailyDigest> {
+  const usable = sections.filter((s) => s.items.length > 0);
+  if (usable.length === 0) throw new Error("今天的报告还没生成");
+  const contents = usable
+    .map((s) =>
+      [
+        `【${s.title}】`,
+        s.overview ? `总述：${s.overview}` : "",
+        ...s.items.map((i) => `- (${i.signalId}) ${i.headline}${i.surprise ? "（意外）" : ""}`),
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .join("\n\n");
+  const ids = usable.flatMap((s) => s.items.map((i) => i.signalId));
+  return executeAiJson(
+    { operation: "brief_digest", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验：signalId 必须照抄材料里括号中的编号，用中文写。" : ""),
+      config: {
+        systemInstruction: DIGEST_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parseDigest(value, ids)
+  );
+}

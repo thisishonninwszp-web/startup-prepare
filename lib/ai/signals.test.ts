@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -746,5 +746,28 @@ describe("你的优势与 PESTLE 领域", () => {
     const pick = (index: number, domain: string) => ({ index, event: `e${index}`, headline: "h", background: "b", forYou: "f", domain });
     const { picks } = parseBrief({ overview: "今天", picks: [pick(0, "economic"), pick(1, "sports")] }, 3);
     expect(picks.map((p) => p.domain)).toEqual(["economic", undefined]);
+  });
+});
+
+describe("parseDigest", () => {
+  it("编号对得上才留，最多 3 条；总述必须有", () => {
+    const d = parseDigest(
+      {
+        summary: "今天最大的事是日银加息，倒产和外国司机其实是同一个人手不足的不同面。",
+        picks: [
+          { signalId: "a", why: "加息会传到中小企业贷款" },
+          { signalId: "zzz", why: "编号不在材料里" },
+          { signalId: "b", why: "意外：降价反而增利" },
+          { signalId: "a", why: "重复" },
+        ],
+      },
+      ["a", "b", "c"]
+    );
+    expect(d.picks.map((p) => p.signalId)).toEqual(["a", "b"]);
+    expect(() => parseDigest({ picks: [] }, ["a"])).toThrow("summary");
+  });
+
+  it("写了'跟你'就作废（写总览时没给它任何关于他的信息）", () => {
+    expect(() => parseDigest({ summary: "今天日银加息。", picks: [{ signalId: "a", why: "跟你做的产品有关" }] }, ["a"])).toThrow();
   });
 });

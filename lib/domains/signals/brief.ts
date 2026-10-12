@@ -27,6 +27,7 @@ import { usableSummary } from "./summary";
 import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
 import { loadSituationFacts } from "./reader-facts";
 import { sendDailyEmail } from "./notify";
+import { generateDigest } from "./digest";
 
 /**
  * 每日精选：从最近一天半没处理过的条目里，让 AI 挑 5 条并写清楚为什么。
@@ -487,6 +488,8 @@ async function fetchedRecently(): Promise<boolean> {
  * 6:30 那个任务抓完新闻接着生成"谁在掏钱"，7 点这个生成另外四节再发邮件（实测各三四十秒，留出余量）。
  */
 export const EARLY_KINDS = ["money"] as const;
+/** 7 点的任务跑到这个时间以内，才顺手写今日总览（60 秒上限，留出发邮件的余量）。 */
+const DIGEST_TIME_BUDGET_MS = 45_000;
 const MORNING_KINDS = ["news", "calendar", "voices", "tools"] as const;
 
 /** 给最近一个月用过报告的人，生成这几节。 */
@@ -517,6 +520,7 @@ export async function generateBriefsForRecentUsers(
 }
 
 export async function runDailySignals(): Promise<DailySignalsOutcome> {
+  const startedAt = Date.now();
   const failed: string[] = [];
   // 6:30 那个定时任务已经抓过的话直接生成；没抓过（它失败了、或者手动触发）才在这里抓
   const fetched = (await fetchedRecently()) ? { news: 0, tools: 0, failed: [] as string[] } : await fetchAllSignals();
@@ -524,6 +528,15 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
 
   const { userIds, briefs, failed: briefFailed } = await generateBriefsForRecentUsers(MORNING_KINDS);
   failed.push(...briefFailed);
+
+  // 今日总览要五节都好了才写；还有余量才在这里写（大约五六秒），不够就留给第一次打开报告页时写
+  if (userIds.length > 0 && Date.now() - startedAt < DIGEST_TIME_BUDGET_MS) {
+    try {
+      await generateDigest(userIds[0], tokyoToday());
+    } catch (e) {
+      failed.push(`今日总览：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   // 报告都好了再发提醒邮件。单用户阶段收信地址在环境变量里，所以只给一个人发。
   const emails: string[] = [];
