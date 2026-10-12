@@ -15,6 +15,7 @@ import { ReaderPanel } from "./reader-panel";
 import { JudgmentForm, ResolveJudgment } from "./judgment-forms";
 import { formatDueDate, JudgmentView } from "./judgment-view";
 import { HistoryPanel } from "./history-panel";
+import { SourceCheckView } from "./check-view";
 
 export const dynamic = "force-dynamic";
 // 「现在生成」「写下判断」的 server action 跟着页面的时长上限走，默认 10 秒不够。
@@ -127,6 +128,20 @@ function ReportSectionView({
                       <span className="text-muted-foreground">{section.forYouLabel}：</span>
                       {item.for_you}
                     </p>
+                    {item.japan && (
+                      <div className="mt-2 text-sm leading-7">
+                        <p>
+                          <span className="text-muted-foreground">日本这边：</span>
+                          {item.japan}
+                        </p>
+                        <SourceCheckView
+                          check={item.japan_check}
+                          searchQuery={item.japan_query || `日本 ${item.headline}`}
+                          unverifiedText="没查到出处，这句是 AI 凭印象说的。"
+                          uncheckedText="这句是 AI 凭印象说的，没上网查过。"
+                        />
+                      </div>
+                    )}
                     {item.personal && (
                       <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
                         <span className="text-muted-foreground">跟你：</span>

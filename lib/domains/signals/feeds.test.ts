@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { authorKey, isLiteratureNdc, mainTitle, normalizeTitle } from "./books";
-import { newsSourceLabel, RSS_FEEDS, rssSource, signalKindOf } from "./feeds";
+import { balanceBySource, isChinaSource, newsSourceLabel, RSS_FEEDS, rssSource, signalKindOf } from "./feeds";
 import { contactPerson } from "./format";
 
 describe("signalKindOf", () => {
@@ -15,6 +15,34 @@ describe("signalKindOf", () => {
     const sources = RSS_FEEDS.map(rssSource);
     expect(new Set(sources).size).toBe(sources.length);
     for (const s of sources) expect(newsSourceLabel(s)).not.toBe(s);
+  });
+});
+
+describe("balanceBySource", () => {
+  it("各源轮流取，发稿多的源挤不掉发稿少的", () => {
+    const rows = [
+      ...Array.from({ length: 6 }, (_, i) => ({ source: "news:yahoo_top", id: `y${i}` })),
+      { source: "news:tmtpost", id: "t0" },
+      { source: "voice:tsr", id: "s0" },
+    ];
+    expect(balanceBySource(rows, 4).map((r) => r.id)).toEqual(["y0", "t0", "s0", "y1"]);
+  });
+
+  it("不够 max 就全给，不重复", () => {
+    const rows = [
+      { source: "a", id: "a0" },
+      { source: "b", id: "b0" },
+      { source: "a", id: "a1" },
+    ];
+    expect(balanceBySource(rows, 10).map((r) => r.id)).toEqual(["a0", "b0", "a1"]);
+  });
+});
+
+describe("isChinaSource", () => {
+  it("只认中文媒体", () => {
+    expect(isChinaSource("news:tmtpost")).toBe(true);
+    expect(isChinaSource("news:gnews_36kr")).toBe(true);
+    expect(isChinaSource("news:yahoo_top")).toBe(false);
   });
 });
 

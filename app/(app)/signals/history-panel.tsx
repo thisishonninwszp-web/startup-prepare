@@ -3,59 +3,9 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { HistoricalAnalog } from "@/lib/ai";
 import type { StoredHistory } from "@/lib/domains/signals/analysis";
 import { ensureHistoryAction } from "./actions";
-
-function searchLink(q: string): string {
-  return `https://www.google.com/search?${new URLSearchParams({ q })}`;
-}
-
-/** 每一次参照的核实结果：查到出处 / AI 记错了已改正 / 没查到。早期缓存的数据没有核实，只给查证链接。 */
-function AnalogCheckView({ check, searchQuery }: { check?: HistoricalAnalog["check"]; searchQuery: string }) {
-  if (!check || check.status === "unverified") {
-    return (
-      <p className="text-xs text-muted-foreground">
-        {check ? "没查到出处，这一条是 AI 凭记忆写的。" : "AI 也会记错。"}
-        <a
-          href={searchLink(searchQuery)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-1 underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
-        >
-          自己去查 ↗
-        </a>
-      </p>
-    );
-  }
-  return (
-    <div className="text-xs">
-      {check.status === "corrected" ? (
-        <p className="text-primary">AI 记错了，已按原文改正：{check.correction}</p>
-      ) : (
-        <p className="text-muted-foreground">查到出处</p>
-      )}
-      <details className="mt-1">
-        <summary className="cursor-pointer text-muted-foreground">看原文</summary>
-        <ul className="mt-1 space-y-2 leading-6 text-muted-foreground">
-          {check.basis.map((b, j) => (
-            <li key={j}>
-              「{b.excerpt}」
-              <a
-                href={b.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-1 text-primary underline-offset-4 hover:underline"
-              >
-                {b.title || "来源"} ↗
-              </a>
-            </li>
-          ))}
-        </ul>
-      </details>
-    </div>
-  );
-}
+import { SourceCheckView } from "./check-view";
 
 function HistoryView({ history }: { history: StoredHistory }) {
   return (
@@ -79,7 +29,12 @@ function HistoryView({ history }: { history: StoredHistory }) {
                 <span className="text-muted-foreground">后来：</span>
                 {a.after}
               </p>
-              <AnalogCheckView check={a.check} searchQuery={`${a.when} ${a.what}`} />
+              <SourceCheckView
+                check={a.check}
+                searchQuery={`${a.when} ${a.what}`}
+                unverifiedText="没查到出处，这一条是 AI 凭记忆写的。"
+                uncheckedText="AI 也会记错。"
+              />
             </li>
           ))}
         </ol>

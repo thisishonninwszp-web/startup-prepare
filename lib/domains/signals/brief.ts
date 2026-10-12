@@ -1,15 +1,20 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import {
+  checkJapanComparisons,
+  compareWithJapan,
   generateSignalBrief,
   groundBrief,
   linkPicksToReader,
   type SignalReader,
+  type AnalogCheck,
+  type JapanComparison,
   type SituationFact,
 } from "@/lib/ai";
+import { tavilySearch } from "@/lib/external";
 import { fetchArticleBody } from "./article";
 import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
-import { newsSourceLabel, SIGNAL_KIND_PREFIX, type SignalKind } from "./feeds";
+import { balanceBySource, isChinaSource, newsSourceLabel, SIGNAL_KIND_PREFIX, type SignalKind } from "./feeds";
 import { fetchGithubTools } from "./github";
 import { usableSummary } from "./summary";
 import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
@@ -22,6 +27,8 @@ import { loadSituationFacts } from "./reader-facts";
 
 const CANDIDATE_WINDOW_HOURS = 36;
 const MAX_CANDIDATES = 80;
+/** 先多取一些，再按源轮流挑出 MAX_CANDIDATES 条（见 balanceBySource）。 */
+const FETCH_CANDIDATES = 400;
 /** 读最近多少天的观察。 */
 const READER_OBSERVATION_DAYS = 30;
 
@@ -53,7 +60,46 @@ export type BriefItem = {
    */
   grounded?: boolean;
   basis?: string[];
+  /** 只有中文媒体的条目有：日本这边有没有类似的做法、没有的话卡在哪。 */
+  japan?: string;
+  /** "日本这边"上网核实的结果：查到出处 / 原来说错了已改 / 没查到。没有这个字段 = 没核实过。 */
+  japan_check?: AnalogCheck;
+  /** 核实"日本这边"用的日语搜索词；页面上"自己去查"也用它。 */
+  japan_query?: string;
 };
+
+/** 每句"日本这边"搜几篇资料来核实。 */
+const JAPAN_SEARCH_RESULTS = 3;
+
+/**
+ * 中文媒体的那几条：先让 AI 说"日本这边有没有"，再拿它给的日语搜索词上网查，逐句核实。
+ * 核实失败就保留原来的说法、不带核实结果（页面上显示"没上网查过"）。
+ */
+async function compareAndCheckJapan(
+  picks: { index: number; headline: string; background: string }[]
+): Promise<Map<number, JapanComparison>> {
+  const result = new Map<number, JapanComparison>();
+  const comparisons = await compareWithJapan(picks);
+  for (const c of comparisons) result.set(c.index, c);
+  try {
+    const sources = await Promise.all(
+      comparisons.map(async (c) => {
+        const headline = picks.find((p) => p.index === c.index)?.headline ?? "";
+        try {
+          const found = await tavilySearch(c.query || `日本 ${headline}`, JAPAN_SEARCH_RESULTS);
+          return found.filter((r) => r.url && r.content);
+        } catch {
+          return [];
+        }
+      })
+    );
+    const checked = await checkJapanComparisons(comparisons.map((comparison, i) => ({ comparison, sources: sources[i] })));
+    for (const c of checked) result.set(c.index, c);
+  } catch (e) {
+    console.error("brief japan check failed, keeping unchecked", e);
+  }
+  return result;
+}
 
 /** 日本时间的今天（YYYY-MM-DD）。cron 在 UTC 22 点跑，正好是日本早上 7 点。 */
 export function tokyoToday(now = new Date()): string {
@@ -140,21 +186,23 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     .eq("status", "pending")
     .gte("fetched_at", since)
     .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(MAX_CANDIDATES);
+    .limit(FETCH_CANDIDATES);
   if (error) throw new Error(error.message);
   const seen = new Set<string>();
-  const rows = (data ?? []).filter((r) => {
+  const unique = (data ?? []).filter((r) => {
     const key = (r.url as string | null) ?? (r.id as string);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  const rows = balanceBySource(unique as { source: string; [k: string]: unknown }[], MAX_CANDIDATES);
   if (rows.length === 0) return null;
 
   const candidates = rows.map((r) => ({
     title: (r.title as string | null) ?? "",
     text: kind === "tools" ? (r.raw_text as string) : usableSummary(r.title as string, r.raw_text as string),
     source: newsSourceLabel(r.source as string),
+    china: isChinaSource(r.source as string),
   }));
   // 第一步：只看标题和简介挑 5 条、起草（不给 AI 看任何关于他的信息）
   const draft = await generateSignalBrief(kind, candidates);
@@ -192,14 +240,24 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     return g ? { ...p, headline: g.headline, background: g.background, forYou: g.forYou } : p;
   });
 
-  // 第二步：单独找最多两条真跟他连得上的，代码核对出处；失败只是少了"跟你"
-  const personal = new Map<number, string>();
-  try {
-    const reader = await loadSignalReader(userId);
-    for (const link of await linkPicksToReader(picks, reader)) personal.set(link.index, link.personal);
-  } catch (e) {
-    console.error("brief personal links failed", e);
-  }
+  // 下面两件互不依赖，一起跑（cron 只有 60 秒）：
+  // 中文媒体的那几条问"日本这边有没有"并上网核实；单独找最多两条真跟他连得上的。失败都只是少了那一行。
+  const [japan, personal] = await Promise.all([
+    compareAndCheckJapan(picks.filter((p) => candidates[p.index].china)).catch((e) => {
+      console.error("brief japan comparison failed", e);
+      return new Map<number, JapanComparison>();
+    }),
+    (async () => {
+      const links = new Map<number, string>();
+      try {
+        const reader = await loadSignalReader(userId);
+        for (const link of await linkPicksToReader(picks, reader)) links.set(link.index, link.personal);
+      } catch (e) {
+        console.error("brief personal links failed", e);
+      }
+      return links;
+    })(),
+  ]);
 
   const items: BriefItem[] = picks.map((p) => {
     const row = rows[p.index];
@@ -215,6 +273,9 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       event: p.event,
       grounded: grounded.has(p.index),
       basis: grounded.get(p.index)?.basis,
+      japan: japan.get(p.index)?.japan,
+      japan_check: japan.get(p.index)?.check,
+      japan_query: japan.get(p.index)?.query || undefined,
     };
   });
   // "也值得一看"跟精选存在同一个数组里，用 extra 标出来，不用加列

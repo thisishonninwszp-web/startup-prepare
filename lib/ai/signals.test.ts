@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -46,6 +46,30 @@ describe("parseBrief", () => {
     const many = Array.from({ length: 8 }, (_, i) => pick(i));
     expect(parseBrief(brief(many), 8).picks).toHaveLength(5);
     expect(() => parseBrief(brief([{ ...pick(0), forYou: "可以抄底" }]), 3)).toThrow("抄底");
+  });
+
+});
+
+describe("parseJapanComparisons", () => {
+  const inputs = [
+    { index: 2, headline: "h", background: "b" },
+    { index: 5, headline: "h", background: "b" },
+  ];
+  it("先给结论的才收；空话、没结论、序号对不上的丢掉", () => {
+    const out = parseJapanComparisons(
+      {
+        items: [
+          { index: 2, japan: "没有。可能卡在便利店已经够密，即时配送不划算。" },
+          { index: 5, japan: "日本企业需要关注这一变化。" },
+          { index: 7, japan: "有，类似的服务已经很多。" },
+        ],
+      },
+      inputs
+    );
+    expect(out).toEqual([{ index: 2, japan: "没有。可能卡在便利店已经够密，即时配送不划算。", query: "" }]);
+    expect(
+      parseJapanComparisons({ items: [{ index: 5, japan: "有类似的，但没普及，值得借鉴。" }] }, inputs)
+    ).toEqual([]);
   });
 });
 
@@ -453,5 +477,38 @@ describe("历史参照：搜错了不能拼成一件事", () => {
     );
     expect(r.analogs[0].check?.status).toBe("unverified");
     expect(r.analogs[0].when).toBe("2018 年");
+  });
+});
+
+describe("parseJapanChecks", () => {
+  const comparison = { index: 3, japan: "没有。可能卡在便利店已经够密。", query: "即配 ネットスーパー" };
+  const sources = [{ title: "t", url: "https://example.jp/a", content: "イオンネットスーパーは最短30分で届ける即配サービスを都内で始めた。" }];
+  const inputs = [{ comparison, sources }];
+  const excerpt = "イオンネットスーパーは最短30分で届ける即配サービスを都内で始めた。";
+
+  it("原文对得上才算查到；改正要真改了、开头合格", () => {
+    const fixed = "有类似的，但没普及。イオン在东京试 30 分钟送达。";
+    const out = parseJapanChecks(
+      { items: [{ i: 0, status: "corrected", japan: fixed, correction: "原来说没有，资料里有", basis: [{ source: 1, excerpt }] }] },
+      inputs
+    );
+    expect(out[0].japan).toBe(fixed);
+    expect(out[0].check?.status).toBe("corrected");
+    expect(out[0].check?.basis[0].url).toBe("https://example.jp/a");
+  });
+
+  it("原文对不上、或改正后开头不合格，就降级", () => {
+    const fake = parseJapanChecks(
+      { items: [{ i: 0, status: "supported", japan: comparison.japan, basis: [{ source: 1, excerpt: "资料里根本没有这一句话呀呀呀" }] }] },
+      inputs
+    );
+    expect(fake[0].check?.status).toBe("unverified");
+    expect(fake[0].japan).toBe(comparison.japan);
+    const bad = parseJapanChecks(
+      { items: [{ i: 0, status: "corrected", japan: "日本企业值得借鉴。", correction: "x", basis: [{ source: 1, excerpt }] }] },
+      inputs
+    );
+    expect(bad[0].check?.status).toBe("supported");
+    expect(bad[0].japan).toBe(comparison.japan);
   });
 });

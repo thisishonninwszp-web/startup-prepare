@@ -270,6 +270,18 @@ export function assertChinese(texts: string[]): void {
 }
 
 /**
+ * 跟 assertChinese 一样，但允许用片假名点名日本的服务和公司（"イオンネットスーパー"）：
+ * 只数平假名 —— 用日文写句子才会有大量平假名，中文里夹几个片假名专名不会。
+ */
+export function assertChineseAllowingNames(texts: string[]): void {
+  const all = texts.join("");
+  const letters = all.replace(/[\s\p{P}\p{S}0-9A-Za-z\u30a0-\u30ff]/gu, "");
+  if (letters.length === 0) return;
+  const hiragana = (all.match(/[\u3040-\u309f]/g) ?? []).length;
+  if (hiragana / letters.length > 0.1) throw new Error("用了日文，没有用中文写");
+}
+
+/**
  * 有没有用数字说可能性（"70% 的可能""概率为三成""百分之八十会"）。
  * 只拦跟"可能、概率、把握、机会"连在一起的数字 —— 利率 1.25%、增长 3% 这类事实里的百分比不拦。
  */
@@ -425,7 +437,13 @@ export async function analyzeNewsItem(input: NewsAnalysisInput): Promise<NewsAna
 
 // ── 每日精选 ───────────────────────────────────────────────────────────────
 
-export type BriefCandidate = { title: string; text: string; source: string };
+export type BriefCandidate = {
+  title: string;
+  text: string;
+  source: string;
+  /** 来自中文媒体：报告里多写一句"日本这边有没有"。 */
+  china?: boolean;
+};
 
 export type BriefPick = {
   /** 候选列表里的序号。 */
@@ -457,7 +475,15 @@ const BRIEF_PROMPTS: Record<BriefKind, string> = {
 挑的标准（按这个顺序考虑）：
 - 会改变很多人处境的事：利率、汇率、政策、规制、大公司的大动作、产业结构的变化。
 - 能看出"钱往哪里流、谁遇到了新麻烦、什么变便宜了"的事。
+- 众筹达成目标的报道（Makuake、CAMPFIRE）是"有人真掏钱"的证据：挑能看出一类新需求的产品，
+  不挑粉丝应援、演出、游戏制作、文化财修缮这类靠情分筹钱的。
 不挑：单纯的事件、犯罪、八卦。
+
+候选里标了"（中国）"的来自中文媒体。中国已经跑通、日本还没有的做法，往往几年后会来日本 ——
+这是读日文新闻看不到的东西。
+- 只要有一条中国的条目讲的是一种做法、产品或消费上的变化（一家公司怎么做生意、一种新服务、人们开始怎么买东西），
+  5 条里至少留 1 条中国的。政府发文、监管新规、股市、宏观数据都不算；一条合适的都没有就不留。
+  （"日本这边有没有"会单独再问一次，这里不用写。）
 同一件事只留一条：一个事件和它引发的后续反应（比如"央行加息"和"银行跟着调存款利率"）算同一件事，挑一条，后续放进 background 里讲。
 
 每条写：
@@ -475,12 +501,15 @@ const BRIEF_PROMPTS: Record<BriefKind, string> = {
 - background：它能拿来做什么、为什么现在有很多人关注它，3 到 4 句。
 - forYou：可以拿它试的一件具体的事，一个周末能做完，一句话。`,
   voices: `你每天帮一个人从几十条材料里挑出最多 ${BRIEF_SIZE} 条"谁在头疼什么"。
-材料来自一线干活的人自己写、自己转发的文章（はてブ热门、note #経営）和"招不到人、人手不足"的报道。
+材料来自一线干活的人自己写、自己转发的文章（はてブ热门、note #経営）、"招不到人、人手不足"的报道，
+以及倒产的消息（倒产新闻、東京商工リサーチ / 帝国データバンク 的统计）。
 他想知道一线的人具体卡在哪里 —— 别人的麻烦，往往就是生意的来源。
 
 挑的标准：
 - 有一个具体的人群卡在一个具体的地方（谁、卡在哪、试过什么、为什么没解决）。
 - 招人难的报道要看出"招不到的是什么样的人、为什么招不到"。
+- 倒产的消息要看出哪个行业、死于什么（人手不足、物价高、后继者不在、借款还不上）。
+  单家公司倒闭的八卦不挑；挑能看出一类公司一起撑不住的（月度统计、某个行业连着倒）。
 不挑：纯观点争吵、名人发言、和工作无关的生活趣闻、技术教程、新产品或新工具的发布（那是"新工具"那一节的事，不是一线的人在头疼的事）。
 
 每条写：
@@ -638,7 +667,7 @@ function parsePractice(raw: unknown, picks: BriefPick[]): BriefPractice | null {
 export async function generateSignalBrief(kind: BriefKind, candidates: BriefCandidate[]): Promise<Brief> {
   if (candidates.length === 0) return { overview: "", picks: [], more: [], practice: null };
   const numbered = candidates
-    .map((c, i) => `[${i}] ${c.title}（${c.source}）\n${c.text.slice(0, 160)}`)
+    .map((c, i) => `[${i}] ${c.title}（${c.source}）${c.china ? "（中国）" : ""}\n${c.text.slice(0, 160)}`)
     .join("\n");
   const contents = `候选：\n${numbered}`;
   const systemInstruction = `${BRIEF_PROMPTS[kind]}
@@ -1091,6 +1120,179 @@ export function parsePersonalLinks(value: unknown, indices: number[], readerItem
   assertNoBanned(result.map((r) => r.personal));
   assertChinese(result.map((r) => r.personal));
   return result;
+}
+
+// ── 日本这边有没有（中文媒体的精选） ─────────────────────────────────────────
+
+export type JapanInput = { index: number; headline: string; background: string };
+export type JapanComparison = {
+  index: number;
+  japan: string;
+  /** 用日语写的搜索词，拿去查"日本有没有这种东西"。 */
+  query: string;
+  /** 上网核实的结果（跟历史参照同一种结构）；还没核实时没有。 */
+  check?: AnalogCheck;
+};
+
+const JAPAN_PROMPT = `下面几条是中国正在发生的事。中国已经跑通、日本还没有的做法，往往几年后会来日本。
+每一条回答一个问题：日本现在有没有同样的东西？
+
+japan 的写法：
+- 第一句先给结论，只能用这四种开头之一："有，""有类似的，但没普及""没有""拿不准"。
+- 再用一两句说：有的话是什么样的（可以说一类服务，拿不准就别点名公司）；没有或没普及的话，可能卡在哪（法规、支付习惯、物流、人口结构、商业习惯）。
+- 如果这条讲的是政府发文、监管规定，就比的是"日本有没有同样的规定"。
+- 不许写"日本企业需要关注""值得借鉴""值得注意"这类空话；不要编日本公司或服务的名字。用中文写。
+
+再写 query：用日语写的搜索词，3 到 6 个词，用来上网查"日本有没有这种东西"。
+写成日本这边的说法，不要直译中国的产品名（例：微信的 AI 助手 → "LINE AI アシスタント 機能"；即时零售 → "即配 ネットスーパー 30分"）。
+
+只输出 JSON：{"items":[{"index":序号,"japan":"…","query":"…"}]}`;
+
+const JAPAN_OPENERS = ["有，", "有类似的", "没有", "拿不准"];
+const JAPAN_FILLER = /需要关注|值得借鉴|值得注意|值得关注/;
+
+/** 只留开头给了结论、没有空话、序号对得上的；一条都不合格就返回空（页面上就不显示这一行）。 */
+export function parseJapanComparisons(value: unknown, inputs: JapanInput[]): JapanComparison[] {
+  const items = (value as { items?: unknown } | null)?.items;
+  if (!Array.isArray(items)) throw new Error("缺少 items");
+  const wanted = new Set(inputs.map((i) => i.index));
+  const out: JapanComparison[] = [];
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue;
+    const v = raw as Record<string, unknown>;
+    const index = typeof v.index === "number" ? v.index : Number(v.index);
+    const japan = typeof v.japan === "string" ? v.japan.trim() : "";
+    if (!wanted.has(index) || out.some((o) => o.index === index)) continue;
+    if (!JAPAN_OPENERS.some((o) => japan.startsWith(o)) || JAPAN_FILLER.test(japan)) continue;
+    const query = typeof v.query === "string" ? v.query.trim().slice(0, 80) : "";
+    out.push({ index, japan, query });
+  }
+  assertNoBanned(out.map((o) => o.japan));
+  assertChineseAllowingNames(out.map((o) => o.japan));
+  return out;
+}
+
+/** 给精选里中文媒体的那几条各写一句"日本这边"。凭 AI 的印象，没上网查，页面上要标出来。 */
+export async function compareWithJapan(inputs: JapanInput[]): Promise<JapanComparison[]> {
+  if (inputs.length === 0) return [];
+  const contents = inputs.map((i) => `[${i.index}] ${i.headline}\n${i.background}`).join("\n\n");
+  return executeAiJson(
+    { operation: "brief_japan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1 ? "\n\n上一次输出没通过校验：每条 japan 第一句必须以规定的四种开头之一起头，不许写空话。" : ""),
+      config: {
+        systemInstruction: JAPAN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parseJapanComparisons(value, inputs)
+  );
+}
+
+const JAPAN_CHECK_PROMPT = `你在核实几句"日本这边有没有"的说法。每句下面附了上网搜到的资料。
+
+每句输出：
+- i：编号。
+- status：
+  "supported"：资料能支撑这句说法（说"有"，资料里确实有日本的同类服务；说"没普及""没有"，资料里能看出日本确实只有不同的东西或还很少见）。
+  "corrected"：资料和说法**相互矛盾**才用（说"没有"，资料里明明有日本的同类服务；说"有"，资料显示其实已经退出或根本不是一回事）。
+  "unverified"：资料和这件事对不上，或者说不清。注意：资料里没提到，不等于日本没有 —— 这种情况用 unverified，不要当成"没有"的证据。
+- japan：supported、unverified 时照抄原来的；corrected 时写改正后的，第一句仍然以"有，""有类似的，但没普及""没有""拿不准"之一开头，可以点名资料里出现的日本服务。
+- correction：只有 corrected 时写，一句话点出矛盾："原来说 X，资料里是 Y"。
+- basis：支撑或改正它的资料原文，逐字照抄（不翻译、不改字，每句 15 到 150 字），附资料编号 source。unverified 时给空数组。
+
+一律用简体中文写（basis 照抄原文，不用翻译）。不要编资料里没有的事实。
+
+只输出 JSON：{"items":[{"i":0,"status":"supported","japan":"…","correction":"","basis":[{"source":1,"excerpt":"…"}]}]}`;
+
+export type JapanSources = { comparison: JapanComparison; sources: SearchSource[] };
+
+/**
+ * 原文必须逐字出现在这一句自己的那几篇资料里，否则不算。
+ * 说"查到了"或"改正了"却拿不出一句对得上的原文，降成 unverified，内容退回原来写的。
+ */
+export function parseJapanChecks(value: unknown, inputs: JapanSources[]): JapanComparison[] {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const raw = (value as { items?: unknown }).items;
+  if (!Array.isArray(raw)) throw new Error("缺少 items");
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const byI = new Map<number, Record<string, unknown>>();
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const it = r as Record<string, unknown>;
+    const i = typeof it.i === "number" ? it.i : Number(it.i);
+    if (Number.isInteger(i) && !byI.has(i)) byI.set(i, it);
+  }
+  const out = inputs.map(({ comparison, sources }, i): JapanComparison => {
+    const it = byI.get(i);
+    const status = it?.status;
+    const basis = (Array.isArray(it?.basis) ? (it?.basis as unknown[]) : [])
+      .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
+      .map((b) => {
+        const src = sources[(typeof b.source === "number" ? b.source : Number(b.source)) - 1];
+        const excerpt = typeof b.excerpt === "string" ? b.excerpt.trim() : "";
+        if (!src || squash(excerpt).length < 8 || !squash(src.content).includes(squash(excerpt))) return null;
+        return { url: src.url, title: src.title, excerpt: excerpt.slice(0, 300) };
+      })
+      .filter((b): b is { url: string; title: string; excerpt: string } => b !== null)
+      .slice(0, 3);
+    const unverified: JapanComparison = { ...comparison, check: { status: "unverified", basis: [] } };
+    if (!it || basis.length === 0 || (status !== "supported" && status !== "corrected")) return unverified;
+    if (status === "corrected") {
+      const correction = typeof it.correction === "string" ? it.correction.trim() : "";
+      const japan = typeof it.japan === "string" ? it.japan.trim() : "";
+      const valid = JAPAN_OPENERS.some((o) => japan.startsWith(o)) && !JAPAN_FILLER.test(japan);
+      // 说改正了，却没改、没说哪里不一样、或改出来的不合格 —— 当成"查到出处"
+      if (correction && valid && japan !== comparison.japan) {
+        return { ...comparison, japan, check: { status: "corrected", correction, basis } };
+      }
+    }
+    return { ...comparison, check: { status: "supported", basis } };
+  });
+  const texts = out.flatMap((c) => [c.japan, c.check?.correction ?? ""]).filter(Boolean);
+  assertNoBanned(texts);
+  assertChineseAllowingNames(texts);
+  return out;
+}
+
+/** 拿搜到的资料核实"日本这边"。一条资料都没搜到的直接标没查到，不调 AI。 */
+export async function checkJapanComparisons(inputs: JapanSources[]): Promise<JapanComparison[]> {
+  if (inputs.every((i) => i.sources.length === 0)) {
+    return inputs.map(({ comparison }) => ({ ...comparison, check: { status: "unverified", basis: [] } }));
+  }
+  const blocks = inputs
+    .map(({ comparison, sources }, i) =>
+      [
+        `【${i}】${comparison.japan}`,
+        sources.length > 0
+          ? sources.map((src, j) => `  [资料 ${j + 1}] ${src.title}\n  ${src.url}\n  ${src.content.slice(0, 1200)}`).join("\n")
+          : "  （没搜到资料）",
+      ].join("\n")
+    )
+    .join("\n\n");
+  return executeAiJson(
+    { operation: "brief_japan_check", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        blocks +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验。basis 必须逐字照抄对应那句下面资料的原文，source 是资料编号；叙述用中文。"
+          : ""),
+      config: {
+        systemInstruction: JAPAN_CHECK_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    (value) => parseJapanChecks(value, inputs)
+  );
 }
 
 export async function linkPicksToReader(
