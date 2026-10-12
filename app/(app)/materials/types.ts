@@ -205,18 +205,23 @@ function parseAffectedObject(
   };
 }
 
-function rejectInferenceLanguageInFacts(facts: string[]) {
-  const invalid = facts.find((fact) => INFERENCE_IN_FACT.test(fact));
-  if (invalid) {
-    throw new Error(`confirmed_facts contains inference language: ${invalid}`);
-  }
+/**
+ * "确认的事实"里混进了推测的话（可能、也许、看起来……）：挪进"可能的推断"，不当事实。
+ * 以前是整份作废 —— 长文章里几乎总有一句带"可能"，结果分享进来的文章一篇都审不出来。
+ * 事实和推测照样分开，只是不再因为一句话丢掉整份。
+ */
+export function splitInferenceFromFacts(facts: string[]): { facts: string[]; moved: string[] } {
+  return {
+    facts: facts.filter((f) => !INFERENCE_IN_FACT.test(f)),
+    moved: facts.filter((f) => INFERENCE_IN_FACT.test(f)),
+  };
 }
 
 export function parseMaterialDraft(value: unknown): RealityMaterialDraft {
   const input = object(value, "material draft");
   ensureNoForbiddenKeys(input, "material draft");
-  const confirmed_facts = textArray(input.confirmed_facts, "confirmed_facts");
-  rejectInferenceLanguageInFacts(confirmed_facts);
+  const split = splitInferenceFromFacts(textArray(input.confirmed_facts, "confirmed_facts"));
+  const confirmed_facts = split.facts;
   const suggested_departments = Array.from(
     new Set(
       textArray(
@@ -245,19 +250,22 @@ export function parseMaterialDraft(value: unknown): RealityMaterialDraft {
     summary: text(input.summary, "summary"),
     original_fragments: textArray(input.original_fragments, "original_fragments"),
     confirmed_facts,
-    possible_inferences: textArray(
-      input.possible_inferences ?? input.inferences,
-      "possible_inferences",
-      false
-    ),
+    possible_inferences: [
+      ...textArray(input.possible_inferences ?? input.inferences, "possible_inferences", false),
+      ...split.moved,
+    ],
     unknowns: textArray(input.unknowns, "unknowns", false),
     affected_objects: affectedRaw.map((item, index) =>
       parseAffectedObject(item, `affected_objects[${index}]`)
     ),
     suggested_departments,
-    suggested_routes: routeRaw.map((item, index) =>
-      parseRouteSuggestion(item, `suggested_routes[${index}]`)
-    ),
+    // 建议去向写了清单外的地方：丢掉那一条，不让整份审阅作废（打分类的禁用字段照样整份拒）
+    suggested_routes: routeRaw
+      .filter((item) => {
+        const target = item && typeof item === "object" ? (item as Record<string, unknown>).target : undefined;
+        return MATERIAL_ROUTE_TARGETS.includes(target as MaterialRouteTarget);
+      })
+      .map((item, index) => parseRouteSuggestion(item, `suggested_routes[${index}]`)),
     may_affect_next_step: mayAffect,
   };
 }

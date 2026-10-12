@@ -6,7 +6,14 @@ import { createServerClient } from "@supabase/ssr";
  *  - unauthenticated users are redirected to /login
  *  - authenticated users hitting / or /login are sent to /dashboard
  */
+/**
+ * 不靠登录态、自己验口令的接口：定时任务（CRON_SECRET）和手机分享（SHARE_TOKEN）。
+ * 它们没有登录 cookie，不放行就会被跳到 /login —— 定时任务就是这样一直没跑起来的。
+ */
+const TOKEN_AUTH_PREFIXES = ["/api/cron/", "/api/share"];
+
 export async function middleware(request: NextRequest) {
+  if (TOKEN_AUTH_PREFIXES.some((p) => request.nextUrl.pathname.startsWith(p))) return NextResponse.next();
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

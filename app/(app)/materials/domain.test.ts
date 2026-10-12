@@ -45,7 +45,7 @@ describe("materials domain", () => {
     expect(draft.suggested_departments).toEqual(["company", "judgment"]);
   });
 
-  it("rejects scoring language, invalid departments, and speculative facts", () => {
+  it("rejects scoring language and invalid departments", () => {
     const base = {
       summary: "摘要",
       original_fragments: ["x"],
@@ -65,9 +65,40 @@ describe("materials domain", () => {
       parseMaterialDraft({ ...base, suggested_departments: ["archive"] })
     ).toThrow("invalid material department");
 
-    expect(() =>
-      parseMaterialDraft({ ...base, confirmed_facts: ["可能是成本压力"] })
-    ).toThrow("confirmed_facts");
+  });
+
+  it("drops a route suggestion with an unknown target instead of rejecting the whole draft", () => {
+    const draft = parseMaterialDraft({
+      summary: "摘要",
+      original_fragments: ["x"],
+      confirmed_facts: ["x"],
+      possible_inferences: [],
+      unknowns: [],
+      affected_objects: [],
+      suggested_departments: ["customer"],
+      suggested_routes: [
+        { target: "knowledge", reason: "r", payload_hint: "p" },
+        { target: "idea", reason: "r", payload_hint: "p" },
+      ],
+      may_affect_next_step: false,
+    });
+    expect(draft.suggested_routes.map((r) => r.target)).toEqual(["idea"]);
+  });
+
+  it("moves speculative 'facts' into possible_inferences instead of rejecting the whole draft", () => {
+    const draft = parseMaterialDraft({
+      summary: "摘要",
+      original_fragments: ["x"],
+      confirmed_facts: ["报价从 100 涨到 130", "可能是成本压力"],
+      possible_inferences: ["客户可能会换供应商"],
+      unknowns: [],
+      affected_objects: [],
+      suggested_departments: ["customer"],
+      suggested_routes: [],
+      may_affect_next_step: false,
+    });
+    expect(draft.confirmed_facts).toEqual(["报价从 100 涨到 130"]);
+    expect(draft.possible_inferences).toEqual(["客户可能会换供应商", "可能是成本压力"]);
   });
 
   it("parses 门下 review as a guardrail instead of an action plan", () => {
@@ -144,5 +175,23 @@ describe("materials domain", () => {
     expect(summary.hidden_sheet_count).toBe(1);
     expect(summary.text).toContain("可见表");
     expect(summary.text).not.toContain("secret");
+  });
+});
+
+describe("分享进来的网址", () => {
+  it("从带标题的分享文字里挑出网址", async () => {
+    const { pickUrl } = await import("./ingest");
+    expect(pickUrl("年俸2800万円でも争奪戦 https://www.itmedia.co.jp/a/b.html")).toBe("https://www.itmedia.co.jp/a/b.html");
+    expect(pickUrl("没有网址的一段话")).toBeNull();
+  });
+
+  it("内网、本机、元数据地址算内网", async () => {
+    const { isPrivateAddress } = await import("./fetch-page");
+    for (const ip of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "::1", "fd00::1", "::ffff:10.0.0.1"]) {
+      expect(isPrivateAddress(ip)).toBe(true);
+    }
+    for (const ip of ["8.8.8.8", "151.101.1.200", "2606:4700::1111"]) {
+      expect(isPrivateAddress(ip)).toBe(false);
+    }
   });
 });
