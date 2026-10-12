@@ -14,7 +14,7 @@ import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
-import { generateDigest } from "@/lib/domains/signals/digest";
+import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
 import { setFeedback, type FeedbackKind } from "@/lib/domains/signals/feedback";
 import { sendDailyEmail } from "@/lib/domains/signals/notify";
@@ -184,6 +184,7 @@ export async function submitJudgmentAction(input: {
   confidence: ConfidenceKey | null;
   tags?: string[];
   milestone?: string;
+  dueDate?: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
@@ -511,5 +512,17 @@ export async function generateWeeklyAction(weekStart: string): Promise<{ ok: tru
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "周报没写出来") };
+  }
+}
+
+/** 写今天的详细报告（点了才写，二三十秒）。 */
+export async function generateDigestDetailAction(date: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await generateDigestDetail(userId, date);
+    revalidatePath("/signals");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "详细报告没写出来") };
   }
 }

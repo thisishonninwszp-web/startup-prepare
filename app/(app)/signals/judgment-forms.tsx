@@ -9,7 +9,10 @@ import {
   CONFIDENCE_LEVELS,
   HORIZONS,
   LONG_HORIZONS,
+  LONG_JUDGMENT_DAYS,
   MISS_REASONS,
+  deadlineDays,
+  deadlineLabel,
   normalizeTags,
   type MissReason,
   type ConfidenceKey,
@@ -33,7 +36,13 @@ export function JudgmentForm({
   initialJudgment = "",
   submitLabel = "写下，然后看答案",
   knownTags = [],
+  defaultHorizon = "3m",
+  deadline,
 }: {
+  /** 默认选哪一档期限（练习题按题目里写的时间点给）。 */
+  defaultHorizon?: HorizonKey;
+  /** 题目里写了"到某年某月底"：多一个"按题目里的日子"选项，默认选它（YYYY-MM-DD）。 */
+  deadline?: string;
   /** 对着一条新闻下的判断。和 questionId 二选一。 */
   signalId?: string;
   /** 对着自己在追的问题下的判断。 */
@@ -51,7 +60,10 @@ export function JudgmentForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [judgment, setJudgment] = useState(initialJudgment);
-  const [horizon, setHorizon] = useState<HorizonKey>("3m");
+  const [horizon, setHorizon] = useState<HorizonKey>(defaultHorizon);
+  // 题目里写了日子就默认按它对账：问"到明年底"却一个月后对账，对不上
+  const [byDeadline, setByDeadline] = useState(!!deadline);
+  const isLong = byDeadline && deadline ? deadlineDays(deadline) > LONG_JUDGMENT_DAYS : LONG_HORIZONS.includes(horizon);
   const [confidence, setConfidence] = useState<ConfidenceKey | null>(null);
   const [tagText, setTagText] = useState("");
   const [milestone, setMilestone] = useState("");
@@ -73,7 +85,8 @@ export function JudgmentForm({
             horizon,
             confidence,
             tags,
-            milestone: LONG_HORIZONS.includes(horizon) ? milestone : undefined,
+            milestone: isLong ? milestone : undefined,
+            dueDate: byDeadline ? deadline : undefined,
           });
           if (result.ok) {
             setError(null);
@@ -96,22 +109,36 @@ export function JudgmentForm({
       <div className="mt-4 space-y-4 text-sm sm:space-y-3">
         <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <span className="shrink-0 text-muted-foreground sm:w-24">什么时候对账</span>
-          <div className="grid grid-cols-3 gap-1.5 sm:flex sm:gap-2">
+          <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
+            {deadline && (
+              <Button
+                type="button"
+                size="sm"
+                className="col-span-3 h-10 sm:h-8"
+                variant={byDeadline ? "secondary" : "ghost"}
+                onClick={() => setByDeadline(true)}
+              >
+                按题目：{deadlineLabel(deadline)}
+              </Button>
+            )}
             {(Object.keys(HORIZONS) as HorizonKey[]).map((key) => (
               <Button
                 key={key}
                 type="button"
                 size="sm"
                 className="h-10 sm:h-8"
-                variant={horizon === key ? "secondary" : "ghost"}
-                onClick={() => setHorizon(key)}
+                variant={!byDeadline && horizon === key ? "secondary" : "ghost"}
+                onClick={() => {
+                  setHorizon(key);
+                  setByDeadline(false);
+                }}
               >
                 {HORIZONS[key].label}
               </Button>
             ))}
           </div>
         </div>
-        {LONG_HORIZONS.includes(horizon) && (
+        {isLong && (
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
             <span className="shrink-0 text-muted-foreground sm:w-24 sm:pt-1.5">中途的苗头</span>
             <div className="flex-1">
@@ -122,7 +149,8 @@ export function JudgmentForm({
                 maxLength={200}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                要等{HORIZONS[horizon].label.replace("后", "")}才能对账，太久了。填了就自动多押一条半年后对账的，中途也有反馈。
+                {byDeadline && deadline ? `要等到${deadlineLabel(deadline)}` : `要等${HORIZONS[horizon].label.replace("后", "")}`}
+                才能对账，太久了。填了就自动多押一条半年后对账的，中途也有反馈。
               </p>
             </div>
           </div>

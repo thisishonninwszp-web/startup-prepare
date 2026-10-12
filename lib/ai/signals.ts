@@ -582,7 +582,75 @@ export type BriefPractice = {
   checkHow: string;
   /** 为什么它两个方向都有可能（各一个理由）—— 这道题值得判断的原因。早期数据没有。 */
   whyUncertain?: string;
+  /** 多久能见分晓（判断表单默认选这一档）。以题目里写的时间点为准，见 practiceHorizon。 */
+  horizon?: PracticeHorizon;
 };
+
+/** 练习题的期限档（和 practice-shared 的 HORIZONS 同名同天数；lib/ai 不依赖 domains）。 */
+export type PracticeHorizon = "1m" | "3m" | "6m" | "1y" | "3y";
+const PRACTICE_HORIZON_DAYS: [PracticeHorizon, number][] = [
+  ["1m", 30],
+  ["3m", 91],
+  ["6m", 182],
+  ["1y", 365],
+  ["3y", 1095],
+];
+
+/** 今天的东京日期 YYYY-MM-DD。 */
+function tokyoDate(): string {
+  return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+}
+
+function monthEnd(year: number, month: number): Date {
+  return new Date(Date.UTC(year, month, 0));
+}
+
+/**
+ * 题目里写的最晚的时间点（"到明年底""2027年3月""到年底""到1月底"）。认不出来返回 null。
+ * today 是东京日期 YYYY-MM-DD。
+ */
+export function questionDeadline(question: string, today: string): Date | null {
+  const [y, m] = today.split("-").map(Number);
+  const found: Date[] = [];
+  for (const x of Array.from(question.matchAll(/(20\d\d)\s*年\s*(\d{1,2})\s*月/g))) found.push(monthEnd(Number(x[1]), Number(x[2])));
+  for (const x of Array.from(question.matchAll(/(20\d\d)\s*年(?!\s*\d{1,2}\s*月)/g))) found.push(monthEnd(Number(x[1]), 12));
+  for (const x of Array.from(question.matchAll(/(明|后)年\s*(\d{1,2})\s*月/g))) found.push(monthEnd(y + (x[1] === "明" ? 1 : 2), Number(x[2])));
+  for (const x of Array.from(question.matchAll(/(明|后)年(?!\s*\d{1,2}\s*月)/g))) found.push(monthEnd(y + (x[1] === "明" ? 1 : 2), 12));
+  if (/(今年)?年[底末]/.test(question.replace(/(明|后)年[底末]/g, "")) && !/20\d\d\s*年[底末]/.test(question)) found.push(monthEnd(y, 12));
+  // 相对的说法："未来一年内""半年后""三个月内"
+  const base = new Date(`${today}T00:00:00Z`).getTime();
+  const NUM: Record<string, number> = { 一: 1, 两: 2, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 九: 9, 十: 10, 十二: 12 };
+  const num = (x: string) => NUM[x] ?? Number(x);
+  for (const x of Array.from(question.matchAll(/(十二|[一两二三四五六九十]|\d{1,2})\s*个?月(内|之内|以内|后|以后)/g))) {
+    const n = num(x[1]);
+    if (n > 0) found.push(new Date(base + n * 30.5 * 86_400_000));
+  }
+  for (const x of Array.from(question.matchAll(/(?<![明后今去])([一两二三五]|\d)\s*年(内|之内|以内|后|以后)/g))) {
+    const n = num(x[1]);
+    if (n > 0) found.push(new Date(base + n * 365 * 86_400_000));
+  }
+  if (/半年(内|之内|以内|后|以后)/.test(question)) found.push(new Date(base + 182 * 86_400_000));
+  // 不带年份的"1月底""3月"：今年还没过就是今年，过了就是明年
+  for (const x of Array.from(question.matchAll(/(?<![年\d个])(\d{1,2})\s*月/g))) {
+    const mm = Number(x[1]);
+    if (mm < 1 || mm > 12) continue;
+    found.push(monthEnd(mm >= m ? y : y + 1, mm));
+  }
+  if (found.length === 0) return null;
+  return new Date(Math.max(...found.map((d) => d.getTime())));
+}
+
+/**
+ * 判断表单默认选哪一档：题目里写了时间点就按它来（"到明年底"就是一年后，不能配一个月后对账），
+ * 没写就用 AI 给的档。
+ */
+export function practiceHorizon(question: string, aiHorizon: PracticeHorizon | undefined, today: string): PracticeHorizon {
+  const deadline = questionDeadline(question, today);
+  if (!deadline) return aiHorizon ?? "3m";
+  const days = (deadline.getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86_400_000;
+  // 只挑一档期限时不加余量（"三个月后"就是三个月那一档）；等消息的一周余量在"按题目里的日子"那个选项里加
+  return PRACTICE_HORIZON_DAYS.find(([, d]) => d >= days - 3)?.[0] ?? "3y";
+}
 
 export type Brief = {
   /** 报告开头"今天的世界"：把几条串起来讲，3 到 5 句。 */
@@ -594,13 +662,16 @@ export type Brief = {
   practice: BriefPractice | null;
 };
 
-const PRACTICE_INSTRUCTION = `再出一道今天的练习题（practice）。他在练"读新闻、下判断、事后对账"。
+const practiceInstruction = (today: string) => `再出一道今天的练习题（practice）。他在练"读新闻、下判断、事后对账"。今天是 ${today}。
 - 从你挑的 5 条里选一条"关键不确定"的事（index 用候选序号）：
   ①重要：结果会影响很多人或企业；②真的可能往两个方向走：有理由会，也有理由不会。
   不选已经定了的事（已经通过的法规、已经公布的日程、已经发生的结果）—— 那些只需要知道，不需要判断。
   也不选怎么判都无所谓的小事。后续要有公开消息能验证。
 - whyUncertain：一句话说清它为什么两个方向都有可能，各给一个理由（"会，因为……；不会，因为……"）。
+- horizon：多久能见分晓，只能是 "1m"（一个月）、"3m"（三个月）、"6m"（半年）之一。优先出三个月内就能见分晓的题；
+  事情本身要一年以上才有结果的话，就问它半年内会出现的一个具体苗头（某个公告、某个数字、某家公司的动作），不要直接问一年后。
 - question：一个几个月内能用事实检验的问题，问"会怎样"而不是"你怎么看"。要能回答成一句具体的话。
+  题目里的时间点必须落在 horizon 以内，写成具体的月份（今天是 ${today}，horizon 是 3m 的话就问"到某年某月底"，不要写"到明年底"）。
   句式："到某个时间点，某个具体的对象会不会做某件事？"或"到某个时间点，某个数字会不会过某条线？"
   对象、事件、数字都从这条新闻里来，不要套用别的新闻。
   不要："你怎么看这件事？"
@@ -624,7 +695,9 @@ const DOMAIN_INSTRUCTION = `每条 picks 再写 domain：这条主要属于哪�
 `;
 
 /** 总述的最后一句：今天的消息主要落在德鲁克的哪种机会来源上。 */
-const OVERVIEW_LENS = `overview 的最后一句，点出今天这几条主要落在哪种机会来源上（人口在变、行业结构在变、流程卡住了、观念在变、新知识、现实和大家以为的不一样），哪种最多、说明了什么。`;
+const OVERVIEW_LENS = `如果今天有两条以上真的落在同一种机会来源上（人口在变、行业结构在变、流程卡住了、观念在变、新知识、现实和大家以为的不一样），
+overview 最后用一句点出来，并说是哪几件事（"倒产潮和外国司机招聘，都是人口在变"）。落不到一起就不写这一句。
+不许写"这些事件共同说明了行业结构和流程正在快速变化""企业需要重新审视……"这种换一天也成立的话。`;
 
 /** allowEmpty：日程那一份，当天真没有带日期的消息时允许一条都不挑（不许硬凑）。 */
 const MORE_SIZE = 5;
@@ -648,7 +721,7 @@ export function sameEvent(a: string, b: string): boolean {
 
 export function parseBrief(value: unknown, candidateCount: number, allowEmpty = false): Brief {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
-  const overview = requireString(value as Record<string, unknown>, "overview");
+  const overview = dropFillerSentences(requireString(value as Record<string, unknown>, "overview"));
   const rawPicks = (value as { picks?: unknown }).picks;
   if (!Array.isArray(rawPicks)) throw new Error("缺少 picks");
   if (rawPicks.length === 0) {
@@ -728,7 +801,9 @@ function parsePractice(raw: unknown, picks: BriefPick[]): BriefPractice | null {
   const checkHow = typeof v.checkHow === "string" ? v.checkHow.trim() : "";
   if (!question || !checkHow) return null;
   const whyUncertain = typeof v.whyUncertain === "string" && v.whyUncertain.trim() ? v.whyUncertain.trim() : undefined;
-  return { index, question, checkHow, ...(whyUncertain ? { whyUncertain } : {}) };
+  const aiHorizon = PRACTICE_HORIZON_DAYS.some(([k]) => k === v.horizon) ? (v.horizon as PracticeHorizon) : undefined;
+  const horizon = practiceHorizon(question, aiHorizon, tokyoDate());
+  return { index, question, checkHow, horizon, ...(whyUncertain ? { whyUncertain } : {}) };
 }
 
 /**
@@ -747,11 +822,11 @@ ${SIGNAL_SHARED_RULES}
 
 另外写 overview：开头的一段总述，3 到 5 句，把挑出来的几条串起来讲${OVERVIEW_TOPIC[kind]}。第一句直接说今天最重要的那一件事是什么；每一句都要带一件具体的事（谁、做了什么）。不许用"持续演进""几个重要领域""值得注意的是"这类空开头，也不要逐条复述。
 
-${kind === "news" ? PRACTICE_INSTRUCTION : ""}
+${kind === "news" ? practiceInstruction(tokyoDate()) : ""}
 ${kind === "news" || kind === "voices" || kind === "money" ? `${OPPORTUNITY_INSTRUCTION}\n${OVERVIEW_LENS}` : ""}
 ${kind === "tools" ? "" : DOMAIN_INSTRUCTION}
 ${MORE_INSTRUCTION}
-只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}${kind === "tools" ? "" : ',"domain":"…"'}}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}${kind === "tools" ? "" : ',"domain":"…"'}}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"horizon":"3m","question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
@@ -2118,7 +2193,7 @@ export function parseGroundedBrief(
 ): { overview: string; items: GroundedPick[] } {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
   const v = value as Record<string, unknown>;
-  const overview = requireString(v, "overview");
+  const overview = dropFillerSentences(requireString(v, "overview"));
   const raw = Array.isArray(v.items) ? v.items : [];
   const squash = (t: string) => t.replace(/\s+/g, "");
   const byIndex = new Map(inputs.map((i) => [i.index, i]));
@@ -2898,6 +2973,10 @@ summary：4 到 6 句，像当面说话：
 - 再用一句说"钱往哪里流"和"一线的人在疼什么"有没有对上；对不上就直说对不上。
 - 最后一句点出今天最值得停下来想一想的那件事（意外、或者两个方向都有可能的事）。
 - 不要逐条复述，不要"今天的报告包括……"这种目录式开头，不要"值得关注""持续演进"这类空话。只用材料里有的事实。
+- 每一句都要有一个具体的主体（哪家公司、哪个机构、哪个行业里的谁）和一件具体的事。
+  不许用抽象的话收尾或串场："凸显了……""表明……""反映了……""日益严重""总的来看""与此同时""此外"。
+  "企业 AI 预算超支，凸显了新技术应用的成熟度不足"是空话；"三分之一的企业 AI 代币预算超支，大部分没换来看得见的业务成果"才是事实。
+- 宁可少写一句，也不要用一句空话把两件不相干的事粘在一起。
 - 你不知道他是做什么的：不许写"你""跟你""你的工作"，不许推测他关心什么。
 
 picks：最多 ${MAX_DIGEST_PICKS} 条最值得点开的，signalId 照抄材料里的编号，why 一句话说这条本身为什么值得点开（它讲了什么关键的事），不写"跟你"。
@@ -2911,10 +2990,20 @@ ${SIGNAL_SHARED_RULES}
 
 只输出 JSON：{"summary":"…","picks":[{"signalId":"…","why":"…"}],"chain":{"signalId":"…","steps":["…","…"]}}`;
 
+/** 抽象收尾、串场的空话（"凸显了""总的来看"）。 */
+const DIGEST_FILLER = /凸显了|凸显出|表明了|反映了|反映出|日益严重|总的来看|总体来看|总而言之|综上|共同说明|都说明了|需要重新审视|正在快速变化/;
+
+/** 去掉写了空话的句子；全是空话就原样返回（交给上游决定要不要重写）。 */
+export function dropFillerSentences(text: string): string {
+  const sentences = text.match(/[^。！？]+[。！？]?/g) ?? [];
+  const kept = sentences.filter((x) => x.trim() && !DIGEST_FILLER.test(x)).join("").trim();
+  return kept || text;
+}
+
 export function parseDigest(value: unknown, signalIds: string[]): DailyDigest {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
   const v = value as Record<string, unknown>;
-  const summary = requireString(v, "summary");
+  const summary = dropFillerSentences(requireString(v, "summary"));
   const raw = Array.isArray(v.picks) ? v.picks : [];
   const picks: DailyDigest["picks"] = [];
   for (const r of raw) {
@@ -3183,5 +3272,130 @@ export async function explainRepos(repos: RepoInput[]): Promise<Map<string, stri
       },
     }),
     (value) => parseRepoExplanations(value, names)
+  );
+}
+
+// ── 详细报告：总览只有几句，这里把今天最重要的几件事一件件讲透 ─────────────────────
+
+export type DetailItemInput = {
+  signalId: string;
+  section: string;
+  headline: string;
+  background: string;
+  /** 代码核对过的原文摘录。 */
+  quotes: string[];
+  opportunity?: string;
+  precedent?: string;
+};
+
+export type DetailTheme = {
+  title: string;
+  signalIds: string[];
+  /** 发生了什么：只写材料里有的事实。 */
+  happened: string;
+  /** 来龙去脉：之前怎样、为什么是现在。材料里没有就空着。 */
+  context: string;
+  /** 现在还不知道的关键一点，两个方向各一个理由（这里允许推测，页面上标明）。 */
+  open: string;
+  /** 接下来盯什么就能知道往哪边走：具体的对象、数字、时间。 */
+  watch: string;
+};
+
+export type DigestDetail = { themes: DetailTheme[] };
+
+const MAX_DETAIL_THEMES = 4;
+
+const DETAIL_PROMPT = `你是他身边一个懂行的老同事。今天的总览只有几句话，他想知道得更细。
+从下面今天报告里的条目中，挑出最重要的 2 到 ${MAX_DETAIL_THEMES} 件事，一件一件讲透。
+"一件事"可以由几条消息组成，但只有它们真是同一件事的不同面时才放一起；不相干的不要硬凑成一个主题。
+
+每件事写五样：
+- title：一句话说是什么事，带具体主体（"横滨国立大学：漏洞被利用的时间缩短"，不是"网络安全形势严峻"）。
+- signalIds：这件事用到的条目编号，照抄括号里的。
+- happened：发生了什么，3 到 5 句。只写材料里有的事实：谁、做了什么、数字是多少、什么时候。原文摘录里有数字就用上。
+- context：来龙去脉，1 到 3 句：这件事之前是什么样、为什么是现在冒出来。材料里没有就写空字符串，不许编。
+  不许写"随着 AI 的广泛应用""近年来企业普遍面临……"这种放之四海皆准的套话 —— 换一条新闻也成立的句子就不要写。
+- open：现在还不知道的关键一点，写成"会不会……：会，因为……；不会，因为……"。这里是推测，可以用"可能"。
+- watch：接下来盯什么就能知道往哪边走，最多三样，每样都要点名一个具体的对象（哪家公司、哪个机构、哪份统计）和一个看得见的变化
+  （"东京商工リサーチ下个月公布的餐饮业倒闭件数还是不是同期最高""熊本市 2026 年 7 月开征后公布的住宿人数"）。
+  不许写"关注政策动向""观察价格走势""持续关注事态发展"这种没有对象的话。
+
+规矩：
+- happened 和 context 里不许自己推因果、下结论（"这说明""意味着""凸显了""标志着""反映了"都不许写）。推测只能放在 open 里。
+- 不要逐条复述标题。不要空话。
+- 你不知道他是做什么的：不许写"你""跟你""你的工作"。
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"themes":[{"title":"…","signalIds":["…"],"happened":"…","context":"…","open":"…","watch":"…"}]}`;
+
+/** happened / context 里自己推因果的句子去掉（推测只许放在 open 里）。 */
+const DETAIL_SELF_CAUSE = /这说明|说明了|意味着|标志着|凸显|反映了|反映出|表明/;
+
+/** 换一条新闻也成立的套话开头。 */
+const DETAIL_BOILERPLATE = /^\s*(随着|近年来|当前|如今|在.{0,24}(背景|环境|形势)下)/;
+
+function dropDetailCause(text: string): string {
+  return (text.match(/[^。！？]+[。！？]?/g) ?? [])
+    .filter((x) => x.trim() && !DETAIL_SELF_CAUSE.test(x) && !DETAIL_BOILERPLATE.test(x))
+    .join("")
+    .trim();
+}
+
+export function parseDigestDetail(value: unknown, signalIds: string[]): DigestDetail {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const raw = (value as { themes?: unknown }).themes;
+  const themes: DetailTheme[] = [];
+  for (const r of Array.isArray(raw) ? raw : []) {
+    if (!r || typeof r !== "object") continue;
+    const t = r as Record<string, unknown>;
+    const s = (k: string) => (typeof t[k] === "string" ? (t[k] as string).trim() : "");
+    const ids = Array.from(new Set((Array.isArray(t.signalIds) ? t.signalIds : []).filter((x): x is string => typeof x === "string").map((x) => x.trim()))).filter((x) =>
+      signalIds.includes(x)
+    );
+    const happened = dropDetailCause(s("happened"));
+    if (!s("title") || ids.length === 0 || !happened || !s("watch")) continue;
+    themes.push({ title: s("title"), signalIds: ids, happened, context: dropDetailCause(s("context")), open: s("open"), watch: s("watch") });
+    if (themes.length >= MAX_DETAIL_THEMES) break;
+  }
+  if (themes.length === 0) throw new Error("一件事都没写出来");
+  const texts = themes.flatMap((t) => [t.title, t.happened, t.context, t.open, t.watch]).filter(Boolean);
+  assertNoBanned(texts);
+  assertChineseAllowingNames(texts);
+  if (texts.some((x) => /跟你|你的|你做|你平时|你可以/.test(x))) throw new Error("详细报告里编了跟他的关系");
+  if (texts.some((x) => mentionsNumericLikelihood(x))) throw new Error("详细报告里写了可能性的数字");
+  return { themes };
+}
+
+export async function writeDigestDetail(items: DetailItemInput[]): Promise<DigestDetail> {
+  if (items.length === 0) throw new Error("今天的报告还没生成");
+  const contents = items
+    .map((i) =>
+      [
+        `- (${i.signalId}) 【${i.section}】${i.headline}`,
+        i.background ? `  背景：${i.background}` : "",
+        ...i.quotes.slice(0, 2).map((q) => `  原文：「${q}」`),
+        i.precedent ? `  先例：${i.precedent}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .join("\n");
+  const ids = items.map((i) => i.signalId);
+  return executeAiJson(
+    { operation: "brief_digest_detail", module: "unknown", outputMode: "json", timeoutMs: 50_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1 ? "\n\n上一次输出没通过校验：signalIds 照抄括号里的编号；每件事都要有 happened 和 watch；用中文写；不许写可能性的数字。" : ""),
+      config: {
+        systemInstruction: DETAIL_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 4000,
+      },
+    }),
+    (value) => parseDigestDetail(value, ids)
   );
 }

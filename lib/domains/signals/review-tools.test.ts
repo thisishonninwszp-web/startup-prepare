@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { dropBadSentences, parseRepoExplanations, parseWeeklyDigest, weekdayOf } from "@/lib/ai/signals";
+import { dropBadSentences, dropFillerSentences, parseDigestDetail, parseRepoExplanations, parseWeeklyDigest, practiceHorizon, questionDeadline, weekdayOf } from "@/lib/ai/signals";
 import { splitRepoText } from "./feeds";
 import type { BriefItem } from "./brief";
 import { countFeedback } from "./feedback";
 import { describeMove, isUnusual, parseYahooChart, weeklyMove, type FastVariable } from "./fast";
 import { collectJapanGaps, gapIdeaDraft, gapObservationText } from "./gaps-shared";
-import { displayQuestion, milestoneQuestion, tallyMissReasons, type JudgmentRow } from "./practice-shared";
+import { deadlineLabel, displayQuestion, milestoneQuestion, tallyMissReasons, type JudgmentRow } from "./practice-shared";
 import { countPicks, sortHealth } from "./source-health";
 import { lastWeekRange } from "./weekly";
 
@@ -214,5 +214,77 @@ describe("GitHub 仓库的中文一句", () => {
 
   it("一个都对不上就算没写出来（让它重写一次）", () => {
     expect(() => parseRepoExplanations({ items: [{ name: "zzz", zh: "随便" }] }, ["a/b"])).toThrow();
+  });
+});
+
+describe("练习题的期限跟着题目里的时间点走", () => {
+  const today = "2026-10-12";
+  it("认得出明年底、某年某月、不带年份的月份", () => {
+    expect(questionDeadline("到明年底，豆芽价格会不会涨", today)?.toISOString().slice(0, 10)).toBe("2027-12-31");
+    expect(questionDeadline("2027年3月底前，日银会不会再加息", today)?.toISOString().slice(0, 10)).toBe("2027-03-31");
+    expect(questionDeadline("到1月底，JR 东日本会不会公布赔偿方案", today)?.toISOString().slice(0, 10)).toBe("2027-01-31");
+    expect(questionDeadline("到12月底会不会", today)?.toISOString().slice(0, 10)).toBe("2026-12-31");
+    expect(questionDeadline("会不会涨价", today)).toBeNull();
+  });
+
+  it("到明年底的题配一年，不配一个月；没写时间点就用 AI 给的档", () => {
+    // 2027-12-31 离今天 445 天，超过一年 → 三年那一档（宁可长不能短）
+    expect(practiceHorizon("到明年底，豆芽价格会不会涨", "1m", today)).toBe("3y");
+    expect(practiceHorizon("到1月底，JR 东日本会不会公布赔偿方案", "6m", today)).toBe("6m");
+    expect(practiceHorizon("到11月底会不会", undefined, today)).toBe("3m");
+    expect(practiceHorizon("会不会涨价", "1m", today)).toBe("1m");
+  });
+});
+
+describe("总览和详细报告的空话", () => {
+  it("去掉抽象收尾的那一句，别的留着", () => {
+    expect(dropFillerSentences("三分之一的企业 AI 预算超支。这凸显了新技术的成熟度不足。豆芽厂少了一半。总的来看，结构在变。")).toBe(
+      "三分之一的企业 AI 预算超支。豆芽厂少了一半。"
+    );
+  });
+
+  it("详细报告：编号对不上、没写盯什么的丢掉；发生了什么里自推因果和套话的句子去掉", () => {
+    const d = parseDigestDetail(
+      {
+        themes: [
+          {
+            title: "豆芽厂接连倒闭",
+            signalIds: ["a", "zzz"],
+            happened: "全国豆芽厂从235家降到86家。这说明行业要完了。",
+            context: "随着成本上涨，企业普遍承压。燃料费三年涨了四成。",
+            open: "会不会涨价：会，因为厂少了；不会，因为超市压价。",
+            watch: "下个月东京商工リサーチ的食品业倒闭件数",
+          },
+          { title: "没写盯什么", signalIds: ["a"], happened: "有事发生。", context: "", open: "", watch: "" },
+        ],
+      },
+      ["a", "b"]
+    );
+    expect(d.themes).toHaveLength(1);
+    expect(d.themes[0].signalIds).toEqual(["a"]);
+    expect(d.themes[0].happened).toBe("全国豆芽厂从235家降到86家。");
+    expect(d.themes[0].context).toBe("燃料费三年涨了四成。");
+  });
+});
+
+describe("练习题里相对的时间说法", () => {
+  const today = "2026-10-12";
+  it("未来一年内、三个月内、半年后", () => {
+    expect(questionDeadline("到未来一年内，企业超支比例会不会降", today)?.toISOString().slice(0, 10)).toBe("2027-10-12");
+    expect(questionDeadline("三个月内会不会公布", today)?.toISOString().slice(0, 7)).toBe("2027-01");
+    expect(questionDeadline("半年后会不会", today)?.toISOString().slice(0, 7)).toBe("2027-04");
+    expect(questionDeadline("3个月内会不会", today)?.toISOString().slice(0, 7)).toBe("2027-01");
+  });
+
+  it("新闻总述里换一天也成立的结尾去掉", () => {
+    expect(dropFillerSentences("JR 东日本泄露了数百万件个人信息。这些事件共同说明了行业结构和流程正在快速变化。")).toBe("JR 东日本泄露了数百万件个人信息。");
+  });
+});
+
+describe("按题目对账的日子怎么写", () => {
+  it("月底写月底，别的写到哪一天", () => {
+    expect(deadlineLabel("2027-12-31")).toBe("2027年12月底");
+    expect(deadlineLabel("2027-02-28")).toBe("2027年2月底");
+    expect(deadlineLabel("2027-10-12")).toBe("2027年10月12日");
   });
 });

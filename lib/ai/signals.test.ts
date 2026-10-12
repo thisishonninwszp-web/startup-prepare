@@ -106,7 +106,7 @@ describe("parseBrief 的练习题", () => {
 
   it("练习题指向 picks 里的一条才收", () => {
     const ok = parseBrief({ ...base, practice: { index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" } }, 5);
-    expect(ok.practice).toEqual({ index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" });
+    expect(ok.practice).toEqual({ index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。", horizon: "3m" });
     const off = parseBrief({ ...base, practice: { index: 1, question: "q", checkHow: "c" } }, 5);
     expect(off.practice).toBeNull();
   });

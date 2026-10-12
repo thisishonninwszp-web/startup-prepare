@@ -14,6 +14,23 @@ export const HORIZONS = {
 } as const;
 export type HorizonKey = keyof typeof HORIZONS;
 
+/** 题目里写了"到某年某月底"时，按那个日子对账，再多留一周等消息出来。 */
+export const DEADLINE_GRACE_DAYS = 7;
+/** 离对账超过这么多天就算长期判断，可以另押一个苗头。 */
+export const LONG_JUDGMENT_DAYS = 300;
+
+/** "2027-12-31" → "2027年12月底"；不是月底的（"一年内"算出来的）写到哪一天："2027年10月12日"。 */
+export function deadlineLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return d === lastDay ? `${y}年${m}月底` : `${y}年${m}月${d}日`;
+}
+
+/** 按题目日期对账时，离今天多少天（含一周余量）。 */
+export function deadlineDays(date: string, now = Date.now()): number {
+  return Math.ceil((new Date(`${date}T23:59:00+09:00`).getTime() - now) / 86_400_000) + DEADLINE_GRACE_DAYS;
+}
+
 /** 一年以上的判断要等很久才能对账：可以另写一个半年内就能看到的"苗头"，自动多押一条。 */
 export const LONG_HORIZONS: HorizonKey[] = ["1y", "3y"];
 export const MILESTONE_PREFIX = "【苗头】";

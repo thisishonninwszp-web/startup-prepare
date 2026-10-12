@@ -12,10 +12,13 @@ import type { EarlierMention } from "@/lib/domains/signals/followups";
 import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
 import { emailConfig } from "@/lib/domains/signals/notify";
 import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
+import { deadlineLabel, HORIZONS, type HorizonKey } from "@/lib/domains/signals/practice-shared";
+import { practiceHorizon, questionDeadline } from "@/lib/ai";
 import { countPendingSignals, getDailyReport, type ReportSection } from "./queries";
 import { GenerateBriefButton } from "./brief-panel";
 import { SourceCheckView } from "./check-view";
 import { DigestLoader } from "./digest-loader";
+import { DigestDetailButton } from "./digest-detail-button";
 import { EmailPanel } from "./email-panel";
 import { HistoryPanel } from "./history-panel";
 import { JudgmentForm, ResolveJudgment } from "./judgment-forms";
@@ -418,6 +421,50 @@ function ReportSectionView({
 }
 
 /** 今日总览：像一个懂行的人看完五节，跟你讲几句今天世界上发生了什么。 */
+/** 详细报告：每件事发生了什么、来龙去脉、还不知道的、接下来盯什么。默认收起。 */
+function DigestDetailView({ detail, date, canRewrite }: { detail: NonNullable<Digest["detail"]>; date: string; canRewrite: boolean }) {
+  return (
+    <details>
+      <summary className="cursor-pointer text-sm font-medium text-primary">详细报告：今天最重要的 {detail.themes.length} 件事 →</summary>
+      <div className="mt-4 space-y-8">
+        {detail.themes.map((t) => (
+          <article key={t.title}>
+            <h3 className="text-base font-semibold leading-7">{t.title}</h3>
+            <p className="mt-2 text-sm leading-7">{t.happened}</p>
+            {t.context && (
+              <p className="mt-2 text-sm leading-7">
+                <span className="text-muted-foreground">来龙去脉：</span>
+                {t.context}
+              </p>
+            )}
+            {t.open && (
+              <p className="mt-2 text-sm leading-7">
+                <span className="text-muted-foreground">还不知道的（这是推测）：</span>
+                {t.open}
+              </p>
+            )}
+            <p className="mt-2 text-sm leading-7">
+              <span className="text-muted-foreground">接下来盯什么：</span>
+              {t.watch}
+            </p>
+            <ul className="mt-2 space-y-1 text-xs leading-6 text-muted-foreground">
+              {t.signalIds.map((id, i) => (
+                <li key={id}>
+                  出自：
+                  <a href={`#item-${id}`} className="underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline">
+                    {t.headlines[i] || "报告里的一条"}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+        {canRewrite && <DigestDetailButton date={date} rewrite />}
+      </div>
+    </details>
+  );
+}
+
 function DigestCard({ digest, date, canGenerate }: { digest: Digest | null; date: string; canGenerate: boolean }) {
   return (
     <section className="mb-8 rounded-lg border bg-card p-5">
@@ -452,6 +499,9 @@ function DigestCard({ digest, date, canGenerate }: { digest: Digest | null; date
               </Link>
             </div>
           )}
+          <div className="mt-4 border-t pt-3">
+            {digest.detail ? <DigestDetailView detail={digest.detail} date={date} canRewrite={canGenerate} /> : <DigestDetailButton date={date} />}
+          </div>
         </>
       ) : canGenerate ? (
         <div className="mt-3">
@@ -508,6 +558,11 @@ async function PracticeCard({
 }) {
   const detail = await getSignalDetail(practice.signal_id);
   const usable = detail && detail !== "missing-schema" ? detail : null;
+  // 多久能见分晓：存下的优先；老数据按题目里写的时间点现算（"到明年底"不能配一个月后对账）
+  const horizon: HorizonKey =
+    practice.horizon && practice.horizon in HORIZONS ? (practice.horizon as HorizonKey) : practiceHorizon(practice.question, undefined, tokyoToday());
+  const deadlineDate = questionDeadline(practice.question, tokyoToday());
+  const deadline = deadlineDate ? deadlineDate.toISOString().slice(0, 10) : undefined;
   const summary = usable?.summary ?? "";
   return (
     <section className="mb-8 rounded-lg border bg-card p-5">
@@ -560,7 +615,18 @@ async function PracticeCard({
               </p>
               <HistoryPanel signalId={practice.signal_id} initial={usable?.history ?? null} />
             </div>
-            <JudgmentForm signalId={practice.signal_id} question={practice.question} knownTags={knownTags} />
+            <p className="text-sm leading-7 text-muted-foreground">
+              {deadline
+                ? `题目问的是到${deadlineLabel(deadline)}，对账就按这个日子（多留一周等消息出来）。觉得不对就换一档。`
+                : `这道题${HORIZONS[horizon].label.replace("后", "")}左右见分晓，期限已经替你选好了；觉得不对就改。`}
+            </p>
+            <JudgmentForm
+              signalId={practice.signal_id}
+              question={practice.question}
+              knownTags={knownTags}
+              defaultHorizon={horizon}
+              deadline={deadline}
+            />
           </div>
         </details>
       )}

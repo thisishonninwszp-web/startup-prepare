@@ -48,6 +48,8 @@ export type BriefPracticeRow = {
   check_how: string;
   /** 为什么它两个方向都有可能：练习题专挑"关键不确定"的事。早期数据没有。 */
   why_uncertain?: string;
+  /** 多久能见分晓（按题目里写的时间点算）；判断表单默认选这一档。早期数据没有。 */
+  horizon?: string;
 };
 
 export type BriefItem = {
@@ -445,6 +447,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
               question: practice.question,
               check_how: practice.checkHow,
               why_uncertain: practice.whyUncertain,
+              horizon: practice.horizon,
             }
           : null,
       },

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { writeDailyDigest, type DigestSectionInput } from "@/lib/ai";
+import { writeDailyDigest, writeDigestDetail, type DetailTheme, type DigestSectionInput } from "@/lib/ai";
 import type { BriefItem } from "./brief";
 
 /**
@@ -11,7 +11,20 @@ import type { BriefItem } from "./brief";
 export type DigestPick = { signal_id: string; headline: string; why: string };
 /** 可以往下推的一条（AI 推测的因果链，没检验过）。 */
 export type DigestChain = { signal_id: string; headline: string; steps: string[] };
-export type Digest = { summary: string; picks: DigestPick[]; chain?: DigestChain };
+/** 详细报告：今天最重要的几件事一件件讲透。点了才写（二三十秒），写过就存着。 */
+export type DigestDetailStored = { themes: (DetailTheme & { headlines: string[] })[] };
+export type Digest = { summary: string; picks: DigestPick[]; chain?: DigestChain; detail?: DigestDetailStored };
+
+/**
+ * practice 这一列：最早只存"可以往下推的一条"（有 steps），后来改成 { chain, detail }。两种都认。
+ */
+type PracticeColumn = DigestChain | { chain?: DigestChain; detail?: DigestDetailStored } | null;
+
+function readPracticeColumn(raw: PracticeColumn): { chain?: DigestChain; detail?: DigestDetailStored } {
+  if (!raw) return {};
+  if ("steps" in raw) return { chain: raw };
+  return { chain: raw.chain ?? undefined, detail: raw.detail ?? undefined };
+}
 
 const SECTION_TITLES: Record<string, string> = {
   news: "今天的世界",
@@ -32,9 +45,9 @@ export async function getDigest(userId: string, date: string): Promise<Digest | 
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  // 总览那一行没有练习题，practice 这一列拿来存"可以往下推的一条"，省一次迁移
-  const chain = (data.practice as DigestChain | null) ?? undefined;
-  return { summary: (data.overview as string) ?? "", picks: (data.items as DigestPick[] | null) ?? [], chain };
+  // 总览那一行没有练习题，practice 这一列拿来存"可以往下推的一条"和详细报告，省一次迁移
+  const { chain, detail } = readPracticeColumn(data.practice as PracticeColumn);
+  return { summary: (data.overview as string) ?? "", picks: (data.items as DigestPick[] | null) ?? [], chain, detail };
 }
 
 /** 生成（或重新生成）这一天的总览。那天一节报告都没有就返回 null。 */
@@ -71,7 +84,8 @@ export async function generateDigest(userId: string, date: string): Promise<Dige
   const { error: saveError } = await supabaseAdmin
     .from("signal_briefs")
     .upsert(
-      { user_id: userId, brief_date: date, kind: "digest", overview: digest.summary, items: digest.picks, practice: digest.chain ?? null },
+      // 重写总览时详细报告也作废（下面几节可能也重写过了），要看再点一次
+      { user_id: userId, brief_date: date, kind: "digest", overview: digest.summary, items: digest.picks, practice: { chain: digest.chain ?? null } },
       { onConflict: "user_id,brief_date,kind" }
     );
   if (saveError) {
@@ -79,4 +93,49 @@ export async function generateDigest(userId: string, date: string): Promise<Dige
     throw new Error(saveError.message);
   }
   return digest;
+}
+
+/** 写这一天的详细报告，存进总览那一行（不动总览和往下推的那一条）。总览还没写就先报错。 */
+export async function generateDigestDetail(userId: string, date: string): Promise<DigestDetailStored> {
+  const { data: rows, error } = await supabaseAdmin
+    .from("signal_briefs")
+    .select("kind, items, practice")
+    .eq("user_id", userId)
+    .eq("brief_date", date);
+  if (error) throw new Error(error.message);
+  const digestRow = (rows ?? []).find((r) => r.kind === "digest");
+  if (!digestRow) throw new Error("总览还没写，先等总览出来");
+  const order = ["news", "calendar", "voices", "money", "tools"];
+  const headlineOf = new Map<string, string>();
+  const items = (rows ?? [])
+    .filter((r) => order.includes(r.kind as string))
+    .sort((a, b) => order.indexOf(a.kind as string) - order.indexOf(b.kind as string))
+    .flatMap((r) =>
+      ((r.items as BriefItem[] | null) ?? [])
+        .filter((i) => !i.extra)
+        .map((i) => {
+          headlineOf.set(i.signal_id, i.headline);
+          return {
+            signalId: i.signal_id,
+            section: SECTION_TITLES[r.kind as string] ?? (r.kind as string),
+            headline: i.headline,
+            background: i.background ?? "",
+            quotes: i.basis ?? [],
+            precedent: i.precedent,
+          };
+        })
+    );
+  const written = await writeDigestDetail(items);
+  const detail: DigestDetailStored = {
+    themes: written.themes.map((t) => ({ ...t, headlines: t.signalIds.map((id) => headlineOf.get(id) ?? "") })),
+  };
+  const { chain } = readPracticeColumn(digestRow.practice as PracticeColumn);
+  const { error: saveError } = await supabaseAdmin
+    .from("signal_briefs")
+    .update({ practice: { chain: chain ?? null, detail } })
+    .eq("user_id", userId)
+    .eq("brief_date", date)
+    .eq("kind", "digest");
+  if (saveError) throw new Error(saveError.message);
+  return detail;
 }

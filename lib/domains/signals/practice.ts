@@ -16,6 +16,9 @@ import {
   type ConfidenceKey,
   type HorizonKey,
   type JudgmentRow,
+  deadlineDays,
+  deadlineLabel,
+  LONG_JUDGMENT_DAYS,
 } from "./practice-shared";
 
 export * from "./practice-shared";
@@ -130,6 +133,8 @@ export async function submitJudgment(input: {
   tags?: string[];
   /** 一年以上的判断：半年内就能看到的苗头，填了就自动多押一条半年后对账的。 */
   milestone?: string;
+  /** 按题目里写的日子对账（YYYY-MM-DD，"到明年底"就是那年的 12-31）；给了就不按 horizon 算。 */
+  dueDate?: string;
 }): Promise<JudgmentRow> {
   const judgment = input.judgment.trim();
   if (judgment.length < 4) throw new Error("写一句完整的判断，哪怕很粗糙");
@@ -141,8 +146,11 @@ export async function submitJudgment(input: {
   if (existing) return existing;
   const tags = normalizeTags(input.tags ?? []);
 
-  const horizon = HORIZONS[input.horizon];
-  const dueAt = new Date(Date.now() + horizon.days * 86_400_000).toISOString();
+  const byDate = input.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) ? deadlineDays(input.dueDate) : null;
+  if (byDate !== null && (byDate < 2 || byDate > 5 * 365)) throw new Error("题目里的日子不对，换一个期限");
+  const days = byDate ?? HORIZONS[input.horizon].days;
+  const horizon = { label: byDate !== null ? `到${deadlineLabel(input.dueDate!)}` : HORIZONS[input.horizon].label, days };
+  const dueAt = new Date(Date.now() + days * 86_400_000).toISOString();
 
   const { data: prediction, error: predictionError } = await supabaseAdmin
     .from("predictions")
@@ -199,7 +207,8 @@ export async function submitJudgment(input: {
 
   // 长期判断：另押一条半年内能看到的苗头，长期判断中途也有反馈
   const milestone = input.milestone?.trim();
-  if (milestone && milestone.length >= 4 && LONG_HORIZONS.includes(input.horizon)) {
+  const isLong = byDate !== null ? byDate > LONG_JUDGMENT_DAYS : LONG_HORIZONS.includes(input.horizon);
+  if (milestone && milestone.length >= 4 && isLong) {
     try {
       await submitJudgment({
         userId: input.userId,
