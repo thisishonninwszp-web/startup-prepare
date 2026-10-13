@@ -5566,3 +5566,9 @@ alter table signal_gap_rechecks enable row level security;
 drop policy if exists "signal_gap_rechecks_owner" on signal_gap_rechecks;
 create policy "signal_gap_rechecks_owner" on signal_gap_rechecks
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 064：到期对账先上网查证据（signal_judgments.outcome_evidence）
+-- ============================================================================
+
+alter table signal_judgments add column if not exists outcome_evidence jsonb;

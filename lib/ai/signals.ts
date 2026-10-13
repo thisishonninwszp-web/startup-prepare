@@ -2410,6 +2410,53 @@ export async function extractStepEvidence(claim: string, sources: SearchSource[]
   );
 }
 
+// ── 到期对账：先查现在实际怎样 ─────────────────────────────────────────────
+
+const OUTCOME_QUERY_PROMPT = `他之前读新闻时写下了一个判断，现在到期了，要对账。先上网查这件事现在实际怎样了。
+写两个搜索词，用日文或英文（看这件事主要在哪个国家），3 到 8 个词，具体到对象和动作，带上年份或年月：
+- query：找"这件事后来怎样了"的最新消息（结果、公告、数字）。
+- counterQuery：找和他的判断相反的结果 —— 他说会发生，就找"没有发生 / 推迟 / 撤回"；他说不会，就找"已经发生了"。
+只照搜索词的写法写，不要写成一句话。
+
+只输出 JSON：{"query":"…","counterQuery":"…"}`;
+
+export function parseOutcomeQueries(value: unknown): { query: string; counterQuery: string } {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const query = typeof v.query === "string" ? v.query.trim().slice(0, 120) : "";
+  const counterQuery = typeof v.counterQuery === "string" ? v.counterQuery.trim().slice(0, 120) : "";
+  if (!query) throw new Error("缺少 query");
+  return { query, counterQuery };
+}
+
+/** 到期的判断：查"后来怎样了"和"反过来的结果"的两个搜索词。 */
+export async function planOutcomeQueries(input: {
+  newsTitle: string;
+  question: string;
+  judgment: string;
+  madeOn: string;
+  dueOn: string;
+}): Promise<{ query: string; counterQuery: string }> {
+  const contents = [
+    `当时读的新闻：${input.newsTitle}`,
+    `问题：${input.question}`,
+    `他的判断（${input.madeOn} 写的，${input.dueOn} 到期）：${input.judgment}`,
+  ].join("\n");
+  return executeAiJson(
+    { operation: "judgment_outcome_queries", module: "unknown", outputMode: "json", timeoutMs: 15_000 },
+    () => ({
+      model: MODEL,
+      contents,
+      config: {
+        systemInstruction: OUTCOME_QUERY_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 300,
+      },
+    }),
+    parseOutcomeQueries
+  );
+}
+
 // ── 每日报告第二步：读正文重写 ───────────────────────────────────────────
 
 /**

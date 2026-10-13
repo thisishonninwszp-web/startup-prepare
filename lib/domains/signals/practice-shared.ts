@@ -1,4 +1,5 @@
 import type { JudgmentFeedback } from "@/lib/ai";
+import type { InferenceEvidence } from "./inference-shared";
 
 /**
  * 判断练习里浏览器端也要用的部分：选项、类型、纯函数。不碰数据库。
@@ -80,7 +81,32 @@ export type JudgmentRow = {
   question_id: string | null;
   /** 看错时选的原因（迁移 062 之前没有）。 */
   miss_reason?: MissReason | null;
+  /** 到期时上网查到的"现在实际怎样"（迁移 064 之前没有）。 */
+  outcome_evidence?: OutcomeEvidence | null;
 };
+
+/** 到期时上网查到的事实，原文由代码逐字核对过；stance 是对他那句判断而言的。查过但一条没查到时 evidence 为空。 */
+export type OutcomeEvidence = { checked_at: string; evidence: InferenceEvidence[] };
+
+/**
+ * 自己判卷手松不松：标了"看对了"、查到的证据却是反对的多，或者反过来，各几次。
+ * 只数次数（原则 1）；还没对账的、没查到证据的不算。
+ */
+export function tallyEvidenceDisagreement(rows: JudgmentRow[]): { checked: number; hitButAgainst: number; missButFor: number } {
+  let checked = 0;
+  let hitButAgainst = 0;
+  let missButFor = 0;
+  for (const r of rows) {
+    const evidence = r.outcome_evidence?.evidence ?? [];
+    if (r.outcome === "pending" || evidence.length === 0) continue;
+    const pro = evidence.filter((e) => e.stance === "supports").length;
+    const con = evidence.filter((e) => e.stance === "contradicts").length;
+    checked += 1;
+    if (r.outcome === "hit" && con > pro) hitButAgainst += 1;
+    if (r.outcome === "miss" && pro > con) missButFor += 1;
+  }
+  return { checked, hitButAgainst, missButFor };
+}
 
 /** 看错的那几条，每种原因各几次。 */
 export function tallyMissReasons(rows: JudgmentRow[]): { reason: MissReason; label: string; count: number }[] {

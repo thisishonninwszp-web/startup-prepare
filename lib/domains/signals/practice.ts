@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { critiqueJudgment, type JudgmentFeedback } from "@/lib/ai";
+import { critiqueJudgment, extractStepEvidence, planOutcomeQueries, type JudgmentFeedback } from "@/lib/ai";
+import { webSearch } from "@/lib/web-search";
 import { fetchArticleBody } from "./article";
+import { mergeSources } from "./sources";
 import { getSignalDetail } from "./analysis";
 import { getQuestion } from "./questions";
 import {
@@ -16,6 +18,7 @@ import {
   type ConfidenceKey,
   type HorizonKey,
   type JudgmentRow,
+  type OutcomeEvidence,
   deadlineDays,
   deadlineLabel,
   LONG_JUDGMENT_DAYS,
@@ -38,22 +41,28 @@ type PredictionJoin = {
   note: string | null;
 };
 
-const SELECT =
+const SELECT_BASE =
   "id, signal_id, question_id, tags, miss_reason, prediction_id, news_title, news_url, question, judgment, feedback, created_at, predictions!inner(due_at, outcome, confidence, resolved_at, note)";
+const SELECT = `outcome_evidence, ${SELECT_BASE}`;
 /** 迁移 059 还没跑时退回的列（没有 tags / question_id）。 */
 const SELECT_LEGACY =
   "id, signal_id, prediction_id, news_title, news_url, question, judgment, feedback, created_at, predictions!inner(due_at, outcome, confidence, resolved_at, note)";
 
-/** 先按新列查；059 没跑（报 tags / question_id 不存在）就退回老列，账本照常能看。 */
+/** 哪个迁移没跑时会报这些列不存在。 */
+const MISSING_COLUMN = /tags|question_id|miss_reason|outcome_evidence/;
+
+/** 先按新列查；064、059 没跑（报列不存在）就一级级退回老列，账本照常能看。 */
 async function selectJudgments<T>(
   build: (select: string) => PromiseLike<{ data: T | null; error: { message: string } | null }>
 ): Promise<T | null> {
-  const first = await build(SELECT);
-  if (!first.error) return first.data;
-  if (!/tags|question_id|miss_reason/.test(first.error.message)) throw new Error(first.error.message);
-  const legacy = await build(SELECT_LEGACY);
-  if (legacy.error) throw new Error(legacy.error.message);
-  return legacy.data;
+  let lastError = "";
+  for (const select of [SELECT, SELECT_BASE, SELECT_LEGACY]) {
+    const result = await build(select);
+    if (!result.error) return result.data;
+    lastError = result.error.message;
+    if (!MISSING_COLUMN.test(lastError)) break;
+  }
+  throw new Error(lastError);
 }
 
 function flatten(row: Record<string, unknown>): JudgmentRow {
@@ -76,6 +85,7 @@ function flatten(row: Record<string, unknown>): JudgmentRow {
     tags: (row.tags as string[] | null) ?? [],
     question_id: (row.question_id as string | null) ?? null,
     miss_reason: (row.miss_reason as JudgmentRow["miss_reason"]) ?? null,
+    outcome_evidence: (row.outcome_evidence as OutcomeEvidence | null) ?? null,
   };
 }
 
@@ -273,17 +283,20 @@ export async function listNodeBets(userId: string, signalId: string): Promise<Ju
 
 /** 从这个问题押进账本的判断。 */
 export async function listQuestionBets(userId: string, questionId: string): Promise<JudgmentRow[]> {
-  const { data, error } = await supabaseAdmin
-    .from("signal_judgments")
-    .select(SELECT)
-    .eq("user_id", userId)
-    .eq("question_id", questionId)
-    .order("created_at", { ascending: false });
-  if (error) {
+  for (const select of [SELECT, SELECT_BASE]) {
+    const { data, error } = await supabaseAdmin
+      .from("signal_judgments")
+      .select(select)
+      .eq("user_id", userId)
+      .eq("question_id", questionId)
+      .order("created_at", { ascending: false });
+    if (!error) return ((data ?? []) as unknown as Record<string, unknown>[]).map(flatten);
+    // 064 没跑就不带证据再查一次；059 没跑就是还没有问题，返回空
+    if (/outcome_evidence/.test(error.message)) continue;
     if (/tags|question_id/.test(error.message)) return [];
     throw new Error(error.message);
   }
-  return ((data ?? []) as unknown as Record<string, unknown>[]).map(flatten);
+  return [];
 }
 
 export async function listJudgments(userId: string): Promise<JudgmentRow[]> {
@@ -346,4 +359,50 @@ export async function retryJudgmentFeedback(userId: string, judgmentId: string):
   });
   const { error: updateError } = await supabaseAdmin.from("signal_judgments").update({ feedback }).eq("id", judgmentId);
   if (updateError) throw new Error(updateError.message);
+}
+
+/** 每个方向搜几篇。 */
+const OUTCOME_RESULTS_PER_SIDE = 3;
+
+/**
+ * 到期对账之前先上网查"现在实际怎样了"：找"后来怎样了"和"反过来的结果"两个方向，
+ * 抽出支持 / 反对他那句判断的事实（原文由代码逐字核对），存在判断那一行。
+ * 对错还是他自己点 —— 证据只摆出来，不替他判，也不给"建议判对 / 判错"，免得被它带着走。
+ */
+export async function checkOutcomeEvidence(userId: string, judgmentId: string): Promise<OutcomeEvidence> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_judgments")
+    .select("id, news_title, question, judgment, created_at, predictions!inner(due_at)")
+    .eq("id", judgmentId)
+    .eq("user_id", userId)
+    .single();
+  if (error) throw new Error(error.message);
+  const p = (Array.isArray(data.predictions) ? data.predictions[0] : data.predictions) as { due_at: string };
+  const madeOn = (data.created_at as string).slice(0, 10);
+  const dueOn = p.due_at.slice(0, 10);
+  const question = displayQuestion(data.question as string);
+  const judgment = data.judgment as string;
+
+  const queries = await planOutcomeQueries({ newsTitle: data.news_title as string, question, judgment, madeOn, dueOn });
+  const [found, against] = await Promise.all([
+    webSearch(queries.query, OUTCOME_RESULTS_PER_SIDE).catch(() => []),
+    queries.counterQuery ? webSearch(queries.counterQuery, OUTCOME_RESULTS_PER_SIDE).catch(() => []) : Promise.resolve([]),
+  ]);
+  const sources = mergeSources([found, against], OUTCOME_RESULTS_PER_SIDE * 2);
+  const claim = `${madeOn} 写下的判断（${dueOn} 到期）：${judgment}\n问题：${question}\n只有 ${madeOn} 以后发生的事才算支持或反对；更早的事只能当背景。`;
+  const evidence = await extractStepEvidence(claim, sources);
+
+  const result: OutcomeEvidence = { checked_at: new Date().toISOString(), evidence };
+  const { error: saveError } = await supabaseAdmin
+    .from("signal_judgments")
+    .update({ outcome_evidence: result })
+    .eq("id", judgmentId)
+    .eq("user_id", userId);
+  if (saveError) {
+    if (/outcome_evidence/.test(saveError.message)) {
+      throw new Error("迁移 064 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/064_judgment_outcome_evidence.sql。");
+    }
+    throw new Error(saveError.message);
+  }
+  return result;
 }

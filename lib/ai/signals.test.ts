@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -908,5 +908,17 @@ describe("parseJapanQueries（先只写搜索词，看完资料再下结论）",
       )
     ).toEqual([{ index: 2, query: "ドローン 医薬品 配送" }]);
     expect(() => parseJapanQueries({}, inputs)).toThrow("items");
+  });
+});
+
+describe("parseOutcomeQueries（到期对账先查现在怎样）", () => {
+  it("query 必须有；counterQuery 可以空；过长的截断", () => {
+    expect(parseOutcomeQueries({ query: " 日銀 利上げ 2026年12月 ", counterQuery: "日銀 利上げ 見送り" })).toEqual({
+      query: "日銀 利上げ 2026年12月",
+      counterQuery: "日銀 利上げ 見送り",
+    });
+    expect(parseOutcomeQueries({ query: "x" }).counterQuery).toBe("");
+    expect(() => parseOutcomeQueries({ counterQuery: "x" })).toThrow("query");
+    expect(parseOutcomeQueries({ query: "a".repeat(200) }).query).toHaveLength(120);
   });
 });

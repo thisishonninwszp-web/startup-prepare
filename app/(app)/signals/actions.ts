@@ -31,6 +31,7 @@ import {
 import { gapIdeaDraft, gapObservationText, type GapSide } from "@/lib/domains/signals/gaps-shared";
 import { createIdeaFromTheme } from "../ideas/actions";
 import {
+  checkOutcomeEvidence,
   resolveJudgment,
   retryJudgmentFeedback,
   submitJudgment,
@@ -483,6 +484,17 @@ export async function gapToIdeaAction(
     return { ok: true, id: idea.id };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没变成想法") };
+  }
+}
+
+/** 到期的判断：对账之前先上网查现在实际怎样了。 */
+export async function checkOutcomeEvidenceAction(judgmentId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await checkOutcomeEvidence(userId, judgmentId);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没查成") };
   }
 }
 

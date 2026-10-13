@@ -22,6 +22,7 @@ import { DigestDetailButton } from "./digest-detail-button";
 import { EmailPanel } from "./email-panel";
 import { HistoryPanel } from "./history-panel";
 import { JudgmentForm, ResolveJudgment } from "./judgment-forms";
+import { OutcomeEvidenceView } from "./outcome-evidence";
 import { formatDueDate, JudgmentView } from "./judgment-view";
 import { ListenButton } from "./listen-button";
 import { ReaderPanel } from "./reader-panel";
@@ -514,14 +515,17 @@ function DigestCard({ digest, date, canGenerate }: { digest: Digest | null; date
   );
 }
 
+/** 到期的判断，打开页面时自动查证据的最多几条（每条搜两次），其余点按钮查。 */
+const AUTO_EVIDENCE = 3;
+
 function DueJudgments({ rows }: { rows: JudgmentRow[] }) {
   if (rows.length === 0) return null;
   return (
     <section className="mb-8 rounded-lg border border-primary/40 bg-card p-5">
       <h2 className="text-base font-semibold">到期了，对一下账（{rows.length}）</h2>
-      <p className="mt-1 text-sm leading-7 text-muted-foreground">这些是你之前写下的判断。去看看现在实际怎样了，再回来标对错。</p>
+      <p className="mt-1 text-sm leading-7 text-muted-foreground">这些是你之前写下的判断。下面先摆出上网查到的现在实际怎样了，看完再标对错。</p>
       <ul className="mt-4 space-y-6">
-        {rows.map((r) => (
+        {rows.map((r, i) => (
           <li key={r.id}>
             <p className="text-sm text-muted-foreground">
               {formatDueDate(r.created_at)}读到：
@@ -534,6 +538,7 @@ function DueJudgments({ rows }: { rows: JudgmentRow[] }) {
               )}
             </p>
             <p className="mt-1 border-l-2 border-primary pl-3 text-base font-medium leading-8">{r.judgment}</p>
+            <OutcomeEvidenceView judgmentId={r.id} evidence={r.outcome_evidence ?? null} auto={i < AUTO_EVIDENCE} />
             <ResolveJudgment predictionId={r.prediction_id} />
           </li>
         ))}

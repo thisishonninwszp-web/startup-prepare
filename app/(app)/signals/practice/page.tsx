@@ -4,13 +4,24 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { dueJudgments, listJudgments, tallyByTag, tallyJudgments, tallyMissReasons } from "@/lib/domains/signals/practice";
+import {
+  dueJudgments,
+  listJudgments,
+  tallyByTag,
+  tallyEvidenceDisagreement,
+  tallyJudgments,
+  tallyMissReasons,
+} from "@/lib/domains/signals/practice";
 import { listUserFlaggedSteps } from "@/lib/domains/signals/inference";
 import { ResolveJudgment } from "../judgment-forms";
+import { OutcomeEvidenceView } from "../outcome-evidence";
 import { formatDueDate, JudgmentView, outcomeLabel } from "../judgment-view";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** 到期的判断，打开页面时自动查证据的最多几条（每条搜两次），其余点按钮查。 */
+const AUTO_EVIDENCE = 3;
 
 export default async function JudgmentLedgerPage() {
   const supabase = createClient();
@@ -80,6 +91,7 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
   const missReasons = tallyMissReasons(judgments).filter((m) => m.count > 0);
   const due = dueJudgments(judgments);
   const resolvedCount = tally.hit + tally.miss;
+  const disagreement = tallyEvidenceDisagreement(judgments);
 
   return (
     <>
@@ -93,6 +105,18 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
           ? `已经对过账的只有 ${resolvedCount} 条，太少，现在看不出你准不准。先攒着。`
           : "只记次数，不算准确率：一个数字会让你忘了每一条是怎么错的。往下翻着看。"}
       </p>
+
+      {disagreement.checked > 0 && (
+        <section className="mb-10">
+          <h2 className="text-base font-semibold">你判卷手松不松</h2>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            对账前查过证据的 {disagreement.checked} 条里：你标了看对了、查到的反对比支持多的，
+            <span className="font-mono"> {disagreement.hitButAgainst} </span>次；你标了看错了、查到的支持比反对多的，
+            <span className="font-mono"> {disagreement.missButFor} </span>次。
+            前一种多，说明回头看时容易觉得「我早就知道」；只数次数，翻到那几条自己看是不是真判松了。
+          </p>
+        </section>
+      )}
 
       {missReasons.length > 0 && (
         <section className="mb-10">
@@ -132,10 +156,11 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
         <section className="mb-10">
           <h2 className="text-base font-semibold">到期了，对一下账（{due.length}）</h2>
           <ul className="mt-4 space-y-6">
-            {due.map((r) => (
+            {due.map((r, i) => (
               <li key={r.id}>
                 <p className="text-sm text-muted-foreground">{r.news_title}</p>
                 <p className="mt-1 border-l-2 border-primary pl-3 text-base font-medium leading-8">{r.judgment}</p>
+                <OutcomeEvidenceView judgmentId={r.id} evidence={r.outcome_evidence ?? null} auto={i < AUTO_EVIDENCE} />
                 <ResolveJudgment predictionId={r.prediction_id} />
               </li>
             ))}

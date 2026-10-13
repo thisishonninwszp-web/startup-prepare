@@ -4,6 +4,7 @@ import {
   dueJudgments,
   isNodeBet,
   nodeBetQuestion,
+  tallyEvidenceDisagreement,
   tallyJudgments,
   type JudgmentRow,
 } from "./practice-shared";
@@ -55,5 +56,25 @@ describe("押推论（往下推的某一步）", () => {
     expect(isNodeBet("这件事接下来会怎样？")).toBe(false);
     expect(displayQuestion(q)).toBe("往下推的一步会不会发生：大银行三个月内上调房贷利率");
     expect(displayQuestion("三个月后定存利率会过 1.5% 吗？")).toBe("三个月后定存利率会过 1.5% 吗？");
+  });
+});
+
+describe("tallyEvidenceDisagreement（自己判卷手松不松）", () => {
+  const ev = (...stances: ("supports" | "contradicts" | "context")[]) => ({
+    checked_at: "2026-11-01T00:00:00Z",
+    evidence: stances.map((stance) => ({ url: "u", title: "t", fact: "f", excerpt: "e", stance })),
+  });
+
+  it("标了看对了、反对比支持多的，和标了看错了、支持比反对多的，各数一次；没对账、没证据的不算", () => {
+    const rows = [
+      row({ outcome: "hit", outcome_evidence: ev("contradicts", "contradicts", "supports") }),
+      row({ outcome: "hit", outcome_evidence: ev("supports", "contradicts") }),
+      row({ outcome: "miss", outcome_evidence: ev("supports", "context") }),
+      row({ outcome: "miss", outcome_evidence: ev("contradicts") }),
+      row({ outcome: "pending", outcome_evidence: ev("contradicts") }),
+      row({ outcome: "hit", outcome_evidence: ev() }),
+      row({ outcome: "hit" }),
+    ];
+    expect(tallyEvidenceDisagreement(rows)).toEqual({ checked: 4, hitButAgainst: 1, missButFor: 1 });
   });
 });
