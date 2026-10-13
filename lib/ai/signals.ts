@@ -2458,6 +2458,176 @@ export async function extractStepEvidence(claim: string, sources: SearchSource[]
   );
 }
 
+// ── 历史题：答完马上知道对错 ───────────────────────────────────────────────
+
+/** 历史题的期限至少在多少天以前（结果早就揭晓、网上查得到）。 */
+const DRILL_SETTLED_DAYS = 180;
+
+export type DrillDraft = {
+  /** 像"他最近在看的事"里的哪一件（序号）；对不上时为 -1。 */
+  topic: number;
+  setup: string;
+  question: string;
+  /** 问题里的期限（YYYY-MM-DD）。 */
+  deadline: string;
+  /** 实际结果：true 是"会"。 */
+  answer: boolean;
+  whatHappened: string;
+  whySimilar: string;
+  query: string;
+};
+
+function drillCutoff(today: string): string {
+  return new Date(Date.parse(`${today}T00:00:00Z`) - DRILL_SETTLED_DAYS * 86_400_000).toISOString().slice(0, 10);
+}
+
+const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真实的判断要等几个月才对账，反馈太慢；你来出几道"历史题"：
+挑过去真实发生过、结果早已揭晓的事，把他放回当时，只告诉他当时知道的东西，让他猜后来怎样，答完马上揭晓。
+
+今天是 ${today}。出 3 道，每道都和下面"他最近在看的事"里的某一件像（同一类机制、同一个行业，或同一种局面）。
+
+每道写：
+- topic：像的是哪一件（序号）。
+- setup：当时的情况，2 到 4 句，带具体年月、具体的公司或机构名。只写当时已经知道的，不许透露后来怎样，不要用"后来""最终""结果"这种词。
+- question：一个只能答"会"或"不会"的问题，句式"到某年某月底，某某会不会……？"。期限必须早于 ${drillCutoff(today)}（结果早就揭晓了）。
+- deadline：问题里那个期限，YYYY-MM-DD（那个月的最后一天）。
+- answer：实际结果，true 是"会"，false 是"不会"。
+- whatHappened：实际发生了什么，1 到 2 句，带日期和数字。
+- whySimilar：和他在看的那件事像在哪、不像在哪，一句。
+- query：上网核实"实际发生了什么"用的搜索词，用事情发生地的语言，3 到 8 个词，带公司名和年份。
+
+铁律：
+- 只出你很确定真实发生过的事。拿不准的不要出 —— 出了也会被核实刷掉。
+- 不要选结果人人都知道的大事（疫情、雷曼破产、东日本大地震这一类），也不要出从题面就猜得到答案的题。
+- 三道里"会"和"不会"都要有。
+- 用中文写（公司名、产品名可以保留原文）。
+
+只输出 JSON：{"drills":[{"topic":0,"setup":"…","question":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…"}]}`;
+
+/** 透露了结果的题面不要：答案写在题里就不是练判断了。 */
+const DRILL_LEAK = /后来|最终|最后|结果是|事后/;
+
+export function parseDrillDrafts(value: unknown, topicCount: number, today: string): DrillDraft[] {
+  const raw = (value as { drills?: unknown } | null)?.drills;
+  if (!Array.isArray(raw)) throw new Error("缺少 drills");
+  const cutoff = drillCutoff(today);
+  const out: DrillDraft[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const str = (k: string) => (typeof v[k] === "string" ? (v[k] as string).trim() : "");
+    const [setup, question, deadline, whatHappened, whySimilar, query] = ["setup", "question", "deadline", "whatHappened", "whySimilar", "query"].map(str);
+    if (!setup || !question || !whatHappened || !query || typeof v.answer !== "boolean") continue;
+    // 期限要是真日期、而且早就过了；题面不许漏答案
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || Number.isNaN(Date.parse(deadline)) || deadline >= cutoff) continue;
+    if (DRILL_LEAK.test(setup) || DRILL_LEAK.test(question)) continue;
+    const topic = typeof v.topic === "number" && Number.isInteger(v.topic) && v.topic >= 0 && v.topic < topicCount ? v.topic : -1;
+    out.push({ topic, setup, question, deadline, answer: v.answer, whatHappened, whySimilar, query: query.slice(0, 120) });
+  }
+  const texts = out.flatMap((d) => [d.setup, d.question, d.whatHappened, d.whySimilar].filter(Boolean));
+  assertNoBanned(texts);
+  assertChineseAllowingNames(texts);
+  return out;
+}
+
+/** 出三道历史题（还没核实）。topics 是他最近在看的事（新闻标题、在追的问题）。 */
+export async function draftHistoryDrills(topics: string[], today: string): Promise<DrillDraft[]> {
+  const contents = `他最近在看的事：\n${topics.map((t, i) => `[${i}] ${t}`).join("\n")}`;
+  return executeAiJson(
+    { operation: "signal_history_drills", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验（缺字段、期限不够早、题面漏了结果，或没用中文）。严格按要求重写。" : ""),
+      config: {
+        systemInstruction: drillPrompt(today),
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 5000,
+      },
+    }),
+    (value) => parseDrillDrafts(value, topics.length, today)
+  );
+}
+
+export type CheckedDrill = DrillDraft & { check: AnalogCheck };
+
+const DRILL_CHECK_PROMPT = `你在核实几道"历史题"的答案。每道下面附了上网搜到的资料。
+
+每道输出：
+- i：编号。
+- status：
+  "supported"：资料能支撑"实际发生了什么"和答案（会 / 不会）。
+  "corrected"：资料和它记的**相互矛盾**（比如它说"会"，资料里明明没有发生）。
+  "unverified"：资料和这件事对不上，或者说不清。资料里没提到不等于没发生 —— 这种情况用 unverified。
+- answer：corrected 时写按资料改正后的答案（true / false）；其余照抄原来的。
+- whatHappened：corrected 时写按资料改正后的"实际发生了什么"；其余照抄原来的。
+- correction：只有 corrected 时写，一句话："原来说 X，资料里是 Y"。
+- basis：支撑或改正它的资料原文，逐字照抄（不翻译、不改字，每句 15 到 150 字），附资料编号 source。unverified 时给空数组。
+
+叙述用简体中文（basis 照抄原文）。不要编资料里没有的事实。
+
+只输出 JSON：{"items":[{"i":0,"status":"supported","answer":true,"whatHappened":"…","correction":"","basis":[{"source":1,"excerpt":"…"}]}]}`;
+
+/** 原文必须逐字在那一道自己的资料里；拿不出对得上的原文就算没核实（返回里不带这一道）。 */
+export function parseDrillChecks(value: unknown, inputs: { draft: DrillDraft; sources: SearchSource[] }[]): CheckedDrill[] {
+  const raw = (value as { items?: unknown } | null)?.items;
+  if (!Array.isArray(raw)) throw new Error("缺少 items");
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const out: CheckedDrill[] = [];
+  inputs.forEach(({ draft, sources }, i) => {
+    const it = raw.find((r) => r && typeof r === "object" && Number((r as Record<string, unknown>).i) === i) as Record<string, unknown> | undefined;
+    if (!it || (it.status !== "supported" && it.status !== "corrected")) return;
+    const basis = (Array.isArray(it.basis) ? it.basis : [])
+      .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
+      .map((b) => {
+        const src = sources[(typeof b.source === "number" ? b.source : Number(b.source)) - 1];
+        const excerpt = typeof b.excerpt === "string" ? b.excerpt.trim() : "";
+        if (!src || squash(excerpt).length < 8 || !squash(src.content).includes(squash(excerpt))) return null;
+        return { url: src.url, title: src.title, excerpt: excerpt.slice(0, 300) };
+      })
+      .filter((b): b is { url: string; title: string; excerpt: string } => b !== null)
+      .slice(0, 3);
+    if (basis.length === 0) return;
+    if (it.status === "corrected") {
+      const correction = typeof it.correction === "string" ? it.correction.trim() : "";
+      const whatHappened = typeof it.whatHappened === "string" ? it.whatHappened.trim() : "";
+      if (!correction || !whatHappened || typeof it.answer !== "boolean") return;
+      out.push({ ...draft, answer: it.answer, whatHappened, check: { status: "corrected", correction, basis } });
+      return;
+    }
+    out.push({ ...draft, check: { status: "supported", basis } });
+  });
+  assertNoBanned(out.flatMap((d) => [d.whatHappened, d.check.correction ?? ""]).filter(Boolean));
+  return out;
+}
+
+export async function checkHistoryDrills(inputs: { draft: DrillDraft; sources: SearchSource[] }[]): Promise<CheckedDrill[]> {
+  const usable = inputs.filter((x) => x.sources.length > 0);
+  if (usable.length === 0) return [];
+  const blocks = usable
+    .map(({ draft, sources }, i) =>
+      [
+        `【${i}】${draft.setup}\n问题：${draft.question}\n它记的答案：${draft.answer ? "会" : "不会"}\n它记的实际情况：${draft.whatHappened}`,
+        sources.map((src, j) => `  [资料 ${j + 1}] ${src.title}\n  ${src.url}\n  ${src.content.slice(0, 1200)}`).join("\n"),
+      ].join("\n")
+    )
+    .join("\n\n");
+  return executeAiJson(
+    { operation: "signal_history_drill_check", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: blocks + (attempt === 1 ? "\n\n上一次输出没通过校验。basis 必须逐字照抄那一道下面资料的原文，source 是资料编号。" : ""),
+      config: {
+        systemInstruction: DRILL_CHECK_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    (value) => parseDrillChecks(value, usable)
+  );
+}
+
 // ── 到期对账：先查现在实际怎样 ─────────────────────────────────────────────
 
 const OUTCOME_QUERY_PROMPT = `他之前读新闻时写下了一个判断，现在到期了，要对账。先上网查这件事现在实际怎样了。

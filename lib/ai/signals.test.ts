@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -920,5 +920,63 @@ describe("parseOutcomeQueries（到期对账先查现在怎样）", () => {
     expect(parseOutcomeQueries({ query: "x" }).counterQuery).toBe("");
     expect(() => parseOutcomeQueries({ counterQuery: "x" })).toThrow("query");
     expect(parseOutcomeQueries({ query: "a".repeat(200) }).query).toHaveLength(120);
+  });
+});
+
+describe("历史题：出题和核实", () => {
+  const draft = (over: Record<string, unknown> = {}) => ({
+    topic: 0,
+    setup: "2023 年 6 月，楽天モバイル宣布缩小和 KDDI 的漫游合作范围，自建基站覆盖率超过 98%。",
+    question: "到 2024 年 6 月底，楽天モバイル的签约数会不会超过 700 万？",
+    deadline: "2024-06-30",
+    answer: true,
+    whatHappened: "2024 年 5 月签约数超过 700 万。",
+    whySimilar: "都是靠自建网络撑用户数。",
+    query: "楽天モバイル 契約数 700万 2024",
+    ...over,
+  });
+
+  it("期限要早于今天半年以前；题面漏了结果的、答案不是 true/false 的丢掉", () => {
+    const drills = parseDrillDrafts(
+      {
+        drills: [
+          draft(),
+          draft({ deadline: "2026-09-30" }),
+          draft({ setup: "后来楽天モバイル的签约数大涨。" }),
+          draft({ answer: "会" }),
+          draft({ topic: 9 }),
+        ],
+      },
+      2,
+      "2026-10-13"
+    );
+    expect(drills.map((d) => [d.deadline, d.topic])).toEqual([
+      ["2024-06-30", 0],
+      ["2024-06-30", -1],
+    ]);
+  });
+
+  it("核实：原文逐字对得上才留；改正的要有新答案和说明；没出处的整道丢掉", () => {
+    const sources = [{ title: "楽天", url: "https://example.jp/r", content: "楽天モバイルは2024年5月、契約数が700万回線を突破したと発表した。" }];
+    const d = parseDrillDrafts({ drills: [draft()] }, 1, "2026-10-13")[0];
+    const inputs = [
+      { draft: d, sources },
+      { draft: { ...d, question: "另一道" }, sources },
+      { draft: { ...d, question: "第三道" }, sources },
+    ];
+    const checked = parseDrillChecks(
+      {
+        items: [
+          { i: 0, status: "supported", basis: [{ source: 1, excerpt: "契約数が700万回線を突破したと発表した" }] },
+          { i: 1, status: "corrected", answer: false, whatHappened: "没超过。", correction: "原来说超过，资料里是没超过", basis: [{ source: 1, excerpt: "资料里没有这句话原文" }] },
+          { i: 2, status: "corrected", answer: false, whatHappened: "到 6 月底没超过。", correction: "原来说会，资料里是不会", basis: [{ source: 1, excerpt: "楽天モバイルは2024年5月" }] },
+        ],
+      },
+      inputs
+    );
+    expect(checked.map((c) => [c.question, c.answer, c.check.status])).toEqual([
+      [d.question, true, "supported"],
+      ["第三道", false, "corrected"],
+    ]);
   });
 });

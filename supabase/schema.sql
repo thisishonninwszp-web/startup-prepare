@@ -5595,3 +5595,33 @@ alter table signal_lab_runs enable row level security;
 drop policy if exists "signal_lab_runs_owner" on signal_lab_runs;
 create policy "signal_lab_runs_owner" on signal_lab_runs
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 066：历史题（signal_drills）
+-- ============================================================================
+
+create table if not exists signal_drills (
+  id             uuid primary key default gen_random_uuid(),
+  user_id        uuid not null references auth.users (id) on delete cascade,
+  topic          text,
+  setup          text not null,
+  question       text not null,
+  deadline       date not null,
+  answer         boolean not null,
+  what_happened  text not null,
+  why_similar    text,
+  source_check   jsonb not null,
+  guess          boolean,
+  confidence     integer,
+  reasoning      text,
+  answered_at    timestamptz,
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists signal_drills_user_idx on signal_drills (user_id, created_at desc);
+
+alter table signal_drills enable row level security;
+
+drop policy if exists "signal_drills_owner" on signal_drills;
+create policy "signal_drills_owner" on signal_drills
+  for all using (auth.uid() = user_id);

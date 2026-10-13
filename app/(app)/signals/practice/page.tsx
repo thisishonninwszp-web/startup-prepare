@@ -50,6 +50,11 @@ export default async function JudgmentLedgerPage() {
         title="判断账本"
         description="你读新闻时写下的每一句判断。到期了回来对账，攒几个月，就能看出哪类事你看得准、哪类事总看错。"
       />
+      <p className="-mt-4 mb-8 text-sm">
+        <Link href="/signals/drill" className="text-primary underline-offset-4 hover:underline">
+          对账要等几个月？先做几道历史题，答完马上知道对错 →
+        </Link>
+      </p>
 
       {judgments === null ? (
         <div className="rounded-lg border border-status-validating/30 bg-status-validating/10 p-5 text-sm leading-7 text-status-validating">

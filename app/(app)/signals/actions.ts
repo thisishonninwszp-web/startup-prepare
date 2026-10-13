@@ -16,6 +16,7 @@ import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
 import { runGapRechecks, runGapScan } from "@/lib/domains/signals/gap-scan";
 import { chooseLabVariant, runSelectionLab, type LabVariantKey } from "@/lib/domains/signals/lab";
+import { answerDrill, generateDrills, type AnsweredDrill } from "@/lib/domains/signals/drills";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
 import { setFeedback, type FeedbackKind } from "@/lib/domains/signals/feedback";
@@ -485,6 +486,34 @@ export async function gapToIdeaAction(
     return { ok: true, id: idea.id };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没变成想法") };
+  }
+}
+
+/** 历史题：出一批、核实、存下核实到出处的（三四十秒）。 */
+export async function generateDrillsAction(): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const count = await generateDrills(userId);
+    revalidatePath("/signals/drill");
+    return { ok: true, count };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没出成题") };
+  }
+}
+
+/** 历史题：答一道，马上揭晓。 */
+export async function answerDrillAction(
+  id: string,
+  guess: boolean,
+  confidence: ConfidenceKey | null,
+  reasoning: string
+): Promise<{ ok: true; drill: AnsweredDrill } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const drill = await answerDrill(userId, id, guess, confidence, reasoning);
+    return { ok: true, drill };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
   }
 }
 
