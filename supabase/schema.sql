@@ -5534,3 +5534,35 @@ do $$ begin
   alter table signal_briefs add constraint signal_briefs_kind_check
     check (kind in ('news', 'tools', 'voices', 'calendar', 'money', 'digest', 'weekly'));
 exception when duplicate_object then null; end $$;
+
+-- ============================================================================
+-- 063：差距清单主动扫（kind 加 gaps）、每月重查（signal_gap_rechecks）
+-- ============================================================================
+
+alter table signal_briefs drop constraint if exists signal_briefs_kind_check;
+do $$ begin
+  alter table signal_briefs add constraint signal_briefs_kind_check
+    check (kind in ('news', 'tools', 'voices', 'calendar', 'money', 'digest', 'weekly', 'gaps'));
+exception when duplicate_object then null; end $$;
+
+create table if not exists signal_gap_rechecks (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users (id) on delete cascade,
+  signal_id     uuid not null,
+  side          text not null check (side in ('japan', 'us', 'china')),
+  checked_on    date not null,
+  verdict       text not null check (verdict in ('still', 'arrived', 'unclear')),
+  japan         text not null,
+  source_check  jsonb,
+  funded        jsonb,
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists signal_gap_rechecks_user_idx
+  on signal_gap_rechecks (user_id, checked_on desc);
+
+alter table signal_gap_rechecks enable row level security;
+
+drop policy if exists "signal_gap_rechecks_owner" on signal_gap_rechecks;
+create policy "signal_gap_rechecks_owner" on signal_gap_rechecks
+  for all using (auth.uid() = user_id);

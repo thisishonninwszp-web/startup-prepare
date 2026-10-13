@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { kindSourceFilter, type SignalKind } from "@/lib/domains/signals/feeds";
+import { kindSourceFilter, REPORT_SECTION_KINDS, type SignalKind } from "@/lib/domains/signals/feeds";
 import type { BriefItem, BriefPracticeRow } from "@/lib/domains/signals/brief";
 import { findEarlierMentions, type EarlierJudgment, type EarlierMention } from "@/lib/domains/signals/followups";
 
@@ -84,6 +84,7 @@ export async function getDailyReport(userId: string, date: string): Promise<Dail
       .from("signal_briefs")
       .select("brief_date")
       .eq("user_id", userId)
+      .in("kind", REPORT_SECTION_KINDS)
       .order("brief_date", { ascending: false })
       .limit(20),
     // 之前的报告（工具不算：工具没有"后续进展"）
@@ -91,7 +92,7 @@ export async function getDailyReport(userId: string, date: string): Promise<Dail
       .from("signal_briefs")
       .select("brief_date, items")
       .eq("user_id", userId)
-      .neq("kind", "tools")
+      .in("kind", REPORT_SECTION_KINDS.filter((k) => k !== "tools"))
       .gte("brief_date", since)
       .lt("brief_date", date),
     // 你对哪些新闻写过判断（押推论的不算，那是对某一步的判断）
@@ -123,7 +124,9 @@ export async function getDailyReport(userId: string, date: string): Promise<Dail
     const p = (Array.isArray(j.predictions) ? j.predictions[0] : j.predictions) as { due_at: string; outcome: EarlierJudgment["outcome"] };
     judgments.set(j.signal_id as string, { judgment: j.judgment as string, due_at: p.due_at, outcome: p.outcome });
   }
-  const todayItems = (briefs.data ?? []).filter((b) => b.kind !== "tools").flatMap((b) => b.items as BriefItem[]);
+  const todayItems = (briefs.data ?? [])
+    .filter((b) => b.kind !== "tools" && REPORT_SECTION_KINDS.includes(b.kind as SignalKind))
+    .flatMap((b) => b.items as BriefItem[]);
   const earlier = past.error
     ? {}
     : findEarlierMentions(

@@ -14,6 +14,7 @@ import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
+import { runGapRechecks, runGapScan } from "@/lib/domains/signals/gap-scan";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
 import { setFeedback, type FeedbackKind } from "@/lib/domains/signals/feedback";
@@ -482,6 +483,30 @@ export async function gapToIdeaAction(
     return { ok: true, id: idea.id };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没变成想法") };
+  }
+}
+
+/** 差距清单：今天专门扫一轮中文、美国的消息（清单页第一次打开时自动调）。 */
+export async function runGapScanAction(): Promise<{ ok: true; picked: number; gaps: number } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const result = await runGapScan(userId);
+    revalidatePath("/signals/gaps");
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "今天没扫成") };
+  }
+}
+
+/** 差距清单：进清单满一个月的，重查"这边现在有没有"。 */
+export async function runGapRechecksAction(): Promise<{ ok: true; rechecked: number; arrived: number } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const result = await runGapRechecks(userId);
+    revalidatePath("/signals/gaps");
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没重查成") };
   }
 }
 

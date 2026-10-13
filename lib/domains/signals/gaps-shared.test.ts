@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { BriefItem } from "./brief";
-import { collectJapanGaps, gapObservationText, isGapObserved, isJapanGap } from "./gaps-shared";
+import {
+  applyRechecks,
+  collectJapanGaps,
+  dueForRecheck,
+  gapObservationText,
+  isGapObserved,
+  isJapanGap,
+  recheckVerdict,
+  type GapRecheck,
+} from "./gaps-shared";
 
 const found = { status: "supported" as const, basis: [{ url: "https://example.jp", title: "t", excerpt: "原文原文原文原文" }] };
 
@@ -64,5 +73,60 @@ describe("反方向：日本有、中国还没有", () => {
     const gaps = collectJapanGaps([{ brief_date: "2026-10-12", items: [it2] }], "china");
     expect(gaps[0].japan).toBe("没有。中国还没这种服务。");
     expect(gapObservationText(gaps[0], "", "china")).toContain("日本有、中国还没有");
+  });
+});
+
+describe("每月重查", () => {
+  const recheck = (over: Partial<GapRecheck>): GapRecheck => ({
+    signal_id: "s1",
+    side: "japan",
+    checked_on: "2026-11-20",
+    verdict: "still",
+    japan: "没有。",
+    source_check: found,
+    funded: null,
+    ...over,
+  });
+
+  it("recheckVerdict：只认查到出处的结论；没出处的有了不算", () => {
+    expect(recheckVerdict("有，LINE 上个月上线了。", found)).toBe("arrived");
+    expect(recheckVerdict("有类似的，但没普及。", found)).toBe("still");
+    expect(recheckVerdict("没有。", { status: "corrected", correction: "c", basis: found.basis })).toBe("still");
+    expect(recheckVerdict("有，LINE 上个月上线了。", { status: "unverified", basis: [] })).toBe("unclear");
+    expect(recheckVerdict("有，LINE 上个月上线了。", undefined)).toBe("unclear");
+    expect(recheckVerdict("拿不准。", found)).toBe("unclear");
+  });
+
+  it("applyRechecks：最近一次说有了的挪出来；其余标上最近一次查是哪天", () => {
+    const gaps = collectJapanGaps([
+      {
+        brief_date: "2026-10-01",
+        items: [item({ signal_id: "a", event: "甲" }), item({ signal_id: "b", event: "乙" }), item({ signal_id: "c", event: "丙" })],
+      },
+    ]);
+    const { open, arrived } = applyRechecks(
+      gaps,
+      [
+        recheck({ signal_id: "a", checked_on: "2026-11-01", verdict: "still" }),
+        recheck({ signal_id: "a", checked_on: "2026-12-01", verdict: "arrived", japan: "有，LINE 上线了。" }),
+        recheck({ signal_id: "b", checked_on: "2026-11-01", verdict: "unclear" }),
+        recheck({ signal_id: "c", side: "us", checked_on: "2026-11-01", verdict: "arrived" }),
+      ],
+      "japan"
+    );
+    expect(arrived.map((g) => [g.signal_id, g.arrivedOn, g.now])).toEqual([["a", "2026-12-01", "有，LINE 上线了。"]]);
+    expect(open.map((g) => [g.signal_id, g.lastChecked, g.recheck?.verdict])).toEqual([
+      ["b", "2026-11-01", "unclear"],
+      // 别的方向上的重查不算
+      ["c", "2026-10-01", undefined],
+    ]);
+  });
+
+  it("dueForRecheck：上次查满 30 天的，最久没查的先查，最多几条", () => {
+    const g = (id: string, lastChecked: string) => ({ ...collectJapanGaps([{ brief_date: lastChecked, items: [item({ signal_id: id, event: id })] }])[0], lastChecked, side: "japan" as const });
+    const due = dueForRecheck([g("new", "2026-11-01"), g("old", "2026-09-01"), g("mid", "2026-10-01"), g("edge", "2026-10-14")], "2026-11-13", 2);
+    expect(due.map((d) => d.signal_id)).toEqual(["old", "mid"]);
+    expect(dueForRecheck([g("edge", "2026-10-14")], "2026-11-13", 5).map((d) => d.signal_id)).toEqual(["edge"]);
+    expect(dueForRecheck([g("edge", "2026-10-15")], "2026-11-13", 5)).toEqual([]);
   });
 });

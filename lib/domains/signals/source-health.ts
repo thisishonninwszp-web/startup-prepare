@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import type { BriefItem } from "./brief";
-import { CN_APP_SOURCE, GITHUB_SOURCE, newsSourceLabel, RSS_FEEDS, rssSource, signalKindOf, type SignalKind } from "./feeds";
+import { CN_APP_SOURCE, GITHUB_SOURCE, newsSourceLabel, REPORT_SECTION_KINDS, RSS_FEEDS, rssSource, signalKindOf, type SignalKind } from "./feeds";
 
 /**
  * 信息源体检：最近两周每个源抓进来几条、被挑进报告几条。
@@ -48,7 +48,7 @@ export async function sourceHealth(userId: string): Promise<SourceHealth[]> {
       .from("signal_briefs")
       .select("items")
       .eq("user_id", userId)
-      .neq("kind", "digest")
+      .in("kind", REPORT_SECTION_KINDS)
       .gte("brief_date", sinceIso.slice(0, 10)),
   ]);
   const picks = countPicks((briefs.data ?? []).flatMap((r) => (r.items as BriefItem[] | null) ?? []));

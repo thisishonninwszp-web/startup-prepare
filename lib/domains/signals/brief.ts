@@ -157,7 +157,7 @@ const JAPAN_SEARCH_RESULTS = 3;
  * 中文媒体的那几条：先让 AI 说"日本这边有没有"，再拿它给的日语搜索词上网查，逐句核实。
  * 核实失败就保留原来的说法、不带核实结果（页面上显示"没上网查过"）。
  */
-async function compareAndCheckJapan(
+export async function compareAndCheckJapan(
   picks: { index: number; headline: string; background: string }[],
   side: CompareSide = "japan"
 ): Promise<Map<number, JapanComparison>> {

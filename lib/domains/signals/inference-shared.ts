@@ -46,7 +46,27 @@ export type InferenceNode = {
   bayes?: BayesState;
   /** 上网查到的事实。来源和原文摘录由代码核对过；Jev 判档时看的就是这些，不看"为什么"。 */
   evidence?: InferenceEvidence[];
+  /** 从哪个角度想到的。早期数据没有。 */
+  lens?: InferenceLens;
+  /** 推之前查到的材料里，这一步用到的那句原文（逐字，由代码核对）。没用到材料就没有。 */
+  basis?: InferenceBasis;
 };
+
+/**
+ * 想下一步的四个角度。只顺着链往下想，最容易推出车轱辘（"门票卖得多 → 收入增加"）；
+ * 好的下一步常常在链外：另一群人被波及、有人反着做、以前类似的事后来怎样。
+ */
+export const INFERENCE_LENSES = ["direct", "ripple", "reaction", "precedent"] as const;
+export type InferenceLens = (typeof INFERENCE_LENSES)[number];
+
+export const LENS_LABELS: Record<InferenceLens, string> = {
+  direct: "顺着往下",
+  ripple: "波及别处",
+  reaction: "有人反应",
+  precedent: "以前也有过",
+};
+
+export type InferenceBasis = { url: string; title: string; excerpt: string };
 
 export type InferenceEvidence = {
   url: string;

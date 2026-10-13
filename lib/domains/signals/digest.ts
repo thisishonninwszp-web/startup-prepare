@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { writeDailyDigest, writeDigestDetail, type DetailTheme, type DigestSectionInput } from "@/lib/ai";
 import type { BriefItem } from "./brief";
+import { REPORT_SECTION_KINDS } from "./feeds";
 
 /**
  * 今日总览：看完五节以后，像一个懂行的人跟他讲几句今天世界上发生了什么，再挑最值得点开的三条。
@@ -57,7 +58,7 @@ export async function generateDigest(userId: string, date: string): Promise<Dige
     .select("kind, overview, items")
     .eq("user_id", userId)
     .eq("brief_date", date)
-    .neq("kind", "digest");
+    .in("kind", REPORT_SECTION_KINDS);
   if (error) throw new Error(error.message);
   const order = ["news", "calendar", "voices", "money", "tools"];
   const rows = (data ?? []).sort((a, b) => order.indexOf(a.kind as string) - order.indexOf(b.kind as string));

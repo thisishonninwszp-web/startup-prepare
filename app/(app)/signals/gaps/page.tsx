@@ -5,12 +5,17 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatReportDate } from "@/lib/domains/signals/format";
-import { listJapanGaps, type JapanGapRow } from "@/lib/domains/signals/gaps";
-import type { GapSide } from "@/lib/domains/signals/gaps-shared";
+import { tokyoToday } from "@/lib/domains/signals/brief";
+import { todayGapScan } from "@/lib/domains/signals/gap-scan";
+import { listGapBoard, type JapanGapRow } from "@/lib/domains/signals/gaps";
+import { RECHECKS_PER_DAY, type ArrivedGap, type GapSide } from "@/lib/domains/signals/gaps-shared";
 import { SourceCheckView } from "../check-view";
 import { GapActions } from "./gap-actions";
+import { GapScanLoader } from "./gap-scan-loader";
 
 export const dynamic = "force-dynamic";
+// 第一次打开时要扫一轮、重查几条（各三四十秒），由这一页的 server action 跑
+export const maxDuration = 60;
 
 /** 两个方向的叫法：问的是哪边有没有、原文在哪边、有人拿到钱时说的是哪边。 */
 const SIDE_TEXT: Record<GapSide, { here: string; there: string; empty: string }> = {
@@ -85,6 +90,12 @@ function GapList({ gaps, side }: { gaps: JapanGapRow[]; side: GapSide }) {
                 uncheckedText="这句是 AI 凭印象说的，没上网查过。"
               />
             </div>
+            {g.recheck && (
+              <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                {formatReportDate(g.recheck.on)}又查了一次：
+                {g.recheck.verdict === "still" ? `${t.here}这边还是没有。` : "没查清（没找到出处），过一个月再查。"}
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-4">
               <GapActions signalId={g.signal_id} observed={g.observed} side={side} />
               {g.url && (
@@ -105,6 +116,98 @@ function GapList({ gaps, side }: { gaps: JapanGapRow[]; side: GapSide }) {
   );
 }
 
+/** 进清单时查过是没有，一个月后再查已经有了的那几条。 */
+function ArrivedList({ gaps, side }: { gaps: ArrivedGap[]; side: GapSide }) {
+  if (gaps.length === 0) return null;
+  const t = SIDE_TEXT[side];
+  return (
+    <div className="mb-8">
+      <h3 className="text-base font-semibold">这几条，{t.here}这边有了</h3>
+      <p className="mb-4 mt-1 text-sm leading-7 text-muted-foreground">
+        进清单那天查过是没有。过了一个月再查，已经有人在做了 —— 要么说明当初看对了方向，要么说明有人先走了一步。去看看是谁、做成了什么样。
+      </p>
+      <ul className="space-y-4">
+        {gaps.map((g) => (
+          <li key={g.signal_id} className="rounded-lg border border-border bg-card p-4">
+            <h4 className="text-base font-semibold leading-7">{g.headline}</h4>
+            <p className="mt-2 text-sm leading-7">
+              <span className="text-muted-foreground">当初（{formatReportDate(g.brief_date)}）：</span>
+              {g.japan}
+            </p>
+            <p className="mt-1 text-sm leading-7">
+              <span className="text-muted-foreground">现在（{formatReportDate(g.arrivedOn)}）：</span>
+              {g.now}
+            </p>
+            {g.nowFunded && (
+              <p className="mt-1 text-sm leading-7">
+                <span className="text-muted-foreground">有人拿到钱在做：</span>
+                {g.nowFunded.company}
+                <a
+                  href={g.nowFunded.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-1 text-xs text-primary underline-offset-4 hover:underline"
+                >
+                  来源 ↗
+                </a>
+              </p>
+            )}
+            <div className="mt-1">
+              <SourceCheckView
+                check={g.nowCheck ?? undefined}
+                searchQuery={`${t.here} ${g.headline}`}
+                unverifiedText="没查到出处。"
+                uncheckedText="没上网查过。"
+              />
+            </div>
+            {g.url && (
+              <a
+                href={g.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-sm text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
+              >
+                {t.there}那边的原文 ↗
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** 页面顶上：今天扫了没有、该不该重查。迁移没跑就说清楚差哪一步。 */
+function ScanStatus({
+  ready,
+  scanned,
+  dueCount,
+  recheckedToday,
+}: {
+  ready: boolean;
+  scanned: { picked: number; gaps: number } | null;
+  dueCount: number;
+  recheckedToday: boolean;
+}) {
+  if (!ready) {
+    return (
+      <p className="mb-8 text-sm leading-7 text-muted-foreground">
+        每天专门扫一轮、满一个月重查，这两件还差一步：迁移 063 没跑。执行 supabase/migrations/063_signal_gap_scan.sql 之后，打开这一页就会开始。
+        在那之前，清单照旧只从每天报告里攒。
+      </p>
+    );
+  }
+  const recheck = recheckedToday ? 0 : dueCount;
+  if (!scanned || recheck > 0) return <GapScanLoader scan={!scanned} dueCount={recheck} batch={RECHECKS_PER_DAY} />;
+  return (
+    <p className="mb-8 font-mono text-xs text-muted-foreground">
+      {scanned.picked === 0
+        ? "今天专门扫了一轮，没有讲产品、服务的新东西。"
+        : `今天专门扫了一轮：挑出 ${scanned.picked} 条讲产品、服务的，${scanned.gaps} 条查下来日本还没有或没普及，进了清单。`}
+    </p>
+  );
+}
+
 export default async function JapanGapsPage() {
   const supabase = createClient();
   const {
@@ -112,11 +215,8 @@ export default async function JapanGapsPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [toJapan, fromUs, toChina] = await Promise.all([
-    listJapanGaps(user.id, "japan"),
-    listJapanGaps(user.id, "us"),
-    listJapanGaps(user.id, "china"),
-  ]);
+  const [board, scanned] = await Promise.all([listGapBoard(user.id, tokyoToday()), todayGapScan(user.id)]);
+  const { japan: toJapan, us: fromUs, china: toChina } = board.sides;
 
   return (
     <PageContainer width="narrow">
@@ -128,18 +228,22 @@ export default async function JapanGapsPage() {
       <PageHeader
         eyebrow="Gaps"
         title="那边有、这边还没有"
-        description="每天报告里中国和美国的那几条，上网查下来日本还没有、或者有但没普及的，都攒在这里；反过来，日本有、中国还没有的也攒着。哪条让你想多琢磨一下，就记成观察，或者直接变成一个想法。"
+        description="每天报告里中国和美国的那几条，加上每天专门从中文、美国消息里挑出来讲产品和服务的几条，上网查下来日本还没有、或者有但没普及的，都攒在这里；反过来，日本有、中国还没有的也攒着。进清单满一个月会再查一次，有了就挪出来单列。哪条让你想多琢磨一下，就记成观察，或者直接变成一个想法。"
       />
 
+      <ScanStatus ready={board.ready} scanned={scanned} dueCount={board.dueCount} recheckedToday={board.recheckedToday} />
+
       <h2 className="mb-4 text-xl font-semibold">中国有、日本还没有</h2>
-      <GapList gaps={toJapan} side="japan" />
+      <ArrivedList gaps={toJapan.arrived} side="japan" />
+      <GapList gaps={toJapan.open} side="japan" />
 
       <section className="mt-12 border-t pt-6">
         <h2 className="text-xl font-semibold">美国有、日本还没有</h2>
         <p className="mb-4 mt-1 text-sm leading-7 text-muted-foreground">
           美国先出现的产品和做法，日本常常晚几年。只收讲产品、服务、生意做法的，纯技术讨论不收。
         </p>
-        <GapList gaps={fromUs} side="us" />
+        <ArrivedList gaps={fromUs.arrived} side="us" />
+        <GapList gaps={fromUs.open} side="us" />
       </section>
 
       <section className="mt-12 border-t pt-6">
@@ -147,7 +251,8 @@ export default async function JapanGapsPage() {
         <p className="mb-4 mt-1 text-sm leading-7 text-muted-foreground">
           日本做成、中国还没有的东西，可能适合跨境电商卖给中国人，或者把这种做法带去中国。
         </p>
-        <GapList gaps={toChina} side="china" />
+        <ArrivedList gaps={toChina.arrived} side="china" />
+        <GapList gaps={toChina.open} side="china" />
       </section>
     </PageContainer>
   );

@@ -2,7 +2,7 @@ import { type ExternalSignal, type RealityCheckResult, type TavilyResult } from 
 import { FIRST_INQUIRY_QUESTION } from "./core";
 import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/lib/ai-gateway";
 import { MODEL, generateContent } from "./shared";
-import { TIER_VALUE } from "@/lib/domains/signals/inference-shared";
+import { INFERENCE_LENSES, TIER_VALUE, type InferenceBasis, type InferenceLens } from "@/lib/domains/signals/inference-shared";
 
 // ---------------------------------------------------------------------------
 // 外部雷达（Phase D）：把 Tavily 检索结果嚼成对抗管线的原料（不做 feed、不排名）
@@ -878,6 +878,73 @@ ${MORE_INSTRUCTION}
   );
 }
 
+// ── 差距清单：每天专门扫一轮 ─────────────────────────────────────────────────
+
+/** 每天扫出来、拿去问"日本有没有"的最多几条（每条要上网搜两次，Tavily 免费额度有限）。 */
+const GAP_SCAN_SIZE = 4;
+
+export type GapPick = { index: number; headline: string; background: string };
+
+const GAP_SCAN_PROMPT = `下面是最近一天中文媒体、美国媒体（Hacker News、TechCrunch）上的消息，和中国 App 榜新上榜的 App。
+你帮一个在日本、想找创业方向的人，从里面挑"那边已经有、日本可能还没有"的东西。
+
+只挑讲的是一种具体的产品、服务或生意做法的：有人在卖什么、怎么收钱、怎么把东西送到人手上。
+不挑：宏观数据、政治外交、事故、人事变动、股价财报、纯技术讨论、只说拿了多少钱却看不出在做什么的融资新闻。
+最多挑 ${GAP_SCAN_SIZE} 条，日本越可能还没有、写得越具体的排越前。没有合适的就给空数组，不要硬凑。
+
+每条写：
+- index：候选序号；
+- title：照抄那条候选的原标题，原文语言、不翻译，抄前 20 个字就行（代码拿它核对序号，对不上的会被丢掉）；
+- headline：一句中文，说清楚这是个什么东西（谁在做、给谁用）；
+- background：两三句中文：它怎么运作、怎么收钱、做到了什么程度。只写候选里写了的，没写的不要编。
+
+只输出 JSON：{"picks":[{"index":序号,"title":"原标题照抄","headline":"…","background":"…"}]}`;
+
+/** 序号要和照抄的原标题对得上（对不上按标题换回、都对不上就丢掉）；可以一条都没有。 */
+export function parseGapPicks(value: unknown, candidateTitles: string[]): GapPick[] {
+  const raw = (value as { picks?: unknown } | null)?.picks;
+  if (!Array.isArray(raw)) throw new Error("缺少 picks");
+  const out: GapPick[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const index = resolveCandidateIndex(v.index, v.title, candidateTitles, true);
+    const headline = typeof v.headline === "string" ? v.headline.trim() : "";
+    const background = typeof v.background === "string" ? v.background.trim() : "";
+    if (index === null || !headline || !background || out.some((o) => o.index === index)) continue;
+    out.push({ index, headline, background });
+  }
+  const picks = out.slice(0, GAP_SCAN_SIZE);
+  const texts = picks.flatMap((p) => [p.headline, p.background]);
+  assertNoBanned(texts);
+  assertChineseAllowingNames(texts);
+  return picks;
+}
+
+/** 从中文、美国的候选里挑出讲产品、服务、生意做法的几条，写清楚是什么东西。 */
+export async function selectGapCandidates(candidates: BriefCandidate[]): Promise<GapPick[]> {
+  if (candidates.length === 0) return [];
+  const contents = `候选：\n${candidates
+    .map((c, i) => `[${i}] ${c.title}（${c.source}）\n${c.text.slice(0, 200)}`)
+    .join("\n")}`;
+  return executeAiJson(
+    { operation: "signal_gap_scan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1 ? "\n\n上一次输出没通过校验（序号和标题对不上、缺字段，或没用中文）。严格按 JSON 字段重写。" : ""),
+      config: {
+        systemInstruction: GAP_SCAN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2000,
+      },
+    }),
+    (value) => parseGapPicks(value, candidates.map((c) => c.title))
+  );
+}
+
 // ── 工具深读 ───────────────────────────────────────────────────────────────
 
 export type ToolAnalysisInput = SignalReader & {
@@ -1704,10 +1771,69 @@ export type InferenceStep = {
    * 所以同时搜"它不会发生 / 影响有限"的说法。
    */
   counterQuery: string;
+  /** 从哪个角度想到的；没写或写错的当成"顺着往下"（从已有节点重判时可能没有）。 */
+  lens?: InferenceLens;
+  /** 用到的材料原文（逐字出现在那份材料里才留）。 */
+  basis?: InferenceBasis;
 };
 
 /** 每层最多几条。层数上限由调用方控制。 */
 const INFERENCE_BRANCHES = 3;
+
+/** 推之前查材料用的三个角度（"顺着往下"不用查：链本身就是它的材料）。 */
+const SCOUT_LENSES = ["ripple", "reaction", "precedent"] as const;
+export type ScoutQuery = { lens: (typeof SCOUT_LENSES)[number]; query: string };
+
+const SCOUT_PROMPT = `你帮一个人练"顺着一条消息往下推"。推下一层之前，先上网找一点材料 —— 只盯着这条链自己的说法，推出来的多半是换个说法。
+给你新闻和已经推到的链。写 3 个搜索词，各从一个角度找：
+- ripple：链上还没出现过的另一群人、另一个行业、另一个地方，会被最后一步波及到 —— 找他们现在的情况。
+- reaction：对手、监管、消费者、上下游碰到这类事通常怎么应对 —— 找有人反着做、或者已经在应对的报道。
+- precedent：以前发生过的类似的事（别的国家、别的年份、别的行业），后来接着发生了什么。
+搜索词用日文或英文（看这件事主要在哪个国家；precedent 可以用英文），3 到 8 个词，具体到对象和动作，不要写成一句话。
+
+只输出 JSON：{"queries":[{"lens":"ripple","query":"…"},{"lens":"reaction","query":"…"},{"lens":"precedent","query":"…"}]}`;
+
+export function parseScoutQueries(value: unknown): ScoutQuery[] {
+  const raw = (value as { queries?: unknown } | null)?.queries;
+  if (!Array.isArray(raw)) throw new Error("缺少 queries");
+  const out: ScoutQuery[] = [];
+  for (const q of raw) {
+    if (!q || typeof q !== "object") continue;
+    const v = q as Record<string, unknown>;
+    const lens = SCOUT_LENSES.find((l) => l === v.lens);
+    const query = typeof v.query === "string" ? v.query.trim().slice(0, 120) : "";
+    if (!lens || !query || out.some((o) => o.lens === lens)) continue;
+    out.push({ lens, query });
+  }
+  if (out.length === 0) throw new Error("一个能用的搜索词都没有");
+  return out;
+}
+
+/** 推之前查材料的搜索词：波及别处、有人反应、以前也有过，各一个。 */
+export async function planScoutQueries(input: { title: string; summary: string; chain: string[]; direction?: string }): Promise<ScoutQuery[]> {
+  const contents = [
+    `新闻标题：${input.title}`,
+    `新闻简介：${input.summary || "（没有）"}`,
+    input.chain.length === 0
+      ? "已经推到的链：（还没有，下一层直接从新闻推）"
+      : `已经推到的链：\n${input.chain.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+    input.direction ? `他想往这个方向推：${input.direction}（三个搜索词都围绕它）` : "",
+  ].join("\n");
+  return executeAiJson(
+    { operation: "signal_inference_scout", module: "unknown", outputMode: "json", timeoutMs: 15_000 },
+    () => ({
+      model: MODEL,
+      contents,
+      config: {
+        systemInstruction: SCOUT_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 600,
+      },
+    }),
+    parseScoutQueries
+  );
+}
 
 const INFERENCE_PROMPT = `你帮一个人练"顺着一条消息往下推"。给你一条新闻，和已经推到的那条链（可能为空）。
 你只负责推下一层：在这条链最后一步成立的前提下，接下来最可能发生的 2 到 ${INFERENCE_BRANCHES} 种情况。
@@ -1719,6 +1845,18 @@ const INFERENCE_PROMPT = `你帮一个人练"顺着一条消息往下推"。给�
 - likelihood：在上一步成立的前提下，它发生的可能性，只能是这五档之一：
   "very_likely"（很可能）/"likely"（较可能）/"possible"（一半一半）/"unlikely"（不太可能）/"very_unlikely"（很不可能）。
   最好也给一条反方向或意外的情况。
+- lens：这一条是从哪个角度想到的，只能是 "direct" / "ripple" / "reaction" / "precedent"（见下面）。
+- basis：用到了"查到的材料"的，写 {"source":材料编号,"excerpt":"逐字照抄的那句原文，15 到 150 字，不翻译"}；没用到写 null。
+
+怎么想：
+先别急着顺着最后一步往下写。在心里列 5 到 6 个候选，分别从这四个角度想：
+- direct（顺着往下）：最后一步直接推动了谁，他接下来做什么；
+- ripple（波及别处）：链上还没出现过的另一群人、另一个行业、另一个地方，被波及后会怎样；
+- reaction（有人反应）：对手、监管、消费者、上下游会怎么应对，让事情拐弯，甚至反过来；
+- precedent（以前也有过）：以前发生过类似的事，后来接着发生了什么，这次会不会也这样、哪里不一样。
+"查到的材料"是围绕这条链上网搜来的（波及到谁、有人怎么反应、以前类似的事），还有上一步查证时找到的事实。
+好的下一步常常就藏在材料里：一个链上还没出现的人、一个新的机制、一个以前发生过的结果。用材料里的事实，不要编材料里没有的事。
+再从候选里挑 2 到 ${INFERENCE_BRANCHES} 条输出：挑带进新的人或新机制最多的、最不像换个说法的，几条的角度尽量不一样。
 
 铁律：
 - 不写百分比、不写"概率为 X"、不写任何表示可能性的数字。只用上面五档。
@@ -1734,9 +1872,20 @@ ${SIGNAL_SHARED_RULES}
 - query：找支持它的资料，比如 "大手銀行 住宅ローン金利 引き上げ 2026"。
 - counterQuery：找反对它的资料 —— 它不会发生、影响有限、有人反着做，比如 "住宅ローン金利 据え置き 大手銀行" 或 "利上げ 影響 限定的"。
 
-只输出 JSON：{"steps":[{"claim":"…","why":"…","watch":"…","likelihood":"likely","query":"…","counterQuery":"…"}]}`;
+只输出 JSON：{"steps":[{"claim":"…","why":"…","watch":"…","likelihood":"likely","lens":"ripple","basis":{"source":1,"excerpt":"…"},"query":"…","counterQuery":"…"}]}`;
 
-export function parseInferenceSteps(value: unknown): InferenceStep[] {
+/** 材料原文必须逐字出现在它说的那份材料里（空白不算），否则当没用到材料。 */
+function parseStepBasis(raw: unknown, materials: SearchSource[]): InferenceBasis | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const v = raw as Record<string, unknown>;
+  const src = materials[(typeof v.source === "number" ? v.source : Number(v.source)) - 1];
+  const excerpt = typeof v.excerpt === "string" ? v.excerpt.trim() : "";
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  if (!src || squash(excerpt).length < 8 || !squash(src.content).includes(squash(excerpt))) return undefined;
+  return { url: src.url, title: src.title, excerpt: excerpt.slice(0, 200) };
+}
+
+export function parseInferenceSteps(value: unknown, materials: SearchSource[] = []): InferenceStep[] {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
   const raw = (value as { steps?: unknown }).steps;
   if (!Array.isArray(raw) || raw.length === 0) throw new Error("缺少 steps");
@@ -1749,6 +1898,8 @@ export function parseInferenceSteps(value: unknown): InferenceStep[] {
       query: typeof s.query === "string" && s.query.trim() ? s.query.trim().slice(0, 120) : String(s.claim ?? ""),
       counterQuery: typeof s.counterQuery === "string" ? s.counterQuery.trim().slice(0, 120) : "",
       likelihood: LIKELIHOOD_ORDER.includes(s.likelihood as Likelihood) ? (s.likelihood as Likelihood) : "possible",
+      lens: INFERENCE_LENSES.find((l) => l === s.lens) ?? "direct",
+      basis: parseStepBasis(s.basis, materials),
     }))
     .slice(0, INFERENCE_BRANCHES)
     // 从较可能到不太可能排
@@ -1769,7 +1920,10 @@ export async function inferNextSteps(input: {
   chain: string[];
   /** 用户给的方向；有的话，这一层的几种情况都要围绕它推。 */
   direction?: string;
+  /** 推之前查到的材料（编号从 1 开始）。没有就只凭新闻和链推。 */
+  materials?: SearchSource[];
 }): Promise<InferenceStep[]> {
+  const materials = input.materials ?? [];
   const contents = [
     `新闻标题：${input.title}`,
     `新闻简介：${input.summary || "（没有）"}`,
@@ -1783,6 +1937,9 @@ export async function inferNextSteps(input: {
         `这一层的几种情况都要围绕这个方向。如果它是一个假设（"如果……"），就当它成立往下推。` +
         `这个方向本身站不住、或者跟前面的链对不上的话，照实标低可能性，并在 why 里说清楚为什么，不要硬凑。`
       : "",
+    materials.length > 0
+      ? `\n查到的材料：\n${materials.map((m, i) => `[材料 ${i + 1}] ${m.title}\n${m.content.slice(0, 700)}`).join("\n\n")}`
+      : "\n查到的材料：（这次没查到，只凭新闻和链推）",
   ].join("\n");
 
   return executeAiJson(
@@ -1798,12 +1955,12 @@ export async function inferNextSteps(input: {
         systemInstruction: INFERENCE_PROMPT,
         responseMimeType: "application/json",
         // 推论要掂量幅度（0.25 个百分点推不出房价下跌），不开思考时模型一律标"较可能"。
-        // 思考会吃 maxOutputTokens，所以上限给足，免得 JSON 被截断。
-        thinkingConfig: { thinkingBudget: 1024 },
-        maxOutputTokens: 4096,
+        // 先列五六个候选再挑，思考要多一点；思考会吃 maxOutputTokens，所以上限给足，免得 JSON 被截断。
+        thinkingConfig: { thinkingBudget: 2048 },
+        maxOutputTokens: 6144,
       },
     }),
-    parseInferenceSteps
+    (value) => parseInferenceSteps(value, materials)
   );
 }
 

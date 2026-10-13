@@ -9,6 +9,7 @@ import {
   childrenOf,
   evidenceRatio,
   formatPercent,
+  LENS_LABELS,
   LIKELIHOOD_FILLED,
   LIKELIHOOD_LABELS,
   MAX_INFERENCE_DEPTH,
@@ -180,7 +181,7 @@ export function InferenceTree({
           {!hasFree && (
             <Button variant="ghost" size="sm" className="h-10 sm:h-8" disabled={busy} onClick={() => expand(parentId)}>
               {pendingId === parentId && directing !== parentId
-                ? "在推、在查证据…（十几秒）"
+                ? "先查材料，再推，再查证据…（二三十秒）"
                 : parentId === null
                   ? "让它自己往下推一层"
                   : "顺着这条再推一层 →"}
@@ -212,6 +213,9 @@ export function InferenceTree({
       <li key={n.id}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-mono text-xs text-muted-foreground">第 {n.depth} 层</span>
+          {n.lens && n.lens !== "direct" && (
+            <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{LENS_LABELS[n.lens]}</span>
+          )}
           <span className="text-xs text-muted-foreground">{n.depth > 1 ? "上一步成立的话：" : "从新闻出发："}</span>
           <LikelihoodMeter likelihood={n.likelihood} unsure={n.unsure} />
           {n.bayes && (
@@ -265,6 +269,19 @@ export function InferenceTree({
           <span className="text-muted-foreground">怎么看出它在发生：</span>
           {n.watch}
         </p>
+        {n.basis && (
+          <p className="text-sm leading-7">
+            <span className="text-muted-foreground">从查到的材料想到的：</span>「{n.basis.excerpt}」
+            <a
+              href={n.basis.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-1 text-xs text-primary underline-offset-4 hover:underline"
+            >
+              {n.basis.title || "来源"} ↗
+            </a>
+          </p>
+        )}
         {n.signals && n.signals.length > 0 && (
           <div className="text-sm leading-7">
             <span className="text-muted-foreground">具体可以盯：</span>
@@ -344,7 +361,8 @@ export function InferenceTree({
   return (
     <div>
       <p className="mb-4 text-sm leading-7 text-muted-foreground">
-        每一层都假设上一层成立，所以越往下越不确定。每一步都会上网查一次证据；方块是可能性的档位，由另一个模型看着查到的事实来判，不看推论自己写的理由；
+        每一层都假设上一层成立，所以越往下越不确定。推之前先上网找材料 —— 还会波及到谁、有人会怎么反应、以前类似的事后来怎样 ——
+        免得只在这条链自己的说法里打转；推出来的每一步再查一次证据。方块是可能性的档位，由另一个模型看着查到的事实来判，不看推论自己写的理由；
         想要具体的数，就在那一步上「算一算」—— AI 起个粗草稿，你来改，代码按贝叶斯算。
       </p>
       {nodes.length > 0 && renderChildren(null)}

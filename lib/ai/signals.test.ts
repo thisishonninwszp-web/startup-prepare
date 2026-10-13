@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -253,6 +253,46 @@ describe("parseInferenceSteps", () => {
   it("没有 steps 不收；最多三条", () => {
     expect(() => parseInferenceSteps({ steps: [] })).toThrow("steps");
     expect(parseInferenceSteps({ steps: [1, 2, 3, 4].map(() => step("possible")) })).toHaveLength(3);
+  });
+
+  it("角度只认四种，没写的当顺着往下；材料原文逐字对得上才留", () => {
+    const materials = [
+      { title: "地銀の預金金利", url: "https://example.jp/a", content: "地方銀行の多くが10月に普通預金金利を0.2%に引き上げた。" },
+    ];
+    const steps = parseInferenceSteps(
+      {
+        steps: [
+          { ...step("likely"), lens: "ripple", basis: { source: 1, excerpt: "地方銀行の多くが10月に普通預金金利を0.2%に引き上げた。" } },
+          { ...step("possible"), lens: "weird", basis: { source: 1, excerpt: "信用金庫も追随する見通し。" } },
+          { ...step("unlikely"), lens: "precedent", basis: { source: 2, excerpt: "地方銀行の多くが10月に" } },
+        ],
+      },
+      materials
+    );
+    expect(steps.map((s) => s.lens)).toEqual(["ripple", "direct", "precedent"]);
+    expect(steps[0].basis).toEqual({ url: "https://example.jp/a", title: "地銀の預金金利", excerpt: "地方銀行の多くが10月に普通預金金利を0.2%に引き上げた。" });
+    expect(steps[1].basis).toBeUndefined();
+    expect(steps[2].basis).toBeUndefined();
+  });
+});
+
+describe("parseScoutQueries（推之前查材料）", () => {
+  it("只认三个角度，每个角度一个，空的丢掉", () => {
+    expect(
+      parseScoutQueries({
+        queries: [
+          { lens: "ripple", query: "地方銀行 預金金利 引き上げ" },
+          { lens: "ripple", query: "重复的" },
+          { lens: "direct", query: "不查这个角度" },
+          { lens: "reaction", query: "  " },
+          { lens: "precedent", query: "Japan 2006 rate hike regional banks deposits" },
+        ],
+      })
+    ).toEqual([
+      { lens: "ripple", query: "地方銀行 預金金利 引き上げ" },
+      { lens: "precedent", query: "Japan 2006 rate hike regional banks deposits" },
+    ]);
+    expect(() => parseScoutQueries({ queries: [{ lens: "direct", query: "x" }] })).toThrow();
   });
 });
 
@@ -827,5 +867,30 @@ describe("总览里可以往下推的一条", () => {
     expect(parseDigestChain({ signalId: "zzz", steps: ["一", "二"] }, ["a"])).toEqual({});
     expect(parseDigestChain({ signalId: "a", steps: ["日银加息", "有七成的可能贷款变贵"] }, ["a"])).toEqual({});
     expect(parseDigestChain(undefined, ["a"])).toEqual({});
+  });
+});
+
+describe("parseGapPicks（差距清单每天专门扫）", () => {
+  const titles = ["美团推出无人机送药服务，30分钟送达", "日銀、追加利上げを決定", "Show HN: Usage-based billing for plumbers"];
+
+  it("序号和照抄的标题对得上才收；数错一位按标题换回；没标题、缺背景的丢掉", () => {
+    const picks = parseGapPicks(
+      {
+        picks: [
+          { index: 1, title: "美团推出无人机送药服务", headline: "美团用无人机给城市家庭送药", background: "下单后无人机送到小区取货柜，30 分钟内送到。" },
+          { index: 2, headline: "给水管工的按用量收费软件", background: "按派单次数收费。" },
+          { index: 2, title: "Show HN: Usage-based billing", headline: "给水管工的按用量收费软件", background: "" },
+        ],
+      },
+      titles
+    );
+    expect(picks).toEqual([
+      { index: 0, headline: "美团用无人机给城市家庭送药", background: "下单后无人机送到小区取货柜，30 分钟内送到。" },
+    ]);
+  });
+
+  it("可以一条都没有；不是数组不收", () => {
+    expect(parseGapPicks({ picks: [] }, titles)).toEqual([]);
+    expect(() => parseGapPicks({}, titles)).toThrow("picks");
   });
 });

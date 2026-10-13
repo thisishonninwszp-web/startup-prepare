@@ -15,6 +15,8 @@ export type JapanGap = {
   title: string;
   url: string | null;
   source: string;
+  /** 那边是怎么回事（报告里写的背景）；一个月后重查时拿它去问。早期数据可能是空的。 */
+  background: string;
   /** 日本这边（核实过的版本）。 */
   japan: string;
   check: AnalogCheck;
@@ -76,6 +78,7 @@ export function collectJapanGaps(briefs: { brief_date: string; items: BriefItem[
         title: item.title,
         url: item.url,
         source: item.source,
+        background: item.background,
         japan: s.text!,
         check: s.check!,
         event: item.event,
@@ -125,4 +128,96 @@ export function isGapObserved(gap: JapanGap, observationTexts: string[]): boolea
       t.includes(`中国有、日本还没有：${gap.headline}`) ||
       t.includes(`日本有、中国还没有：${gap.headline}`)
   );
+}
+
+// ── 每月重查 ───────────────────────────────────────────────────────────────
+
+/** 进清单（或上次重查）满多少天再查一次"这边现在有没有"。 */
+export const RECHECK_AFTER_DAYS = 30;
+
+/** 一天最多重查几条（每条要上网搜两次，Tavily 免费额度有限）。攒多了就一天几条慢慢查。 */
+export const RECHECKS_PER_DAY = 3;
+
+/**
+ * 一次重查的结果。still：还没有 / 没普及（查到出处）；arrived：有了（查到出处）；
+ * unclear：没查到出处或说拿不准 —— 只算"查过了"，不挪动清单。
+ */
+export type GapRecheck = {
+  signal_id: string;
+  side: GapSide;
+  checked_on: string;
+  verdict: "still" | "arrived" | "unclear";
+  japan: string;
+  source_check: AnalogCheck | null;
+  funded: JapanGap["funded"] | null;
+};
+
+/** 重查的结论只认查到出处的：没出处的"有了"可能是 AI 的印象，不能把一条从清单里挪走。 */
+export function recheckVerdict(japan: string, check: AnalogCheck | undefined): GapRecheck["verdict"] {
+  if (!check || check.status === "unverified") return "unclear";
+  if (japan.startsWith("有，")) return "arrived";
+  if (GAP_OPENERS.some((o) => japan.startsWith(o))) return "still";
+  return "unclear";
+}
+
+/** 每条在每个方向上最近的那次重查（rechecks 不要求排好序）。 */
+function latestRechecks(rechecks: GapRecheck[]): Map<string, GapRecheck> {
+  const latest = new Map<string, GapRecheck>();
+  for (const r of rechecks) {
+    const key = `${r.side}:${r.signal_id}`;
+    const prev = latest.get(key);
+    if (!prev || r.checked_on > prev.checked_on) latest.set(key, r);
+  }
+  return latest;
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+export type OpenGap = JapanGap & {
+  /** 最近一次查是哪天：重查过就是重查那天，否则是进清单那天。 */
+  lastChecked: string;
+  /** 最近一次重查（结论还是没有，或没查清）。没重查过就没有。 */
+  recheck?: { on: string; verdict: "still" | "unclear" };
+};
+
+export type ArrivedGap = JapanGap & {
+  arrivedOn: string;
+  /** 重查时写的"这边现在怎样"，和它的出处。 */
+  now: string;
+  nowCheck: AnalogCheck | null;
+  nowFunded: JapanGap["funded"] | null;
+};
+
+/** 把重查结果贴回清单：最近一次重查说"有了"的挪出来单列，其余标上最近一次查是哪天。 */
+export function applyRechecks(
+  gaps: JapanGap[],
+  rechecks: GapRecheck[],
+  side: GapSide
+): { open: OpenGap[]; arrived: ArrivedGap[] } {
+  const latest = latestRechecks(rechecks.filter((r) => r.side === side));
+  const open: OpenGap[] = [];
+  const arrived: ArrivedGap[] = [];
+  for (const g of gaps) {
+    const r = latest.get(`${side}:${g.signal_id}`);
+    if (r?.verdict === "arrived") {
+      arrived.push({ ...g, arrivedOn: r.checked_on, now: r.japan, nowCheck: r.source_check, nowFunded: r.funded });
+    } else {
+      open.push({
+        ...g,
+        lastChecked: r && r.checked_on > g.brief_date ? r.checked_on : g.brief_date,
+        ...(r ? { recheck: { on: r.checked_on, verdict: r.verdict as "still" | "unclear" } } : {}),
+      });
+    }
+  }
+  return { open, arrived: arrived.sort((a, b) => b.arrivedOn.localeCompare(a.arrivedOn)) };
+}
+
+/** 该重查的：上次查已经过了 RECHECK_AFTER_DAYS 天，最久没查的排前面，最多 max 条。 */
+export function dueForRecheck(open: (OpenGap & { side: GapSide })[], today: string, max: number): (OpenGap & { side: GapSide })[] {
+  return open
+    .filter((g) => daysBetween(g.lastChecked, today) >= RECHECK_AFTER_DAYS)
+    .sort((a, b) => a.lastChecked.localeCompare(b.lastChecked))
+    .slice(0, max);
 }

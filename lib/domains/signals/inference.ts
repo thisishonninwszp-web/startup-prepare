@@ -5,8 +5,10 @@ import {
   extractStepEvidence,
   inferNextSteps,
   judgeInferenceSteps,
+  planScoutQueries,
   sharpenSteps,
   type JudgedTier,
+  type SearchSource,
   type StepEvidence,
 } from "@/lib/ai";
 import { tavilySearch } from "@/lib/external";
@@ -21,6 +23,7 @@ import {
   MAX_INFERENCE_DEPTH,
   priorValue,
   type BayesState,
+  type InferenceEvidence,
   type InferenceNode,
 } from "./inference-shared";
 
@@ -75,9 +78,12 @@ export async function expandInference(
   const depth = chain.length + 1;
   if (depth > MAX_INFERENCE_DEPTH) throw new Error(`最多推 ${MAX_INFERENCE_DEPTH} 层`);
 
-  const body = detail.excerpt ?? (await fetchArticleBody(detail.url));
   const claims = chain.map((n) => n.claim);
-  const steps = await inferNextSteps({ title: detail.title, summary: detail.summary, body, chain: claims, direction: dir });
+  const [body, materials] = await Promise.all([
+    detail.excerpt ?? fetchArticleBody(detail.url),
+    scoutMaterials({ title: detail.title, summary: detail.summary, chain: claims, direction: dir }, chain.at(-1)?.evidence ?? []),
+  ]);
+  const steps = await inferNextSteps({ title: detail.title, summary: detail.summary, body, chain: claims, direction: dir, materials });
 
   // 每一步上网查一次，只抽事实（来源和摘录由代码核对）。查不到、没配 Key 都不拦着推论。
   const evidence = await Promise.all(steps.map((s) => findStepEvidence(s.claim, s.query, s.counterQuery)));
@@ -163,6 +169,8 @@ export async function expandInference(
       vague: tiers?.[i]?.vague || undefined,
       direction: dir,
       evidence: evidence[i].length > 0 ? evidence[i] : undefined,
+      lens: s.lens,
+      basis: s.basis,
     })),
   ];
   await saveTree(signalId, next);
@@ -231,6 +239,35 @@ export async function rejudgeLayer(
 
 /** 正反两个方向各搜几条。只照着推论去搜，搜到的几乎全是支持它的。 */
 const SEARCH_RESULTS_PER_SIDE = 3;
+
+/** 推之前每个角度搜几篇；上一步的证据最多带几条；交给写推论的一共最多几份材料。 */
+const SCOUT_RESULTS_PER_QUERY = 3;
+const SCOUT_PARENT_EVIDENCE = 4;
+const MAX_MATERIALS = 12;
+
+/**
+ * 推之前先查材料：从"波及别处 / 有人反应 / 以前也有过"三个角度各搜一次，再带上上一步查证时找到的事实。
+ * 以前是推完才查、查到的只给裁判看 —— 写推论的那一方只能在链自己的说法里打转，推出来的就是车轱辘。
+ * 任何一环失败都只是少了材料，推论照常。
+ */
+async function scoutMaterials(
+  input: { title: string; summary: string; chain: string[]; direction?: string },
+  parentEvidence: InferenceEvidence[]
+): Promise<SearchSource[]> {
+  const fromParent = parentEvidence
+    .slice(0, SCOUT_PARENT_EVIDENCE)
+    .map((e) => ({ title: e.title, url: e.url, content: `${e.fact}\n${e.excerpt}` }));
+  let searched: SearchSource[] = [];
+  try {
+    const queries = await planScoutQueries(input);
+    const results = await Promise.all(queries.map((q) => tavilySearch(q.query, SCOUT_RESULTS_PER_QUERY).catch(() => [])));
+    searched = results.flat().filter((r) => r.url && r.content);
+  } catch (e) {
+    console.error("inference scout failed", e);
+  }
+  const seen = new Set<string>();
+  return [...fromParent, ...searched].filter((m) => !seen.has(m.url) && seen.add(m.url)).slice(0, MAX_MATERIALS);
+}
 
 /** 查证一步：正反两个方向各搜一次 → 合起来抽事实。任何一环失败都返回空数组，推论照常。 */
 async function findStepEvidence(claim: string, query: string, counterQuery: string): Promise<StepEvidence[]> {

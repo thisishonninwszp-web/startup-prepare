@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { writeWeeklyDigest, type WeeklyDayInput } from "@/lib/ai";
 import type { BriefItem } from "./brief";
+import { REPORT_SECTION_KINDS } from "./feeds";
 
 /**
  * 周报：上一周（周一到周日）七天的报告连起来看，哪些事一直在冒、哪些只响了一天。
@@ -53,7 +54,7 @@ export async function generateWeekly(userId: string, weekStart: string): Promise
     .eq("user_id", userId)
     .gte("brief_date", weekStart)
     .lte("brief_date", weekEnd)
-    .neq("kind", "weekly");
+    .in("kind", [...REPORT_SECTION_KINDS, "digest"]);
   if (error) throw new Error(error.message);
 
   const byDate = new Map<string, typeof data>();

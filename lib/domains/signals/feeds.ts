@@ -13,6 +13,12 @@
 
 export type SignalKind = "news" | "tools" | "voices" | "calendar" | "money";
 
+/**
+ * 每日报告的五节。signal_briefs 里还存着别的几种（digest 总览、weekly 周报、gaps 差距清单每天专门扫的那一份），
+ * 那些不是报告的一节 —— 按"报告里的条目"读的地方只读这五种。
+ */
+export const REPORT_SECTION_KINDS: SignalKind[] = ["news", "tools", "voices", "calendar", "money"];
+
 export type RssFeed = {
   /** tools 类的 RSS 源是"什么变得可能了"的新闻，落库前缀用 able:（GitHub 仓库不走 RSS）。 */
   kind: SignalKind;
@@ -142,6 +148,9 @@ export function newsSourceLabel(source: string): string {
 const CHINA_SOURCES = new Set([...RSS_FEEDS.filter((f) => f.china).map(rssSource), CN_APP_SOURCE]);
 
 const US_SOURCES = new Set(RSS_FEEDS.filter((f) => f.us).map(rssSource));
+
+/** 差距清单每天专门扫的源：中文媒体、中国 App 榜、美国媒体。 */
+export const GAP_SCAN_SOURCES: string[] = [...Array.from(CHINA_SOURCES), ...Array.from(US_SOURCES)];
 
 /** 这条是不是来自美国媒体。 */
 export function isUsSource(source: string): boolean {
