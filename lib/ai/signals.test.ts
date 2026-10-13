@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -892,5 +892,21 @@ describe("parseGapPicks（差距清单每天专门扫）", () => {
   it("可以一条都没有；不是数组不收", () => {
     expect(parseGapPicks({ picks: [] }, titles)).toEqual([]);
     expect(() => parseGapPicks({}, titles)).toThrow("picks");
+  });
+});
+
+describe("parseJapanQueries（先只写搜索词，看完资料再下结论）", () => {
+  const inputs = [
+    { index: 2, headline: "美团推出无人机送药", background: "b" },
+    { index: 5, headline: "某公司高管辞职", background: "b" },
+  ];
+  it("只留要问的那几条，空的、重复的、序号不对的丢掉；跳过的那条就是没有", () => {
+    expect(
+      parseJapanQueries(
+        { items: [{ index: 2, query: "ドローン 医薬品 配送" }, { index: 2, query: "重复" }, { index: 9, query: "x" }, { index: 5, query: " " }] },
+        inputs
+      )
+    ).toEqual([{ index: 2, query: "ドローン 医薬品 配送" }]);
+    expect(() => parseJapanQueries({}, inputs)).toThrow("items");
   });
 });

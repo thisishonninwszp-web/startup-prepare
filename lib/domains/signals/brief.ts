@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import {
   checkJapanComparisons,
   compareWithJapan,
+  planJapanQueries,
   findSurprises,
   generateSignalBrief,
   groundBrief,
@@ -15,7 +16,7 @@ import {
   type PestleDomain,
   type SituationFact,
 } from "@/lib/ai";
-import { tavilySearch } from "@/lib/external";
+import { webSearch } from "@/lib/web-search";
 import { mergeSources } from "./sources";
 import { fetchArticle } from "./article";
 import { fetchReadme } from "./github";
@@ -150,12 +151,13 @@ async function linkToQuestions(
   return result;
 }
 
-/** 每句"日本这边"搜几篇资料来核实。 */
+/** 每句"日本这边"搜几篇资料（另外再搜这么多篇融资的）。 */
 const JAPAN_SEARCH_RESULTS = 3;
 
 /**
- * 中文媒体的那几条：先让 AI 说"日本这边有没有"，再拿它给的日语搜索词上网查，逐句核实。
- * 核实失败就保留原来的说法、不带核实结果（页面上显示"没上网查过"）。
+ * "日本这边有没有"（反方向是"中国那边"）：先只写搜索词 → 上网找（同时搜一次"有没有公司刚拉到投资"）→
+ * 看着资料下结论 → 再逐句核实原文。以前是先凭印象写结论再去查，日本有它不知道的服务时只会写"没有"，查不到也发现不了。
+ * 写搜索词失败就拿标题去搜；核实失败就保留结论、不带核实结果（页面上显示"没上网查过"）。
  */
 export async function compareAndCheckJapan(
   picks: { index: number; headline: string; background: string }[],
@@ -163,23 +165,30 @@ export async function compareAndCheckJapan(
 ): Promise<Map<number, JapanComparison>> {
   const result = new Map<number, JapanComparison>();
   if (picks.length === 0) return result;
-  const comparisons = await compareWithJapan(picks, side);
+  const planned = await planJapanQueries(picks, side).catch((e) => {
+    console.error("brief japan queries failed, searching by headline", e);
+    return null;
+  });
+  const queryOf = new Map((planned ?? []).map((q) => [q.index, q.query]));
+  // 美国、反方向的提示会跳过不是产品、服务、做法的那几条：没给搜索词的不搜，省额度
+  const searchable = planned && side !== "japan" ? picks.filter((p) => queryOf.has(p.index)) : picks;
+  const sources = new Map(
+    await Promise.all(
+      searchable.map(async (p) => {
+        const query = queryOf.get(p.index) || `${side === "china" ? "中国" : "日本"} ${p.headline}`;
+        const [found, funding] = await Promise.all([
+          webSearch(query, JAPAN_SEARCH_RESULTS).catch(() => []),
+          webSearch(`${query} ${side === "china" ? "融资" : "資金調達"}`, JAPAN_SEARCH_RESULTS).catch(() => []),
+        ]);
+        return [p.index, mergeSources([found, funding], JAPAN_SEARCH_RESULTS * 2)] as const;
+      })
+    )
+  );
+  const comparisons = (await compareWithJapan(picks, side, sources)).map((c) => ({ ...c, query: queryOf.get(c.index) || c.query }));
   for (const c of comparisons) result.set(c.index, c);
   try {
-    const sources = await Promise.all(
-      comparisons.map(async (c) => {
-        const headline = picks.find((p) => p.index === c.index)?.headline ?? "";
-        const query = c.query || `${side === "china" ? "中国" : "日本"} ${headline}`;
-        // 再搜一次"××× 資金調達 / 融资"：那边有没有公司刚为这件事拉到投资（"没有"难证明，"有人刚拿到钱"好查）
-        const [found, funding] = await Promise.all([
-          tavilySearch(query, JAPAN_SEARCH_RESULTS).catch(() => []),
-          tavilySearch(`${query} ${side === "china" ? "融资" : "資金調達"}`, JAPAN_SEARCH_RESULTS).catch(() => []),
-        ]);
-        return mergeSources([found, funding], JAPAN_SEARCH_RESULTS * 2);
-      })
-    );
     const checked = await checkJapanComparisons(
-      comparisons.map((comparison, i) => ({ comparison, sources: sources[i] })),
+      comparisons.map((comparison) => ({ comparison, sources: sources.get(comparison.index) ?? [] })),
       side
     );
     for (const c of checked) result.set(c.index, c);
@@ -297,6 +306,28 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   const draft = await generateSignalBrief(kind, candidates);
   const { more, practice } = draft;
 
+  // "日本这边有没有"要先上网搜再写，是最慢的一段：草稿一出来就开始，和下面读正文、重写并行。
+  // 用的是草稿的标题和背景（只根据标题和简介写的），对"日本有没有"够用了。
+  const japanComparisons = Promise.all([
+    // 中国的条目和美国的条目都问"日本有没有"，结果放在同一组字段里，origin 区分出发地
+    Promise.all([
+      compareAndCheckJapan(draft.picks.filter((p) => candidates[p.index].china)),
+      compareAndCheckJapan(draft.picks.filter((p) => candidates[p.index].us), "us"),
+    ])
+      .then(([cn, us]) => new Map([...Array.from(cn), ...Array.from(us)]))
+      .catch((e) => {
+        console.error("brief japan comparison failed", e);
+        return new Map<number, JapanComparison>();
+      }),
+    // 反方向只在"今天的世界"里问：日本的条目讲的是一种产品、服务或做法时，中国那边有没有
+    kind === "news"
+      ? compareAndCheckJapan(draft.picks.filter((p) => !candidates[p.index].china && !candidates[p.index].us), "china").catch((e) => {
+          console.error("brief china comparison failed", e);
+          return new Map<number, JapanComparison>();
+        })
+      : Promise.resolve(new Map<number, JapanComparison>()),
+  ]);
+
   // 第二步：只给挑中的这几条抓正文（工具抓 README），按正文重写，原文依据由代码核对。
   // 抓不到正文、或重写没有一句依据对得上的，保留草稿并标"只根据标题和简介写的"。
   // Google News 的跳转链接会先还原成原文地址再抓；还原出来的地址也换到报告里的"原文"链接上
@@ -334,27 +365,10 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     return g ? { ...p, headline: g.headline, background: g.background, forYou: g.forYou } : p;
   });
 
-  // 下面三件互不依赖，一起跑（cron 只有 60 秒）：
-  // 中文媒体的那几条问"日本这边有没有"并上网核实；单独找最多两条真跟他连得上的；
-  // 哪几条直接关系到他在追的问题。失败都只是少了那一行。
-  const [japan, chinaSide, personal, related, surprises] = await Promise.all([
-    // 中国的条目和美国的条目都问"日本有没有"，结果放在同一组字段里，origin 区分出发地
-    Promise.all([
-      compareAndCheckJapan(picks.filter((p) => candidates[p.index].china)),
-      compareAndCheckJapan(picks.filter((p) => candidates[p.index].us), "us"),
-    ])
-      .then(([cn, us]) => new Map([...Array.from(cn), ...Array.from(us)]))
-      .catch((e) => {
-        console.error("brief japan comparison failed", e);
-        return new Map<number, JapanComparison>();
-      }),
-    // 反方向只在"今天的世界"里问：日本的条目讲的是一种产品、服务或做法时，中国那边有没有
-    kind === "news"
-      ? compareAndCheckJapan(picks.filter((p) => !candidates[p.index].china && !candidates[p.index].us), "china").catch((e) => {
-          console.error("brief china comparison failed", e);
-          return new Map<number, JapanComparison>();
-        })
-      : Promise.resolve(new Map<number, JapanComparison>()),
+  // 下面几件互不依赖，一起跑（cron 只有 60 秒）：等上面已经开始的"日本这边有没有"；单独找最多两条真跟他连得上的；
+  // 哪几条直接关系到他在追的问题；找"意外"。失败都只是少了那一行。
+  const [[japan, chinaSide], personal, related, surprises] = await Promise.all([
+    japanComparisons,
     (async () => {
       const links = new Map<number, { personal: string; edge?: boolean }>();
       try {

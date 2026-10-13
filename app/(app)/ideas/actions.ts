@@ -16,7 +16,7 @@ import {
 } from "@/lib/ai";
 import { listCouncilPersonas } from "@/app/(app)/council/queries";
 import { getRelevantKnowledgeCards } from "@/app/(app)/knowledge/queries";
-import { tavilySearch } from "@/lib/external";
+import { webSearch } from "@/lib/web-search";
 import { getLinkedSelfRecords } from "@/lib/domains/decision-self/queries";
 import { renderSelfContext, sourceKey, turnsForSelfContext, type SelfRecord } from "@/lib/domains/decision-self/domain";
 import {
@@ -690,7 +690,7 @@ export async function runRealityCheck(
       .filter(Boolean)
       .join(" ")
       .slice(0, 200) || "创业方向";
-  const sources = await tavilySearch(query);
+  const sources = await webSearch(query);
   return realityCheck(renderHypothesis(h), sources);
 }
 

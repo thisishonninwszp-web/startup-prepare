@@ -10,7 +10,8 @@ import {
   digestExternal,
   analyzeExternalBatch,
 } from "@/lib/ai";
-import { tavilySearch, tavilyExtract } from "@/lib/external";
+import { tavilyExtract } from "@/lib/external";
+import { webSearch } from "@/lib/web-search";
 import { crawlToStaging } from "@/lib/external-crawl";
 import {
   PAIN_TAGS,
@@ -174,7 +175,7 @@ export async function scanExternalSignals(
   const t = topic.trim();
   if (!t) return [];
   await requireUserId();
-  const sources = await tavilySearch(t);
+  const sources = await webSearch(t);
   return digestExternal(t, sources);
 }
 

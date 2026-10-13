@@ -11,7 +11,7 @@ import {
   type SearchSource,
   type StepEvidence,
 } from "@/lib/ai";
-import { tavilySearch } from "@/lib/external";
+import { webSearch } from "@/lib/web-search";
 import { getSignalDetail } from "./analysis";
 import { fetchArticleBody } from "./article";
 import {
@@ -260,7 +260,7 @@ async function scoutMaterials(
   let searched: SearchSource[] = [];
   try {
     const queries = await planScoutQueries(input);
-    const results = await Promise.all(queries.map((q) => tavilySearch(q.query, SCOUT_RESULTS_PER_QUERY).catch(() => [])));
+    const results = await Promise.all(queries.map((q) => webSearch(q.query, SCOUT_RESULTS_PER_QUERY).catch(() => [])));
     searched = results.flat().filter((r) => r.url && r.content);
   } catch (e) {
     console.error("inference scout failed", e);
@@ -273,8 +273,8 @@ async function scoutMaterials(
 async function findStepEvidence(claim: string, query: string, counterQuery: string): Promise<StepEvidence[]> {
   try {
     const [pro, con] = await Promise.all([
-      tavilySearch(query || claim, SEARCH_RESULTS_PER_SIDE).catch(() => []),
-      counterQuery ? tavilySearch(counterQuery, SEARCH_RESULTS_PER_SIDE).catch(() => []) : Promise.resolve([]),
+      webSearch(query || claim, SEARCH_RESULTS_PER_SIDE).catch(() => []),
+      counterQuery ? webSearch(counterQuery, SEARCH_RESULTS_PER_SIDE).catch(() => []) : Promise.resolve([]),
     ]);
     const seen = new Set<string>();
     const sources = [...pro, ...con].filter((r) => r.url && r.content && !seen.has(r.url) && seen.add(r.url));

@@ -113,6 +113,36 @@ export async function executeAiText(
   context: AiCallContext,
   request: AiGenerateContentRequest
 ): Promise<string> {
+  return executeAiCall(context, request, (_response, text) => text);
+}
+
+/** Google 搜索找到的一篇网页（链接是 Google 的跳转地址，要跟一次跳转才是原网页）。 */
+export type GroundedSource = { uri: string; title: string };
+
+/**
+ * 让模型带着 Google 搜索回答，只取它找到的来源链接，不要它写的那段话 ——
+ * 原文由调用方自己去抓、自己核对（AI 的总结没法逐字核对）。
+ */
+export async function executeAiGroundedSearch(
+  context: AiCallContext,
+  request: AiGenerateContentRequest
+): Promise<GroundedSource[]> {
+  return executeAiCall(context, request, (response) => {
+    const chunks = (response as { candidates?: { groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] } }[] })
+      .candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+    const seen = new Set<string>();
+    return chunks
+      .map((c) => ({ uri: c.web?.uri ?? "", title: c.web?.title ?? "" }))
+      .filter((c) => c.uri && !seen.has(c.uri) && seen.add(c.uri));
+  });
+}
+
+/** 一次 AI 调用：记日志、处理空输出和错误；read 从原始响应里取调用方要的东西。 */
+async function executeAiCall<T>(
+  context: AiCallContext,
+  request: AiGenerateContentRequest,
+  read: (response: unknown, text: string) => T
+): Promise<T> {
   const startedAt = Date.now();
   const requestId = cryptoRandomId();
   const timeoutMs = context.timeoutMs ?? 30_000;
@@ -163,7 +193,7 @@ export async function executeAiText(
       status: "success",
       durationMs: Date.now() - startedAt,
     });
-    return text;
+    return read(response, text);
   } catch (error) {
     const gatewayError =
       error instanceof AiGatewayError

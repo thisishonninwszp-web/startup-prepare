@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { checkAnalogs, findHistoricalAnalogs, type HistoricalAnalog } from "@/lib/ai";
-import { tavilySearch } from "@/lib/external";
+import { webSearch } from "@/lib/web-search";
 import { getSignalDetail, type StoredHistory } from "./analysis";
 import { fetchArticleBody } from "./article";
 import { verifyBooks } from "./books";
@@ -23,7 +23,7 @@ const MAX_SOURCES_PER_ANALOG = 5;
 
 async function searchOne(query: string) {
   try {
-    return await tavilySearch(query, SEARCH_RESULTS_PER_QUERY);
+    return await webSearch(query, SEARCH_RESULTS_PER_QUERY);
   } catch {
     return [];
   }

@@ -5,6 +5,8 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tallyFeedback } from "@/lib/domains/signals/feedback";
 import { HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
+import { tavilyUsage } from "@/lib/external";
+import { googleSearchCount } from "@/lib/web-search";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +31,12 @@ export default async function SourcesPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [feedback, health] = await Promise.all([tallyFeedback(user.id, HEALTH_DAYS), sourceHealth(user.id)]);
+  const [feedback, health, google, tavily] = await Promise.all([
+    tallyFeedback(user.id, HEALTH_DAYS),
+    sourceHealth(user.id),
+    googleSearchCount().catch(() => null),
+    tavilyUsage(),
+  ]);
   const anyFeedback = feedback.some((f) => f.useful + f.useless > 0);
 
   return (
@@ -63,6 +70,39 @@ export default async function SourcesPage() {
             这里空着。报告每一节底下有「有用 / 没用」，看完顺手点一下，两周后这里就能看出哪节一直在被跳过。
           </p>
         )}
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-base font-semibold">上网搜索用了多少</h2>
+        <ul className="space-y-1 text-sm leading-7">
+          <li>
+            Google（Gemini 自带的搜索）：
+            {google ? (
+              <span className="font-mono text-xs text-muted-foreground">
+                最近 24 小时 {google.total} 次{google.failed > 0 ? `，其中 ${google.failed} 次出错、改用了 Tavily` : ""}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">这次没数出来。</span>
+            )}
+          </li>
+          <li>
+            Tavily（Google 搜不到或出错时才用）：
+            {tavily === "unconfigured" ? (
+              <span className="text-muted-foreground">没配 Key，Google 不行时就搜不到了。</span>
+            ) : tavily ? (
+              <span className="font-mono text-xs text-muted-foreground">
+                这个周期用了 {tavily.used}
+                {tavily.limit !== null ? ` / ${tavily.limit}` : ""} 次
+              </span>
+            ) : (
+              <span className="text-muted-foreground">用量这次没读到。</span>
+            )}
+          </li>
+        </ul>
+        <p className="mt-2 text-xs leading-6 text-muted-foreground">
+          Google 这边免费层一天 500 次、付费层一天 1500 次不收钱（按 Google 的日子算，不是日本时间）。往下推每推一层大约搜 9 次，
+          差距清单每天扫一轮大约 8 次。
+        </p>
       </section>
 
       <section>

@@ -4,7 +4,8 @@ import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { tavilyExtract, tavilySearch } from "@/lib/external";
+import { tavilyExtract } from "@/lib/external";
+import { webSearch } from "@/lib/web-search";
 import {
   answerAsCustomerProxy,
   buildCustomerProxy,
@@ -228,7 +229,7 @@ export async function searchCustomerMaterials(
   };
   const settled = await Promise.allSettled(
     (customerCase.markets as CustomerMarket[]).map(async (market) => {
-      const results = await tavilySearch(queryByMarket[market], 8);
+      const results = await webSearch(queryByMarket[market], 8);
       let inserted = 0;
       for (const result of results) {
         if (!result.url || !result.content.trim()) continue;

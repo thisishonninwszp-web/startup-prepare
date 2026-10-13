@@ -8,7 +8,7 @@ import {
   type QuestionInput,
   type StepEvidence,
 } from "@/lib/ai";
-import { tavilySearch } from "@/lib/external";
+import { webSearch } from "@/lib/web-search";
 import { researchHistory, verifyAnalog } from "./history";
 import type { BriefItem } from "./brief";
 import {
@@ -148,7 +148,7 @@ export async function archiveQuestion(userId: string, id: string): Promise<void>
 async function searchSide(query: string) {
   if (!query) return [];
   try {
-    return (await tavilySearch(query, SEARCH_RESULTS_PER_SIDE)).filter((r) => r.url && r.content);
+    return (await webSearch(query, SEARCH_RESULTS_PER_SIDE)).filter((r) => r.url && r.content);
   } catch {
     return [];
   }

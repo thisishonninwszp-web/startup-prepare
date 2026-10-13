@@ -1531,10 +1531,86 @@ export function parseJapanComparisons(value: unknown, inputs: JapanInput[]): Jap
   return out;
 }
 
-/** 给精选里中文媒体的那几条各写一句"日本这边"。凭 AI 的印象，没上网查，页面上要标出来。 */
-export async function compareWithJapan(inputs: JapanInput[], side: CompareSide = "japan"): Promise<JapanComparison[]> {
+// 先搜再写：以前是先凭印象写"日本有没有"，再拿它自己想的搜索词去核实 —— 核实只能纠错：
+// 日本有一个它不知道的服务，它会先写"没有"，资料里没提到也只是标"没查到"，永远发现不了。
+// 现在先只写搜索词，上网找完，看着资料再下结论；核实那一步照旧。
+
+const QUERY_PROMPTS: Record<CompareSide, string> = {
+  japan: `下面几条是中国正在发生的事。每条写一个日语搜索词，3 到 6 个词，用来上网查"日本现在有没有同样的东西"。
+写成日本这边的说法，不要直译中国的产品名（例：微信的 AI 助手 → "LINE AI アシスタント 機能"；即时零售 → "即配 ネットスーパー 30分"）。`,
+  us: `下面几条是美国正在发生的事。只给讲的是一种产品、服务或商业做法的那几条写，纯技术讨论、政治、事故、人事类的跳过。
+每条写一个日语搜索词，3 到 6 个词，用来上网查"日本现在有没有同样的东西"。
+写成日本这边的说法，不要直译美国的产品名（例：DoorDash 的店铺代送 → "フードデリバリー 小売 代行"；按用量收费的 SaaS → "従量課金 SaaS 日本"）。`,
+  china: `下面几条是日本正在发生的事。只给讲的是一种产品、服务或商业做法的那几条写，政治、外交、宏观数据、事故、人事、法规类的跳过。
+每条写一个中文搜索词，3 到 6 个词，用来上网查"中国现在有没有同样的东西"。写成中国这边的说法，不要直译日文名。`,
+};
+
+export type JapanQuery = { index: number; query: string };
+
+export function parseJapanQueries(value: unknown, inputs: JapanInput[]): JapanQuery[] {
+  const items = (value as { items?: unknown } | null)?.items;
+  if (!Array.isArray(items)) throw new Error("缺少 items");
+  const wanted = new Set(inputs.map((i) => i.index));
+  const out: JapanQuery[] = [];
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue;
+    const v = raw as Record<string, unknown>;
+    const index = typeof v.index === "number" ? v.index : Number(v.index);
+    const query = typeof v.query === "string" ? v.query.trim().slice(0, 80) : "";
+    if (!wanted.has(index) || !query || out.some((o) => o.index === index)) continue;
+    out.push({ index, query });
+  }
+  return out;
+}
+
+/** 只写搜索词，不下结论（结论看完资料再写）。 */
+export async function planJapanQueries(inputs: JapanInput[], side: CompareSide = "japan"): Promise<JapanQuery[]> {
   if (inputs.length === 0) return [];
   const contents = inputs.map((i) => `[${i.index}] ${i.headline}\n${i.background}`).join("\n\n");
+  return executeAiJson(
+    { operation: `brief_${side}_query`, module: "unknown", outputMode: "json", timeoutMs: 20_000 },
+    () => ({
+      model: MODEL,
+      contents,
+      config: {
+        systemInstruction: `${QUERY_PROMPTS[side]}\n\n只输出 JSON：{"items":[{"index":序号,"query":"…"}]}`,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 800,
+      },
+    }),
+    (value) => parseJapanQueries(value, inputs)
+  );
+}
+
+/** 有资料时加在比较的提示后面：先看资料再下结论。 */
+function withSourcesRule(side: CompareSide): string {
+  const place = side === "china" ? "中国" : "日本";
+  return `
+
+每条下面附了先上网搜到的资料（用${place}这边的说法搜的）。先看资料，再下结论：
+- 资料里有${place}的同类服务或做法，就照实写"有，"或"有类似的，但没普及"，可以点名资料里出现的服务和公司（只点名资料里有的）。
+- 资料里没提到，不等于${place}没有 —— 资料和这件事对不上时，照你知道的写，但不点名。`;
+}
+
+/**
+ * 给每条写一句"日本这边"（反方向是"中国那边"）。
+ * sources 是先搜到的资料（按序号）；没有资料时就是 AI 的印象，页面上要标出来。
+ */
+export async function compareWithJapan(
+  inputs: JapanInput[],
+  side: CompareSide = "japan",
+  sources?: Map<number, SearchSource[]>
+): Promise<JapanComparison[]> {
+  if (inputs.length === 0) return [];
+  const hasSources = !!sources && Array.from(sources.values()).some((s) => s.length > 0);
+  const contents = inputs
+    .map((i) => {
+      const found = sources?.get(i.index) ?? [];
+      const block = found.map((src, j) => `  [资料 ${j + 1}] ${src.title}\n  ${src.content.slice(0, 600)}`).join("\n");
+      return `[${i.index}] ${i.headline}\n${i.background}${hasSources ? `\n搜到的资料：\n${block || "  （没搜到）"}` : ""}`;
+    })
+    .join("\n\n");
   return executeAiJson(
     { operation: `brief_${side}`, module: "unknown", outputMode: "json", timeoutMs: 30_000 },
     (attempt) => ({
@@ -1543,7 +1619,8 @@ export async function compareWithJapan(inputs: JapanInput[], side: CompareSide =
         contents +
         (attempt === 1 ? "\n\n上一次输出没通过校验：每条 japan 第一句必须以规定的四种开头之一起头，不许写空话。" : ""),
       config: {
-        systemInstruction: side === "japan" ? JAPAN_PROMPT : side === "us" ? US_PROMPT : CHINA_PROMPT,
+        systemInstruction:
+          (side === "japan" ? JAPAN_PROMPT : side === "us" ? US_PROMPT : CHINA_PROMPT) + (hasSources ? withSourcesRule(side) : ""),
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 1500,

@@ -70,3 +70,25 @@ export async function tavilyExtract(url: string): Promise<TavilyResult> {
   const first = results[0];
   return { title: first?.title || url, url, content: first?.content ?? "" };
 }
+
+/**
+ * Tavily 这个账单周期用了多少次、上限多少（GET /usage）。没配 Key 返回 "unconfigured"，读不到返回 null。
+ * 上限优先看这个 Key 的，没设就看账户套餐的。
+ */
+export async function tavilyUsage(): Promise<{ used: number; limit: number | null } | "unconfigured" | null> {
+  if (!process.env.TAVILY_API_KEY) return "unconfigured";
+  try {
+    const res = await fetch(`${TAVILY_BASE}/usage`, { headers: authHeaders(), cache: "no-store", signal: AbortSignal.timeout(5_000) });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      key?: { usage?: number; limit?: number | null };
+      account?: { plan_usage?: number; plan_limit?: number | null };
+    };
+    const used = data.key?.usage ?? data.account?.plan_usage;
+    if (typeof used !== "number") return null;
+    const limit = data.key?.limit ?? data.account?.plan_limit ?? null;
+    return { used, limit: typeof limit === "number" ? limit : null };
+  } catch {
+    return null;
+  }
+}
