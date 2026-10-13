@@ -165,7 +165,7 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
               <li key={r.id}>
                 <p className="text-sm text-muted-foreground">{r.news_title}</p>
                 <p className="mt-1 border-l-2 border-primary pl-3 text-base font-medium leading-8">{r.judgment}</p>
-                <OutcomeEvidenceView judgmentId={r.id} evidence={r.outcome_evidence ?? null} auto={i < AUTO_EVIDENCE} />
+                <OutcomeEvidenceView judgmentId={r.id} evidence={r.outcome_evidence ?? null} auto={i < AUTO_EVIDENCE && r.outcome_evidence === null} />
                 <ResolveJudgment predictionId={r.prediction_id} />
               </li>
             ))}

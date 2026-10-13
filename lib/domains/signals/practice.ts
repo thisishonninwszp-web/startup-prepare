@@ -85,7 +85,8 @@ function flatten(row: Record<string, unknown>): JudgmentRow {
     tags: (row.tags as string[] | null) ?? [],
     question_id: (row.question_id as string | null) ?? null,
     miss_reason: (row.miss_reason as JudgmentRow["miss_reason"]) ?? null,
-    outcome_evidence: (row.outcome_evidence as OutcomeEvidence | null) ?? null,
+    // 064 没跑时这一列不在结果里：undefined（页面就不自动去查，免得查完存不进去），跑过还没查是 null
+    outcome_evidence: "outcome_evidence" in row ? ((row.outcome_evidence as OutcomeEvidence | null) ?? null) : undefined,
   };
 }
 

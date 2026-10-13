@@ -81,7 +81,7 @@ export type JudgmentRow = {
   question_id: string | null;
   /** 看错时选的原因（迁移 062 之前没有）。 */
   miss_reason?: MissReason | null;
-  /** 到期时上网查到的"现在实际怎样"（迁移 064 之前没有）。 */
+  /** 到期时上网查到的"现在实际怎样"。null：还没查；undefined：迁移 064 没跑、这一列还不存在。 */
   outcome_evidence?: OutcomeEvidence | null;
 };
 
