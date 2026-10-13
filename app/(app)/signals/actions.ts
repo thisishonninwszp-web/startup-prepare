@@ -17,6 +17,8 @@ import { findJapanGap } from "@/lib/domains/signals/gaps";
 import { runGapRechecks, runGapScan } from "@/lib/domains/signals/gap-scan";
 import { chooseLabVariant, runSelectionLab, type LabVariantKey } from "@/lib/domains/signals/lab";
 import { answerDrill, generateDrills, type AnsweredDrill } from "@/lib/domains/signals/drills";
+import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
+import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
 import { setFeedback, type FeedbackKind } from "@/lib/domains/signals/feedback";
@@ -30,7 +32,7 @@ import {
   researchQuestion,
   updateCriterion,
 } from "@/lib/domains/signals/questions";
-import { gapIdeaDraft, gapObservationText, type GapSide } from "@/lib/domains/signals/gaps-shared";
+import { gapIdeaDraft, gapObservationText, transferKey, type GapSide } from "@/lib/domains/signals/gaps-shared";
 import { createIdeaFromTheme } from "../ideas/actions";
 import {
   checkOutcomeEvidence,
@@ -478,14 +480,27 @@ export async function gapToIdeaAction(
 ): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    const gap = await findJapanGap(userId, signalId, side);
+    const [gap, transfers] = await Promise.all([findJapanGap(userId, signalId, side), loadGapTransfers(userId)]);
     if (!gap) throw new Error("清单里找不到这一条了");
-    const draft = gapIdeaDraft(gap, side);
+    const draft = gapIdeaDraft(gap, side, transfers.get(transferKey(side, signalId)));
     const idea = await createIdeaFromTheme(draft.title, draft.hypothesis, draft.tags);
     revalidatePath("/ideas");
     return { ok: true, id: idea.id };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没变成想法") };
+  }
+}
+
+/** 差距清单里的一条：能不能搬过来（二三十秒）。 */
+export async function analyzeGapTransferAction(
+  signalId: string,
+  side: GapSide
+): Promise<{ ok: true; analysis: GapTransfer } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, analysis: await analyzeGapTransfer(userId, signalId, side) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没查成") };
   }
 }
 

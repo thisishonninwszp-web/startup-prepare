@@ -4,6 +4,7 @@ import {
   applyRechecks,
   collectJapanGaps,
   dueForRecheck,
+  gapIdeaDraft,
   gapObservationText,
   isGapObserved,
   isJapanGap,
@@ -128,5 +129,25 @@ describe("每月重查", () => {
     expect(due.map((d) => d.signal_id)).toEqual(["old", "mid"]);
     expect(dueForRecheck([g("edge", "2026-10-14")], "2026-11-13", 5).map((d) => d.signal_id)).toEqual(["edge"]);
     expect(dueForRecheck([g("edge", "2026-10-15")], "2026-11-13", 5)).toEqual([]);
+  });
+});
+
+describe("变成想法：查过能不能搬过来的，把这边不成立的那一条填成最关键假设", () => {
+  it("只填查到出处、这边不成立的那一条；没有就不填", () => {
+    const [gap] = collectJapanGaps([{ brief_date: "2026-10-12", items: [item({})] }]);
+    const basis = [{ url: "u", title: "t", excerpt: "e" }];
+    const transfer = {
+      created_at: "",
+      precedent: null,
+      conditions: [
+        { name: "人口够密", there: "t", here: "日本也够密。", holds: "yes" as const, basis },
+        { name: "大家用微信", there: "t", here: "日本主要用 LINE。", holds: "no" as const, basis },
+      ],
+    };
+    expect(gapIdeaDraft(gap, "japan", transfer).hypothesis.riskiest_assumption).toContain("「大家用微信」");
+    expect(gapIdeaDraft(gap, "japan", { ...transfer, conditions: [{ ...transfer.conditions[1], basis: [] }] }).hypothesis).not.toHaveProperty(
+      "riskiest_assumption"
+    );
+    expect(gapIdeaDraft(gap, "japan").hypothesis).not.toHaveProperty("riskiest_assumption");
   });
 });

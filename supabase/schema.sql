@@ -5625,3 +5625,22 @@ alter table signal_drills enable row level security;
 drop policy if exists "signal_drills_owner" on signal_drills;
 create policy "signal_drills_owner" on signal_drills
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 067：差距清单 —— 能不能搬过来（signal_gap_transfers）
+-- ============================================================================
+
+create table if not exists signal_gap_transfers (
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  signal_id   uuid not null,
+  side        text not null check (side in ('japan', 'us', 'china')),
+  analysis    jsonb not null,
+  created_at  timestamptz not null default now(),
+  primary key (user_id, signal_id, side)
+);
+
+alter table signal_gap_transfers enable row level security;
+
+drop policy if exists "signal_gap_transfers_owner" on signal_gap_transfers;
+create policy "signal_gap_transfers_owner" on signal_gap_transfers
+  for all using (auth.uid() = user_id);

@@ -104,17 +104,22 @@ export function gapObservationText(gap: JapanGap, note: string, side: GapSide = 
 }
 
 /**
- * 变成一个想法时预填的内容：只填清单里有依据的两格（替代方案 = 这边现在怎样，方案 = 把那边的做法搬过来），
+ * 变成一个想法时预填的内容：只填清单里有依据的几格（替代方案 = 这边现在怎样，方案 = 把那边的做法搬过来；
+ * 查过"能不能搬过来"、有一条这边不成立（查到出处）的，填成最关键假设），
  * 目标用户、痛点、愿付多少留给他自己写 —— 那几格才是要去验证的。状态是"观察"，不跳级。
  */
-export function gapIdeaDraft(gap: JapanGap, side: GapSide = "japan") {
+export function gapIdeaDraft(gap: JapanGap, side: GapSide = "japan", transfer?: GapTransfer | null) {
   const { there, here } = gapPlaces(side);
+  const blocker = transfer?.conditions.find((c) => c.holds === "no" && c.basis.length > 0);
   return {
     title: `${here}版：${gap.headline}`.slice(0, 60),
     hypothesis: {
       alternative: `${here}这边：${gap.japan}`,
       solution: `把${there}已经跑通的做法带到${here}：${gap.headline}`,
       ...(gap.whyNow ? { why_insufficient: `为什么是现在：${gap.whyNow}` } : {}),
+      ...(blocker
+        ? { riskiest_assumption: `在${there}靠「${blocker.name}」做成，${here}这边这一条不成立：${blocker.here}。不先解决它，搬过来也跑不起来。` }
+        : {}),
     },
     tags: ["外部", side === "us" ? "美日差距" : "中日差距"],
   };
@@ -220,4 +225,17 @@ export function dueForRecheck(open: (OpenGap & { side: GapSide })[], today: stri
     .filter((g) => daysBetween(g.lastChecked, today) >= RECHECK_AFTER_DAYS)
     .sort((a, b) => a.lastChecked.localeCompare(b.lastChecked))
     .slice(0, max);
+}
+
+// ── 能不能搬过来 ───────────────────────────────────────────────────────────
+
+/** 一条差距的"能不能搬过来"：每个条件这边成不成立、有没有人试过。存在 signal_gap_transfers。 */
+export type GapTransfer = {
+  conditions: { name: string; there: string; here: string; holds: "yes" | "no" | "unclear"; basis: { url: string; title: string; excerpt: string }[] }[];
+  precedent: { text: string; basis: { url: string; title: string; excerpt: string }[] } | null;
+  created_at: string;
+};
+
+export function transferKey(side: GapSide, signalId: string): string {
+  return `${side}:${signalId}`;
 }

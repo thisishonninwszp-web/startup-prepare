@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -978,5 +978,43 @@ describe("历史题：出题和核实", () => {
       [d.question, true, "supported"],
       ["第三道", false, "corrected"],
     ]);
+  });
+});
+
+describe("能不能搬过来", () => {
+  const condition = { name: "骑手便宜好招", there: "中国外卖骑手超过一千万人。", query: "配達員 人手不足 2026" };
+
+  it("parseTransferPlan：缺字段的条件丢掉；一条都没有不收", () => {
+    const plan = parseTransferPlan({
+      conditions: [condition, { name: "人口够密", there: "", query: "x" }, { name: "法规允许", there: "无人机送药有试点牌照。", query: "ドローン 医薬品 配送 規制" }],
+      precedentQuery: "フードデリバリー 撤退 日本",
+    });
+    expect(plan.conditions.map((c) => c.name)).toEqual(["骑手便宜好招", "法规允许"]);
+    expect(plan.precedentQuery).toBe("フードデリバリー 撤退 日本");
+    expect(() => parseTransferPlan({ conditions: [] })).toThrow();
+  });
+
+  it("parseTransferJudgment：拿不出对得上的原文，就一律说不清；先例没原文当没查到", () => {
+    const sources = [{ title: "人手不足", url: "https://example.jp/a", content: "物流業界の配達員は2026年に約14万人不足すると試算されている。" }];
+    const judged = parseTransferJudgment(
+      {
+        items: [
+          { i: 0, here: "日本配送员 2026 年预计缺约 14 万人。", holds: "no", basis: [{ source: 1, excerpt: "配達員は2026年に約14万人不足する" }] },
+          { i: 1, here: "日本也有试点。", holds: "yes", basis: [{ source: 1, excerpt: "资料里没有的话" }] },
+        ],
+        precedent: { text: "DiDi Food 在日本撤退过。", basis: [{ source: 1, excerpt: "没有这句" }] },
+      },
+      [
+        { condition, sources },
+        { condition: { ...condition, name: "法规允许" }, sources },
+      ],
+      sources
+    );
+    expect(judged.conditions.map((c) => [c.name, c.holds])).toEqual([
+      ["骑手便宜好招", "no"],
+      ["法规允许", "unclear"],
+    ]);
+    expect(judged.conditions[1].here).toBe("没查到这边的情况。");
+    expect(judged.precedent).toBeNull();
   });
 });

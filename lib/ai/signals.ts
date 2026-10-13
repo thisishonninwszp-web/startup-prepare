@@ -2458,6 +2458,171 @@ export async function extractStepEvidence(claim: string, sources: SearchSource[]
   );
 }
 
+// ── 差距清单：能不能搬过来 ─────────────────────────────────────────────────
+
+export type TransferPlan = {
+  conditions: { name: string; there: string; query: string }[];
+  precedentQuery: string;
+};
+
+export type TransferCondition = {
+  name: string;
+  there: string;
+  here: string;
+  /** 这一条在这边成不成立。没查到出处的一律 unclear —— 不凭印象下结论。 */
+  holds: "yes" | "no" | "unclear";
+  basis: { url: string; title: string; excerpt: string }[];
+};
+
+export type TransferJudgment = {
+  conditions: TransferCondition[];
+  /** 有人试过把它带到这边：谁、什么时候、结果怎样（原文由代码核对）。没查到为 null。 */
+  precedent: { text: string; basis: { url: string; title: string; excerpt: string }[] } | null;
+};
+
+const MAX_TRANSFER_CONDITIONS = 5;
+
+const transferPlanPrompt = (there: string, here: string) => `下面是${there}已经有、${here}还没有（或没普及）的一样东西。想知道能不能把它搬到${here}。
+很多东西在${here}没有，不是因为没人想到，而是它在${there}做成靠的条件，${here}不具备。
+
+它在${there}做成，靠的是哪几个条件？列 3 到 ${MAX_TRANSFER_CONDITIONS} 个最关键的，每个写：
+- name：条件的短名字（例："手机支付普及""骑手便宜好招""人口够密""法规允许""大家愿意为它付钱"）。
+- there：这一条在${there}是什么情况，一句，带具体的事实或数字（只写你确定的）。
+- query：查"${here}现在这一条怎样"的搜索词，用${here}的语言，3 到 8 个词，具体。
+再写 precedentQuery：查"有没有人试过把它带到${here}、结果怎样"的搜索词（${here}的语言）。
+
+不写空话（"市场潜力大""需要关注"）。用中文写 name 和 there。
+
+只输出 JSON：{"conditions":[{"name":"…","there":"…","query":"…"}],"precedentQuery":"…"}`;
+
+export function parseTransferPlan(value: unknown): TransferPlan {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const raw = Array.isArray(v.conditions) ? v.conditions : [];
+  const conditions = raw
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+    .map((c) => ({
+      name: typeof c.name === "string" ? c.name.trim().slice(0, 30) : "",
+      there: typeof c.there === "string" ? c.there.trim() : "",
+      query: typeof c.query === "string" ? c.query.trim().slice(0, 120) : "",
+    }))
+    .filter((c) => c.name && c.there && c.query)
+    .slice(0, MAX_TRANSFER_CONDITIONS);
+  if (conditions.length === 0) throw new Error("一个条件都没列出来");
+  const texts = conditions.flatMap((c) => [c.name, c.there]);
+  assertNoBanned(texts);
+  assertChineseAllowingNames(texts);
+  return { conditions, precedentQuery: typeof v.precedentQuery === "string" ? v.precedentQuery.trim().slice(0, 120) : "" };
+}
+
+/** 它在那边做成靠哪几个条件，以及查这边情况用的搜索词。 */
+export async function planTransferConditions(input: {
+  headline: string;
+  background: string;
+  hereNow: string;
+  there: string;
+  here: string;
+}): Promise<TransferPlan> {
+  const contents = [`${input.there}那边：${input.headline}`, input.background, `${input.here}这边现在：${input.hereNow}`].join("\n");
+  return executeAiJson(
+    { operation: "gap_transfer_plan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验（缺字段、空话，或没用中文）。严格按 JSON 字段重写。" : ""),
+      config: {
+        systemInstruction: transferPlanPrompt(input.there, input.here),
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    parseTransferPlan
+  );
+}
+
+const transferJudgePrompt = (here: string) => `你在看一样东西能不能搬到${here}。下面每个条件附了上网搜到的、关于${here}现在情况的资料；最后附了"有没有人试过把它带到${here}"的资料。
+
+每个条件输出：
+- i：编号。
+- here：${here}现在这一条怎样，一句，只写资料里有的。
+- holds："yes"（这一条在${here}也成立）/"no"（不成立，要搬过来得先解决它）/"unclear"（资料说不清）。
+- basis：支撑 here 的资料原文，逐字照抄（不翻译、不改字，15 到 150 字），附这个条件下面的资料编号 source。资料里没有就给空数组，holds 写 "unclear"。
+再写 precedent：先例资料里有人试过把它带到${here}的话，写 {"text":"谁、什么时候试的、结果怎样，一句","basis":[{"source":资料编号,"excerpt":"逐字原文"}]}；没有就给 null。
+
+不要打分，不要下"值得做 / 不值得做"的结论 —— 只把每个条件说清楚。叙述用简体中文（basis 照抄原文）。
+
+只输出 JSON：{"items":[{"i":0,"here":"…","holds":"no","basis":[{"source":1,"excerpt":"…"}]}],"precedent":null}`;
+
+function verifiedBasis(raw: unknown, sources: SearchSource[]): { url: string; title: string; excerpt: string }[] {
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  return (Array.isArray(raw) ? raw : [])
+    .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
+    .map((b) => {
+      const src = sources[(typeof b.source === "number" ? b.source : Number(b.source)) - 1];
+      const excerpt = typeof b.excerpt === "string" ? b.excerpt.trim() : "";
+      if (!src || squash(excerpt).length < 8 || !squash(src.content).includes(squash(excerpt))) return null;
+      return { url: src.url, title: src.title, excerpt: excerpt.slice(0, 300) };
+    })
+    .filter((b): b is { url: string; title: string; excerpt: string } => b !== null)
+    .slice(0, 2);
+}
+
+/** 拿不出对得上的原文，就不许说成立或不成立（一律说不清）；先例同理，没原文就当没查到。 */
+export function parseTransferJudgment(
+  value: unknown,
+  inputs: { condition: TransferPlan["conditions"][number]; sources: SearchSource[] }[],
+  precedentSources: SearchSource[]
+): TransferJudgment {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const items = Array.isArray(v.items) ? v.items : [];
+  const conditions = inputs.map(({ condition, sources }, i): TransferCondition => {
+    const it = items.find((r) => r && typeof r === "object" && Number((r as Record<string, unknown>).i) === i) as Record<string, unknown> | undefined;
+    const basis = verifiedBasis(it?.basis, sources);
+    const here = typeof it?.here === "string" ? it.here.trim() : "";
+    if (basis.length === 0 || !here) {
+      return { name: condition.name, there: condition.there, here: "没查到这边的情况。", holds: "unclear", basis: [] };
+    }
+    const holds = it?.holds === "yes" || it?.holds === "no" ? it.holds : "unclear";
+    return { name: condition.name, there: condition.there, here, holds, basis };
+  });
+  const p = v.precedent as Record<string, unknown> | null | undefined;
+  const precedentBasis = p ? verifiedBasis(p.basis, precedentSources) : [];
+  const precedentText = p && typeof p.text === "string" ? p.text.trim() : "";
+  const precedent = precedentText && precedentBasis.length > 0 ? { text: precedentText, basis: precedentBasis } : null;
+  const texts = [...conditions.map((c) => c.here), precedent?.text ?? ""].filter(Boolean);
+  assertNoBanned(texts);
+  assertChineseAllowingNames(texts);
+  return { conditions, precedent };
+}
+
+export async function judgeTransferConditions(
+  inputs: { condition: TransferPlan["conditions"][number]; sources: SearchSource[] }[],
+  precedentSources: SearchSource[],
+  here: string
+): Promise<TransferJudgment> {
+  const block = (sources: SearchSource[]) =>
+    sources.length > 0
+      ? sources.map((src, j) => `  [资料 ${j + 1}] ${src.title}\n  ${src.url}\n  ${src.content.slice(0, 1000)}`).join("\n")
+      : "  （没搜到资料）";
+  const contents = [
+    ...inputs.map(({ condition, sources }, i) => `【${i}】${condition.name}（那边：${condition.there}）\n${block(sources)}`),
+    `【先例】\n${block(precedentSources)}`,
+  ].join("\n\n");
+  return executeAiJson(
+    { operation: "gap_transfer_judge", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验。basis 必须逐字照抄那个条件下面资料的原文，source 是资料编号。" : ""),
+      config: {
+        systemInstruction: transferJudgePrompt(here),
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    (value) => parseTransferJudgment(value, inputs, precedentSources)
+  );
+}
+
 // ── 历史题：答完马上知道对错 ───────────────────────────────────────────────
 
 /** 历史题的期限至少在多少天以前（结果早就揭晓、网上查得到）。 */
