@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseInferenceSteps, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+
+/** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
+const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
 
 const ok = {
   background: "日银多年维持零利率，最近物价持续上涨，开始一步步加息。",
@@ -31,21 +34,21 @@ describe("parseBrief", () => {
   const brief = (picks: unknown[]) => ({ overview: "今天的世界", picks });
 
   it("序号越界、重复、不是整数的丢掉，其余保留", () => {
-    const { overview, picks } = parseBrief(brief([pick(0), pick(0), pick(9), pick("2"), pick(1.5)]), 3);
+    const { overview, picks } = parseBrief(brief([pick(0), pick(0), pick(9), pick("2"), pick(1.5)]), titles(3));
     expect(overview).toBe("今天的世界");
     expect(picks.map((p) => p.index)).toEqual([0, 2]);
   });
 
   it("一条都对不上、没有 picks、没有总述，就不收", () => {
-    expect(() => parseBrief(brief([pick(5)]), 3)).toThrow();
-    expect(() => parseBrief({ overview: "x" }, 3)).toThrow("picks");
-    expect(() => parseBrief({ picks: [pick(0)] }, 3)).toThrow("overview");
+    expect(() => parseBrief(brief([pick(5)]), titles(3))).toThrow();
+    expect(() => parseBrief({ overview: "x" }, titles(3))).toThrow("picks");
+    expect(() => parseBrief({ picks: [pick(0)] }, titles(3))).toThrow("overview");
   });
 
   it("最多 5 条；出现投资建议就作废", () => {
     const many = Array.from({ length: 8 }, (_, i) => pick(i));
-    expect(parseBrief(brief(many), 8).picks).toHaveLength(5);
-    expect(() => parseBrief(brief([{ ...pick(0), forYou: "可以抄底" }]), 3)).toThrow("抄底");
+    expect(parseBrief(brief(many), titles(8)).picks).toHaveLength(5);
+    expect(() => parseBrief(brief([{ ...pick(0), forYou: "可以抄底" }]), titles(3))).toThrow("抄底");
   });
 
 });
@@ -94,7 +97,7 @@ describe("assertChinese", () => {
     expect(() =>
       parseBrief(
         { overview: "日銀が金利を引き上げました。", picks: [{ index: 0, headline: "利上げ", background: "これは大きな変化です。", forYou: "あなたの会社に影響します。" }] },
-        1
+        titles(1)
       )
     ).toThrow("日文");
   });
@@ -105,16 +108,16 @@ describe("parseBrief 的练习题", () => {
   const base = { overview: "今天日银加息了。", picks: [pick(0), pick(3)] };
 
   it("练习题指向 picks 里的一条才收", () => {
-    const ok = parseBrief({ ...base, practice: { index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" } }, 5);
+    const ok = parseBrief({ ...base, practice: { index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。" } }, titles(5));
     expect(ok.practice).toEqual({ index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。", horizon: "3m" });
-    const off = parseBrief({ ...base, practice: { index: 1, question: "q", checkHow: "c" } }, 5);
+    const off = parseBrief({ ...base, practice: { index: 1, question: "q", checkHow: "c" } }, titles(5));
     expect(off.practice).toBeNull();
   });
 
   it("德鲁克的机会来源只认规定的几种；先例有就留", () => {
     const { picks } = parseBrief(
       { ...base, picks: [{ ...pick(0), opportunity: "demographics", precedent: "自建仓的即时配送撑不住" }, { ...pick(3), opportunity: "unexpected" }] },
-      5
+      titles(5)
     );
     expect(picks.map((p) => p.opportunity)).toEqual(["demographics", undefined]);
     expect(picks[0].precedent).toBe("自建仓的即时配送撑不住");
@@ -122,12 +125,12 @@ describe("parseBrief 的练习题", () => {
 
   it("练习题带上为什么两个方向都有可能（没有也收）", () => {
     const why = "会，因为工资在涨；不会，因为银行存款太多不缺钱。";
-    const ok = parseBrief({ ...base, practice: { index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。", whyUncertain: why } }, 5);
+    const ok = parseBrief({ ...base, practice: { index: 3, question: "三个月后定存利率会过百分之零点五吗？", checkHow: "看三大银行的公告。", whyUncertain: why } }, titles(5));
     expect(ok.practice?.whyUncertain).toBe(why);
   });
 
   it("没有练习题也收（工具报告）", () => {
-    expect(parseBrief(base, 5).practice).toBeNull();
+    expect(parseBrief(base, titles(5)).practice).toBeNull();
   });
 });
 
@@ -171,8 +174,8 @@ describe("parseSignalHistory", () => {
 
 describe("parseBrief 的日程（允许空）", () => {
   it("日程那一份一条都没有也收，别的不行", () => {
-    expect(parseBrief({ overview: "这批消息里没有写明日期的变化。", picks: [] }, 10, true).picks).toEqual([]);
-    expect(() => parseBrief({ overview: "x", picks: [] }, 10)).toThrow("picks");
+    expect(parseBrief({ overview: "这批消息里没有写明日期的变化。", picks: [] }, titles(10), true).picks).toEqual([]);
+    expect(() => parseBrief({ overview: "x", picks: [] }, titles(10))).toThrow("picks");
   });
 });
 
@@ -420,14 +423,57 @@ describe("同一件事只留一条 + 也值得一看", () => {
           pick(4, "OpenAI Dots"), pick(5, "微软紧急刹车"), pick(6, "乐天漫游缩小"),
         ],
         more: [
-          { index: 7, event: "物流缺人", headline: "又一篇物流缺人的报道" },
-          { index: 8, event: "派拉蒙收购", headline: "派拉蒙计划收购华纳" },
+          { index: 7, title: titles(10)[7], event: "物流缺人", headline: "又一篇物流缺人的报道" },
+          { index: 8, title: titles(10)[8], event: "派拉蒙收购", headline: "派拉蒙计划收购华纳" },
         ],
       },
-      10
+      titles(10)
     );
     expect(b.picks.map((p) => p.index)).toEqual([0, 2, 3, 4, 5]);
     expect(b.more.map((m) => m.index)).toEqual([6, 8]);
+  });
+});
+
+describe("拿照抄的原标题核对序号", () => {
+  const candidates = [
+    "日本の若者に人気、エナジードリンクより「白湯」 - 日経MJ",
+    "国立大でコスメ学ぶ訳 1期生の声",
+    "日銀、追加利上げを決定",
+    "楽天モバイル、ローミング縮小へ",
+  ];
+  const pick = (index: number, event: string, title?: string) => ({ index, title, event, headline: `标题${index}`, background: "b", forYou: "f" });
+  const brief = (more: unknown[]) => ({ overview: "今天日银加息。", picks: [pick(2, "日银加息", "日銀、追加利上げを決定")], more });
+
+  it("titleEchoMatches：只抄前一段、全半角和标点不同都认；别的标题不认", () => {
+    expect(titleEchoMatches("日本の若者に人気、エナジードリンク", candidates[0])).toBe(true);
+    expect(titleEchoMatches("国立大でコスメ学ぶ訳　１期生の声", candidates[1])).toBe(true);
+    expect(titleEchoMatches("日銀、追加利上げを決定（NHK）", candidates[2])).toBe(true);
+    expect(titleEchoMatches("日本の若者に人気、エナジードリンク", candidates[1])).toBe(false);
+    expect(titleEchoMatches("", candidates[1])).toBe(false);
+  });
+
+  it("也值得一看：序号数错一位时，按标题换回它说的那一条", () => {
+    const b = parseBrief(brief([{ index: 1, title: "日本の若者に人気、エナジードリンクより", event: "白汤流行", headline: "日本年轻人流行喝白开水" }]), candidates);
+    expect(b.more).toEqual([{ index: 0, event: "白汤流行", headline: "日本年轻人流行喝白开水" }]);
+  });
+
+  it("也值得一看：没抄标题、或标题哪条都对不上，就不收", () => {
+    const b = parseBrief(
+      brief([
+        { index: 0, event: "白汤流行", headline: "日本年轻人流行喝白开水" },
+        { index: 1, title: "Young people in Japan love hot water", event: "国立大化妆品", headline: "国立大学开化妆品课" },
+      ]),
+      candidates
+    );
+    expect(b.more).toEqual([]);
+  });
+
+  it("精选：标题对上另一条就换过去；对不上任何一条照旧信序号（后面还会按正文重写）", () => {
+    const b = parseBrief(
+      { overview: "今天日银加息。", picks: [pick(1, "乐天漫游", "楽天モバイル、ローミング縮小へ"), pick(2, "日银加息", "BOJ hikes rates")] },
+      candidates
+    );
+    expect(b.picks.map((p) => p.index)).toEqual([3, 2]);
   });
 });
 
@@ -744,7 +790,7 @@ describe("你的优势与 PESTLE 领域", () => {
   });
   it("领域只认 PESTLE 六种", () => {
     const pick = (index: number, domain: string) => ({ index, event: `e${index}`, headline: "h", background: "b", forYou: "f", domain });
-    const { picks } = parseBrief({ overview: "今天", picks: [pick(0, "economic"), pick(1, "sports")] }, 3);
+    const { picks } = parseBrief({ overview: "今天", picks: [pick(0, "economic"), pick(1, "sports")] }, titles(3));
     expect(picks.map((p) => p.domain)).toEqual(["economic", undefined]);
   });
 });

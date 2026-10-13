@@ -706,8 +706,11 @@ const MORE_INSTRUCTION = `每条 picks 都写 event：这是哪件事的短标�
 同一件事的不同报道、它引发的后续反应，用同一个标签 —— 代码会按标签去重，标签不同的才算不同的事。
 picks 按重要性从高到低排，可以多挑一两条备选（最多 ${BRIEF_SIZE + 2} 条），去重后只留前 ${BRIEF_SIZE} 条。
 
-再写 more：精选之外、也值得一看的最多 ${MORE_SIZE} 条，必须是和 picks 不同的事。每条只写 index、event，
+再写 more：精选之外、也值得一看的最多 ${MORE_SIZE} 条，必须是和 picks 不同的事。每条只写 index、title、event，
 和 headline（一句中文，说清楚发生了什么）。不写背景。没有就给空数组。
+
+picks 和 more 每条都写 title：照抄那条候选的原标题，原文语言、不翻译，抄前 20 个字就行。
+代码拿它核对 index —— 候选有几十条，序号很容易数错一位，标题写的是这条、链接却点到隔壁那条。对不上的会被丢掉。
 `;
 
 /** 标签比较前去掉空格和标点；一个包含另一个也算同一件事（"日银加息" ⊂ "日银加息后银行跟进"）。 */
@@ -719,7 +722,34 @@ export function sameEvent(a: string, b: string): boolean {
   return x === y || x.includes(y) || y.includes(x);
 }
 
-export function parseBrief(value: unknown, candidateCount: number, allowEmpty = false): Brief {
+/** AI 照抄的原标题能不能对上这条候选：去掉空格标点、全半角统一后，抄的前 12 个字要出现在原标题里。 */
+export function titleEchoMatches(echo: string, title: string): boolean {
+  const norm = (t: string) => t.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+  const e = norm(echo).slice(0, 12);
+  const t = norm(title);
+  if (!e || !t) return false;
+  // 原标题很短时，AI 可能连后面的"（媒体名）"一起抄了
+  return (e.length >= Math.min(6, t.length) && t.includes(e)) || (t.length >= 4 && e.startsWith(t));
+}
+
+/**
+ * 序号由 AI 给、标题由 AI 照抄，两者对不上时以标题为准（数错序号比抄错标题常见）。
+ * 标题只对得上另一条候选就换成那一条；requireTitle 时，没抄标题或哪条都对不上就丢掉（返回 null），
+ * 否则照旧信序号 —— 精选后面还会按正文重写，"也值得一看"没有这一步，只能在这里拦。
+ */
+function resolveCandidateIndex(rawIndex: unknown, rawTitle: unknown, titles: string[], requireTitle: boolean): number | null {
+  const index = typeof rawIndex === "number" ? rawIndex : Number(rawIndex);
+  const inRange = Number.isInteger(index) && index >= 0 && index < titles.length;
+  const echo = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  if (echo) {
+    if (inRange && titleEchoMatches(echo, titles[index])) return index;
+    const hits = titles.flatMap((t, i) => (titleEchoMatches(echo, t) ? [i] : []));
+    if (hits.length === 1) return hits[0];
+  }
+  return inRange && !requireTitle ? index : null;
+}
+
+export function parseBrief(value: unknown, candidateTitles: string[], allowEmpty = false): Brief {
   if (!value || typeof value !== "object") throw new Error("输出不是对象");
   const overview = dropFillerSentences(requireString(value as Record<string, unknown>, "overview"));
   const rawPicks = (value as { picks?: unknown }).picks;
@@ -733,8 +763,8 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
   for (const raw of rawPicks) {
     if (!raw || typeof raw !== "object") continue;
     const v = raw as Record<string, unknown>;
-    const index = typeof v.index === "number" ? v.index : Number(v.index);
-    if (!Number.isInteger(index) || index < 0 || index >= candidateCount || seen.has(index)) continue;
+    const index = resolveCandidateIndex(v.index, v.title, candidateTitles, false);
+    if (index === null || seen.has(index)) continue;
     seen.add(index);
     const headline = requireString(v, "headline");
     const event = typeof v.event === "string" && v.event.trim() ? v.event.trim().slice(0, 30) : headline;
@@ -773,8 +803,8 @@ export function parseBrief(value: unknown, candidateCount: number, allowEmpty = 
   for (const m of Array.isArray(rawMore) ? rawMore : []) {
     if (!m || typeof m !== "object") continue;
     const v = m as Record<string, unknown>;
-    const index = typeof v.index === "number" ? v.index : Number(v.index);
-    if (!Number.isInteger(index) || index < 0 || index >= candidateCount) continue;
+    const index = resolveCandidateIndex(v.index, v.title, candidateTitles, true);
+    if (index === null) continue;
     const headline = typeof v.headline === "string" ? v.headline.trim() : "";
     const event = typeof v.event === "string" && v.event.trim() ? v.event.trim() : headline;
     addMore(index, event, headline);
@@ -826,7 +856,7 @@ ${kind === "news" ? practiceInstruction(tokyoDate()) : ""}
 ${kind === "news" || kind === "voices" || kind === "money" ? `${OPPORTUNITY_INSTRUCTION}\n${OVERVIEW_LENS}` : ""}
 ${kind === "tools" ? "" : DOMAIN_INSTRUCTION}
 ${MORE_INSTRUCTION}
-只输出 JSON：{"overview":"…","picks":[{"index":序号,"event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}${kind === "tools" ? "" : ',"domain":"…"'}}],"more":[{"index":序号,"event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"horizon":"3m","question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"title":"原标题照抄","event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}${kind === "tools" ? "" : ',"domain":"…"'}}],"more":[{"index":序号,"title":"原标题照抄","event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"horizon":"3m","question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
@@ -844,7 +874,7 @@ ${MORE_INSTRUCTION}
         maxOutputTokens: 4000,
       },
     }),
-    (value) => parseBrief(value, candidates.length, kind === "calendar")
+    (value) => parseBrief(value, candidates.map((c) => c.title), kind === "calendar")
   );
 }
 
