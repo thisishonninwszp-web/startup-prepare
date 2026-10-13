@@ -15,6 +15,7 @@ import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
 import { runGapRechecks, runGapScan } from "@/lib/domains/signals/gap-scan";
+import { chooseLabVariant, runSelectionLab, type LabVariantKey } from "@/lib/domains/signals/lab";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
 import { setFeedback, type FeedbackKind } from "@/lib/domains/signals/feedback";
@@ -484,6 +485,30 @@ export async function gapToIdeaAction(
     return { ok: true, id: idea.id };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没变成想法") };
+  }
+}
+
+/** 挑法盲测：拿今天的候选，几种挑法各挑一遍（三四十秒）。 */
+export async function runSelectionLabAction(): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await runSelectionLab(userId);
+    revalidatePath("/signals/lab");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没测成") };
+  }
+}
+
+/** 挑法盲测：他选了哪一组。 */
+export async function chooseLabVariantAction(runId: string, key: LabVariantKey): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await chooseLabVariant(userId, runId, key);
+    revalidatePath("/signals/lab");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
   }
 }
 

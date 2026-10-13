@@ -5572,3 +5572,26 @@ create policy "signal_gap_rechecks_owner" on signal_gap_rechecks
 -- ============================================================================
 
 alter table signal_judgments add column if not exists outcome_evidence jsonb;
+
+-- ============================================================================
+-- 065：挑法盲测（signal_lab_runs）
+-- ============================================================================
+
+create table if not exists signal_lab_runs (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  kind         text not null,
+  variants     jsonb not null,
+  display      text[] not null,
+  chosen       text,
+  chosen_at    timestamptz,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists signal_lab_runs_user_idx on signal_lab_runs (user_id, created_at desc);
+
+alter table signal_lab_runs enable row level security;
+
+drop policy if exists "signal_lab_runs_owner" on signal_lab_runs;
+create policy "signal_lab_runs_owner" on signal_lab_runs
+  for all using (auth.uid() = user_id);

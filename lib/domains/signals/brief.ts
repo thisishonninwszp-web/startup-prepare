@@ -273,8 +273,11 @@ export async function loadSignalReader(
   };
 }
 
-/** 返回 null 表示最近一天半没有可挑的条目（还没抓过），什么都没生成。 */
-export async function generateBrief(userId: string, kind: SignalKind): Promise<BriefItem[] | null> {
+/**
+ * 这一节今天的候选：最近一天半没处理过的条目，按链接去重，再按源轮流取（见 balanceBySource）。
+ * rows 和 candidates 一一对应（candidates 是给 AI 看的那份）。
+ */
+export async function loadBriefCandidates(kind: SignalKind) {
   const since = new Date(Date.now() - CANDIDATE_WINDOW_HOURS * 3_600_000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("external_signals")
@@ -293,8 +296,6 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     return true;
   });
   const rows = balanceBySource(unique as { source: string; [k: string]: unknown }[], MAX_CANDIDATES);
-  if (rows.length === 0) return null;
-
   const candidates = rows.map((r) => ({
     title: (r.title as string | null) ?? "",
     text: isGithubSource(r.source as string) ? (r.raw_text as string) : usableSummary(r.title as string, r.raw_text as string),
@@ -302,6 +303,13 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     china: isChinaSource(r.source as string),
     us: isUsSource(r.source as string),
   }));
+  return { rows, candidates };
+}
+
+/** 返回 null 表示最近一天半没有可挑的条目（还没抓过），什么都没生成。 */
+export async function generateBrief(userId: string, kind: SignalKind): Promise<BriefItem[] | null> {
+  const { rows, candidates } = await loadBriefCandidates(kind);
+  if (rows.length === 0) return null;
   // 第一步：只看标题和简介挑 5 条、起草（不给 AI 看任何关于他的信息）
   const draft = await generateSignalBrief(kind, candidates);
   const { more, practice } = draft;

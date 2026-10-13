@@ -840,10 +840,17 @@ function parsePractice(raw: unknown, picks: BriefPick[]): BriefPractice | null {
  * 写报告时故意不给 AI 看任何关于他的信息：看得到它就会每条都往他身上扯。
  * "跟你"由第二步 linkPicksToReader 单独做，并由代码核对。
  */
-export async function generateSignalBrief(kind: BriefKind, candidates: BriefCandidate[]): Promise<Brief> {
+/**
+ * 挑法的几个旋钮（挑法盲测 /signals/lab 用；每天的报告用默认值）。
+ * model：换更强的模型；thinkingBudget：先想再挑；textLength：每条候选给 AI 看多少字（读了正文时给多一些）。
+ */
+export type BriefOptions = { model?: string; thinkingBudget?: number; textLength?: number };
+
+export async function generateSignalBrief(kind: BriefKind, candidates: BriefCandidate[], options: BriefOptions = {}): Promise<Brief> {
   if (candidates.length === 0) return { overview: "", picks: [], more: [], practice: null };
+  const thinkingBudget = options.thinkingBudget ?? 0;
   const numbered = candidates
-    .map((c, i) => `[${i}] ${c.title}（${c.source}）${c.china ? "（中国）" : ""}\n${c.text.slice(0, 160)}`)
+    .map((c, i) => `[${i}] ${c.title}（${c.source}）${c.china ? "（中国）" : ""}\n${c.text.slice(0, options.textLength ?? 160)}`)
     .join("\n");
   const contents = `候选：\n${numbered}`;
   const systemInstruction = `${BRIEF_PROMPTS[kind]}
@@ -861,7 +868,7 @@ ${MORE_INSTRUCTION}
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
     (attempt) => ({
-      model: MODEL,
+      model: options.model ?? MODEL,
       contents:
         contents +
         (attempt === 1
@@ -870,11 +877,52 @@ ${MORE_INSTRUCTION}
       config: {
         systemInstruction,
         responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
-        maxOutputTokens: 4000,
+        thinkingConfig: { thinkingBudget },
+        // 思考会吃 maxOutputTokens
+        maxOutputTokens: 4000 + thinkingBudget,
       },
     }),
     (value) => parseBrief(value, candidates.map((c) => c.title), kind === "calendar")
+  );
+}
+
+/** 两轮挑法的第一轮：只看标题和简介，粗选出值得读正文再决定的几条。 */
+export async function shortlistCandidates(kind: BriefKind, candidates: BriefCandidate[], size: number): Promise<number[]> {
+  if (candidates.length <= size) return candidates.map((_, i) => i);
+  const numbered = candidates
+    .map((c, i) => `[${i}] ${c.title}（${c.source}）${c.china ? "（中国）" : ""}\n${c.text.slice(0, 160)}`)
+    .join("\n");
+  const titles = candidates.map((c) => c.title);
+  return executeAiJson(
+    { operation: `signal_shortlist_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    () => ({
+      model: MODEL,
+      contents: `候选：\n${numbered}`,
+      config: {
+        systemInstruction: `${BRIEF_PROMPTS[kind]}
+
+这一步只粗选：挑出最多 ${size} 条值得把正文读完再决定要不要的。标题看着热闹、简介里看不出到底发生了什么的，宁可放进来读一读；
+一眼就知道不值得的（重复、八卦、和这一节无关）不要。每条写 index 和 title（照抄原标题前 20 个字，代码拿它核对序号）。
+
+只输出 JSON：{"picks":[{"index":序号,"title":"原标题照抄"}]}`,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => {
+      const raw = (value as { picks?: unknown } | null)?.picks;
+      if (!Array.isArray(raw)) throw new Error("缺少 picks");
+      const out: number[] = [];
+      for (const r of raw) {
+        if (!r || typeof r !== "object") continue;
+        const v = r as Record<string, unknown>;
+        const index = resolveCandidateIndex(v.index, v.title, titles, true);
+        if (index !== null && !out.includes(index)) out.push(index);
+      }
+      if (out.length === 0) throw new Error("一条都没对上");
+      return out.slice(0, size);
+    }
   );
 }
 

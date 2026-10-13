@@ -127,6 +127,12 @@ export default async function SourcesPage() {
           挑中的数只算精选，不算「也值得一看」。没被挑中不一定是源不好，也可能是那一节每天名额太少。
         </p>
       </section>
+
+      <p className="mt-10 text-sm">
+        <Link href="/signals/lab" className="text-primary underline-offset-4 hover:underline">
+          每天挑的那几条挑得好不好？去「挑法盲测」比一比 →
+        </Link>
+      </p>
     </PageContainer>
   );
 }
