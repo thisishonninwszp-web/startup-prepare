@@ -2640,6 +2640,8 @@ export type DrillDraft = {
   whatHappened: string;
   whySimilar: string;
   query: string;
+  /** 英文搜索词：英文资料（维基百科、外媒）常常写得更全，两种语言各搜一次。 */
+  queryEn: string;
 };
 
 function drillCutoff(today: string): string {
@@ -2649,7 +2651,11 @@ function drillCutoff(today: string): string {
 const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真实的判断要等几个月才对账，反馈太慢；你来出几道"历史题"：
 挑过去真实发生过、结果早已揭晓的事，把他放回当时，只告诉他当时知道的东西，让他猜后来怎样，答完马上揭晓。
 
-今天是 ${today}。出 3 道，每道都和下面"他最近在看的事"里的某一件像（同一类机制、同一个行业，或同一种局面）。
+今天是 ${today}。出 4 道，每道都和下面"他最近在看的事"里的某一件像（同一类机制、同一个行业，或同一种局面）。
+
+答案要能在网上查到原话，所以挑结果被明确报道过的事：某公司宣布了什么、开始或停止了什么服务、撤出了哪个市场、
+某个法案通过没有、某个价格调了没有、某个数字（官方公布的）过没过某条线。
+不要出"市场反应如何""影响大不大"这种说不清的题，也不要用没人公布过的数字当门槛。
 
 每道写：
 - topic：像的是哪一件（序号）。
@@ -2659,15 +2665,16 @@ const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真�
 - answer：实际结果，true 是"会"，false 是"不会"。
 - whatHappened：实际发生了什么，1 到 2 句，带日期和数字。
 - whySimilar：和他在看的那件事像在哪、不像在哪，一句。
-- query：上网核实"实际发生了什么"用的搜索词，用事情发生地的语言，3 到 8 个词，带公司名和年份。
+- query：上网核实"实际发生了什么"用的搜索词，用事情发生地的语言，3 到 8 个词，带公司名、年份和结果的关键词（"撤退""突破""可決"……）。
+- queryEn：同一件事的英文搜索词。
 
 铁律：
 - 只出你很确定真实发生过的事。拿不准的不要出 —— 出了也会被核实刷掉。
 - 不要选结果人人都知道的大事（疫情、雷曼破产、东日本大地震这一类），也不要出从题面就猜得到答案的题。
-- 三道里"会"和"不会"都要有。
+- 四道里"会"和"不会"都要有。
 - 用中文写（公司名、产品名可以保留原文）。
 
-只输出 JSON：{"drills":[{"topic":0,"setup":"…","question":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…"}]}`;
+只输出 JSON：{"drills":[{"topic":0,"setup":"…","question":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…","queryEn":"…"}]}`;
 
 /** 透露了结果的题面不要：答案写在题里就不是练判断了。 */
 const DRILL_LEAK = /后来|最终|最后|结果是|事后/;
@@ -2681,13 +2688,21 @@ export function parseDrillDrafts(value: unknown, topicCount: number, today: stri
     if (!r || typeof r !== "object") continue;
     const v = r as Record<string, unknown>;
     const str = (k: string) => (typeof v[k] === "string" ? (v[k] as string).trim() : "");
-    const [setup, question, deadline, whatHappened, whySimilar, query] = ["setup", "question", "deadline", "whatHappened", "whySimilar", "query"].map(str);
+    const [setup, question, deadline, whatHappened, whySimilar, query, queryEn] = [
+      "setup",
+      "question",
+      "deadline",
+      "whatHappened",
+      "whySimilar",
+      "query",
+      "queryEn",
+    ].map(str);
     if (!setup || !question || !whatHappened || !query || typeof v.answer !== "boolean") continue;
     // 期限要是真日期、而且早就过了；题面不许漏答案
     if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || Number.isNaN(Date.parse(deadline)) || deadline >= cutoff) continue;
     if (DRILL_LEAK.test(setup) || DRILL_LEAK.test(question)) continue;
     const topic = typeof v.topic === "number" && Number.isInteger(v.topic) && v.topic >= 0 && v.topic < topicCount ? v.topic : -1;
-    out.push({ topic, setup, question, deadline, answer: v.answer, whatHappened, whySimilar, query: query.slice(0, 120) });
+    out.push({ topic, setup, question, deadline, answer: v.answer, whatHappened, whySimilar, query: query.slice(0, 120), queryEn: queryEn.slice(0, 120) });
   }
   const texts = out.flatMap((d) => [d.setup, d.question, d.whatHappened, d.whySimilar].filter(Boolean));
   assertNoBanned(texts);

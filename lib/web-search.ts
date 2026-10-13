@@ -2,6 +2,7 @@ import type { TavilyResult } from "@/app/(app)/ideas/types";
 import { fetchPublicPage } from "@/app/(app)/materials/fetch-page";
 import { AI_MODEL, executeAiGroundedSearch } from "@/lib/ai-gateway";
 import { tavilySearch } from "@/lib/external";
+import { extractSearchText } from "@/lib/domains/signals/rss";
 import { supabaseAdmin } from "@/lib/supabase";
 
 /**
@@ -76,7 +77,7 @@ async function googleSearch(query: string, maxResults: number): Promise<TavilyRe
   const pages = await Promise.all(
     sources.slice(0, maxResults + 2).map((s) =>
       withTimeout(
-        fetchPublicPage(s.uri).catch(() => ({ ok: false as const, reason: "读不了" })),
+        fetchPublicPage(s.uri, (html) => extractSearchText(html)).catch(() => ({ ok: false as const, reason: "读不了" })),
         PAGE_TIMEOUT_MS,
         { ok: false as const, reason: "超时" }
       )

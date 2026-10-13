@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { checkHistoryDrills, draftHistoryDrills, type AnalogCheck } from "@/lib/ai";
 import { webSearch } from "@/lib/web-search";
+import { mergeSources } from "./sources";
 import { tokyoToday, type BriefItem } from "./brief";
 import { CONFIDENCE_LEVELS, type ConfidenceKey } from "./practice-shared";
 import type { AnsweredDrill, OpenDrill } from "./drills-shared";
@@ -17,8 +18,8 @@ export * from "./drills-shared";
 /** 拿最近几天的报告当"他最近在看的事"。 */
 const TOPIC_DAYS = 3;
 const MAX_TOPICS = 10;
-/** 每道搜几篇资料核实。 */
-const DRILL_SEARCH_RESULTS = 4;
+/** 每道每种语言搜几篇资料核实（两种语言各搜一次）。 */
+const DRILL_SEARCH_RESULTS = 3;
 
 const MISSING_MIGRATION = "迁移 066 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/066_signal_drills.sql。";
 
@@ -42,9 +43,24 @@ export async function generateDrills(userId: string): Promise<number> {
   if (topics.length === 0) throw new Error("最近几天还没有报告，没东西可以对照着出题。等明天早上的报告出来再来。");
   const drafts = await draftHistoryDrills(topics, tokyoToday());
   if (drafts.length === 0) throw new Error("这次没出成题，再来一次。");
-  const sources = await Promise.all(drafts.map((d) => webSearch(d.query, DRILL_SEARCH_RESULTS).catch(() => [])));
+  const sources = await Promise.all(
+    drafts.map(async (d) => {
+      const [local, en] = await Promise.all([
+        webSearch(d.query, DRILL_SEARCH_RESULTS).catch(() => []),
+        d.queryEn ? webSearch(d.queryEn, DRILL_SEARCH_RESULTS).catch(() => []) : Promise.resolve([]),
+      ]);
+      return mergeSources([local, en], DRILL_SEARCH_RESULTS * 2);
+    })
+  );
   const checked = await checkHistoryDrills(drafts.map((draft, i) => ({ draft, sources: sources[i] })));
-  if (checked.length === 0) throw new Error("这次出的题都没在网上核实到出处，宁可不出。再来一次。");
+  if (checked.length === 0) {
+    // 带上数字，分得清是搜不到资料，还是搜到了却对不上
+    const searched = sources.filter((s) => s.length > 0).length;
+    throw new Error(
+      `这次出了 ${drafts.length} 道，搜到资料的 ${searched} 道，核实到出处的 0 道，宁可不出。` +
+        (searched === 0 ? "一篇资料都没搜到，多半是搜索出了问题，去信息源体检看一眼搜索用量。" : "再来一次。")
+    );
+  }
   const { error } = await supabaseAdmin.from("signal_drills").insert(
     checked.map((d) => ({
       user_id: userId,

@@ -65,7 +65,11 @@ function titleOf(html: string): string {
     .trim();
 }
 
-export async function fetchPublicPage(url: string): Promise<PageResult> {
+/** extract：从 HTML 里取正文的办法（默认只取 <p> 段落，读文章用；上网查证时要连列表、表格一起取）。 */
+export async function fetchPublicPage(
+  url: string,
+  extract: (html: string) => string = (html) => extractArticleText(html, 12_000)
+): Promise<PageResult> {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     let parsed: URL;
@@ -101,7 +105,7 @@ export async function fetchPublicPage(url: string): Promise<PageResult> {
     const contentType = res.headers.get("content-type");
     if (!(contentType ?? "").includes("html")) return { ok: false, reason: "这不是网页（可能是图片或文件）" };
     const html = decodeHtml(await res.arrayBuffer(), contentType);
-    const body = extractArticleText(html, 12_000);
+    const body = extract(html);
     if (body.length < MIN_BODY) return { ok: false, reason: "页面上没找到像样的正文（可能要登录，或者正文是脚本画出来的）" };
     return { ok: true, finalUrl: current, title: titleOf(html), body };
   }

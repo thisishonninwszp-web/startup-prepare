@@ -91,6 +91,30 @@ export function extractArticleText(html: string, maxLength = 3000): string {
   return paragraphs.join("\n").slice(0, maxLength);
 }
 
+/**
+ * 上网查证用的正文：除了 <p>，列表、表格、引用里的字也要。
+ * 维基百科、公司新闻页的"某年某月发生了什么"大多写在年表列表和表格里，只读 <p> 就全漏了。
+ * 菜单之类的短碎片照样按长度和 BOILERPLATE 筛掉；同一句只留一次。
+ */
+export function extractSearchText(html: string, maxLength = 20_000): string {
+  const cleaned = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<(nav|header|footer|aside)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi, " ");
+  const seen = new Set<string>();
+  const blocks: string[] = [];
+  let total = 0;
+  for (const m of cleaned.matchAll(/<(p|li|td|dd|blockquote)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi)) {
+    const text = stripTags(decode(decode(m[2])));
+    if (text.length < 20 || BOILERPLATE.test(text) || seen.has(text)) continue;
+    seen.add(text);
+    blocks.push(text);
+    total += text.length;
+    if (total >= maxLength) break;
+  }
+  return blocks.join("\n").slice(0, maxLength);
+}
+
 export function parseFeed(xml: string): FeedItem[] {
   const items: FeedItem[] = [];
 
