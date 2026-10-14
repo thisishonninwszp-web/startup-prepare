@@ -21,8 +21,9 @@ import { DigestLoader } from "./digest-loader";
 import { DigestDetailButton } from "./digest-detail-button";
 import { EmailPanel } from "./email-panel";
 import { HistoryPanel } from "./history-panel";
-import { JudgmentForm, ResolveJudgment } from "./judgment-forms";
+import { ResolveJudgment } from "./judgment-forms";
 import { OutcomeEvidenceView } from "./outcome-evidence";
+import { PracticeComposer } from "./practice-composer";
 import { formatDueDate, JudgmentView } from "./judgment-view";
 import { ListenButton } from "./listen-button";
 import { ReaderPanel } from "./reader-panel";
@@ -553,7 +554,10 @@ async function PracticeCard({
   position,
   judgment,
   knownTags,
+  date,
 }: {
+  /** 这份报告是哪一天的（拆解卡存在那一天的报告里）。 */
+  date: string;
   practice: NonNullable<ReportSection["practice"]>;
   title: string;
   /** 这道题出自"今天的世界"第几条。 */
@@ -599,6 +603,11 @@ async function PracticeCard({
             <div className="mt-3">
               <JudgmentView judgment={judgment} showQuestion={false} />
               <p className="mt-4 leading-7 text-muted-foreground">到时候看什么：{practice.check_how}</p>
+              <p className="mt-2 leading-7">
+                <a href={`/signals/${practice.signal_id}#inference`} className="text-primary underline-offset-4 hover:underline">
+                  如果真的发生，会波及谁？去往下推 →
+                </a>
+              </p>
               <div className="mt-5 border-t pt-4">
                 <HistoryPanel signalId={practice.signal_id} initial={usable?.history ?? null} label="看历史上类似的事" />
               </div>
@@ -625,7 +634,9 @@ async function PracticeCard({
                 ? `题目问的是到${deadlineLabel(deadline)}，对账就按这个日子（多留一周等消息出来）。觉得不对就换一档。`
                 : `这道题${HORIZONS[horizon].label.replace("后", "")}左右见分晓，期限已经替你选好了；觉得不对就改。`}
             </p>
-            <JudgmentForm
+            <PracticeComposer
+              date={date}
+              initialBreakdown={practice.breakdown ?? null}
               signalId={practice.signal_id}
               question={practice.question}
               knownTags={knownTags}
@@ -767,6 +778,7 @@ export default async function SignalsReportPage({
               {isToday && <DueJudgments rows={dueJudgments(judgments)} />}
               {practice && practiceItem && (
                 <PracticeCard
+                  date={date}
                   practice={practice}
                   title={practiceItem.title}
                   position={practiceIndex + 1}

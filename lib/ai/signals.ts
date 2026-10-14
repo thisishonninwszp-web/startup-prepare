@@ -1079,6 +1079,8 @@ export type JudgmentInput = {
   judgment: string;
   /** 用户选的检验期限，比如"三个月后"。 */
   horizon: string;
+  /** 判断前他在拆解卡上对每个因素点的偏向（"通胀离目标多远：偏向会；……"）；没拆就没有。 */
+  reasoning?: string;
 };
 
 export type JudgmentFeedback = {
@@ -1097,6 +1099,8 @@ const JUDGMENT_PROMPT = `一个人在练"读新闻、下判断、事后对账"�
 1. missed：他没提到、但会实质影响结果的一两个因素。具体到"谁会做什么"，不要泛泛说"还要考虑宏观环境"。
 2. sharpen：这句判断如果到期时没法明确说对或错，就指出模糊在哪，并给一个改写后的版本（带具体的对象、方向、时间）。已经很具体就说"已经可以检验"，再补一个让它更锋利的细节。
 3. counter：最可能让他看错的那个理由，一到两句。要站在反方最强的位置说。
+
+如果给了"他判断前对每个因素的看法"，missed 和 counter 要对着它说：哪个因素他看反了或看轻了、哪个关键因素他没列进来。
 
 不评价他聪明不聪明，不说"判断得很好""思路清晰"，也不打分。
 ${SIGNAL_SHARED_RULES}
@@ -1126,9 +1130,12 @@ export async function critiqueJudgment(input: JudgmentInput): Promise<JudgmentFe
     `正文节选：${input.body ? input.body.slice(0, 2000) : "（拿不到正文）"}`,
     "",
     `他回答的问题：${input.question}`,
+    input.reasoning ? `他判断前对每个因素的看法：${input.reasoning}` : "",
     `他的判断：${input.judgment}`,
     `检验期限：${input.horizon}`,
-  ].join("\n");
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
 
   return executeAiJson(
     { operation: "judgment_critique", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
@@ -2455,6 +2462,143 @@ export async function extractStepEvidence(claim: string, sources: SearchSource[]
       },
     }),
     (value) => parseStepEvidence(value, sources)
+  );
+}
+
+// ── 判断前的拆解卡：给地图，不给方向 ───────────────────────────────────────
+
+export type BreakdownPlanItem = { factor: string; mechanism: string; indicator: string; query: string };
+
+const MAX_BREAKDOWN_FACTORS = 5;
+
+const BREAKDOWN_PLAN_PROMPT = `他要回答一个"会不会"的问题，但不知道从哪想起。你给他一张拆解卡：这件事由哪几个因素决定、每个因素怎么起作用、去哪看。
+你不回答问题本身，不说会还是不会，也不暗示 —— 方向由他自己判断。
+
+列 3 到 ${MAX_BREAKDOWN_FACTORS} 个最关键的因素。每个写：
+- factor：因素名，一句短话（例："通胀离 2% 目标有多远"）。
+- mechanism：它怎么影响结果，两个方向都写成条件句，像给外行讲（例："通胀明显高于目标、还在往上走时，加息的压力大；回落到目标附近时，压力就小"）。一到两句。
+- indicator：去哪看：哪个指标或哪类消息、谁发布、多久一次（例："美国 PCE 物价指数，美国商务部每月发布"）。
+- query：查"这个因素现在是什么情况"的搜索词，用事情所在国家的语言或英文，带年份月份，3 到 8 个词。
+
+铁律：
+- 不写"所以会 / 不会""倾向于""大概率"，不写可能性数字。
+- 只能推向一个方向的不算关键因素；关键因素是"往这边动就会、往那边动就不会"的那种。
+- 用中文写（指标名可以保留原文）。
+
+只输出 JSON：{"factors":[{"factor":"…","mechanism":"…","indicator":"…","query":"…"}]}`;
+
+/** 写了方向的不收（"所以会""倾向于加息"）：方向要他自己点。 */
+const BREAKDOWN_DIRECTION = /所以|因此|倾向于|意味着|大概率|利好|利空|有利于|不利于/;
+
+export function parseBreakdownPlan(value: unknown): BreakdownPlanItem[] {
+  const raw = (value as { factors?: unknown } | null)?.factors;
+  if (!Array.isArray(raw)) throw new Error("缺少 factors");
+  const out = raw
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .map((f) => ({
+      factor: typeof f.factor === "string" ? f.factor.trim().slice(0, 40) : "",
+      mechanism: typeof f.mechanism === "string" ? f.mechanism.trim() : "",
+      indicator: typeof f.indicator === "string" ? f.indicator.trim() : "",
+      query: typeof f.query === "string" ? f.query.trim().slice(0, 120) : "",
+    }))
+    .filter((f) => f.factor && f.mechanism && f.indicator && f.query)
+    .slice(0, MAX_BREAKDOWN_FACTORS);
+  if (out.length < 2) throw new Error("因素太少");
+  const texts = out.flatMap((f) => [f.factor, f.mechanism, f.indicator]);
+  const directional = texts.find((t) => BREAKDOWN_DIRECTION.test(t));
+  if (directional) throw new Error(`写了方向：${directional.slice(0, 20)}`);
+  if (texts.some(mentionsNumericLikelihood)) throw new Error("写了可能性的数字");
+  assertNoBanned(texts);
+  assertChineseAllowingNames(texts);
+  return out;
+}
+
+/** 这件事由哪几个因素决定、怎么起作用、去哪看（还没查现在的情况）。 */
+export async function planBreakdown(input: {
+  newsTitle: string;
+  newsSummary: string;
+  body: string;
+  question: string;
+  today: string;
+}): Promise<BreakdownPlanItem[]> {
+  const contents = [
+    `今天是 ${input.today}。`,
+    `新闻标题：${input.newsTitle}`,
+    `新闻简介：${input.newsSummary || "（没有）"}`,
+    `正文节选：${input.body ? input.body.slice(0, 1500) : "（拿不到正文）"}`,
+    `他要回答的问题：${input.question}`,
+  ].join("\n");
+  return executeAiJson(
+    { operation: "practice_breakdown_plan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验：不许写方向（所以、倾向于、意味着……），每个因素四样都要有，用中文。" : ""),
+      config: {
+        systemInstruction: BREAKDOWN_PLAN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 4000,
+      },
+    }),
+    parseBreakdownPlan
+  );
+}
+
+const BREAKDOWN_NOW_PROMPT = `下面每个因素附了上网搜到的资料。你只写"这个因素现在是什么情况"：最新的数字、动作或表态，带日期。
+
+每个因素输出：
+- i：编号。
+- now：现在怎样，一到两句，只写资料里有的，带日期和数字。资料对不上就写空字符串。
+- basis：撑着 now 的资料原文，逐字照抄（不翻译、不改字，15 到 150 字），附那个因素下面的资料编号 source。now 为空时给空数组。
+
+铁律：不许写这对问题意味着什么 —— 不写"所以""因此""倾向于""意味着""利好""利空"，他要自己判断。叙述用简体中文（basis 照抄原文）。
+
+只输出 JSON：{"items":[{"i":0,"now":"…","basis":[{"source":1,"excerpt":"…"}]}]}`;
+
+/** 原文对不上、写了方向的，一律当没查到 —— 宁可空着，也不替他推。 */
+export function parseBreakdownNow(
+  value: unknown,
+  inputs: { item: BreakdownPlanItem; sources: SearchSource[] }[]
+): { now: string; basis: { url: string; title: string; excerpt: string }[] }[] {
+  const items = (value as { items?: unknown } | null)?.items;
+  if (!Array.isArray(items)) throw new Error("缺少 items");
+  return inputs.map(({ sources }, i) => {
+    const it = items.find((r) => r && typeof r === "object" && Number((r as Record<string, unknown>).i) === i) as Record<string, unknown> | undefined;
+    const now = typeof it?.now === "string" ? it.now.trim() : "";
+    const basis = verifiedBasis(it?.basis, sources);
+    if (!now || basis.length === 0 || BREAKDOWN_DIRECTION.test(now) || mentionsNumericLikelihood(now)) {
+      return { now: "没查到现在的情况。", basis: [] };
+    }
+    return { now, basis };
+  });
+}
+
+/** 拿搜到的资料写每个因素"现在怎样"。一份资料都没搜到的直接标没查到，不调 AI。 */
+export async function readBreakdownNow(
+  inputs: { item: BreakdownPlanItem; sources: SearchSource[] }[],
+  today: string
+): Promise<{ now: string; basis: { url: string; title: string; excerpt: string }[] }[]> {
+  if (inputs.every((x) => x.sources.length === 0)) return inputs.map(() => ({ now: "没查到现在的情况。", basis: [] }));
+  const block = (sources: SearchSource[]) =>
+    sources.length > 0
+      ? sources.map((src, j) => `  [资料 ${j + 1}] ${src.title}\n  ${src.url}\n  ${src.content.slice(0, 1000)}`).join("\n")
+      : "  （没搜到资料）";
+  const contents = [`今天是 ${today}。`, ...inputs.map(({ item, sources }, i) => `【${i}】${item.factor}（去哪看：${item.indicator}）\n${block(sources)}`)].join(
+    "\n\n"
+  );
+  return executeAiJson(
+    { operation: "practice_breakdown_now", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验。basis 必须逐字照抄那个因素下面资料的原文，source 是资料编号。" : ""),
+      config: {
+        systemInstruction: BREAKDOWN_NOW_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    (value) => parseBreakdownNow(value, inputs)
   );
 }
 

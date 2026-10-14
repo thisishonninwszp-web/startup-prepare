@@ -40,7 +40,10 @@ export function JudgmentForm({
   deadline,
   initialTags = [],
   onSubmitted,
+  reasoning,
 }: {
+  /** 拆解卡上对每个因素点的偏向，交判断时一起给挑刺看。 */
+  reasoning?: string;
   /** 预填的标签（比如从历史题押过来的，带上「历史题」）。 */
   initialTags?: string[];
   /** 给了就在押下之后调它、不刷新整页（历史题揭晓页一刷新就跳到下一道了）。 */
@@ -93,6 +96,7 @@ export function JudgmentForm({
             tags,
             milestone: isLong ? milestone : undefined,
             dueDate: byDeadline ? deadline : undefined,
+            reasoning: reasoning || undefined,
           });
           if (result.ok) {
             setError(null);

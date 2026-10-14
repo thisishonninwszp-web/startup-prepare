@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1118,5 +1118,45 @@ describe("周刊：只搬运、不替他写观点", () => {
     const ja = { jaLong: "今週は中国で始まった三つのことを紹介します。", jaTitles: ["t"] };
     expect(parseIssueJa(ja).jaLong).toBe(ja.jaLong);
     expect(() => parseIssueJa({ ...ja, jaLong: "这周看到三件事。" })).toThrow("不是日文");
+  });
+});
+
+describe("判断前的拆解卡：给地图，不给方向", () => {
+  const factor = (over: Record<string, unknown> = {}) => ({
+    factor: "通胀离 2% 目标有多远",
+    mechanism: "通胀明显高于目标、还在往上走时，加息的压力大；回落到目标附近时，压力就小。",
+    indicator: "美国 PCE 物价指数，美国商务部每月发布",
+    query: "US PCE inflation September 2026",
+    ...over,
+  });
+
+  it("parseBreakdownPlan：写了方向、写了可能性数字的不收；少于两个不收", () => {
+    expect(parseBreakdownPlan({ factors: [factor(), factor({ factor: "就业市场" })] })).toHaveLength(2);
+    expect(() => parseBreakdownPlan({ factors: [factor(), factor({ mechanism: "通胀很高，所以会加息。" })] })).toThrow("方向");
+    expect(() => parseBreakdownPlan({ factors: [factor(), factor({ mechanism: "加息的概率为六成。" })] })).toThrow();
+    expect(() => parseBreakdownPlan({ factors: [factor()] })).toThrow("太少");
+  });
+
+  it("parseBreakdownNow：原文对得上才写现在怎样；写了方向的当没查到", () => {
+    const sources = [{ title: "BEA", url: "https://example.gov/pce", content: "The PCE price index increased 2.9 percent from one year ago in August 2026." }];
+    const inputs = [
+      { item: factor(), sources },
+      { item: factor({ factor: "就业" }), sources },
+      { item: factor({ factor: "表态" }), sources: [] },
+    ];
+    const now = parseBreakdownNow(
+      {
+        items: [
+          { i: 0, now: "2026 年 8 月 PCE 同比 2.9%。", basis: [{ source: 1, excerpt: "increased 2.9 percent from one year ago in August 2026" }] },
+          { i: 1, now: "PCE 2.9%，所以倾向于加息。", basis: [{ source: 1, excerpt: "increased 2.9 percent from one year ago" }] },
+          { i: 2, now: "官员说要加息。", basis: [] },
+        ],
+      },
+      inputs
+    );
+    expect(now[0].now).toBe("2026 年 8 月 PCE 同比 2.9%。");
+    expect(now[0].basis[0].url).toBe("https://example.gov/pce");
+    expect(now[1].now).toBe("没查到现在的情况。");
+    expect(now[2]).toEqual({ now: "没查到现在的情况。", basis: [] });
   });
 });

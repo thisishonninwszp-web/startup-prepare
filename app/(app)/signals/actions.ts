@@ -37,6 +37,7 @@ import {
   type ResponseSignal,
 } from "@/lib/domains/signals/issue";
 import { disablePublicRecord, enablePublicRecord } from "@/lib/domains/signals/public-record";
+import { ensurePracticeBreakdown, saveBreakdownLeans, type Breakdown, type Lean } from "@/lib/domains/signals/breakdown";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
@@ -210,6 +211,8 @@ export async function submitJudgmentAction(input: {
   tags?: string[];
   milestone?: string;
   dueDate?: string;
+  /** 拆解卡上对每个因素点的偏向（给挑刺看）。 */
+  reasoning?: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
@@ -221,6 +224,28 @@ export async function submitJudgmentAction(input: {
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "判断没存上") };
+  }
+}
+
+/** 每日练习：先拆一拆（拆过就直接返回，没拆现在拆，二三十秒）。 */
+export async function ensureBreakdownAction(date: string): Promise<{ ok: true; breakdown: Breakdown } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, message: "日期不对" };
+  try {
+    return { ok: true, breakdown: await ensurePracticeBreakdown(userId, date) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没拆出来") };
+  }
+}
+
+/** 每日练习：记下他对每个因素点的偏向。 */
+export async function saveBreakdownLeansAction(date: string, leans: (Lean | null)[]): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await saveBreakdownLeans(userId, date, leans);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
   }
 }
 

@@ -29,6 +29,7 @@ import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
 import { loadSituationFacts } from "./reader-facts";
 import { sendDailyEmail } from "./notify";
 import { generateDigest } from "./digest";
+import type { Breakdown } from "./breakdown-shared";
 
 /**
  * 每日精选：从最近一天半没处理过的条目里，让 AI 挑 5 条并写清楚为什么。
@@ -51,6 +52,8 @@ export type BriefPracticeRow = {
   why_uncertain?: string;
   /** 多久能见分晓（按题目里写的时间点算）；判断表单默认选这一档。早期数据没有。 */
   horizon?: string;
+  /** 判断前的拆解卡（他点了"先拆一拆"才有；见 breakdown-shared.ts）。 */
+  breakdown?: Breakdown;
 };
 
 export type BriefItem = {

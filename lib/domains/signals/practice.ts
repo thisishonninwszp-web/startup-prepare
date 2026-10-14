@@ -146,6 +146,8 @@ export async function submitJudgment(input: {
   milestone?: string;
   /** 按题目里写的日子对账（YYYY-MM-DD，"到明年底"就是那年的 12-31）；给了就不按 horizon 算。 */
   dueDate?: string;
+  /** 判断前在拆解卡上对每个因素点的偏向，给挑刺看（"哪个因素看反了、漏了"）。 */
+  reasoning?: string;
 }): Promise<JudgmentRow> {
   const judgment = input.judgment.trim();
   if (judgment.length < 4) throw new Error("写一句完整的判断，哪怕很粗糙");
@@ -207,6 +209,7 @@ export async function submitJudgment(input: {
       question: displayQuestion(question),
       judgment,
       horizon: horizon.label,
+      reasoning: input.reasoning?.trim().slice(0, 600) || undefined,
     });
     await supabaseAdmin.from("signal_judgments").update({ feedback }).eq("id", row.id);
   } catch (e) {
