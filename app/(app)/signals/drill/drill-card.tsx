@@ -6,9 +6,75 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DRILL_FLAGS, drillHit, type AnsweredDrill, type DrillFlag, type OpenDrill } from "@/lib/domains/signals/drills-shared";
 import { CONFIDENCE_LEVELS, type ConfidenceKey } from "@/lib/domains/signals/practice-shared";
-import { answerDrillAction, flagDrillAction, generateDrillsAction } from "../actions";
+import { answerDrillAction, flagDrillAction, generateDrillsAction, markReasonMatchAction } from "../actions";
 
-/** 揭晓：猜对没有、实际发生了什么、出处。 */
+/**
+ * 你当时的理由 vs 实际是什么决定的，并排摆着，你自己标对上没有。
+ * 猜对了但理由没对上，其实是运气 —— 下次照样会错。
+ */
+function ReasonCheck({ drill }: { drill: AnsweredDrill }) {
+  const [match, setMatch] = useState<boolean | null>(drill.reason_match);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  if (!drill.decided_by) {
+    return <p className="mt-2 text-xs text-muted-foreground">资料里没写清是什么决定了结果，这一道没法对理由。</p>;
+  }
+  const mark = (value: boolean) =>
+    startTransition(async () => {
+      setError(null);
+      const result = await markReasonMatchAction(drill.id, value);
+      if (result.ok) setMatch(value);
+      else setError(result.message);
+    });
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <p>
+        <span className="text-muted-foreground">实际是这件事决定的：</span>
+        {drill.decided_by}
+      </p>
+      {drill.decided_basis && drill.decided_basis.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-muted-foreground">原文</summary>
+          <ul className="mt-1 space-y-1">
+            {drill.decided_basis.map((b, i) => (
+              <li key={i} className="text-muted-foreground">
+                「{b.excerpt}」
+                <a href={b.url} target="_blank" rel="noopener noreferrer" className="ml-1 text-primary underline-offset-4 hover:underline">
+                  {b.title || "来源"} ↗
+                </a>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <p className="mt-1">
+        <span className="text-muted-foreground">你当时的理由：</span>
+        {drill.reasoning ?? "（没写）"}
+      </p>
+      {!drill.reasoning ? (
+        <p className="mt-1 text-xs text-muted-foreground">下次写一句理由，揭晓时才能拿它和实际原因对照。</p>
+      ) : match === null ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => mark(true)}>
+            我的理由对上了
+          </Button>
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => mark(false)}>
+            没对上
+          </Button>
+        </div>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">
+          你标了：{match ? "理由对上了" : "理由没对上"}
+          {!match && drillHit(drill) ? " —— 猜对了，但这次是运气。" : ""}
+          {match && !drillHit(drill) ? " —— 判断没毛病，是结果有变数。" : ""}
+        </p>
+      )}
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/** 揭晓：猜对没有、实际发生了什么、出处，再对一下理由。 */
 export function DrillReveal({ drill }: { drill: AnsweredDrill }) {
   const hit = drillHit(drill);
   return (
@@ -45,6 +111,7 @@ export function DrillReveal({ drill }: { drill: AnsweredDrill }) {
           ))}
         </ul>
       </details>
+      <ReasonCheck drill={drill} />
     </div>
   );
 }
@@ -118,7 +185,7 @@ export function DrillCard({ drill }: { drill: OpenDrill }) {
           <Input
             value={reasoning}
             onChange={(e) => setReasoning(e.target.value)}
-            placeholder="为什么这么猜？一句话（可以不写，写了揭晓后好对照）"
+            placeholder="为什么这么猜？写一句（揭晓时会拿它和实际原因对照，看你是猜对了还是想对了）"
             maxLength={300}
           />
           <div className="flex flex-wrap items-center gap-2">

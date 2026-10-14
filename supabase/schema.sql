@@ -5652,3 +5652,11 @@ create policy "signal_gap_transfers_owner" on signal_gap_transfers
 alter table signal_drills add column if not exists as_of text;
 alter table signal_drills add column if not exists criterion text;
 alter table signal_drills add column if not exists flag text;
+
+-- ============================================================================
+-- 069：历史题对理由（signal_drills.decided_by / decided_basis / reason_match）
+-- ============================================================================
+
+alter table signal_drills add column if not exists decided_by text;
+alter table signal_drills add column if not exists decided_basis jsonb;
+alter table signal_drills add column if not exists reason_match boolean;

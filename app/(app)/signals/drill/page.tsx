@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { listAnsweredDrills, nextDrill, tallyDrills } from "@/lib/domains/signals/drills";
+import { listAnsweredDrills, nextDrill, tallyAnswerBalance, tallyDrills, tallyReasons } from "@/lib/domains/signals/drills";
 import { DrillCard, DrillReveal, GenerateDrillsButton } from "./drill-card";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,9 @@ export default async function DrillPage() {
 
   const [open, answered] = await Promise.all([nextDrill(user.id), listAnsweredDrills(user.id)]);
   const tally = tallyDrills(answered);
+  const balance = tallyAnswerBalance(answered);
+  const reasons = tallyReasons(answered);
+  const reasonsMarked = reasons.bothRight + reasons.luckyRight + reasons.unluckyWrong + reasons.bothWrong;
 
   return (
     <PageContainer width="narrow">
@@ -75,6 +78,36 @@ export default async function DrillPage() {
             说「很有把握」的那一行，猜对的应该明显多于「没什么把握」那一行；差不多的话，说明你的把握感还不太靠得住 —— 这正是要练的。
           </p>
 
+          {reasonsMarked > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold">结论和理由放一起看（你标过的 {reasonsMarked} 道）</h3>
+              <ul className="mt-2 space-y-1 text-sm">
+                <li>
+                  猜对，理由也对上：<span className="font-mono">{reasons.bothRight}</span>
+                </li>
+                <li>
+                  猜对，理由没对上（运气）：<span className="font-mono">{reasons.luckyRight}</span>
+                </li>
+                <li>
+                  猜错，理由对上了（结果有变数）：<span className="font-mono">{reasons.unluckyWrong}</span>
+                </li>
+                <li>
+                  猜错，理由也没对上：<span className="font-mono">{reasons.bothWrong}</span>
+                </li>
+              </ul>
+              <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                「运气」那一行多，说明对的次数比你真实的判断力好看；能带到下一次判断里的，只有理由对上的那几道。
+              </p>
+            </div>
+          )}
+
+          <p className="mt-6 text-xs leading-6 text-muted-foreground">
+            答过的题里，答案是「会」的 <span className="font-mono">{balance.answerYes}</span> 道、「不会」的{" "}
+            <span className="font-mono">{balance.answerNo}</span> 道；你选「会」{" "}
+            <span className="font-mono">{balance.guessYes}</span> 次、「不会」<span className="font-mono">{balance.guessNo}</span> 次。
+            答案偏向一边的话，下一道会优先出另一边的；你自己选的偏向一边，可能是习惯性地往「会」或「不会」那边靠。
+          </p>
+
           <details className="mt-6">
             <summary className="cursor-pointer text-sm text-muted-foreground">最近答过的 {Math.min(RECENT, answered.length)} 道</summary>
             <ul className="mt-4 space-y-6">
@@ -82,7 +115,6 @@ export default async function DrillPage() {
                 <li key={d.id}>
                   <p className="text-sm leading-7 text-muted-foreground">{d.setup}</p>
                   <p className="mt-1 text-sm font-medium leading-7">{d.question}</p>
-                  {d.reasoning && <p className="mt-1 text-xs text-muted-foreground">你当时的理由：{d.reasoning}</p>}
                   <DrillReveal drill={d} />
                 </li>
               ))}

@@ -2683,7 +2683,7 @@ const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真�
 铁律：
 - 只出你很确定真实发生过的事。拿不准的不要出 —— 出了也会被核实刷掉。
 - 不要选结果人人都知道的大事（疫情、雷曼破产、东日本大地震这一类），也不要出从题面就猜得到答案的题。
-- 四道里"会"和"不会"都要有。
+- 四道里两道答案是"会"、两道是"不会"。只出"发生过的事"的话，一直答"会"就能对一大半，练不到判断。
 - 用中文写（公司名、产品名可以保留原文）。
 
 只输出 JSON：{"drills":[{"topic":0,"subject":"…","asOf":"2023-03","setup":"现在是2023年3月。…","question":"…","criterion":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…","queryEn":"…"}]}`;
@@ -2772,7 +2772,11 @@ export async function draftHistoryDrills(topics: string[], today: string): Promi
   );
 }
 
-export type CheckedDrill = DrillDraft & { check: AnalogCheck };
+export type CheckedDrill = DrillDraft & {
+  check: AnalogCheck;
+  /** 实际是哪一两件事决定了结果：只取资料里明确写到的原因，原文由代码核对；资料没写原因就没有。 */
+  decidedBy?: { text: string; basis: { url: string; title: string; excerpt: string }[] };
+};
 
 const DRILL_CHECK_PROMPT = `你在核实几道"历史题"的答案。每道下面附了上网搜到的资料。
 
@@ -2788,10 +2792,13 @@ const DRILL_CHECK_PROMPT = `你在核实几道"历史题"的答案。每道下�
 - whatHappened：corrected 时写按资料改正后的"实际发生了什么"；其余照抄原来的。
 - correction：只有 corrected 时写，一句话："原来说 X，资料里是 Y"。
 - basis：支撑或改正它的资料原文，逐字照抄（不翻译、不改字，每句 15 到 150 字），附资料编号 source。unverified 时给空数组。
+- decidedBy：实际是哪一两件事决定了这个结果，1 到 2 句。只写资料里明确写到的原因（"因为……""由于……""理由是……"、当事人自己说的原因），
+  资料里没写原因就写空字符串 —— 不许自己推因果。
+- decidedBasis：写着这个原因的资料原文，逐字照抄，附资料编号 source。decidedBy 为空时给空数组。
 
 叙述用简体中文（basis 照抄原文）。不要编资料里没有的事实。
 
-只输出 JSON：{"items":[{"i":0,"status":"supported","answer":true,"whatHappened":"…","correction":"","basis":[{"source":1,"excerpt":"…"}]}]}`;
+只输出 JSON：{"items":[{"i":0,"status":"supported","answer":true,"whatHappened":"…","correction":"","basis":[{"source":1,"excerpt":"…"}],"decidedBy":"…","decidedBasis":[{"source":1,"excerpt":"…"}]}]}`;
 
 /** 原文必须逐字在那一道自己的资料里；拿不出对得上的原文就算没核实（返回里不带这一道）。 */
 export function parseDrillChecks(value: unknown, inputs: { draft: DrillDraft; sources: SearchSource[] }[]): CheckedDrill[] {
@@ -2813,16 +2820,20 @@ export function parseDrillChecks(value: unknown, inputs: { draft: DrillDraft; so
       .filter((b): b is { url: string; title: string; excerpt: string } => b !== null)
       .slice(0, 3);
     if (basis.length === 0) return;
+    // 原因也要有对得上的原文，不然就是 AI 自己推的因果，宁可不写
+    const decidedText = typeof it.decidedBy === "string" ? it.decidedBy.trim() : "";
+    const decidedBasis = verifiedBasis(it.decidedBasis, sources);
+    const decided = decidedText && decidedBasis.length > 0 ? { decidedBy: { text: decidedText, basis: decidedBasis } } : {};
     if (it.status === "corrected") {
       const correction = typeof it.correction === "string" ? it.correction.trim() : "";
       const whatHappened = typeof it.whatHappened === "string" ? it.whatHappened.trim() : "";
       if (!correction || !whatHappened || typeof it.answer !== "boolean") return;
-      out.push({ ...draft, answer: it.answer, whatHappened, check: { status: "corrected", correction, basis } });
+      out.push({ ...draft, answer: it.answer, whatHappened, check: { status: "corrected", correction, basis }, ...decided });
       return;
     }
-    out.push({ ...draft, check: { status: "supported", basis } });
+    out.push({ ...draft, check: { status: "supported", basis }, ...decided });
   });
-  assertNoBanned(out.flatMap((d) => [d.whatHappened, d.check.correction ?? ""]).filter(Boolean));
+  assertNoBanned(out.flatMap((d) => [d.whatHappened, d.check.correction ?? "", d.decidedBy?.text ?? ""]).filter(Boolean));
   return out;
 }
 

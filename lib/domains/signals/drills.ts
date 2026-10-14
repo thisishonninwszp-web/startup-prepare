@@ -4,7 +4,7 @@ import { webSearch } from "@/lib/web-search";
 import { mergeSources } from "./sources";
 import { tokyoToday, type BriefItem } from "./brief";
 import { CONFIDENCE_LEVELS, type ConfidenceKey } from "./practice-shared";
-import { DRILL_FLAGS, type AnsweredDrill, type DrillFlag, type OpenDrill } from "./drills-shared";
+import { DRILL_FLAGS, pickBalanced, type AnsweredDrill, type DrillBasis, type DrillFlag, type OpenDrill } from "./drills-shared";
 
 export * from "./drills-shared";
 
@@ -25,6 +25,10 @@ const MISSING_MIGRATION = "迁移 066 还没跑：在 Supabase 的 SQL Editor �
 const MISSING_068 = "迁移 068 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/068_signal_drills_criterion.sql。";
 /** 068 加的列不存在时报的错。 */
 const MISSING_068_COLUMNS = /as_of|criterion|flag/;
+const MISSING_069 = "迁移 069 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/069_signal_drills_reasons.sql。";
+const MISSING_069_COLUMNS = /decided_by|decided_basis|reason_match/;
+/** 看最近答过的几道来决定下一道出"会"还是"不会"。 */
+const BALANCE_WINDOW = 20;
 
 /** 他最近在看的事：最近几天"今天的世界"的精选，加上在追的问题。 */
 async function recentTopics(userId: string): Promise<string[]> {
@@ -77,9 +81,12 @@ export async function generateDrills(userId: string): Promise<number> {
       what_happened: d.whatHappened,
       why_similar: d.whySimilar || null,
       source_check: d.check,
+      decided_by: d.decidedBy?.text ?? null,
+      decided_basis: d.decidedBy?.basis ?? null,
     }))
   );
   if (error) {
+    if (MISSING_069_COLUMNS.test(error.message)) throw new Error(MISSING_069);
     if (MISSING_068_COLUMNS.test(error.message)) throw new Error(MISSING_068);
     if (/signal_drills/.test(error.message)) throw new Error(MISSING_MIGRATION);
     throw new Error(error.message);
@@ -88,34 +95,62 @@ export async function generateDrills(userId: string): Promise<number> {
 }
 
 /**
- * 还没答、没跳过的最早那一道（不带答案）。068 之前出的题没有"怎么才算会"，不再出给他（标准说不清的题不公平）。
+ * 下一道（不带答案）：从没答、没跳过的题里挑，最近答过的题答案偏向"会"就优先出"不会"，反过来也一样。
+ * 068 之前出的题没有"怎么才算会"，不再出给他（标准说不清的题不公平）。
  * 表还没建返回 "missing-066"，068 没跑返回 "missing-068"。
  */
 export async function nextDrill(userId: string): Promise<OpenDrill | null | "missing-066" | "missing-068"> {
-  const { data, error } = await supabaseAdmin
-    .from("signal_drills")
-    .select("id, topic, setup, question, criterion")
-    .eq("user_id", userId)
-    .is("guess", null)
-    .is("flag", null)
-    .not("criterion", "is", null)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const [pool, recent] = await Promise.all([
+    supabaseAdmin
+      .from("signal_drills")
+      .select("id, topic, setup, question, criterion, answer")
+      .eq("user_id", userId)
+      .is("guess", null)
+      .is("flag", null)
+      .not("criterion", "is", null)
+      .limit(50),
+    supabaseAdmin
+      .from("signal_drills")
+      .select("answer")
+      .eq("user_id", userId)
+      .not("guess", "is", null)
+      .order("answered_at", { ascending: false })
+      .limit(BALANCE_WINDOW),
+  ]);
+  const error = pool.error ?? recent.error;
   if (error) {
     if (MISSING_068_COLUMNS.test(error.message)) return "missing-068";
     if (/signal_drills/.test(error.message)) return "missing-066";
     throw new Error(error.message);
   }
-  return data
+  const picked = pickBalanced(
+    (pool.data ?? []).map((d) => ({ ...d, answer: d.answer as boolean })),
+    (recent.data ?? []).map((r) => r.answer as boolean)
+  );
+  // 答案留在服务器上，只把题面交出去
+  return picked
     ? {
-        id: data.id as string,
-        topic: (data.topic as string | null) ?? null,
-        setup: data.setup as string,
-        question: data.question as string,
-        criterion: (data.criterion as string | null) ?? null,
+        id: picked.id as string,
+        topic: (picked.topic as string | null) ?? null,
+        setup: picked.setup as string,
+        question: picked.question as string,
+        criterion: (picked.criterion as string | null) ?? null,
       }
     : null;
+}
+
+/** 揭晓后他自己标"我当时的理由对上了没有"。 */
+export async function markReasonMatch(userId: string, id: string, match: boolean): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("signal_drills")
+    .update({ reason_match: match })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .not("guess", "is", null);
+  if (error) {
+    if (MISSING_069_COLUMNS.test(error.message)) throw new Error(MISSING_069);
+    throw new Error(error.message);
+  }
 }
 
 /** 这题出得不好，跳过：记下原因，不算进次数。答过的不能跳。 */
@@ -134,7 +169,7 @@ export async function flagDrill(userId: string, id: string, flag: DrillFlag): Pr
 }
 
 const ANSWERED_COLUMNS =
-  "id, topic, setup, question, criterion, deadline, answer, what_happened, why_similar, source_check, guess, confidence, reasoning, answered_at";
+  "id, topic, setup, question, criterion, deadline, answer, what_happened, why_similar, source_check, guess, confidence, reasoning, answered_at, decided_by, decided_basis, reason_match";
 
 function toAnswered(r: Record<string, unknown>): AnsweredDrill {
   return {
@@ -152,6 +187,9 @@ function toAnswered(r: Record<string, unknown>): AnsweredDrill {
     confidence: (r.confidence as number | null) ?? null,
     reasoning: (r.reasoning as string | null) ?? null,
     answered_at: r.answered_at as string,
+    decided_by: (r.decided_by as string | null) ?? null,
+    decided_basis: (r.decided_basis as DrillBasis | null) ?? null,
+    reason_match: (r.reason_match as boolean | null) ?? null,
   };
 }
 
@@ -176,7 +214,10 @@ export async function answerDrill(
     .is("guess", null)
     .select(ANSWERED_COLUMNS)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (MISSING_069_COLUMNS.test(error.message)) throw new Error(MISSING_069);
+    throw new Error(error.message);
+  }
   if (!data) throw new Error("这道题已经答过了");
   return toAnswered(data as Record<string, unknown>);
 }
@@ -191,7 +232,7 @@ export async function listAnsweredDrills(userId: string, limit = 200): Promise<A
     .order("answered_at", { ascending: false })
     .limit(limit);
   if (error) {
-    if (/signal_drills/.test(error.message) || MISSING_068_COLUMNS.test(error.message)) return [];
+    if (/signal_drills/.test(error.message) || MISSING_068_COLUMNS.test(error.message) || MISSING_069_COLUMNS.test(error.message)) return [];
     throw new Error(error.message);
   }
   return (data ?? []).map((r) => toAnswered(r as Record<string, unknown>));

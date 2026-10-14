@@ -1008,6 +1008,26 @@ describe("历史题：出题和核实", () => {
       ["第三道", false, "corrected"],
     ]);
   });
+
+  it("决定结果的原因：原文对得上才留，对不上就不写（不让 AI 自己推因果）", () => {
+    const sources = [{ title: "楽天", url: "https://example.jp/r", content: "楽天モバイルは、月額料金の値下げが寄与し、契約数が700万回線を突破したと発表した。" }];
+    const d = parseDrillDrafts({ drills: [draft()] }, 1, "2026-10-13")[0];
+    const basis = [{ source: 1, excerpt: "契約数が700万回線を突破したと発表した" }];
+    const checked = parseDrillChecks(
+      {
+        items: [
+          { i: 0, status: "supported", basis, decidedBy: "降价带来了签约。", decidedBasis: [{ source: 1, excerpt: "月額料金の値下げが寄与し" }] },
+          { i: 1, status: "supported", basis, decidedBy: "因为广告做得好。", decidedBasis: [{ source: 1, excerpt: "広告が良かった" }] },
+        ],
+      },
+      [
+        { draft: d, sources },
+        { draft: { ...d, question: "另一道" }, sources },
+      ]
+    );
+    expect(checked[0].decidedBy?.text).toBe("降价带来了签约。");
+    expect(checked[1].decidedBy).toBeUndefined();
+  });
 });
 
 describe("能不能搬过来", () => {
