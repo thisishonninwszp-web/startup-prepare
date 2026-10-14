@@ -6,13 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  BLOCKER_OPTIONS,
+  FIRST_MOVER_OPTIONS,
   issueCounts,
   ISSUE_MAX_PICKS,
-  ISSUE_MIN_JUDGMENT,
+  ISSUE_NOTE_MAX,
   ISSUE_PLATFORMS,
+  STANCE_OPTIONS,
+  STANCE_YEARS,
+  stanceSentence,
+  xIntentUrl,
   type Issue,
   type IssueBet,
   type IssuePlatform,
+  type PickStance,
 } from "@/lib/domains/signals/issue-shared";
 import type { IssueCandidate } from "@/lib/domains/signals/issue";
 import { addIssuePublishAction, addIssueResponseAction, composeIssueAction } from "../actions";
@@ -44,7 +51,42 @@ function CopyButton({ text, label = "复制" }: { text: string; label?: string }
   );
 }
 
-function DraftPanel({ body, titles, note }: { body: string; titles: string[]; note?: string }) {
+/** 一排可以点的选项；required 的点了就不能取消，其余点第二下取消。 */
+function OptionRow<K extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  required = false,
+}: {
+  label: string;
+  options: Record<K, string>;
+  value: K | undefined;
+  onChange: (v: K | undefined) => void;
+  required?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {(Object.keys(options) as K[]).map((k) => (
+          <Button
+            key={k}
+            size="sm"
+            variant={value === k ? "secondary" : "ghost"}
+            onClick={() => onChange(value === k && !required ? undefined : k)}
+          >
+            {options[k]}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type PickInput = { stance: Partial<PickStance>; note: string };
+
+function DraftPanel({ body, titles, note, postToX }: { body: string; titles: string[]; note?: string; postToX?: boolean }) {
   return (
     <div className="mt-4 space-y-3">
       {note && <p className="text-xs leading-6 text-muted-foreground">{note}</p>}
@@ -61,7 +103,16 @@ function DraftPanel({ body, titles, note }: { body: string; titles: string[]; no
       <div className="rounded-md border border-border bg-background p-4 text-sm leading-7 whitespace-pre-wrap">{body}</div>
       <div className="flex items-center justify-between">
         <span className="font-mono text-xs text-muted-foreground">{[...body].length} 字</span>
-        <CopyButton text={body} label="复制正文" />
+        <div className="flex gap-2">
+          {postToX && (
+            <Button size="sm" asChild>
+              <a href={xIntentUrl(body)} target="_blank" rel="noopener noreferrer">
+                去 X 发这条
+              </a>
+            </Button>
+          )}
+          <CopyButton text={body} label="复制正文" />
+        </div>
       </div>
     </div>
   );
@@ -81,8 +132,8 @@ export function IssueComposer({
   bets: IssueBet[];
   initial: Issue | null;
 }) {
-  const [picked, setPicked] = useState<Record<string, string>>(
-    Object.fromEntries((initial?.content.picks ?? []).map((p) => [keyOf(p), p.judgment]))
+  const [picked, setPicked] = useState<Record<string, PickInput>>(
+    Object.fromEntries((initial?.content.picks ?? []).map((p) => [keyOf(p), { stance: p.stance ?? {}, note: p.note ?? "" }]))
   );
   const [betIds, setBetIds] = useState<string[]>((initial?.content.bets ?? []).map((b) => b.id));
   const [opening, setOpening] = useState(initial?.content.opening ?? "");
@@ -95,9 +146,13 @@ export function IssueComposer({
   const [response, setResponse] = useState("");
   const [wantsTalk, setWantsTalk] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
+  const [betNotice, setBetNotice] = useState<string | null>(null);
 
   const keys = Object.keys(picked);
-  const ready = keys.length > 0 && keys.every((k) => picked[k].trim().length >= ISSUE_MIN_JUDGMENT);
+  const ready = keys.length > 0 && keys.every((k) => !!picked[k].stance.will);
+  const update = (k: string, patch: Partial<PickInput>) => setPicked((prev) => ({ ...prev, [k]: { ...prev[k], ...patch } }));
+  const updateStance = (k: string, patch: Partial<PickStance>) =>
+    setPicked((prev) => ({ ...prev, [k]: { ...prev[k], stance: { ...prev[k].stance, ...patch } } }));
 
   const toggle = (c: IssueCandidate) => {
     const k = keyOf(c);
@@ -108,7 +163,7 @@ export function IssueComposer({
         return next;
       }
       if (Object.keys(prev).length >= ISSUE_MAX_PICKS) return prev;
-      return { ...prev, [k]: "" };
+      return { ...prev, [k]: { stance: {}, note: "" } };
     });
   };
 
@@ -116,7 +171,9 @@ export function IssueComposer({
     startTransition(async () => {
       setError(null);
       const result = await composeIssueAction({
-        picks: gaps.filter((g) => keyOf(g) in picked).map((g) => ({ side: g.side, signal_id: g.signal_id, judgment: picked[keyOf(g)] })),
+        picks: gaps
+          .filter((g) => keyOf(g) in picked)
+          .map((g) => ({ side: g.side, signal_id: g.signal_id, stance: picked[keyOf(g)].stance, note: picked[keyOf(g)].note })),
         betIds,
         opening,
       });
@@ -131,7 +188,8 @@ export function IssueComposer({
       <section>
         <h2 className="text-base font-semibold">这一期写哪几条（最多 {ISSUE_MAX_PICKS} 条）</h2>
         <p className="mt-1 text-xs leading-6 text-muted-foreground">
-          最近两周清单里的。每条写一句你自己的判断 —— 发出去的就是这句话，别人写不出来的也就是这句话。系统只排版、不替你写。
+          最近两周清单里的。每条点三下就是你的判断 —— 发出去的就是这句话，别人写不出来的也就是这句话。
+          第一问押了「会」或「不会」的，发出去时自动押进判断账本，{STANCE_YEARS} 年后对账。
         </p>
         {gaps.length === 0 ? (
           <p className="mt-3 text-sm leading-7 text-muted-foreground">这两周清单里没有新的。去差距清单扫一轮再来。</p>
@@ -159,14 +217,39 @@ export function IssueComposer({
                     {on ? "不写这条" : "写这条"}
                   </Button>
                   {on && (
-                    <Textarea
-                      className="mt-3"
-                      rows={3}
-                      maxLength={300}
-                      value={picked[k]}
-                      onChange={(e) => setPicked((prev) => ({ ...prev, [k]: e.target.value }))}
-                      placeholder="你的判断：这件事在这边会怎样？谁会先做、卡在哪、你押哪边？写一句完整的话。"
-                    />
+                    <div className="mt-3 space-y-2">
+                      <OptionRow
+                        label={`${STANCE_YEARS} 年内${g.here}会不会出现？`}
+                        options={STANCE_OPTIONS}
+                        value={picked[k].stance.will}
+                        onChange={(v) => updateStance(k, { will: v })}
+                        required
+                      />
+                      <OptionRow
+                        label="最大的阻碍？"
+                        options={BLOCKER_OPTIONS}
+                        value={picked[k].stance.blocker}
+                        onChange={(v) => updateStance(k, { blocker: v })}
+                      />
+                      <OptionRow
+                        label="谁最可能先做？"
+                        options={FIRST_MOVER_OPTIONS}
+                        value={picked[k].stance.firstMover}
+                        onChange={(v) => updateStance(k, { firstMover: v })}
+                      />
+                      <Input
+                        value={picked[k].note}
+                        maxLength={ISSUE_NOTE_MAX}
+                        onChange={(e) => update(k, { note: e.target.value })}
+                        placeholder="想多说一句？（可以不写）"
+                      />
+                      {picked[k].stance.will && (
+                        <p className="text-sm leading-7">
+                          <span className="text-muted-foreground">发出去的是：</span>
+                          {stanceSentence(picked[k].stance as PickStance, g.here, picked[k].note)}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </li>
               );
@@ -224,7 +307,7 @@ export function IssueComposer({
           {pending ? "在排版、翻译……二三十秒" : issue?.drafts ? "按现在选的重新生成" : "生成四个版本"}
         </Button>
         {!ready && keys.length > 0 && (
-          <p className="mt-2 text-xs text-muted-foreground">每条判断至少写 {ISSUE_MIN_JUDGMENT} 个字。</p>
+          <p className="mt-2 text-xs text-muted-foreground">每条都先点一下：{STANCE_YEARS} 年内会不会出现。</p>
         )}
         {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
       </div>
@@ -253,7 +336,12 @@ export function IssueComposer({
               />
             </TabsContent>
             <TabsContent value="jaShort">
-              <DraftPanel body={issue.drafts.jaShort} titles={[]} note="X 一条放不下链接，发完在回复里贴 note 的链接。日文是 AI 翻译的。" />
+              <DraftPanel
+                body={issue.drafts.jaShort}
+                titles={[]}
+                postToX
+                note="点「去 X 发这条」会打开写好的发帖框，你看一眼再点发布。一条放不下链接，发完在回复里贴 note 的链接。日文是 AI 翻译的。"
+              />
             </TabsContent>
           </Tabs>
         </section>
@@ -289,6 +377,7 @@ export function IssueComposer({
                     if (result.ok) {
                       setIssue(result.issue);
                       setUrl("");
+                      if (result.bets > 0) setBetNotice(`这一期押了「会 / 不会」的 ${result.bets} 条，已经押进判断账本，${STANCE_YEARS} 年后对账。`);
                     } else setLogError(result.message);
                   })
                 }
@@ -296,6 +385,7 @@ export function IssueComposer({
                 记下发了
               </Button>
             </div>
+            {betNotice && <p className="mt-2 text-sm text-primary">{betNotice}</p>}
             {issue.published.length > 0 && (
               <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                 {issue.published.map((p, i) => (

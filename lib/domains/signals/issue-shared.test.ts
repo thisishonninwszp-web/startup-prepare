@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { assembleDrafts, ISSUE_CTA, issueCounts, sourcesBlock, weekStartOf, type IssuePick } from "./issue-shared";
+import {
+  assembleDrafts,
+  ISSUE_CTA,
+  issueCounts,
+  sourcesBlock,
+  stanceSentence,
+  validStance,
+  weekStartOf,
+  xIntentUrl,
+  type IssuePick,
+} from "./issue-shared";
 
 const pick = (over: Partial<IssuePick> = {}): IssuePick => ({
   side: "japan",
@@ -45,5 +55,28 @@ describe("周刊", () => {
         ],
       })
     ).toEqual({ published: 1, responses: 2, wantsTalk: 1 });
+  });
+});
+
+describe("点三下就是判断", () => {
+  it("stanceSentence：点的拼成一句，补的那句原样接在后面；其他、没点的不说", () => {
+    expect(stanceSentence({ will: "will", blocker: "law", firstMover: "startup" }, "日本")).toBe(
+      "我押2年内日本会出现这个。最大的阻碍是法规。最可能先做的是创业公司。"
+    );
+    expect(stanceSentence({ will: "wont", blocker: "other" }, "日本", " 便利店已经够近了。")).toBe(
+      "我押2年内日本不会出现这个。便利店已经够近了。"
+    );
+    expect(stanceSentence({ will: "unsure", firstMover: "none" }, "中国")).toBe("2年内中国会不会出现，我说不清。我觉得不会有人做。");
+  });
+
+  it("validStance：只认规定的选项；第一问必须有", () => {
+    expect(validStance({ will: "will", blocker: "law", firstMover: "x" })).toEqual({ will: "will", blocker: "law" });
+    expect(validStance({ blocker: "law" })).toBeNull();
+    expect(validStance({ will: "maybe" })).toBeNull();
+    expect(validStance(null)).toBeNull();
+  });
+
+  it("xIntentUrl：内容编码进发帖框的链接", () => {
+    expect(xIntentUrl("中国では #ドローン")).toBe("https://twitter.com/intent/tweet?text=" + encodeURIComponent("中国では #ドローン"));
   });
 });

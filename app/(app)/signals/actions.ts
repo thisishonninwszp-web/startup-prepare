@@ -508,7 +508,7 @@ export async function gapToIdeaAction(
 
 /** 周刊：按他挑的几条和写的判断，生成四个版本的稿子（二三十秒）。 */
 export async function composeIssueAction(input: {
-  picks: { side: GapSide; signal_id: string; judgment: string }[];
+  picks: { side: GapSide; signal_id: string; stance: unknown; note: string }[];
   betIds: string[];
   opening: string;
 }): Promise<{ ok: true; issue: Issue } | { ok: false; message: string }> {
@@ -522,15 +522,17 @@ export async function composeIssueAction(input: {
   }
 }
 
-/** 周刊：记一笔发在了哪。 */
+/** 周刊：记一笔发在了哪（第一次记时，押了会 / 不会的几条押进判断账本，返回押了几条）。 */
 export async function addIssuePublishAction(
   issueId: string,
   platform: IssuePlatform,
   url: string
-): Promise<{ ok: true; issue: Issue } | { ok: false; message: string }> {
+): Promise<{ ok: true; issue: Issue; bets: number } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    return { ok: true, issue: await addIssuePublish(userId, issueId, platform, url) };
+    const result = await addIssuePublish(userId, issueId, platform, url);
+    revalidatePath("/signals/practice");
+    return { ok: true, ...result };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没记上") };
   }

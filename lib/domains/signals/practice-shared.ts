@@ -185,10 +185,14 @@ export function isNodeBet(question: string): boolean {
 /** 从"我的问题"页押进账本的判断，question 以这个前缀开头。 */
 export const QUESTION_BET_PREFIX = "【我的问题】";
 
+/** 周刊发出去时自动押进账本的判断（公开过的判断），question 以这个前缀开头。 */
+export const ISSUE_BET_PREFIX = "【周刊】";
+
 /** 界面上显示的问题：押推论的、押自己问题的，去掉前缀换成人话。 */
 export function displayQuestion(question: string): string {
   if (isNodeBet(question)) return `往下推的一步会不会发生：${question.slice(NODE_BET_PREFIX.length)}`;
   if (question.startsWith(QUESTION_BET_PREFIX)) return `我在追的问题：${question.slice(QUESTION_BET_PREFIX.length)}`;
+  if (question.startsWith(ISSUE_BET_PREFIX)) return `周刊上公开押的：${question.slice(ISSUE_BET_PREFIX.length)}`;
   if (question.startsWith(MILESTONE_PREFIX)) return `长期判断的中途苗头：${displayQuestion(question.slice(MILESTONE_PREFIX.length))}`;
   return question;
 }

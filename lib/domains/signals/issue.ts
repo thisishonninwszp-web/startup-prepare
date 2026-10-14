@@ -4,17 +4,21 @@ import { tokyoToday } from "./brief";
 import { loadGapTransfers } from "./gap-transfer";
 import { listGapBoard, GAP_SIDES } from "./gaps";
 import { gapPlaces, transferKey, type GapSide, type JapanGap } from "./gaps-shared";
-import { displayQuestion, listJudgments } from "./practice";
+import { displayQuestion, ISSUE_BET_PREFIX, listJudgments } from "./practice";
 import {
   assembleDrafts,
   ISSUE_MAX_PICKS,
-  ISSUE_MIN_JUDGMENT,
+  ISSUE_NOTE_MAX,
   ISSUE_PLATFORMS,
+  STANCE_YEARS,
+  stanceSentence,
+  validStance,
   weekStartOf,
   type Issue,
   type IssueBet,
   type IssuePick,
   type IssuePlatform,
+  type PickStance,
 } from "./issue-shared";
 
 export * from "./issue-shared";
@@ -144,7 +148,8 @@ function buildPick(
   transfers: Awaited<ReturnType<typeof loadGapTransfers>>,
   side: GapSide,
   signalId: string,
-  judgment: string
+  stance: PickStance,
+  note: string
 ): IssuePick {
   const arrived = board.sides[side].arrived.find((g) => g.signal_id === signalId);
   const open = board.sides[side].open.find((g) => g.signal_id === signalId);
@@ -166,26 +171,30 @@ function buildPick(
     ...(gap.funded ? { funded: { company: gap.funded.company, url: gap.funded.url } } : {}),
     ...(transfer ? { conditions: transfer.conditions.map((c) => ({ name: c.name, holds: c.holds, here: c.here })) } : {}),
     sources,
-    judgment: judgment.trim(),
+    stance,
+    ...(note.trim() ? { note: note.trim() } : {}),
+    // 判断由服务器按他点的选项拼（不信浏览器传来的那句话）
+    judgment: stanceSentence(stance, gapPlaces(side).here, note),
+    url: gap.url,
   };
 }
 
 /** 生成（或重新生成）这一周的稿子并存下来。发过的、收到的回应不动。 */
 export async function composeAndSaveIssue(
   userId: string,
-  input: { picks: { side: GapSide; signal_id: string; judgment: string }[]; betIds: string[]; opening: string }
+  input: { picks: { side: GapSide; signal_id: string; stance: unknown; note: string }[]; betIds: string[]; opening: string }
 ): Promise<Issue> {
   if (input.picks.length === 0) throw new Error("至少挑一条");
   if (input.picks.length > ISSUE_MAX_PICKS) throw new Error(`一期最多 ${ISSUE_MAX_PICKS} 条`);
-  for (const p of input.picks) {
-    if (p.judgment.trim().length < ISSUE_MIN_JUDGMENT) throw new Error("每条都写一句完整的判断，发出去的就是这句话");
-  }
+  const stances = input.picks.map((p) => validStance(p.stance));
+  if (stances.some((s) => s === null)) throw new Error("每条都先点一下：两年内会不会出现");
+  if (input.picks.some((p) => p.note.trim().length > ISSUE_NOTE_MAX)) throw new Error(`补的那句最多 ${ISSUE_NOTE_MAX} 字`);
   const [board, transfers, candidates] = await Promise.all([
     listGapBoard(userId, tokyoToday()),
     loadGapTransfers(userId),
     issueCandidates(userId),
   ]);
-  const picks = input.picks.map((p) => buildPick(board, transfers, p.side, p.signal_id, p.judgment));
+  const picks = input.picks.map((p, i) => buildPick(board, transfers, p.side, p.signal_id, stances[i]!, p.note));
   const bets = candidates.bets.filter((b) => input.betIds.includes(b.id));
   const content = { opening: input.opening.trim(), picks, bets };
 
@@ -221,16 +230,65 @@ async function loadOwnIssue(userId: string, issueId: string): Promise<Issue> {
   return toIssue(data as Record<string, unknown>);
 }
 
-/** 记一笔发在了哪。 */
-export async function addIssuePublish(userId: string, issueId: string, platform: IssuePlatform, url: string): Promise<Issue> {
+/**
+ * 发出去了，这一期里"会 / 不会"的几条就是公开押过的：押进判断账本，两年后对账（标签「周刊」）。
+ * 只在第一次记"发了"时押；同一句已经押过就跳过。新闻条目已经被清掉的，就不连着它（只记标题和链接）。
+ */
+async function recordIssueBets(userId: string, issue: Issue): Promise<number> {
+  const due = new Date(Date.now() + STANCE_YEARS * 365 * 86_400_000);
+  const dueLabel = `${due.getFullYear()}年${due.getMonth() + 1}月`;
+  let recorded = 0;
+  for (const p of issue.content.picks) {
+    if (!p.stance || p.stance.will === "unsure") continue;
+    const question = `${ISSUE_BET_PREFIX}到${dueLabel}，${gapPlaces(p.side).here}会不会出现：${p.headline}？`;
+    const { data: existing } = await supabaseAdmin
+      .from("signal_judgments")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("question", question)
+      .limit(1)
+      .maybeSingle();
+    if (existing) continue;
+    const { data: signal } = await supabaseAdmin.from("external_signals").select("id").eq("id", p.signal_id).maybeSingle();
+    const { data: prediction, error: predictionError } = await supabaseAdmin
+      .from("predictions")
+      .insert({ user_id: userId, source_type: "signal", text: p.judgment, due_at: due.toISOString(), confidence: null })
+      .select("id")
+      .single();
+    if (predictionError) throw new Error(predictionError.message);
+    const { error } = await supabaseAdmin.from("signal_judgments").insert({
+      user_id: userId,
+      signal_id: signal ? p.signal_id : null,
+      prediction_id: prediction.id,
+      news_title: p.headline,
+      news_url: p.url ?? null,
+      question,
+      judgment: p.judgment,
+      tags: ["周刊"],
+    });
+    if (error) throw new Error(error.message);
+    recorded += 1;
+  }
+  return recorded;
+}
+
+/** 记一笔发在了哪。第一次记"发了"时，把这一期里押了会 / 不会的几条押进判断账本。 */
+export async function addIssuePublish(
+  userId: string,
+  issueId: string,
+  platform: IssuePlatform,
+  url: string
+): Promise<{ issue: Issue; bets: number }> {
   if (!ISSUE_PLATFORMS.includes(platform)) throw new Error("不认识这个平台");
   const link = url.trim();
   if (link && !/^https?:\/\//.test(link)) throw new Error("链接要以 http:// 或 https:// 开头");
   const issue = await loadOwnIssue(userId, issueId);
+  const first = issue.published.length === 0;
   const published = [...issue.published, { platform, url: link, at: new Date().toISOString() }];
   const { error } = await supabaseAdmin.from("signal_issues").update({ published }).eq("id", issueId).eq("user_id", userId);
   if (error) throw new Error(error.message);
-  return { ...issue, published };
+  const bets = first ? await recordIssueBets(userId, issue) : 0;
+  return { issue: { ...issue, published }, bets };
 }
 
 /** 记一条读者回应（正文已经记成观察，这里只记是哪一条、他想不想聊）。 */
