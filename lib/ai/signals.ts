@@ -2458,6 +2458,151 @@ export async function extractStepEvidence(claim: string, sources: SearchSource[]
   );
 }
 
+// ── 周刊：只搬运、不替他写观点 ─────────────────────────────────────────────
+
+/** 周刊要排的东西：和 lib/domains/signals/issue-shared.ts 的 IssueContent 同形（这里不引那边，免得 lib/ai 依赖领域层）。 */
+export type IssueComposeInput = {
+  opening: string;
+  picks: {
+    there: string;
+    here: string;
+    headline: string;
+    background: string;
+    hereNow: string;
+    whyNow?: string;
+    funded?: { company: string };
+    conditions?: { name: string; holds: "yes" | "no" | "unclear"; here: string }[];
+    judgment: string;
+  }[];
+  bets: { question: string; judgment: string; outcome: "pending" | "hit" | "miss"; made_on: string; due_on: string }[];
+};
+
+const HOLDS_TEXT = { yes: "这边也成立", no: "这边不成立", unclear: "说不清" } as const;
+const OUTCOME_TEXT = { pending: "还在等", hit: "对了", miss: "错了" } as const;
+
+function issueInputText(input: IssueComposeInput): string {
+  const picks = input.picks.map((p, i) =>
+    [
+      `【第 ${i + 1} 条】${p.headline}`,
+      `${p.there}那边：${p.background}`,
+      `${p.here}这边现在：${p.hereNow}`,
+      p.whyNow ? `为什么是现在：${p.whyNow}` : "",
+      p.funded ? `${p.here}已经有公司拿到投资在做：${p.funded.company}` : "",
+      p.conditions && p.conditions.length > 0
+        ? `能不能搬过来（它在${p.there}靠这几条做成，${p.here}这边）：${p.conditions.map((c) => `${c.name}——${HOLDS_TEXT[c.holds]}（${c.here}）`).join("；")}`
+        : "",
+      `【他的判断】${p.judgment}`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+  const bets = input.bets.map(
+    (b) => `【对账】${b.made_on} 押的：${b.judgment}（问题：${b.question}；${b.due_on} 对账）→ ${OUTCOME_TEXT[b.outcome]}`
+  );
+  return [input.opening ? `【他写的开头】${input.opening}` : "", ...picks, ...bets].filter(Boolean).join("\n\n");
+}
+
+const ISSUE_SHARED_RULES = `你帮他把这一周的"那边有、这边还没有"整理成一期周刊。你只做两件事：把下面给的事实排好、写顺；把他写的判断放进去。不许替他加观点。
+
+铁律：
+- 只用下面给的事实。没给的不要补，不要自己加数字、公司名、日期。
+- 不许写"值得关注""很有潜力""机会巨大""赶紧上车"这类话；不许写投资建议；不许夸他，也不许夸读者。
+- 结尾不要写"欢迎评论""关注我"之类的话（代码会加），也不要写出处链接（代码会加）。
+- 长文的结构：开头一两句说这一期讲什么（他写了开头就用他的）；每条一个小标题，下面依次写那边是什么、这边现在怎样、为什么是现在、能不能搬过来（给了才写），最后一段是他的判断；最后是对账（给了才写）：他押过什么、结果对了 / 错了 / 还在等，照实写，错了也写。`;
+
+const ISSUE_ZH_PROMPT = `${ISSUE_SHARED_RULES}
+
+你写中文版：
+- 他写的判断（【他的判断】后面那段）和开头（【他写的开头】），一字不改地照抄 —— 代码会逐字核对，改了一个字就作废。判断单独成段，前面写"我的判断："。
+- 对账里他押的那句话也一字不改。
+- zhLong：公众号 / 即刻用的长文。
+- zhShort：小红书用的短帖，900 字以内。段落短，每条三四行，"我的判断"照抄。可以用一两个符号当小标题，不要满屏 emoji。
+- zhTitles：3 个标题候选，每个 20 字以内，带一个具体的事实，不要标题党。
+
+只输出 JSON：{"zhLong":"…","zhShort":"…","zhTitles":["…","…","…"]}`;
+
+const ISSUE_JA_PROMPT = `${ISSUE_SHARED_RULES}
+
+你写日文版（です・ます調）：
+- 他写的判断和开头是中文，忠实翻译成日文，不加不减、不改语气的强弱。
+- jaLong：note 用的长文。
+- jaShort：X 用的一条，120 字以内，挑最有意思的一条讲，带上他的判断，不写链接。
+- jaTitles：3 个标题候选，每个 30 字以内，带一个具体的事实。
+
+只输出 JSON：{"jaLong":"…","jaShort":"…","jaTitles":["…","…","…"]}`;
+
+/** 小红书正文上限一千字，结尾那句由代码加，正文留点余量。 */
+const ZH_SHORT_MAX = 950;
+const JA_SHORT_MAX = 140;
+
+function titlesOf(raw: unknown): string[] {
+  return (Array.isArray(raw) ? raw : []).filter((t): t is string => typeof t === "string" && !!t.trim()).map((t) => t.trim()).slice(0, 3);
+}
+
+/** 他的原话（判断、开头、对账里押的那句）必须逐字出现在中文稿里；去掉他的原话以后，剩下的才查空话。 */
+export function parseIssueZh(value: unknown, input: IssueComposeInput): { zhLong: string; zhShort: string; zhTitles: string[] } {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const zhLong = typeof v.zhLong === "string" ? v.zhLong.trim() : "";
+  const zhShort = typeof v.zhShort === "string" ? v.zhShort.trim() : "";
+  const zhTitles = titlesOf(v.zhTitles);
+  if (!zhLong || !zhShort || zhTitles.length === 0) throw new Error("缺字段");
+  const squash = (t: string) => t.replace(/\s+/g, "");
+  const own = [...input.picks.map((p) => p.judgment), ...input.bets.map((b) => b.judgment), input.opening].map((t) => t.trim()).filter(Boolean);
+  for (const p of input.picks) {
+    if (!squash(zhLong).includes(squash(p.judgment)) || !squash(zhShort).includes(squash(p.judgment))) {
+      throw new Error(`他的判断被改了：${p.judgment.slice(0, 20)}`);
+    }
+  }
+  for (const text of [...input.bets.map((b) => b.judgment), input.opening].filter((t) => t.trim())) {
+    if (!squash(zhLong).includes(squash(text))) throw new Error(`他的原话被改了：${text.slice(0, 20)}`);
+  }
+  if ([...zhShort].length > ZH_SHORT_MAX) throw new Error(`小红书那版太长了（${[...zhShort].length} 字）`);
+  const strip = (t: string) => own.reduce((acc, o) => acc.split(o).join(""), t);
+  const aiTexts = [strip(zhLong), strip(zhShort), ...zhTitles];
+  assertNoBanned(aiTexts);
+  assertChineseAllowingNames(aiTexts);
+  return { zhLong, zhShort, zhTitles };
+}
+
+export function parseIssueJa(value: unknown): { jaLong: string; jaShort: string; jaTitles: string[] } {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const jaLong = typeof v.jaLong === "string" ? v.jaLong.trim() : "";
+  const jaShort = typeof v.jaShort === "string" ? v.jaShort.trim() : "";
+  const jaTitles = titlesOf(v.jaTitles);
+  if (!jaLong || !jaShort || jaTitles.length === 0) throw new Error("缺字段");
+  // 有平假名才是日文（整篇写成中文的不收）
+  if (!/[぀-ゟ]/.test(jaLong) || !/[぀-ゟ]/.test(jaShort)) throw new Error("不是日文");
+  if ([...jaShort].length > JA_SHORT_MAX) throw new Error(`X 那条太长了（${[...jaShort].length} 字）`);
+  return { jaLong, jaShort, jaTitles };
+}
+
+/** 中文、日文各写一份（并行，一份二三十秒）。 */
+export async function composeIssue(input: IssueComposeInput): Promise<{
+  zhLong: string;
+  zhShort: string;
+  zhTitles: string[];
+  jaLong: string;
+  jaShort: string;
+  jaTitles: string[];
+}> {
+  const contents = issueInputText(input);
+  const call = <T>(operation: string, systemInstruction: string, parse: (v: unknown) => T, retryHint: string) =>
+    executeAiJson(
+      { operation, module: "unknown", outputMode: "json", timeoutMs: 55_000 },
+      (attempt) => ({
+        model: MODEL,
+        contents: contents + (attempt === 1 ? `\n\n上一次输出没通过校验：${retryHint}` : ""),
+        config: { systemInstruction, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 8000 },
+      }),
+      parse
+    );
+  const [zh, ja] = await Promise.all([
+    call("signal_issue_zh", ISSUE_ZH_PROMPT, (v) => parseIssueZh(v, input), "他的判断、开头、押的那句必须一字不改；小红书那版 900 字以内；不许写空话。"),
+    call("signal_issue_ja", ISSUE_JA_PROMPT, parseIssueJa, "要写成日文；X 那条 120 字以内。"),
+  ]);
+  return { ...zh, ...ja };
+}
+
 // ── 差距清单：能不能搬过来 ─────────────────────────────────────────────────
 
 export type TransferPlan = {

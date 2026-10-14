@@ -5688,3 +5688,26 @@ alter table signal_drill_batches enable row level security;
 drop policy if exists "signal_drill_batches_owner" on signal_drill_batches;
 create policy "signal_drill_batches_owner" on signal_drill_batches
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 071：周刊（signal_issues）
+-- ============================================================================
+
+create table if not exists signal_issues (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  week_start  date not null,
+  content     jsonb not null,
+  drafts      jsonb,
+  published   jsonb not null default '[]'::jsonb,
+  responses   jsonb not null default '[]'::jsonb,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  constraint signal_issues_uniq unique (user_id, week_start)
+);
+
+alter table signal_issues enable row level security;
+
+drop policy if exists "signal_issues_owner" on signal_issues;
+create policy "signal_issues_owner" on signal_issues
+  for all using (auth.uid() = user_id);

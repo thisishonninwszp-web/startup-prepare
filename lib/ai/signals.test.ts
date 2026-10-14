@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1071,5 +1071,45 @@ describe("能不能搬过来", () => {
     ]);
     expect(judged.conditions[1].here).toBe("没查到这边的情况。");
     expect(judged.precedent).toBeNull();
+  });
+});
+
+describe("周刊：只搬运、不替他写观点", () => {
+  const judgment = "两年内日本会先在离岛试点，城市里法规还卡着。";
+  const input = {
+    opening: "这周看到三件中国已经跑通的事。",
+    picks: [{ there: "中国", here: "日本", headline: "h", background: "b", hereNow: "没有。", judgment }],
+    bets: [{ question: "q", judgment: "日银年底前加息", outcome: "hit" as const, made_on: "2026-09-01", due_on: "2026-10-01" }],
+  };
+  const ok = {
+    zhLong: `这周看到三件中国已经跑通的事。\n\n美团用无人机送药。\n\n我的判断：${judgment}\n\n对账：九月押了「日银年底前加息」，对了。`,
+    zhShort: `美团用无人机送药。\n我的判断：${judgment}`,
+    zhTitles: ["中国无人机送药，日本卡在哪"],
+  };
+
+  it("他的判断、开头、押的那句一字不改才收；空白不算", () => {
+    expect(parseIssueZh(ok, input).zhTitles).toHaveLength(1);
+    expect(parseIssueZh({ ...ok, zhShort: ok.zhShort.replace(judgment, judgment.replace("，", " ，")) }, input).zhShort).toBeTruthy();
+    expect(() => parseIssueZh({ ...ok, zhLong: ok.zhLong.replace("离岛", "偏远地区") }, input)).toThrow("判断被改了");
+    expect(() => parseIssueZh({ ...ok, zhLong: ok.zhLong.replace("日银年底前加息", "日银加息") }, input)).toThrow("原话被改了");
+  });
+
+  it("小红书那版太长不收；AI 自己加的空话不收，他自己写的不算", () => {
+    expect(() => parseIssueZh({ ...ok, zhShort: ok.zhShort + "啊".repeat(1000) }, input)).toThrow("太长");
+    expect(() => parseIssueZh({ ...ok, zhLong: ok.zhLong + "\n这个方向很有潜力。" }, input)).toThrow();
+    const own = { ...input, picks: [{ ...input.picks[0], judgment: "我觉得这个方向很有潜力，但法规卡着。" }] };
+    const withOwn = {
+      ...ok,
+      zhLong: ok.zhLong.replace(judgment, own.picks[0].judgment),
+      zhShort: ok.zhShort.replace(judgment, own.picks[0].judgment),
+    };
+    expect(parseIssueZh(withOwn, own).zhLong).toContain("很有潜力");
+  });
+
+  it("日文版要真是日文，X 那条不超过 140 字", () => {
+    const ja = { jaLong: "今週は中国で始まった三つのことを紹介します。", jaShort: "中国ではドローンで薬が届きます。", jaTitles: ["t"] };
+    expect(parseIssueJa(ja).jaShort).toBe(ja.jaShort);
+    expect(() => parseIssueJa({ ...ja, jaLong: "这周看到三件事。" })).toThrow("不是日文");
+    expect(() => parseIssueJa({ ...ja, jaShort: "です".repeat(80) })).toThrow("太长");
   });
 });

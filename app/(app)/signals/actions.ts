@@ -26,6 +26,13 @@ import {
   type DrillFlag,
 } from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
+import {
+  addIssuePublish,
+  addIssueResponse,
+  composeAndSaveIssue,
+  type Issue,
+  type IssuePlatform,
+} from "@/lib/domains/signals/issue";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
@@ -496,6 +503,59 @@ export async function gapToIdeaAction(
     return { ok: true, id: idea.id };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没变成想法") };
+  }
+}
+
+/** 周刊：按他挑的几条和写的判断，生成四个版本的稿子（二三十秒）。 */
+export async function composeIssueAction(input: {
+  picks: { side: GapSide; signal_id: string; judgment: string }[];
+  betIds: string[];
+  opening: string;
+}): Promise<{ ok: true; issue: Issue } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const issue = await composeAndSaveIssue(userId, input);
+    revalidatePath("/signals/issue");
+    return { ok: true, issue };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "稿子没写出来") };
+  }
+}
+
+/** 周刊：记一笔发在了哪。 */
+export async function addIssuePublishAction(
+  issueId: string,
+  platform: IssuePlatform,
+  url: string
+): Promise<{ ok: true; issue: Issue } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, issue: await addIssuePublish(userId, issueId, platform, url) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
+  }
+}
+
+/** 周刊：记一条读者回应。正文记成带「读者回应」标签的观察（材料还是从一个口子进），想聊的再加「想聊」。 */
+export async function addIssueResponseAction(
+  issueId: string,
+  weekStart: string,
+  text: string,
+  wantsTalk: boolean
+): Promise<{ ok: true; issue: Issue } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const body = text.trim();
+    if (body.length < 2) throw new Error("把读者说的话贴进来");
+    const observation = await createObservation(`读者回应（${weekStart} 那一期周刊）：${body}`, [
+      EXTERNAL_TAG,
+      "读者回应",
+      ...(wantsTalk ? ["想聊"] : []),
+    ]);
+    revalidatePath("/capture");
+    return { ok: true, issue: await addIssueResponse(userId, issueId, observation.id, wantsTalk) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
   }
 }
 

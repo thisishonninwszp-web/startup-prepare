@@ -245,6 +245,11 @@ export default async function JapanGapsPage() {
       />
 
       <ScanStatus ready={board.ready} scanned={scanned} dueCount={board.dueCount} recheckedToday={board.recheckedToday} />
+      <p className="-mt-4 mb-8 text-sm">
+        <Link href="/signals/issue" className="text-primary underline-offset-4 hover:underline">
+          挑几条、写上你的判断，整理成这周的周刊发出去 →
+        </Link>
+      </p>
 
       <h2 className="mb-4 text-xl font-semibold">中国有、日本还没有</h2>
       <ArrivedList gaps={toJapan.arrived} side="japan" />
