@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assembleDrafts,
+  coverItems,
+  coverTopLabel,
+  coverUrl,
   ISSUE_CTA,
   issueCounts,
   sourcesBlock,
@@ -78,5 +81,32 @@ describe("点三下就是判断", () => {
 
   it("xIntentUrl：内容编码进发帖框的链接", () => {
     expect(xIntentUrl("中国では #ドローン")).toBe("https://twitter.com/intent/tweet?text=" + encodeURIComponent("中国では #ドローン"));
+  });
+});
+
+describe("小红书封面", () => {
+  it("顶上那行：同一个方向写方向，混着的写那边 / 这边", () => {
+    expect(coverTopLabel([{ side: "japan" }, { side: "japan" }])).toBe("中国有 · 日本还没有");
+    expect(coverTopLabel([{ side: "china" }])).toBe("日本有 · 中国还没有");
+    expect(coverTopLabel([{ side: "japan" }, { side: "us" }])).toBe("那边有 · 这边还没有");
+  });
+
+  it("每条标题截到两行放得下；押的是什么写成一句；最多三条", () => {
+    const long = "美团在深圳用无人机给小区送药三十分钟送到取货柜而且已经覆盖了好几个区还在扩大";
+    const items = coverItems([
+      { headline: long, stance: { will: "will" } },
+      { headline: "短", stance: { will: "wont" } },
+      { headline: "说不清的", stance: { will: "unsure" } },
+      { headline: "第四条不上封面" },
+    ]);
+    expect(items).toHaveLength(3);
+    expect(Array.from(items[0].headline)).toHaveLength(30);
+    expect(items[0].headline.endsWith("…")).toBe(true);
+    expect(items.map((i) => i.stance)).toEqual(["我押：2 年内会出现", "我押：2 年内不会出现", "我说不清"]);
+    expect(coverItems([{ headline: "没点过的老数据" }])[0].stance).toBe("");
+  });
+
+  it("coverUrl：带上生成时间，换了稿子不会拿到旧图", () => {
+    expect(coverUrl({ id: "i1", updated_at: "2026-10-14T01:02:03Z" })).toBe("/api/issue-card/i1?v=2026-10-14T01%3A02%3A03Z");
   });
 });

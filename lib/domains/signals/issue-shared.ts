@@ -77,6 +77,47 @@ export function validStance(raw: unknown): PickStance | null {
   };
 }
 
+// ── 小红书封面 ─────────────────────────────────────────────────────────────
+
+/** 封面上每条标题最多几个字（两行放得下）。 */
+export const COVER_HEADLINE_MAX = 30;
+
+function clip(text: string, max: number): string {
+  const chars = Array.from(text);
+  return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : text;
+}
+
+const SIDE_LABEL: Record<GapSide, string> = {
+  japan: "中国有 · 日本还没有",
+  us: "美国有 · 日本还没有",
+  china: "日本有 · 中国还没有",
+};
+
+/** 封面顶上那一行：这一期都是同一个方向就写方向，混着的就写"那边有 · 这边还没有"。 */
+export function coverTopLabel(picks: Pick<IssuePick, "side">[]): string {
+  const sides = Array.from(new Set(picks.map((p) => p.side)));
+  return sides.length === 1 ? SIDE_LABEL[sides[0]] : "那边有 · 这边还没有";
+}
+
+/** 封面上的几条：标题（截到两行）和他押的是什么。 */
+export function coverItems(picks: Pick<IssuePick, "headline" | "stance">[]): { headline: string; stance: string }[] {
+  return picks.slice(0, ISSUE_MAX_PICKS).map((p) => ({
+    headline: clip(p.headline, COVER_HEADLINE_MAX),
+    stance: !p.stance
+      ? ""
+      : p.stance.will === "will"
+        ? `我押：${STANCE_YEARS} 年内会出现`
+        : p.stance.will === "wont"
+          ? `我押：${STANCE_YEARS} 年内不会出现`
+          : "我说不清",
+  }));
+}
+
+/** 封面图的地址：带上生成时间，换了稿子浏览器就不会拿缓存里的旧图。 */
+export function coverUrl(issue: Pick<Issue, "id" | "updated_at">): string {
+  return `/api/issue-card/${issue.id}?v=${encodeURIComponent(issue.updated_at ?? "")}`;
+}
+
 /** X 的发帖框，内容填好，点"发布"就行（不用接口、不用授权）。 */
 export function xIntentUrl(text: string): string {
   return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
@@ -136,6 +177,8 @@ export type IssueResponse = { at: string; observation_id: string; wants_talk: bo
 export type Issue = {
   id: string;
   week_start: string;
+  /** 最后一次生成稿子的时间（封面图的地址带上它，换了稿子就不会拿到旧图）。 */
+  updated_at?: string;
   content: IssueContent;
   drafts: IssueDrafts | null;
   published: IssuePublish[];

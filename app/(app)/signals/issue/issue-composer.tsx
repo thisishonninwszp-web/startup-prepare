@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +13,7 @@ import {
   ISSUE_MAX_PICKS,
   ISSUE_NOTE_MAX,
   ISSUE_PLATFORMS,
+  coverUrl,
   STANCE_OPTIONS,
   STANCE_YEARS,
   stanceSentence,
@@ -86,10 +88,40 @@ function OptionRow<K extends string>({
 
 type PickInput = { stance: Partial<PickStance>; note: string };
 
-function DraftPanel({ body, titles, note, postToX }: { body: string; titles: string[]; note?: string; postToX?: boolean }) {
+function DraftPanel({
+  body,
+  titles,
+  note,
+  postToX,
+  cover,
+}: {
+  body: string;
+  titles: string[];
+  note?: string;
+  postToX?: boolean;
+  /** 小红书那版带一张封面图（3:4）。 */
+  cover?: { src: string; filename: string };
+}) {
   return (
     <div className="mt-4 space-y-3">
       {note && <p className="text-xs leading-6 text-muted-foreground">{note}</p>}
+      {cover && (
+        <div className="flex items-end gap-4">
+          <Image
+            src={cover.src}
+            alt="这一期的封面"
+            width={216}
+            height={288}
+            unoptimized
+            className="rounded-md border border-border"
+          />
+          <Button size="sm" variant="outline" asChild>
+            <a href={cover.src} download={cover.filename}>
+              下载封面图
+            </a>
+          </Button>
+        </div>
+      )}
       {titles.length > 0 && (
         <ul className="space-y-2">
           {titles.map((t) => (
@@ -326,7 +358,12 @@ export function IssueComposer({
               <DraftPanel body={issue.drafts.zhLong} titles={issue.drafts.zhTitles} note="公众号、即刻用。你的判断是一字不改放进去的（代码核对过）。" />
             </TabsContent>
             <TabsContent value="zhShort">
-              <DraftPanel body={issue.drafts.zhShort} titles={issue.drafts.zhTitles} note="小红书正文上限一千字。配图可以截清单页的那几条。" />
+              <DraftPanel
+                body={issue.drafts.zhShort}
+                titles={issue.drafts.zhTitles}
+                cover={{ src: coverUrl(issue), filename: `周刊-${issue.week_start}.png` }}
+                note="小红书正文上限一千字。封面图是 3:4，下载下来当第一张图；后面可以再截清单页的那几条。重新生成稿子后封面也会跟着换。"
+              />
             </TabsContent>
             <TabsContent value="jaLong">
               <DraftPanel

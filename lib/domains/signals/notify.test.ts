@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDailyEmail, emailConfig, isMonday } from "./notify";
+import { buildDailyEmail, emailConfig, isFriday, isMonday } from "./notify";
 
 describe("早上的提醒邮件", () => {
   it("没配就说缺什么；收信地址不填就发给自己", () => {
@@ -37,5 +37,17 @@ describe("周一提一句慢变量", () => {
     expect(isMonday("2026-10-12")).toBe(true);
     expect(buildDailyEmail({ ...base, date: "2026-10-12" }).text).toContain("/signals/slow");
     expect(buildDailyEmail({ ...base, date: "2026-10-13" }).text).not.toContain("/signals/slow");
+  });
+});
+
+describe("周五提醒周刊", () => {
+  const base = { practice: null, overview: null, sections: [], dueCount: 0, freshQuestions: [], url: "https://app.example", date: "2026-10-16" };
+  it("还没写、写了没发说的不一样；发了就不提", () => {
+    expect(isFriday("2026-10-16")).toBe(true);
+    expect(isFriday("2026-10-15")).toBe(false);
+    expect(buildDailyEmail({ ...base, issueReminder: "unwritten" }).text).toContain("这周的周刊还没写");
+    expect(buildDailyEmail({ ...base, issueReminder: "unpublished" }).text).toContain("还没发出去");
+    expect(buildDailyEmail({ ...base, issueReminder: "unwritten" }).text).toContain("https://app.example/signals/issue");
+    expect(buildDailyEmail({ ...base, issueReminder: null }).text).not.toContain("周刊");
   });
 });

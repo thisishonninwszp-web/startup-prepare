@@ -106,6 +106,7 @@ function toIssue(r: Record<string, unknown>): Issue {
   return {
     id: r.id as string,
     week_start: r.week_start as string,
+    updated_at: (r.updated_at as string | null) ?? undefined,
     content: r.content as Issue["content"],
     drafts: (r.drafts as Issue["drafts"]) ?? null,
     published: (r.published as Issue["published"]) ?? [],
@@ -113,7 +114,7 @@ function toIssue(r: Record<string, unknown>): Issue {
   };
 }
 
-const ISSUE_COLUMNS = "id, week_start, content, drafts, published, responses";
+const ISSUE_COLUMNS = "id, week_start, updated_at, content, drafts, published, responses";
 
 /** 这一周的那一期（还没写为 null）；表还没建返回 "missing-schema"。 */
 export async function getIssue(userId: string, weekStart = weekStartOf(tokyoToday())): Promise<Issue | null | "missing-schema"> {

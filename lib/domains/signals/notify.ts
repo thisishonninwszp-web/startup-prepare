@@ -5,6 +5,7 @@ import type { BriefItem, BriefPracticeRow } from "./brief";
 import { tokyoToday } from "./brief";
 import { formatReportDate } from "./format";
 import { dueJudgments, listJudgments } from "./practice";
+import { weekStartOf } from "./issue-shared";
 
 /**
  * 每天早上的提醒邮件：报告好了以后发一封到他的邮箱，带上今天的练习题。
@@ -44,12 +45,19 @@ export type DailyEmailInput = {
   freshQuestions: { question: string; freshCount: number }[];
   /** 这一周动得不寻常的快变量（已经写成一句话）。 */
   fastAlerts?: string[];
+  /** 周五提醒周刊：这周还没写（unwritten），写了还没发（unpublished）；发了或不是周五为 null。 */
+  issueReminder?: "unwritten" | "unpublished" | null;
   url: string | null;
 };
 
 /** 慢变量一周看一次：周一的邮件里提一句。 */
 export function isMonday(date: string): boolean {
   return new Date(`${date}T12:00:00+09:00`).getUTCDay() === 1;
+}
+
+/** 周刊靠每周不断：周五的邮件里，这周还没发就提一句。 */
+export function isFriday(date: string): boolean {
+  return new Date(`${date}T12:00:00+09:00`).getUTCDay() === 5;
 }
 
 const SECTION_TITLES: Record<string, string> = {
@@ -88,6 +96,15 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     }
     lines.push("");
   }
+  if (input.issueReminder) {
+    lines.push(
+      input.issueReminder === "unwritten"
+        ? "今天周五，这周的周刊还没写。挑一两条、每条点三下就是判断，十分钟的事。"
+        : "今天周五，这周的周刊写好了，还没发出去。"
+    );
+    if (input.url) lines.push(`${input.url}/signals/issue`);
+    lines.push("");
+  }
   if (isMonday(input.date)) {
     lines.push("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。");
     if (input.url) lines.push(`${input.url}/signals/slow`);
@@ -97,6 +114,19 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
   }
   if (input.url) lines.push(`打开今天的报告：${input.url}/signals`);
   return { subject, text: lines.join("\n").trim() };
+}
+
+/** 这周的周刊写了没、发了没。表还没建（071 没跑）就不提。 */
+async function weeklyIssueReminder(userId: string, date: string): Promise<DailyEmailInput["issueReminder"]> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_issues")
+    .select("drafts, published")
+    .eq("user_id", userId)
+    .eq("week_start", weekStartOf(date))
+    .maybeSingle();
+  if (error) return null;
+  if (!data || !data.drafts) return "unwritten";
+  return ((data.published as unknown[] | null) ?? []).length > 0 ? null : "unpublished";
 }
 
 async function loadEmailInput(userId: string, date: string): Promise<DailyEmailInput | null> {
@@ -114,10 +144,11 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   const newsItems = ((news?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra);
   const practiceItem = practiceRow ? newsItems.find((i) => i.signal_id === practiceRow.signal_id) : undefined;
 
-  const [judgments, questions, fast] = await Promise.all([
+  const [judgments, questions, fast, issueReminder] = await Promise.all([
     listJudgments(userId).catch(() => []),
     supabaseAdmin.from("signal_questions").select("question, research").eq("user_id", userId).is("archived_at", null),
     unusualFastMoves().catch(() => []),
+    isFriday(date) ? weeklyIssueReminder(userId, date) : Promise.resolve(null),
   ]);
   const freshQuestions = (questions.error ? [] : questions.data ?? [])
     .map((q) => ({
@@ -141,6 +172,7 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
     dueCount: dueJudgments(judgments).length,
     freshQuestions,
     fastAlerts: fast.map(describeMove),
+    issueReminder,
     url: appUrl(),
   };
 }
