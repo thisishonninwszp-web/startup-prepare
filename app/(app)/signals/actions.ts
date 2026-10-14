@@ -16,7 +16,15 @@ import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
 import { runGapRechecks, runGapScan } from "@/lib/domains/signals/gap-scan";
 import { chooseLabVariant, runSelectionLab, type LabVariantKey } from "@/lib/domains/signals/lab";
-import { answerDrill, flagDrill, generateDrills, markReasonMatch, type AnsweredDrill, type DrillFlag } from "@/lib/domains/signals/drills";
+import {
+  answerDrill,
+  flagDrill,
+  generateDrills,
+  markReasonMatch,
+  setDrillMissReason,
+  type AnsweredDrill,
+  type DrillFlag,
+} from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
@@ -528,12 +536,28 @@ export async function flagDrillAction(id: string, flag: DrillFlag): Promise<{ ok
   }
 }
 
-/** 历史题：揭晓后标"我当时的理由对上了没有"。 */
-export async function markReasonMatchAction(id: string, match: boolean): Promise<{ ok: true } | { ok: false; message: string }> {
+/** 历史题：揭晓后标"我当时的理由对上了没有"，返回裁判独立判的看法（只提名）。 */
+export async function markReasonMatchAction(
+  id: string,
+  match: boolean
+): Promise<{ ok: true; judge: boolean | null } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    await markReasonMatch(userId, id, match);
+    const judge = await markReasonMatch(userId, id, match);
     revalidatePath("/signals/drill");
+    return { ok: true, judge };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
+  }
+}
+
+/** 历史题：猜错时选"错在哪一步"。 */
+export async function setDrillMissReasonAction(id: string, reason: MissReason): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await setDrillMissReason(userId, id, reason);
+    revalidatePath("/signals/drill");
+    revalidatePath("/signals/practice");
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没记上") };

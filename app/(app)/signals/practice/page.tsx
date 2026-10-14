@@ -13,6 +13,8 @@ import {
   tallyMissReasons,
 } from "@/lib/domains/signals/practice";
 import { listUserFlaggedSteps } from "@/lib/domains/signals/inference";
+import { listAnsweredDrills, tallyDrillMissReasons } from "@/lib/domains/signals/drills";
+import type { MissReason } from "@/lib/domains/signals/practice-shared";
 import { ResolveJudgment } from "../judgment-forms";
 import { OutcomeEvidenceView } from "../outcome-evidence";
 import { formatDueDate, JudgmentView, outcomeLabel } from "../judgment-view";
@@ -30,13 +32,15 @@ export default async function JudgmentLedgerPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [judgments, flagged] = await Promise.all([
+  const [judgments, flagged, drills] = await Promise.all([
     listJudgments(user.id).catch((e: Error) => {
       if (/signal_judgments/.test(e.message)) return null;
       throw e;
     }),
     listUserFlaggedSteps().catch(() => []),
+    listAnsweredDrills(user.id).catch(() => []),
   ]);
+  const drillMisses = tallyDrillMissReasons(drills);
 
   return (
     <PageContainer width="narrow">
@@ -66,7 +70,7 @@ export default async function JudgmentLedgerPage() {
           description="还没写过判断。回今日报告做今天的练习，写下第一句。"
         />
       ) : (
-        <Ledger judgments={judgments} />
+        <Ledger judgments={judgments} drillMisses={drillMisses} />
       )}
 
       {flagged.length > 0 && (
@@ -90,10 +94,17 @@ export default async function JudgmentLedgerPage() {
   );
 }
 
-function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeof listJudgments>>> }) {
+function Ledger({
+  judgments,
+  drillMisses,
+}: {
+  judgments: NonNullable<Awaited<ReturnType<typeof listJudgments>>>;
+  /** 历史题猜错时选的原因，和真实判断合在一起数。 */
+  drillMisses: Record<MissReason, number>;
+}) {
   const tally = tallyJudgments(judgments);
   const byTag = tallyByTag(judgments);
-  const missReasons = tallyMissReasons(judgments).filter((m) => m.count > 0);
+  const missReasons = tallyMissReasons(judgments).filter((m) => m.count + drillMisses[m.reason] > 0);
   const due = dueJudgments(judgments);
   const resolvedCount = tally.hit + tally.miss;
   const disagreement = tallyEvidenceDisagreement(judgments);
@@ -126,11 +137,18 @@ function Ledger({ judgments }: { judgments: NonNullable<Awaited<ReturnType<typeo
       {missReasons.length > 0 && (
         <section className="mb-10">
           <h2 className="text-base font-semibold">看错的时候，错在哪一步</h2>
-          <p className="mt-1 text-xs leading-6 text-muted-foreground">只数次数。哪一类最多，下次判断时就在那一步多停一下。</p>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            只数次数，真实判断和历史题合在一起。哪一类最多，下次判断时就在那一步多停一下。
+          </p>
           <ul className="mt-3 space-y-1 text-sm">
             {missReasons.map((m) => (
               <li key={m.reason}>
-                <span className="font-mono">{m.count}</span> 次 · {m.label}
+                <span className="font-mono">{m.count + drillMisses[m.reason]}</span> 次 · {m.label}
+                {drillMisses[m.reason] > 0 && (
+                  <span className="ml-2 font-mono text-xs text-muted-foreground">
+                    （真实判断 {m.count} · 历史题 {drillMisses[m.reason]}）
+                  </span>
+                )}
               </li>
             ))}
           </ul>

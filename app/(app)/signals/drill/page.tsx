@@ -3,7 +3,15 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { listAnsweredDrills, nextDrill, tallyAnswerBalance, tallyDrills, tallyReasons } from "@/lib/domains/signals/drills";
+import {
+  listAnsweredDrills,
+  nextDrill,
+  recentDrillYield,
+  tallyAnswerBalance,
+  tallyDrills,
+  tallyReasonJudge,
+  tallyReasons,
+} from "@/lib/domains/signals/drills";
 import { DrillCard, DrillReveal, GenerateDrillsButton } from "./drill-card";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +30,10 @@ export default async function DrillPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [open, answered] = await Promise.all([nextDrill(user.id), listAnsweredDrills(user.id)]);
+  const [next, answered, yieldStats] = await Promise.all([nextDrill(user.id), listAnsweredDrills(user.id), recentDrillYield(user.id)]);
+  const open = typeof next === "string" ? next : next.drill;
+  const remaining = typeof next === "string" ? 0 : next.remaining;
+  const judged = tallyReasonJudge(answered);
   const tally = tallyDrills(answered);
   const balance = tallyAnswerBalance(answered);
   const reasons = tallyReasons(answered);
@@ -47,13 +58,18 @@ export default async function DrillPage() {
           {open === "missing-066" ? "066_signal_drills.sql" : "068_signal_drills_criterion.sql"} 之后再来。
         </p>
       ) : open ? (
-        <DrillCard key={open.id} drill={open} />
+        <DrillCard key={open.id} drill={open} remaining={remaining} />
       ) : (
         <div>
           <p className="mb-3 text-sm leading-7 text-muted-foreground">
-            {answered.length === 0 ? "还没做过。" : "攒下的题都做完了。"}出一批要三四十秒：先出三道，再上网核实答案，核实不到的扔掉。
+            {answered.length === 0 ? "还没做过。" : "攒下的题都做完了。"}出一批要三四十秒：先出四道，再上网核实答案，核实不到的扔掉。
           </p>
           <GenerateDrillsButton />
+          {yieldStats && yieldStats.batches > 0 && tally.total === 0 && (
+            <p className="mt-3 text-xs leading-6 text-muted-foreground">
+              最近 {yieldStats.batches} 批：出了 {yieldStats.drafted} 道，搜到资料 {yieldStats.searched} 道，核实通过 {yieldStats.passed} 道。
+            </p>
+          )}
         </div>
       )}
 
@@ -98,6 +114,13 @@ export default async function DrillPage() {
               <p className="mt-1 text-xs leading-6 text-muted-foreground">
                 「运气」那一行多，说明对的次数比你真实的判断力好看；能带到下一次判断里的，只有理由对上的那几道。
               </p>
+              {judged.judged > 0 && (
+                <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                  另一个模型单独判过的 {judged.judged} 道里：你标了对上、它看来没对上的{" "}
+                  <span className="font-mono">{judged.selfYesJudgeNo}</span> 道；你标了没对上、它看来对上了的{" "}
+                  <span className="font-mono">{judged.selfNoJudgeYes}</span> 道。前一种多，说明对理由时手松。
+                </p>
+              )}
             </div>
           )}
 
@@ -107,6 +130,14 @@ export default async function DrillPage() {
             <span className="font-mono">{balance.guessYes}</span> 次、「不会」<span className="font-mono">{balance.guessNo}</span> 次。
             答案偏向一边的话，下一道会优先出另一边的；你自己选的偏向一边，可能是习惯性地往「会」或「不会」那边靠。
           </p>
+
+          {yieldStats && yieldStats.batches > 0 && (
+            <p className="mt-3 text-xs leading-6 text-muted-foreground">
+              最近 {yieldStats.batches} 批：出了 <span className="font-mono">{yieldStats.drafted}</span> 道，搜到资料{" "}
+              <span className="font-mono">{yieldStats.searched}</span> 道，核实通过 <span className="font-mono">{yieldStats.passed}</span> 道。
+              通过的一直很少，就是出题的规矩太严了，告诉我放宽哪一条。
+            </p>
+          )}
 
           <details className="mt-6">
             <summary className="cursor-pointer text-sm text-muted-foreground">最近答过的 {Math.min(RECENT, answered.length)} 道</summary>

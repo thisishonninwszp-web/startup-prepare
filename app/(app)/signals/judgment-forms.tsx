@@ -38,7 +38,13 @@ export function JudgmentForm({
   knownTags = [],
   defaultHorizon = "3m",
   deadline,
+  initialTags = [],
+  onSubmitted,
 }: {
+  /** 预填的标签（比如从历史题押过来的，带上「历史题」）。 */
+  initialTags?: string[];
+  /** 给了就在押下之后调它、不刷新整页（历史题揭晓页一刷新就跳到下一道了）。 */
+  onSubmitted?: () => void;
   /** 默认选哪一档期限（练习题按题目里写的时间点给）。 */
   defaultHorizon?: HorizonKey;
   /** 题目里写了"到某年某月底"：多一个"按题目里的日子"选项，默认选它（YYYY-MM-DD）。 */
@@ -65,7 +71,7 @@ export function JudgmentForm({
   const [byDeadline, setByDeadline] = useState(!!deadline);
   const isLong = byDeadline && deadline ? deadlineDays(deadline) > LONG_JUDGMENT_DAYS : LONG_HORIZONS.includes(horizon);
   const [confidence, setConfidence] = useState<ConfidenceKey | null>(null);
-  const [tagText, setTagText] = useState("");
+  const [tagText, setTagText] = useState(initialTags.join(" "));
   const [milestone, setMilestone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const tags = normalizeTags(tagText);
@@ -90,7 +96,8 @@ export function JudgmentForm({
           });
           if (result.ok) {
             setError(null);
-            router.refresh();
+            if (onSubmitted) onSubmitted();
+            else router.refresh();
           } else setError(result.message);
         });
       }}

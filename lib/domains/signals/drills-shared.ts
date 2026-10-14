@@ -1,5 +1,5 @@
 import type { AnalogCheck } from "@/lib/ai";
-import { CONFIDENCE_LEVELS, type ConfidenceKey } from "./practice-shared";
+import { CONFIDENCE_LEVELS, MISS_REASONS, type ConfidenceKey, type MissReason } from "./practice-shared";
 
 /**
  * 历史题里浏览器端也要用的部分：类型和只数次数的统计。不碰数据库。
@@ -41,7 +41,33 @@ export type AnsweredDrill = OpenDrill & {
   decided_basis: DrillBasis | null;
   /** 他自己标的"我当时的理由对上了没有"；没标为 null。 */
   reason_match: boolean | null;
+  /** 这道题像的是哪条新闻 / 哪个在追的问题（070 之前出的题没有）。 */
+  topic_signal_id: string | null;
+  topic_question_id: string | null;
+  /** 揭晓后问他的"今天那件事会不会也这样"。 */
+  today_question: string | null;
+  /** 裁判独立判的"理由对上没有"（只提名）；没判过为 null。 */
+  reason_judge: boolean | null;
+  /** 猜错时选的"错在哪一步"。 */
+  miss_reason: MissReason | null;
 };
+
+/** 他标的和裁判判的不一样的次数：标了对上、裁判看来没对上的多，说明对理由时手松。只数次数。 */
+export function tallyReasonJudge(drills: AnsweredDrill[]): { judged: number; selfYesJudgeNo: number; selfNoJudgeYes: number } {
+  const judged = drills.filter((d) => d.reason_match !== null && d.reason_judge !== null);
+  return {
+    judged: judged.length,
+    selfYesJudgeNo: judged.filter((d) => d.reason_match && !d.reason_judge).length,
+    selfNoJudgeYes: judged.filter((d) => !d.reason_match && d.reason_judge).length,
+  };
+}
+
+/** 猜错的那几道，每种原因各几次（和判断账本同一套五类）。 */
+export function tallyDrillMissReasons(drills: AnsweredDrill[]): Record<MissReason, number> {
+  const out = Object.fromEntries((Object.keys(MISS_REASONS) as MissReason[]).map((r) => [r, 0])) as Record<MissReason, number>;
+  for (const d of drills) if (d.miss_reason && !drillHit(d)) out[d.miss_reason] += 1;
+  return out;
+}
 
 export function drillHit(d: Pick<AnsweredDrill, "guess" | "answer">): boolean {
   return d.guess === d.answer;

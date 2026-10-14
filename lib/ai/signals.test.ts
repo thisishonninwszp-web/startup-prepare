@@ -985,6 +985,12 @@ describe("历史题：出题和核实", () => {
     expect(keep[0].criterion).toBe("以楽天モバイル官方公布的 MNO 签约数为准。");
   });
 
+  it("回到今天的问题：对得上他在看的事才留，对不上就空", () => {
+    const today = "到2027年3月底，楽天モバイル会不会宣布签约数超过 1000 万？";
+    const drills = parseDrillDrafts({ drills: [draft({ todayQuestion: today }), draft({ topic: 9, todayQuestion: today })] }, 1, "2026-10-13");
+    expect(drills.map((d) => d.todayQuestion)).toEqual([today, ""]);
+  });
+
   it("核实：原文逐字对得上才留；改正的要有新答案和说明；没出处的整道丢掉", () => {
     const sources = [{ title: "楽天", url: "https://example.jp/r", content: "楽天モバイルは2024年5月、契約数が700万回線を突破したと発表した。" }];
     const d = parseDrillDrafts({ drills: [draft()] }, 1, "2026-10-13")[0];

@@ -2648,6 +2648,8 @@ export type DrillDraft = {
   query: string;
   /** 英文搜索词：英文资料（维基百科、外媒）常常写得更全，两种语言各搜一次。 */
   queryEn: string;
+  /** 揭晓后问他的：今天那件事会不会也这样（同一个机制，几个月内能检验）。topic 对不上时为空。 */
+  todayQuestion: string;
 };
 
 function drillCutoff(today: string): string {
@@ -2679,6 +2681,8 @@ const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真�
 - whySimilar：和他在看的那件事像在哪、不像在哪，一句。
 - query：上网核实"实际发生了什么"用的搜索词，用事情发生地的语言，3 到 8 个词，带公司名、年份和结果的关键词（"撤退""突破""可決"……）。
 - queryEn：同一件事的英文搜索词。
+- todayQuestion：回到今天 —— topic 那件事，会不会也像这道历史题那样？写一个"到某年某月底，……会不会……？"的问题，
+  和历史题是同一个机制，对象换成今天那件事里的人或公司，期限在今天之后 1 到 6 个月。topic 对不上就写空字符串。
 
 铁律：
 - 只出你很确定真实发生过的事。拿不准的不要出 —— 出了也会被核实刷掉。
@@ -2686,7 +2690,7 @@ const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真�
 - 四道里两道答案是"会"、两道是"不会"。只出"发生过的事"的话，一直答"会"就能对一大半，练不到判断。
 - 用中文写（公司名、产品名可以保留原文）。
 
-只输出 JSON：{"drills":[{"topic":0,"subject":"…","asOf":"2023-03","setup":"现在是2023年3月。…","question":"…","criterion":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…","queryEn":"…"}]}`;
+只输出 JSON：{"drills":[{"topic":0,"subject":"…","asOf":"2023-03","setup":"现在是2023年3月。…","question":"…","criterion":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…","queryEn":"…","todayQuestion":"…"}]}`;
 
 /** 透露了结果的题面不要：答案写在题里就不是练判断了。 */
 const DRILL_LEAK = /后来|最终|最后|结果是|事后/;
@@ -2710,7 +2714,7 @@ export function parseDrillDrafts(value: unknown, topicCount: number, today: stri
     if (!r || typeof r !== "object") continue;
     const v = r as Record<string, unknown>;
     const str = (k: string) => (typeof v[k] === "string" ? (v[k] as string).trim() : "");
-    const [subject, asOf, setup, question, criterion, deadline, whatHappened, whySimilar, query, queryEn] = [
+    const [subject, asOf, setup, question, criterion, deadline, whatHappened, whySimilar, query, queryEn, todayQuestion] = [
       "subject",
       "asOf",
       "setup",
@@ -2721,6 +2725,7 @@ export function parseDrillDrafts(value: unknown, topicCount: number, today: stri
       "whySimilar",
       "query",
       "queryEn",
+      "todayQuestion",
     ].map(str);
     if (!subject || !setup || !question || !criterion || !whatHappened || !query || typeof v.answer !== "boolean") continue;
     // 期限要是真日期、而且早就过了；题面不许漏答案
@@ -2745,9 +2750,11 @@ export function parseDrillDrafts(value: unknown, topicCount: number, today: stri
       whySimilar,
       query: query.slice(0, 120),
       queryEn: queryEn.slice(0, 120),
+      // 对不上"他在看的事"的，没有今天那件事可问
+      todayQuestion: topic >= 0 ? todayQuestion : "",
     });
   }
-  const texts = out.flatMap((d) => [d.setup, d.question, d.criterion, d.whatHappened, d.whySimilar].filter(Boolean));
+  const texts = out.flatMap((d) => [d.setup, d.question, d.criterion, d.whatHappened, d.whySimilar, d.todayQuestion].filter(Boolean));
   assertNoBanned(texts);
   assertChineseAllowingNames(texts);
   return out;
@@ -2835,6 +2842,34 @@ export function parseDrillChecks(value: unknown, inputs: { draft: DrillDraft; so
   });
   assertNoBanned(out.flatMap((d) => [d.whatHappened, d.check.correction ?? "", d.decidedBy?.text ?? ""]).filter(Boolean));
   return out;
+}
+
+/**
+ * 他标完"理由对上没有"之后，裁判独立判一次：他当时写的理由，和资料里写明的实际原因，是不是同一回事。
+ * 只提名、不改他标的。门槛 0.5；裁判不可用返回 null（页面上就不显示这一行）。
+ */
+const REASON_MATCH_ABOVE = 0.5;
+
+export async function judgeReasonMatch(input: { question: string; reasoning: string; decidedBy: string }): Promise<boolean | null> {
+  try {
+    return await executeJev(
+      { operation: "drill_reason_judge", module: "unknown", timeoutMs: 20_000 },
+      {
+        state: `问题：${input.question}\n他当时的理由：${input.reasoning}\n实际决定结果的原因（资料里写明的）：${input.decidedBy}`,
+        questions: {
+          match: {
+            type: "score",
+            instructions: "他当时的理由，抓住的是不是实际决定结果的那个原因？只是同一个大方向、或者碰巧指向同一个结论但说的是别的原因，算没抓住。",
+            criteria: ["没抓住：他的理由不是实际起作用的那个原因", "抓住了：他的理由就是实际起作用的那个原因"],
+          },
+        },
+      },
+      (result) => secondOption(result.answers.match) > REASON_MATCH_ABOVE
+    );
+  } catch (e) {
+    console.error("reason match judge failed", e);
+    return null;
+  }
 }
 
 export async function checkHistoryDrills(inputs: { draft: DrillDraft; sources: SearchSource[] }[]): Promise<CheckedDrill[]> {

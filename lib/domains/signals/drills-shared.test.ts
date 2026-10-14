@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { pickBalanced, tallyAnswerBalance, tallyDrills, tallyReasons, type AnsweredDrill } from "./drills-shared";
+import {
+  pickBalanced,
+  tallyAnswerBalance,
+  tallyDrillMissReasons,
+  tallyDrills,
+  tallyReasonJudge,
+  tallyReasons,
+  type AnsweredDrill,
+} from "./drills-shared";
 
 const drill = (guess: boolean, answer: boolean, confidence: number | null): AnsweredDrill => ({
   id: "d",
@@ -19,6 +27,11 @@ const drill = (guess: boolean, answer: boolean, confidence: number | null): Answ
   decided_by: null,
   decided_basis: null,
   reason_match: null,
+  topic_signal_id: null,
+  topic_question_id: null,
+  today_question: null,
+  reason_judge: null,
+  miss_reason: null,
 });
 
 describe("tallyDrills", () => {
@@ -64,5 +77,29 @@ describe("tallyReasons（结论和理由放一起数）", () => {
     expect(
       tallyReasons([mark(true, true, true), mark(true, true, false), mark(false, true, true), mark(false, true, false), mark(true, true, null)])
     ).toEqual({ bothRight: 1, luckyRight: 1, unluckyWrong: 1, bothWrong: 1 });
+  });
+});
+
+describe("裁判和你标的不一样的次数", () => {
+  it("只数两边都判过的", () => {
+    const d = (reason_match: boolean | null, reason_judge: boolean | null) => ({ ...drill(true, true, null), reason_match, reason_judge });
+    expect(tallyReasonJudge([d(true, false), d(true, true), d(false, true), d(true, null), d(null, false)])).toEqual({
+      judged: 3,
+      selfYesJudgeNo: 1,
+      selfNoJudgeYes: 1,
+    });
+  });
+});
+
+describe("历史题猜错的原因", () => {
+  it("只数猜错的；猜对了却选了原因的不算", () => {
+    const d = (guess: boolean, miss_reason: AnsweredDrill["miss_reason"]) => ({ ...drill(guess, true, null), miss_reason });
+    expect(tallyDrillMissReasons([d(false, "info"), d(false, "info"), d(false, "timing"), d(true, "luck"), d(false, null)])).toEqual({
+      info: 2,
+      reasoning: 0,
+      timing: 1,
+      emotion: 0,
+      luck: 0,
+    });
   });
 });

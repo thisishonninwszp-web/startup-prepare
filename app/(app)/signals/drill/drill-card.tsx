@@ -5,8 +5,15 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DRILL_FLAGS, drillHit, type AnsweredDrill, type DrillFlag, type OpenDrill } from "@/lib/domains/signals/drills-shared";
-import { CONFIDENCE_LEVELS, type ConfidenceKey } from "@/lib/domains/signals/practice-shared";
-import { answerDrillAction, flagDrillAction, generateDrillsAction, markReasonMatchAction } from "../actions";
+import { CONFIDENCE_LEVELS, MISS_REASONS, type ConfidenceKey, type MissReason } from "@/lib/domains/signals/practice-shared";
+import {
+  answerDrillAction,
+  flagDrillAction,
+  generateDrillsAction,
+  markReasonMatchAction,
+  setDrillMissReasonAction,
+} from "../actions";
+import { JudgmentForm } from "../judgment-forms";
 
 /**
  * 你当时的理由 vs 实际是什么决定的，并排摆着，你自己标对上没有。
@@ -14,6 +21,7 @@ import { answerDrillAction, flagDrillAction, generateDrillsAction, markReasonMat
  */
 function ReasonCheck({ drill }: { drill: AnsweredDrill }) {
   const [match, setMatch] = useState<boolean | null>(drill.reason_match);
+  const [judge, setJudge] = useState<boolean | null>(drill.reason_judge);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   if (!drill.decided_by) {
@@ -23,8 +31,10 @@ function ReasonCheck({ drill }: { drill: AnsweredDrill }) {
     startTransition(async () => {
       setError(null);
       const result = await markReasonMatchAction(drill.id, value);
-      if (result.ok) setMatch(value);
-      else setError(result.message);
+      if (result.ok) {
+        setMatch(value);
+        setJudge(result.judge);
+      } else setError(result.message);
     });
   return (
     <div className="mt-3 border-t border-border pt-3">
@@ -67,6 +77,12 @@ function ReasonCheck({ drill }: { drill: AnsweredDrill }) {
           你标了：{match ? "理由对上了" : "理由没对上"}
           {!match && drillHit(drill) ? " —— 猜对了，但这次是运气。" : ""}
           {match && !drillHit(drill) ? " —— 判断没毛病，是结果有变数。" : ""}
+        </p>
+      )}
+      {match !== null && judge !== null && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          另一个模型单独看了一遍：{judge ? "对上了" : "没对上"}
+          {judge !== match ? "（和你标的不一样 —— 回头看看是谁看松了）" : "（和你标的一样）"}
         </p>
       )}
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
@@ -112,14 +128,93 @@ export function DrillReveal({ drill }: { drill: AnsweredDrill }) {
         </ul>
       </details>
       <ReasonCheck drill={drill} />
+      {!hit && <MissReasonPick drill={drill} />}
+      <TodayBridge drill={drill} />
+    </div>
+  );
+}
+
+/** 猜错了：错在哪一步（和判断账本同一套五类，合在一起数）。 */
+function MissReasonPick({ drill }: { drill: AnsweredDrill }) {
+  const [reason, setReason] = useState<MissReason | null>(drill.miss_reason);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  if (reason) return <p className="mt-2 text-xs text-muted-foreground">错在：{MISS_REASONS[reason]}</p>;
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <p className="mb-2 text-muted-foreground">错在哪一步？选最接近的一个（和判断账本合在一起数）：</p>
+      <div className="flex flex-col gap-1.5">
+        {(Object.keys(MISS_REASONS) as MissReason[]).map((r) => (
+          <Button
+            key={r}
+            size="sm"
+            variant="ghost"
+            className="h-auto justify-start whitespace-normal py-1.5 text-left"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                setError(null);
+                const result = await setDrillMissReasonAction(drill.id, r);
+                if (result.ok) setReason(r);
+                else setError(result.message);
+              })
+            }
+          >
+            {MISS_REASONS[r]}
+          </Button>
+        ))}
+      </div>
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/** 回到今天：今天那件事会不会也这样？押一条，进判断账本，到期对账。 */
+function TodayBridge({ drill }: { drill: AnsweredDrill }) {
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState(false);
+  if (!drill.today_question || !(drill.topic_signal_id || drill.topic_question_id)) return null;
+  if (done) return <p className="mt-3 text-sm text-primary">押进判断账本了，到期回来对账。</p>;
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      {!open ? (
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+          今天那件事会不会也这样？押一条
+        </Button>
+      ) : (
+        <div className="rounded-md bg-background p-4">
+          <JudgmentForm
+            signalId={drill.topic_signal_id ?? undefined}
+            questionId={drill.topic_signal_id ? undefined : (drill.topic_question_id ?? undefined)}
+            question={drill.today_question}
+            initialTags={["历史题"]}
+            submitLabel="押下，进判断账本"
+            onSubmitted={() => setDone(true)}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 /** 还没答的一道：猜会不会、选把握、写一句为什么，交了马上揭晓。 */
-export function DrillCard({ drill }: { drill: OpenDrill }) {
+/** 答完这一道后，攒着的少于这么多就在后台出下一批（出一批三四十秒，免得干等）。 */
+const REFILL_BELOW = 2;
+
+export function DrillCard({ drill, remaining }: { drill: OpenDrill; remaining: number }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [refilling, setRefilling] = useState(false);
+  const [refillError, setRefillError] = useState<string | null>(null);
+
+  // 后台出下一批：他在看揭晓的时候就在出，不等他点"下一道"
+  const refill = async () => {
+    setRefilling(true);
+    setRefillError(null);
+    const result = await generateDrillsAction();
+    if (!result.ok) setRefillError(result.message);
+    setRefilling(false);
+  };
   const [guess, setGuess] = useState<boolean | null>(null);
   const [confidence, setConfidence] = useState<ConfidenceKey | null>(null);
   const [reasoning, setReasoning] = useState("");
@@ -140,8 +235,10 @@ export function DrillCard({ drill }: { drill: OpenDrill }) {
       if (guess === null) return;
       setError(null);
       const result = await answerDrillAction(drill.id, guess, confidence, reasoning);
-      if (result.ok) setRevealed(result.drill);
-      else setError(result.message);
+      if (result.ok) {
+        setRevealed(result.drill);
+        if (remaining < REFILL_BELOW) void refill();
+      } else setError(result.message);
     });
 
   return (
@@ -156,9 +253,12 @@ export function DrillCard({ drill }: { drill: OpenDrill }) {
       {revealed ? (
         <>
           <DrillReveal drill={revealed} />
-          <Button className="mt-4" onClick={() => router.refresh()}>
-            下一道
+          {/* 还攒着题就直接下一道；一道都不剩、下一批还在出，就等它出完 */}
+          <Button className="mt-4" disabled={refilling && remaining === 0} onClick={() => router.refresh()}>
+            {refilling && remaining === 0 ? "下一批还在出……" : "下一道"}
           </Button>
+          {refilling && remaining > 0 && <p className="mt-2 text-xs text-muted-foreground">后台在出下一批。</p>}
+          {refillError && <p className="mt-2 text-xs text-muted-foreground">下一批没出成：{refillError}</p>}
         </>
       ) : (
         <div className="mt-4 space-y-3">

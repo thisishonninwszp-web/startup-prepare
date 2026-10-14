@@ -5660,3 +5660,31 @@ alter table signal_drills add column if not exists flag text;
 alter table signal_drills add column if not exists decided_by text;
 alter table signal_drills add column if not exists decided_basis jsonb;
 alter table signal_drills add column if not exists reason_match boolean;
+
+-- ============================================================================
+-- 070：历史题接回今天、对理由有裁判、猜错问错在哪、记出题通过率
+-- ============================================================================
+
+alter table signal_drills add column if not exists topic_signal_id uuid;
+alter table signal_drills add column if not exists topic_question_id uuid;
+alter table signal_drills add column if not exists today_question text;
+alter table signal_drills add column if not exists reason_judge boolean;
+alter table signal_drills add column if not exists miss_reason text
+  check (miss_reason in ('info', 'reasoning', 'timing', 'emotion', 'luck'));
+
+create table if not exists signal_drill_batches (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  drafted     integer not null,
+  searched    integer not null,
+  passed      integer not null,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists signal_drill_batches_user_idx on signal_drill_batches (user_id, created_at desc);
+
+alter table signal_drill_batches enable row level security;
+
+drop policy if exists "signal_drill_batches_owner" on signal_drill_batches;
+create policy "signal_drill_batches_owner" on signal_drill_batches
+  for all using (auth.uid() = user_id);
