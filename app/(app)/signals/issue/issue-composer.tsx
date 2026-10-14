@@ -17,7 +17,6 @@ import {
   STANCE_OPTIONS,
   STANCE_YEARS,
   stanceSentence,
-  xIntentUrl,
   type Issue,
   type IssueBet,
   type IssuePlatform,
@@ -92,13 +91,11 @@ function DraftPanel({
   body,
   titles,
   note,
-  postToX,
   cover,
 }: {
   body: string;
   titles: string[];
   note?: string;
-  postToX?: boolean;
   /** 小红书那版带一张封面图（3:4）。 */
   cover?: { src: string; filename: string };
 }) {
@@ -136,13 +133,6 @@ function DraftPanel({
       <div className="flex items-center justify-between">
         <span className="font-mono text-xs text-muted-foreground">{[...body].length} 字</span>
         <div className="flex gap-2">
-          {postToX && (
-            <Button size="sm" asChild>
-              <a href={xIntentUrl(body)} target="_blank" rel="noopener noreferrer">
-                去 X 发这条
-              </a>
-            </Button>
-          )}
           <CopyButton text={body} label="复制正文" />
         </div>
       </div>
@@ -347,37 +337,51 @@ export function IssueComposer({
       {issue?.drafts && (
         <section>
           <h2 className="text-base font-semibold">稿子</h2>
-          <Tabs defaultValue="zhLong" className="mt-3">
+          <Tabs defaultValue="xhs" className="mt-3">
             <TabsList className="flex flex-wrap">
-              <TabsTrigger value="zhLong">中文长文</TabsTrigger>
-              <TabsTrigger value="zhShort">小红书</TabsTrigger>
+              <TabsTrigger value="xhs">小红书（{issue.drafts.zhNotes?.length ?? 1} 篇）</TabsTrigger>
               <TabsTrigger value="jaLong">日文 note</TabsTrigger>
-              <TabsTrigger value="jaShort">日文 X</TabsTrigger>
+              <TabsTrigger value="zhLong">中文长文</TabsTrigger>
             </TabsList>
-            <TabsContent value="zhLong">
-              <DraftPanel body={issue.drafts.zhLong} titles={issue.drafts.zhTitles} note="公众号、即刻用。你的判断是一字不改放进去的（代码核对过）。" />
-            </TabsContent>
-            <TabsContent value="zhShort">
-              <DraftPanel
-                body={issue.drafts.zhShort}
-                titles={issue.drafts.zhTitles}
-                cover={{ src: coverUrl(issue), filename: `周刊-${issue.week_start}.png` }}
-                note="小红书正文上限一千字。封面图是 3:4，下载下来当第一张图；后面可以再截清单页的那几条。重新生成稿子后封面也会跟着换。"
-              />
+            <TabsContent value="xhs">
+              {issue.drafts.zhNotes ? (
+                <div className="space-y-8">
+                  <p className="mt-4 text-xs leading-6 text-muted-foreground">
+                    一条一篇：小红书上一篇只讲一件事的才有人看。一周发完这几篇，比一次发一篇合集更容易被推出去。
+                    每篇的封面下载下来当第一张图；话题标签和结尾问读者的那句已经加好了。
+                  </p>
+                  {issue.drafts.zhNotes.map((n, i) => (
+                    <div key={i} className="border-t pt-4">
+                      <p className="font-mono text-xs text-muted-foreground">第 {i + 1} 篇</p>
+                      <DraftPanel
+                        body={n.body}
+                        titles={[n.title]}
+                        cover={{ src: coverUrl(issue, i), filename: `周刊-${issue.week_start}-${i + 1}.png` }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <DraftPanel
+                  body={issue.drafts.zhShort ?? ""}
+                  titles={issue.drafts.zhTitles}
+                  cover={{ src: coverUrl(issue), filename: `周刊-${issue.week_start}.png` }}
+                  note="这是早先生成的合集版。重新生成一次，就会变成一条一篇。"
+                />
+              )}
             </TabsContent>
             <TabsContent value="jaLong">
               <DraftPanel
                 body={issue.drafts.jaLong}
                 titles={issue.drafts.jaTitles}
-                note="日文是 AI 翻译的，你的判断也是翻译过去的 —— 发之前看一眼语气对不对。"
+                note="note 的长文能被 Google 搜到，慢慢积累。日文是 AI 翻译的，你的判断也是翻译过去的 —— 发之前看一眼语气对不对。"
               />
             </TabsContent>
-            <TabsContent value="jaShort">
+            <TabsContent value="zhLong">
               <DraftPanel
-                body={issue.drafts.jaShort}
-                titles={[]}
-                postToX
-                note="点「去 X 发这条」会打开写好的发帖框，你看一眼再点发布。一条放不下链接，发完在回复里贴 note 的链接。日文是 AI 翻译的。"
+                body={issue.drafts.zhLong}
+                titles={issue.drafts.zhTitles}
+                note="公众号、即刻用（可选）。你的判断是一字不改放进去的（代码核对过）。"
               />
             </TabsContent>
           </Tabs>

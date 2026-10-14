@@ -1083,33 +1083,40 @@ describe("周刊：只搬运、不替他写观点", () => {
   };
   const ok = {
     zhLong: `这周看到三件中国已经跑通的事。\n\n美团用无人机送药。\n\n我的判断：${judgment}\n\n对账：九月押了「日银年底前加息」，对了。`,
-    zhShort: `美团用无人机送药。\n我的判断：${judgment}`,
+    zhNotes: [{ title: "在日本找不到的中国服务：无人机送药", body: `美团用无人机送药。\n我的判断：${judgment}` }],
     zhTitles: ["中国无人机送药，日本卡在哪"],
   };
 
   it("他的判断、开头、押的那句一字不改才收；空白不算", () => {
-    expect(parseIssueZh(ok, input).zhTitles).toHaveLength(1);
-    expect(parseIssueZh({ ...ok, zhShort: ok.zhShort.replace(judgment, judgment.replace("，", " ，")) }, input).zhShort).toBeTruthy();
+    expect(parseIssueZh(ok, input).zhNotes).toHaveLength(1);
+    const spaced = { ...ok, zhNotes: [{ ...ok.zhNotes[0], body: ok.zhNotes[0].body.replace(judgment, judgment.replace("，", " ，")) }] };
+    expect(parseIssueZh(spaced, input).zhNotes[0].body).toBeTruthy();
     expect(() => parseIssueZh({ ...ok, zhLong: ok.zhLong.replace("离岛", "偏远地区") }, input)).toThrow("判断被改了");
+    expect(() => parseIssueZh({ ...ok, zhNotes: [{ ...ok.zhNotes[0], body: "美团用无人机送药。" }] }, input)).toThrow("判断被改了");
     expect(() => parseIssueZh({ ...ok, zhLong: ok.zhLong.replace("日银年底前加息", "日银加息") }, input)).toThrow("原话被改了");
   });
 
-  it("小红书那版太长不收；AI 自己加的空话不收，他自己写的不算", () => {
-    expect(() => parseIssueZh({ ...ok, zhShort: ok.zhShort + "啊".repeat(1000) }, input)).toThrow("太长");
+  it("小红书一条一篇：篇数对不上、太长、标题太长都不收", () => {
+    expect(() => parseIssueZh({ ...ok, zhNotes: [] }, input)).toThrow("一条一篇");
+    expect(() => parseIssueZh({ ...ok, zhNotes: [...ok.zhNotes, ok.zhNotes[0]] }, input)).toThrow("一条一篇");
+    expect(() => parseIssueZh({ ...ok, zhNotes: [{ ...ok.zhNotes[0], body: ok.zhNotes[0].body + "啊".repeat(900) }] }, input)).toThrow("太长");
+    expect(() => parseIssueZh({ ...ok, zhNotes: [{ ...ok.zhNotes[0], title: "标".repeat(21) }] }, input)).toThrow("标题太长");
+  });
+
+  it("AI 自己加的空话不收，他自己写的不算", () => {
     expect(() => parseIssueZh({ ...ok, zhLong: ok.zhLong + "\n这个方向很有潜力。" }, input)).toThrow();
     const own = { ...input, picks: [{ ...input.picks[0], judgment: "我觉得这个方向很有潜力，但法规卡着。" }] };
     const withOwn = {
       ...ok,
       zhLong: ok.zhLong.replace(judgment, own.picks[0].judgment),
-      zhShort: ok.zhShort.replace(judgment, own.picks[0].judgment),
+      zhNotes: [{ ...ok.zhNotes[0], body: ok.zhNotes[0].body.replace(judgment, own.picks[0].judgment) }],
     };
     expect(parseIssueZh(withOwn, own).zhLong).toContain("很有潜力");
   });
 
-  it("日文版要真是日文，X 那条不超过 140 字", () => {
-    const ja = { jaLong: "今週は中国で始まった三つのことを紹介します。", jaShort: "中国ではドローンで薬が届きます。", jaTitles: ["t"] };
-    expect(parseIssueJa(ja).jaShort).toBe(ja.jaShort);
+  it("日文版要真是日文", () => {
+    const ja = { jaLong: "今週は中国で始まった三つのことを紹介します。", jaTitles: ["t"] };
+    expect(parseIssueJa(ja).jaLong).toBe(ja.jaLong);
     expect(() => parseIssueJa({ ...ja, jaLong: "这周看到三件事。" })).toThrow("不是日文");
-    expect(() => parseIssueJa({ ...ja, jaShort: "です".repeat(80) })).toThrow("太长");
   });
 });

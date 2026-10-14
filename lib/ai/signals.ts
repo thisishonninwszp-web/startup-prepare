@@ -2516,73 +2516,88 @@ const ISSUE_ZH_PROMPT = `${ISSUE_SHARED_RULES}
 - 他写的判断（【他的判断】后面那段）和开头（【他写的开头】），一字不改地照抄 —— 代码会逐字核对，改了一个字就作废。判断单独成段，前面写"我的判断："。
 - 对账里他押的那句话也一字不改。
 - zhLong：公众号 / 即刻用的长文。
-- zhShort：小红书用的短帖，900 字以内。段落短，每条三四行，"我的判断"照抄。可以用一两个符号当小标题，不要满屏 emoji。
-- zhTitles：3 个标题候选，每个 20 字以内，带一个具体的事实，不要标题党。
+- zhNotes：小红书笔记，**每条单独一篇**，按给的顺序，篇数和条数一样多（小红书上一篇只讲一件事的才有人看）。每篇写：
+  - title：20 字以内，从他的视角写成一个观察或问题，带一个具体的事（例："在日本找不到的中国服务：无人机送药"），不要标题党、不要感叹号堆叠。
+  - body：600 字以内。第一句就说清是什么东西；段落短；依次写那边是什么、这边现在怎样、为什么是现在（给了才写）；
+    最后一段"我的判断："照抄他那条的判断。不要写话题标签，也不要写"评论区告诉我"之类的话（代码会加）。可以用一两个符号当小标题，不要满屏 emoji。
+- zhTitles：长文的 3 个标题候选，每个 20 字以内，带一个具体的事实，不要标题党。
 
-只输出 JSON：{"zhLong":"…","zhShort":"…","zhTitles":["…","…","…"]}`;
+只输出 JSON：{"zhLong":"…","zhNotes":[{"title":"…","body":"…"}],"zhTitles":["…","…","…"]}`;
 
 const ISSUE_JA_PROMPT = `${ISSUE_SHARED_RULES}
 
 你写日文版（です・ます調）：
 - 他写的判断和开头是中文，忠实翻译成日文，不加不减、不改语气的强弱。
 - jaLong：note 用的长文。
-- jaShort：X 用的一条，120 字以内，挑最有意思的一条讲，带上他的判断，不写链接。
 - jaTitles：3 个标题候选，每个 30 字以内，带一个具体的事实。
 
-只输出 JSON：{"jaLong":"…","jaShort":"…","jaTitles":["…","…","…"]}`;
+只输出 JSON：{"jaLong":"…","jaTitles":["…","…","…"]}`;
 
-/** 小红书正文上限一千字，结尾那句由代码加，正文留点余量。 */
-const ZH_SHORT_MAX = 950;
-const JA_SHORT_MAX = 140;
+/** 小红书正文上限一千字，结尾那句和话题标签由代码加，正文留足余量。 */
+const XHS_BODY_MAX = 850;
+const XHS_TITLE_MAX = 20;
+
+export type XhsNote = { title: string; body: string };
 
 function titlesOf(raw: unknown): string[] {
   return (Array.isArray(raw) ? raw : []).filter((t): t is string => typeof t === "string" && !!t.trim()).map((t) => t.trim()).slice(0, 3);
 }
 
-/** 他的原话（判断、开头、对账里押的那句）必须逐字出现在中文稿里；去掉他的原话以后，剩下的才查空话。 */
-export function parseIssueZh(value: unknown, input: IssueComposeInput): { zhLong: string; zhShort: string; zhTitles: string[] } {
+/**
+ * 他的原话（判断、开头、对账里押的那句）必须逐字出现在中文稿里：长文里全有，每篇小红书笔记里有它那一条的判断。
+ * 去掉他的原话以后，剩下的才查空话。小红书一条一篇，篇数和条数对不上不收。
+ */
+export function parseIssueZh(value: unknown, input: IssueComposeInput): { zhLong: string; zhNotes: XhsNote[]; zhTitles: string[] } {
   const v = (value ?? {}) as Record<string, unknown>;
   const zhLong = typeof v.zhLong === "string" ? v.zhLong.trim() : "";
-  const zhShort = typeof v.zhShort === "string" ? v.zhShort.trim() : "";
+  const zhNotes = (Array.isArray(v.zhNotes) ? v.zhNotes : [])
+    .filter((n): n is Record<string, unknown> => !!n && typeof n === "object")
+    .map((n) => ({
+      title: typeof n.title === "string" ? n.title.trim() : "",
+      body: typeof n.body === "string" ? n.body.trim() : "",
+    }));
   const zhTitles = titlesOf(v.zhTitles);
-  if (!zhLong || !zhShort || zhTitles.length === 0) throw new Error("缺字段");
+  if (!zhLong || zhTitles.length === 0) throw new Error("缺字段");
+  if (zhNotes.length !== input.picks.length || zhNotes.some((n) => !n.title || !n.body)) {
+    throw new Error(`小红书要一条一篇，${input.picks.length} 条就是 ${input.picks.length} 篇`);
+  }
   const squash = (t: string) => t.replace(/\s+/g, "");
   const own = [...input.picks.map((p) => p.judgment), ...input.bets.map((b) => b.judgment), input.opening].map((t) => t.trim()).filter(Boolean);
-  for (const p of input.picks) {
-    if (!squash(zhLong).includes(squash(p.judgment)) || !squash(zhShort).includes(squash(p.judgment))) {
+  input.picks.forEach((p, i) => {
+    if (!squash(zhLong).includes(squash(p.judgment)) || !squash(zhNotes[i].body).includes(squash(p.judgment))) {
       throw new Error(`他的判断被改了：${p.judgment.slice(0, 20)}`);
     }
-  }
+  });
   for (const text of [...input.bets.map((b) => b.judgment), input.opening].filter((t) => t.trim())) {
     if (!squash(zhLong).includes(squash(text))) throw new Error(`他的原话被改了：${text.slice(0, 20)}`);
   }
-  if ([...zhShort].length > ZH_SHORT_MAX) throw new Error(`小红书那版太长了（${[...zhShort].length} 字）`);
+  for (const n of zhNotes) {
+    if (Array.from(n.body).length > XHS_BODY_MAX) throw new Error(`小红书有一篇太长了（${Array.from(n.body).length} 字）`);
+    if (Array.from(n.title).length > XHS_TITLE_MAX) throw new Error(`小红书有一篇标题太长了：${n.title}`);
+  }
   const strip = (t: string) => own.reduce((acc, o) => acc.split(o).join(""), t);
-  const aiTexts = [strip(zhLong), strip(zhShort), ...zhTitles];
+  const aiTexts = [strip(zhLong), ...zhNotes.flatMap((n) => [n.title, strip(n.body)]), ...zhTitles];
   assertNoBanned(aiTexts);
   assertChineseAllowingNames(aiTexts);
-  return { zhLong, zhShort, zhTitles };
+  return { zhLong, zhNotes, zhTitles };
 }
 
-export function parseIssueJa(value: unknown): { jaLong: string; jaShort: string; jaTitles: string[] } {
+export function parseIssueJa(value: unknown): { jaLong: string; jaTitles: string[] } {
   const v = (value ?? {}) as Record<string, unknown>;
   const jaLong = typeof v.jaLong === "string" ? v.jaLong.trim() : "";
-  const jaShort = typeof v.jaShort === "string" ? v.jaShort.trim() : "";
   const jaTitles = titlesOf(v.jaTitles);
-  if (!jaLong || !jaShort || jaTitles.length === 0) throw new Error("缺字段");
+  if (!jaLong || jaTitles.length === 0) throw new Error("缺字段");
   // 有平假名才是日文（整篇写成中文的不收）
-  if (!/[぀-ゟ]/.test(jaLong) || !/[぀-ゟ]/.test(jaShort)) throw new Error("不是日文");
-  if ([...jaShort].length > JA_SHORT_MAX) throw new Error(`X 那条太长了（${[...jaShort].length} 字）`);
-  return { jaLong, jaShort, jaTitles };
+  if (!/[\u3040-\u309f]/.test(jaLong)) throw new Error("不是日文");
+  return { jaLong, jaTitles };
 }
 
 /** 中文、日文各写一份（并行，一份二三十秒）。 */
 export async function composeIssue(input: IssueComposeInput): Promise<{
   zhLong: string;
-  zhShort: string;
+  zhNotes: XhsNote[];
   zhTitles: string[];
   jaLong: string;
-  jaShort: string;
   jaTitles: string[];
 }> {
   const contents = issueInputText(input);
@@ -2597,8 +2612,8 @@ export async function composeIssue(input: IssueComposeInput): Promise<{
       parse
     );
   const [zh, ja] = await Promise.all([
-    call("signal_issue_zh", ISSUE_ZH_PROMPT, (v) => parseIssueZh(v, input), "他的判断、开头、押的那句必须一字不改；小红书那版 900 字以内；不许写空话。"),
-    call("signal_issue_ja", ISSUE_JA_PROMPT, parseIssueJa, "要写成日文；X 那条 120 字以内。"),
+    call("signal_issue_zh", ISSUE_ZH_PROMPT, (v) => parseIssueZh(v, input), "他的判断、开头、押的那句必须一字不改；小红书一条一篇、每篇 600 字以内、标题 20 字以内；不许写空话。"),
+    call("signal_issue_ja", ISSUE_JA_PROMPT, parseIssueJa, "要写成日文（です・ます調）。"),
   ]);
   return { ...zh, ...ja };
 }

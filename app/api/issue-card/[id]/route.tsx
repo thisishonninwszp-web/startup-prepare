@@ -1,8 +1,9 @@
 import { ImageResponse } from "next/og";
 import { createClient } from "@/lib/supabase/server";
-import { coverItems, coverTopLabel, type IssueContent, type IssueDrafts } from "@/lib/domains/signals/issue-shared";
+import { coverItems, coverSingle, coverTopLabel, type IssueContent, type IssueDrafts } from "@/lib/domains/signals/issue-shared";
 
 // 周刊的小红书封面（3:4，1080×1440）。小红书是看图的平台，没有图的帖子很难被刷到。
+// ?pick=N：第 N 篇笔记自己的封面（一篇只讲一件事）；不给就是整期的（几条列在一起）。
 // ImageResponse 为 Edge runtime 设计（见 app/apple-icon.tsx），所以这里不引领域层（那边用到 node:dns），
 // 直接用登录态的 Supabase 读这一期 —— RLS 只放行他自己的。
 export const runtime = "edge";
@@ -37,7 +38,7 @@ async function loadFont(weight: 400 | 700, text: string): Promise<ArrayBuffer | 
   }
 }
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
   const {
     data: { user },
@@ -49,10 +50,19 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
   const content = data.content as IssueContent;
   const drafts = data.drafts as IssueDrafts | null;
+  const week = `${data.week_start as string} 这一周`;
+
+  const pickParam = new URL(request.url).searchParams.get("pick");
+  if (pickParam !== null) {
+    const i = Number(pickParam);
+    const pick = Number.isInteger(i) ? content.picks[i] : undefined;
+    if (!pick) return new Response("这一期没有这一条", { status: 404 });
+    return singleCard(coverSingle(pick, drafts?.zhNotes?.[i]?.title), week);
+  }
+
   const title = drafts?.zhTitles[0] ?? "那边有、这边还没有";
   const top = coverTopLabel(content.picks);
   const items = coverItems(content.picks);
-  const week = `${data.week_start as string} 这一周`;
 
   const text = [title, top, FOOTER, week, ...items.flatMap((i) => [i.headline, i.stance]), "0123456789…"].join("");
   const [regular, bold] = await Promise.all([loadFont(400, text), loadFont(700, text)]);
@@ -103,6 +113,56 @@ export async function GET(_request: Request, { params }: { params: { id: string 
             </div>
           ))}
         </div>
+        <div style={{ display: "flex", flexShrink: 0, marginTop: "auto", justifyContent: "space-between", fontSize: 28, color: COLOR.muted }}>
+          <div style={{ display: "flex" }}>{FOOTER}</div>
+          <div style={{ display: "flex" }}>{week}</div>
+        </div>
+      </div>
+    ),
+    {
+      width: WIDTH,
+      height: HEIGHT,
+      fonts: [
+        { name: "NotoSansSC", data: regular, weight: 400, style: "normal" },
+        { name: "NotoSansSC", data: bold, weight: 700, style: "normal" },
+      ],
+      headers: { "Cache-Control": "private, max-age=600" },
+    }
+  );
+}
+
+/** 一篇笔记一张：方向、笔记标题（大）、新闻标题、他押的是什么（朱砂色，一眼看得到立场）。 */
+async function singleCard(card: { top: string; title: string; headline: string; stance: string }, week: string) {
+  const text = [card.top, card.title, card.headline, card.stance, FOOTER, week, "0123456789…"].join("");
+  const [regular, bold] = await Promise.all([loadFont(400, text), loadFont(700, text)]);
+  if (!regular || !bold) return new Response("字体没下载下来，刷新再试一次", { status: 503 });
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          background: COLOR.paper,
+          color: COLOR.ink,
+          padding: "120px 96px 72px",
+          fontFamily: "NotoSansSC",
+        }}
+      >
+        <div style={{ display: "flex", flexShrink: 0, fontSize: 34, color: COLOR.accent, fontWeight: 700 }}>{card.top}</div>
+        <div style={{ display: "flex", flexShrink: 0, marginTop: 40, fontSize: 92, fontWeight: 700, lineHeight: 1.3 }}>{card.title}</div>
+        <div style={{ display: "flex", flexShrink: 0, marginTop: 64, height: 6, width: 120, background: COLOR.accent }} />
+        {card.headline && (
+          <div style={{ display: "flex", flexShrink: 0, marginTop: 64, fontSize: 44, lineHeight: 1.5, color: COLOR.muted }}>
+            {card.headline}
+          </div>
+        )}
+        {card.stance && (
+          <div style={{ display: "flex", flexShrink: 0, marginTop: 72, fontSize: 56, fontWeight: 700, color: COLOR.accent }}>
+            {card.stance}
+          </div>
+        )}
         <div style={{ display: "flex", flexShrink: 0, marginTop: "auto", justifyContent: "space-between", fontSize: 28, color: COLOR.muted }}>
           <div style={{ display: "flex" }}>{FOOTER}</div>
           <div style={{ display: "flex" }}>{week}</div>

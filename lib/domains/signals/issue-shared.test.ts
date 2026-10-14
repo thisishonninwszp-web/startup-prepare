@@ -3,6 +3,7 @@ import {
   assembleDrafts,
   coverItems,
   coverTopLabel,
+  coverSingle,
   coverUrl,
   ISSUE_CTA,
   issueCounts,
@@ -11,6 +12,7 @@ import {
   validStance,
   weekStartOf,
   xIntentUrl,
+  xhsTags,
   type IssuePick,
 } from "./issue-shared";
 
@@ -40,12 +42,14 @@ describe("周刊", () => {
     expect(block.split("\n")).toEqual(["出处：", "・原文 https://example.cn/1", "・日本这边 https://example.jp/1"]);
   });
 
-  it("assembleDrafts：长文加结尾和出处，小红书只加结尾，X 什么都不加", () => {
-    const d = assembleDrafts({ zhLong: "正文", zhShort: "短", jaLong: "本文", jaShort: "ポスト", zhTitles: ["t"], jaTitles: ["t"] }, [pick()]);
+  it("assembleDrafts：长文加结尾和出处，小红书每篇加结尾和话题标签", () => {
+    const d = assembleDrafts(
+      { zhLong: "正文", zhNotes: [{ title: "t", body: "短" }], jaLong: "本文", zhTitles: ["t"], jaTitles: ["t"] },
+      [pick()]
+    );
     expect(d.zhLong.startsWith("正文\n\n" + ISSUE_CTA.zh + "\n\n出处：")).toBe(true);
-    expect(d.zhShort).toBe("短\n\n" + ISSUE_CTA.zh);
+    expect(d.zhNotes?.[0].body).toBe("短\n\n" + ISSUE_CTA.zh + "\n\n" + xhsTags("japan"));
     expect(d.jaLong).toContain("出典：");
-    expect(d.jaShort).toBe("ポスト");
   });
 
   it("issueCounts：只数次数", () => {
@@ -108,5 +112,23 @@ describe("小红书封面", () => {
 
   it("coverUrl：带上生成时间，换了稿子不会拿到旧图", () => {
     expect(coverUrl({ id: "i1", updated_at: "2026-10-14T01:02:03Z" })).toBe("/api/issue-card/i1?v=2026-10-14T01%3A02%3A03Z");
+    expect(coverUrl({ id: "i1", updated_at: "x" }, 2)).toBe("/api/issue-card/i1?pick=2&v=x");
+  });
+
+  it("单篇封面：有笔记标题就用它当大标题、新闻标题放下面；没有就用新闻标题", () => {
+    const p = { side: "japan" as const, headline: "美团用无人机送药", stance: { will: "will" as const } };
+    expect(coverSingle(p, "在日本找不到的中国服务")).toEqual({
+      top: "中国有 · 日本还没有",
+      title: "在日本找不到的中国服务",
+      headline: "美团用无人机送药",
+      stance: "我押：2 年内会出现",
+    });
+    expect(coverSingle(p, undefined).title).toBe("美团用无人机送药");
+    expect(coverSingle(p, undefined).headline).toBe("");
+  });
+
+  it("话题标签：日本有中国没有的那一类，标签给想买日本东西、做跨境的人", () => {
+    expect(xhsTags("china")).toContain("#跨境电商");
+    expect(xhsTags("japan")).toContain("#出海日本");
   });
 });

@@ -113,9 +113,22 @@ export function coverItems(picks: Pick<IssuePick, "headline" | "stance">[]): { h
   }));
 }
 
-/** 封面图的地址：带上生成时间，换了稿子浏览器就不会拿缓存里的旧图。 */
-export function coverUrl(issue: Pick<Issue, "id" | "updated_at">): string {
-  return `/api/issue-card/${issue.id}?v=${encodeURIComponent(issue.updated_at ?? "")}`;
+/**
+ * 封面图的地址：带上生成时间，换了稿子浏览器就不会拿缓存里的旧图。
+ * 给了 pick 就是那一篇小红书笔记自己的封面（只讲那一条）。
+ */
+export function coverUrl(issue: Pick<Issue, "id" | "updated_at">, pick?: number): string {
+  const v = `v=${encodeURIComponent(issue.updated_at ?? "")}`;
+  return `/api/issue-card/${issue.id}?${pick === undefined ? v : `pick=${pick}&${v}`}`;
+}
+
+/** 单篇封面上那一条：方向、笔记标题、新闻标题（截短）、他押的是什么。 */
+export function coverSingle(
+  pick: Pick<IssuePick, "side" | "headline" | "stance">,
+  noteTitle: string | undefined
+): { top: string; title: string; headline: string; stance: string } {
+  const [item] = coverItems([pick]);
+  return { top: coverTopLabel([pick]), title: noteTitle || item.headline, headline: noteTitle ? item.headline : "", stance: item.stance };
 }
 
 /** X 的发帖框，内容填好，点"发布"就行（不用接口、不用授权）。 */
@@ -123,7 +136,8 @@ export function xIntentUrl(text: string): string {
   return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
 }
 
-export const ISSUE_PLATFORMS = ["小红书", "即刻", "公众号", "note", "X", "其他"] as const;
+/** X 先不发：零粉丝的新号一周一条基本没人看到，要每天去互动才有用。以后真要发，记在"其他"里。 */
+export const ISSUE_PLATFORMS = ["小红书", "note", "公众号", "即刻", "其他"] as const;
 export type IssuePlatform = (typeof ISSUE_PLATFORMS)[number];
 
 /** 这一期写的一条：核实过的事实（服务器按 id 重新取，不信浏览器传来的）+ 他的判断。 */
@@ -162,13 +176,19 @@ export type IssueBet = {
 
 export type IssueContent = { opening: string; picks: IssuePick[]; bets: IssueBet[] };
 
+/** 小红书一篇：一条一篇（一篇只讲一件事的才有人看）。 */
+export type XhsNote = { title: string; body: string };
+
 export type IssueDrafts = {
   zhLong: string;
-  zhShort: string;
+  /** 小红书笔记，和这一期的条一一对应。 */
+  zhNotes?: XhsNote[];
   jaLong: string;
-  jaShort: string;
   zhTitles: string[];
   jaTitles: string[];
+  /** 早期版本：小红书合成一篇、日文还有一条 X。新生成的没有。 */
+  zhShort?: string;
+  jaShort?: string;
 };
 
 export type IssuePublish = { platform: IssuePlatform; url: string; at: string };
@@ -209,13 +229,21 @@ export function sourcesBlock(picks: IssuePick[], lang: "zh" | "ja"): string {
   return `${lang === "zh" ? "出处" : "出典"}：\n${lines.join("\n")}`;
 }
 
-/** AI 写的正文 + 代码加的结尾和出处 = 可以直接复制去发的稿子。X 那条放不下，只放正文。 */
+/**
+ * 小红书的话题标签（代码加，不让 AI 挑：挑偏了没人搜得到）。
+ * 日本有、中国还没有的那一类，读的人是想买日本东西、做跨境的。
+ */
+export function xhsTags(side: GapSide): string {
+  return side === "china" ? "#日本好物 #跨境电商 #中日差异 #日本生活" : "#在日华人 #日本生活 #出海日本 #日本创业 #中日差异";
+}
+
+/** AI 写的正文 + 代码加的结尾、出处、话题标签 = 可以直接复制去发的稿子。 */
 export function assembleDrafts(body: IssueDrafts, picks: IssuePick[]): IssueDrafts {
   const join = (...parts: string[]) => parts.filter(Boolean).join("\n\n");
   return {
     ...body,
     zhLong: join(body.zhLong, ISSUE_CTA.zh, sourcesBlock(picks, "zh")),
-    zhShort: join(body.zhShort, ISSUE_CTA.zh),
+    zhNotes: body.zhNotes?.map((n, i) => ({ ...n, body: join(n.body, ISSUE_CTA.zh, picks[i] ? xhsTags(picks[i].side) : "") })),
     jaLong: join(body.jaLong, ISSUE_CTA.ja, sourcesBlock(picks, "ja")),
   };
 }
