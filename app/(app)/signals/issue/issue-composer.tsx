@@ -14,6 +14,9 @@ import {
   ISSUE_NOTE_MAX,
   ISSUE_PLATFORMS,
   coverUrl,
+  gapDemand,
+  RESPONSE_SIGNALS,
+  type ResponseSignal,
   STANCE_OPTIONS,
   STANCE_YEARS,
   stanceSentence,
@@ -23,7 +26,7 @@ import {
   type PickStance,
 } from "@/lib/domains/signals/issue-shared";
 import type { IssueCandidate } from "@/lib/domains/signals/issue";
-import { addIssuePublishAction, addIssueResponseAction, composeIssueAction } from "../actions";
+import { addIssuePublishAction, addIssueResponseAction, composeIssueAction, setPublicRecordAction } from "../actions";
 
 const OUTCOME = { pending: "还在等", hit: "对了", miss: "错了" } as const;
 
@@ -143,16 +146,57 @@ function DraftPanel({
 /**
  * 这一期：挑几条、每条写一句自己的判断、挑几条公开对账 → 生成四个版本 → 复制去发 → 记下发在哪、谁回应了。
  */
+/** 公开对账页：打开了就给一个随机链接（不用登录能看），关掉旧链接立刻失效。 */
+function PublicRecordToggle({ initialToken }: { initialToken: string | null }) {
+  const [token, setToken] = useState<string | null>(initialToken);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const link = token && typeof window !== "undefined" ? `${window.location.origin}/record/${token}` : "";
+  const set = (on: boolean) =>
+    startTransition(async () => {
+      setError(null);
+      const result = await setPublicRecordAction(on);
+      if (result.ok) setToken(result.token);
+      else setError(result.message);
+    });
+  return (
+    <section className="border-t pt-6">
+      <h2 className="text-base font-semibold">公开对账页</h2>
+      <p className="mt-1 text-xs leading-6 text-muted-foreground">
+        周刊上押过的每一条、到期对没对，摆在一个不用登录就能看的页面上，错的也留着。贴在主页或笔记里 ——
+        陌生人信不信你，看的是你押过的东西应验了几条。只显示周刊上押的那几条，别的一概不显示。
+      </p>
+      {token ? (
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input readOnly value={link} />
+            <CopyButton text={link} label="复制链接" />
+          </div>
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => set(false)}>
+            关掉（这个链接立刻失效）
+          </Button>
+        </div>
+      ) : (
+        <Button className="mt-3" size="sm" variant="outline" disabled={pending} onClick={() => set(true)}>
+          打开公开对账页
+        </Button>
+      )}
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+    </section>
+  );
+}
+
 export function IssueComposer({
-  weekStart,
   gaps,
   bets,
   initial,
+  publicToken,
 }: {
-  weekStart: string;
   gaps: IssueCandidate[];
   bets: IssueBet[];
   initial: Issue | null;
+  /** 公开对账页的口令（没开为 null，迁移没跑为 "missing-schema"）。 */
+  publicToken: string | null | "missing-schema";
 }) {
   const [picked, setPicked] = useState<Record<string, PickInput>>(
     Object.fromEntries((initial?.content.picks ?? []).map((p) => [keyOf(p), { stance: p.stance ?? {}, note: p.note ?? "" }]))
@@ -167,6 +211,8 @@ export function IssueComposer({
   const [url, setUrl] = useState("");
   const [response, setResponse] = useState("");
   const [wantsTalk, setWantsTalk] = useState(false);
+  const [responsePick, setResponsePick] = useState<number | undefined>(undefined);
+  const [responseSignal, setResponseSignal] = useState<ResponseSignal | undefined>(undefined);
   const [logError, setLogError] = useState<string | null>(null);
   const [betNotice, setBetNotice] = useState<string | null>(null);
 
@@ -350,16 +396,23 @@ export function IssueComposer({
                     一条一篇：小红书上一篇只讲一件事的才有人看。一周发完这几篇，比一次发一篇合集更容易被推出去。
                     每篇的封面下载下来当第一张图；话题标签和结尾问读者的那句已经加好了。
                   </p>
-                  {issue.drafts.zhNotes.map((n, i) => (
+                  {issue.drafts.zhNotes.map((n, i) => {
+                    const pick = issue.content.picks[i];
+                    const demand = pick ? gapDemand([issue]).get(`${pick.side}:${pick.signal_id}`) : undefined;
+                    return (
                     <div key={i} className="border-t pt-4">
-                      <p className="font-mono text-xs text-muted-foreground">第 {i + 1} 篇</p>
+                      <p className="font-mono text-xs text-muted-foreground">
+                        第 {i + 1} 篇
+                        {demand ? ` · 收到：说想要 ${demand.pain} · 问哪里买 ${demand.pay} · 想聊 ${demand.wantsTalk}` : ""}
+                      </p>
                       <DraftPanel
                         body={n.body}
                         titles={[n.title]}
                         cover={{ src: coverUrl(issue, i), filename: `周刊-${issue.week_start}-${i + 1}.png` }}
                       />
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <DraftPanel
@@ -445,7 +498,38 @@ export function IssueComposer({
 
           <div className="mt-6">
             <p className="text-sm">有人回应了：把评论或私信贴进来（会记成一条带「读者回应」标签的观察）</p>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              一篇笔记只讲一件事，所以回应就是那件事的需求信号：说想要的记「有痛」，问哪里买、多少钱的记「愿付钱」，会算到差距清单那一条上。
+            </p>
             <Textarea className="mt-2" rows={3} value={response} onChange={(e) => setResponse(e.target.value)} placeholder="他说了什么" />
+            {issue.content.picks.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-sm text-muted-foreground">回的是：</span>
+                {issue.content.picks.map((_, i) => (
+                  <Button
+                    key={i}
+                    size="sm"
+                    variant={responsePick === i ? "secondary" : "ghost"}
+                    onClick={() => setResponsePick(responsePick === i ? undefined : i)}
+                  >
+                    第 {i + 1} 篇
+                  </Button>
+                ))}
+              </div>
+            )}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">他说的是：</span>
+              {(Object.keys(RESPONSE_SIGNALS) as ResponseSignal[]).map((k) => (
+                <Button
+                  key={k}
+                  size="sm"
+                  variant={responseSignal === k ? "secondary" : "ghost"}
+                  onClick={() => setResponseSignal(responseSignal === k ? undefined : k)}
+                >
+                  {RESPONSE_SIGNALS[k]}
+                </Button>
+              ))}
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button size="sm" variant={wantsTalk ? "secondary" : "ghost"} onClick={() => setWantsTalk(!wantsTalk)}>
                 {wantsTalk ? "✓ 他想多聊" : "他想多聊？"}
@@ -456,11 +540,13 @@ export function IssueComposer({
                 onClick={() =>
                   startTransition(async () => {
                     setLogError(null);
-                    const result = await addIssueResponseAction(issue.id, weekStart, response, wantsTalk);
+                    const result = await addIssueResponseAction(issue.id, response, wantsTalk, responsePick, responseSignal);
                     if (result.ok) {
                       setIssue(result.issue);
                       setResponse("");
                       setWantsTalk(false);
+                      setResponsePick(undefined);
+                      setResponseSignal(undefined);
                     } else setLogError(result.message);
                   })
                 }
@@ -472,6 +558,8 @@ export function IssueComposer({
           {logError && <p className="mt-2 text-sm text-destructive">{logError}</p>}
         </section>
       )}
+
+      {publicToken !== "missing-schema" && <PublicRecordToggle initialToken={publicToken} />}
     </div>
   );
 }

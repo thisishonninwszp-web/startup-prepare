@@ -5,6 +5,7 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { getIssue, issueCandidates, issueCounts, listIssues, weekStartOf } from "@/lib/domains/signals/issue";
+import { getPublicToken } from "@/lib/domains/signals/public-record";
 import { IssueComposer } from "./issue-composer";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,12 @@ export default async function IssuePage() {
   if (!user) notFound();
 
   const weekStart = weekStartOf(tokyoToday());
-  const [current, candidates, past] = await Promise.all([getIssue(user.id, weekStart), issueCandidates(user.id), listIssues(user.id)]);
+  const [current, candidates, past, publicToken] = await Promise.all([
+    getIssue(user.id, weekStart),
+    issueCandidates(user.id),
+    listIssues(user.id),
+    getPublicToken(user.id),
+  ]);
   const earlier = past.filter((p) => p.week_start !== weekStart);
 
   return (
@@ -42,7 +48,7 @@ export default async function IssuePage() {
       ) : (
         <>
           <p className="mb-6 font-mono text-xs text-muted-foreground">这一期：{weekStart} 这一周</p>
-          <IssueComposer weekStart={weekStart} gaps={candidates.gaps} bets={candidates.bets} initial={current} />
+          <IssueComposer gaps={candidates.gaps} bets={candidates.bets} initial={current} publicToken={publicToken} />
         </>
       )}
 

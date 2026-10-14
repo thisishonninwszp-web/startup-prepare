@@ -10,6 +10,7 @@ import { todayGapScan } from "@/lib/domains/signals/gap-scan";
 import { listGapBoard, type JapanGapRow } from "@/lib/domains/signals/gaps";
 import { RECHECKS_PER_DAY, transferKey, type ArrivedGap, type GapSide, type GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
+import { gapDemand, listIssues, type GapDemand } from "@/lib/domains/signals/issue";
 import { SourceCheckView } from "../check-view";
 import { GapActions } from "./gap-actions";
 import { GapScanLoader } from "./gap-scan-loader";
@@ -38,7 +39,18 @@ const SIDE_TEXT: Record<GapSide, { here: string; there: string; empty: string }>
   },
 };
 
-function GapList({ gaps, side, transfers }: { gaps: JapanGapRow[]; side: GapSide; transfers: Map<string, GapTransfer> }) {
+function GapList({
+  gaps,
+  side,
+  transfers,
+  demand,
+}: {
+  gaps: JapanGapRow[];
+  side: GapSide;
+  transfers: Map<string, GapTransfer>;
+  /** 周刊上这一条收到的回应（只数次数）。 */
+  demand: Map<string, GapDemand>;
+}) {
   const t = SIDE_TEXT[side];
   if (gaps.length === 0) return <EmptyState title="这里空着。" description={t.empty} />;
   return (
@@ -92,6 +104,14 @@ function GapList({ gaps, side, transfers }: { gaps: JapanGapRow[]; side: GapSide
                 uncheckedText="这句是 AI 凭印象说的，没上网查过。"
               />
             </div>
+            {(() => {
+              const d = demand.get(transferKey(side, g.signal_id));
+              return d ? (
+                <p className="mt-2 font-mono text-xs text-muted-foreground">
+                  周刊上：说想要 {d.pain} · 问哪里买 {d.pay} · 想聊 {d.wantsTalk}
+                </p>
+              ) : null;
+            })()}
             <TransferView
               signalId={g.signal_id}
               side={side}
@@ -224,11 +244,13 @@ export default async function JapanGapsPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [board, scanned, transfers] = await Promise.all([
+  const [board, scanned, transfers, issues] = await Promise.all([
     listGapBoard(user.id, tokyoToday()),
     todayGapScan(user.id),
     loadGapTransfers(user.id),
+    listIssues(user.id),
   ]);
+  const demand = gapDemand(issues);
   const { japan: toJapan, us: fromUs, china: toChina } = board.sides;
 
   return (
@@ -253,7 +275,7 @@ export default async function JapanGapsPage() {
 
       <h2 className="mb-4 text-xl font-semibold">中国有、日本还没有</h2>
       <ArrivedList gaps={toJapan.arrived} side="japan" />
-      <GapList gaps={toJapan.open} side="japan" transfers={transfers} />
+      <GapList gaps={toJapan.open} side="japan" transfers={transfers} demand={demand} />
 
       <section className="mt-12 border-t pt-6">
         <h2 className="text-xl font-semibold">美国有、日本还没有</h2>
@@ -261,7 +283,7 @@ export default async function JapanGapsPage() {
           美国先出现的产品和做法，日本常常晚几年。只收讲产品、服务、生意做法的，纯技术讨论不收。
         </p>
         <ArrivedList gaps={fromUs.arrived} side="us" />
-        <GapList gaps={fromUs.open} side="us" transfers={transfers} />
+        <GapList gaps={fromUs.open} side="us" transfers={transfers} demand={demand} />
       </section>
 
       <section className="mt-12 border-t pt-6">
@@ -270,7 +292,7 @@ export default async function JapanGapsPage() {
           日本做成、中国还没有的东西，可能适合跨境电商卖给中国人，或者把这种做法带去中国。
         </p>
         <ArrivedList gaps={toChina.arrived} side="china" />
-        <GapList gaps={toChina.open} side="china" transfers={transfers} />
+        <GapList gaps={toChina.open} side="china" transfers={transfers} demand={demand} />
       </section>
     </PageContainer>
   );

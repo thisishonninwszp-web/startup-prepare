@@ -18,7 +18,10 @@ import {
   type IssueBet,
   type IssuePick,
   type IssuePlatform,
+  type IssueRecordedBet,
   type PickStance,
+  type ResponseSignal,
+  RESPONSE_SIGNALS,
 } from "./issue-shared";
 
 export * from "./issue-shared";
@@ -224,7 +227,7 @@ export async function composeAndSaveIssue(
   return toIssue(data as Record<string, unknown>);
 }
 
-async function loadOwnIssue(userId: string, issueId: string): Promise<Issue> {
+export async function loadOwnIssue(userId: string, issueId: string): Promise<Issue> {
   const { data, error } = await supabaseAdmin.from("signal_issues").select(ISSUE_COLUMNS).eq("id", issueId).eq("user_id", userId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("找不到这一期");
@@ -235,12 +238,13 @@ async function loadOwnIssue(userId: string, issueId: string): Promise<Issue> {
  * 发出去了，这一期里"会 / 不会"的几条就是公开押过的：押进判断账本，两年后对账（标签「周刊」）。
  * 只在第一次记"发了"时押；同一句已经押过就跳过。新闻条目已经被清掉的，就不连着它（只记标题和链接）。
  */
-async function recordIssueBets(userId: string, issue: Issue): Promise<number> {
+async function recordIssueBets(userId: string, issue: Issue): Promise<IssueRecordedBet[]> {
   const due = new Date(Date.now() + STANCE_YEARS * 365 * 86_400_000);
   const dueLabel = `${due.getFullYear()}年${due.getMonth() + 1}月`;
-  let recorded = 0;
+  const recorded: IssueRecordedBet[] = [];
   for (const p of issue.content.picks) {
-    if (!p.stance || p.stance.will === "unsure") continue;
+    const will = p.stance?.will;
+    if (will !== "will" && will !== "wont") continue;
     const question = `${ISSUE_BET_PREFIX}到${dueLabel}，${gapPlaces(p.side).here}会不会出现：${p.headline}？`;
     const { data: existing } = await supabaseAdmin
       .from("signal_judgments")
@@ -257,18 +261,31 @@ async function recordIssueBets(userId: string, issue: Issue): Promise<number> {
       .select("id")
       .single();
     if (predictionError) throw new Error(predictionError.message);
-    const { error } = await supabaseAdmin.from("signal_judgments").insert({
-      user_id: userId,
-      signal_id: signal ? p.signal_id : null,
-      prediction_id: prediction.id,
-      news_title: p.headline,
-      news_url: p.url ?? null,
-      question,
-      judgment: p.judgment,
-      tags: ["周刊"],
-    });
+    const { data: judgmentRow, error } = await supabaseAdmin
+      .from("signal_judgments")
+      .insert({
+        user_id: userId,
+        signal_id: signal ? p.signal_id : null,
+        prediction_id: prediction.id,
+        news_title: p.headline,
+        news_url: p.url ?? null,
+        question,
+        judgment: p.judgment,
+        tags: ["周刊"],
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
-    recorded += 1;
+    // 记下是哪一条差距：每月重查发现"有了"就能自动对账
+    recorded.push({
+      prediction_id: prediction.id as string,
+      judgment_id: judgmentRow.id as string,
+      side: p.side,
+      signal_id: p.signal_id,
+      will,
+      made_on: tokyoToday(),
+      due_at: due.toISOString(),
+    });
   }
   return recorded;
 }
@@ -286,16 +303,45 @@ export async function addIssuePublish(
   const issue = await loadOwnIssue(userId, issueId);
   const first = issue.published.length === 0;
   const published = [...issue.published, { platform, url: link, at: new Date().toISOString() }];
-  const { error } = await supabaseAdmin.from("signal_issues").update({ published }).eq("id", issueId).eq("user_id", userId);
+  const recorded = first ? await recordIssueBets(userId, issue) : [];
+  const content = first ? { ...issue.content, recorded: [...(issue.content.recorded ?? []), ...recorded] } : issue.content;
+  const { error } = await supabaseAdmin.from("signal_issues").update({ published, content }).eq("id", issueId).eq("user_id", userId);
   if (error) throw new Error(error.message);
-  const bets = first ? await recordIssueBets(userId, issue) : 0;
-  return { issue: { ...issue, published }, bets };
+  return { issue: { ...issue, published, content }, bets: recorded.length };
 }
 
-/** 记一条读者回应（正文已经记成观察，这里只记是哪一条、他想不想聊）。 */
-export async function addIssueResponse(userId: string, issueId: string, observationId: string, wantsTalk: boolean): Promise<Issue> {
+/** 回应的是第几篇、哪一类（只认这几种），给观察的正文和标签用。 */
+export function describeResponse(issue: Issue, pick: number | undefined, signal: ResponseSignal | undefined) {
+  const p = pick !== undefined ? issue.content.picks[pick] : undefined;
+  if (pick !== undefined && !p) throw new Error("这一期没有这一篇");
+  if (signal !== undefined && !(signal in RESPONSE_SIGNALS)) throw new Error("不认识这一类回应");
+  return {
+    where: p ? `${issue.week_start} 那一期周刊第 ${pick! + 1} 篇（${p.headline}）` : `${issue.week_start} 那一期周刊`,
+    // 对着宪法里证据只记的两个信号：有痛 / 愿付钱
+    tags: signal === "pain" ? ["有痛"] : signal === "pay" ? ["愿付钱"] : [],
+  };
+}
+
+/** 记一条读者回应（正文已经记成观察，这里只记是哪一篇、哪一类、他想不想聊）。 */
+export async function addIssueResponse(
+  userId: string,
+  issueId: string,
+  observationId: string,
+  wantsTalk: boolean,
+  pick?: number,
+  signal?: ResponseSignal
+): Promise<Issue> {
   const issue = await loadOwnIssue(userId, issueId);
-  const responses = [...issue.responses, { at: new Date().toISOString(), observation_id: observationId, wants_talk: wantsTalk }];
+  const responses = [
+    ...issue.responses,
+    {
+      at: new Date().toISOString(),
+      observation_id: observationId,
+      wants_talk: wantsTalk,
+      ...(pick !== undefined ? { pick } : {}),
+      ...(signal ? { signal } : {}),
+    },
+  ];
   const { error } = await supabaseAdmin.from("signal_issues").update({ responses }).eq("id", issueId).eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ...issue, responses };

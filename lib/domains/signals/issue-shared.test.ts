@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assembleDrafts,
+  decideIssueBet,
+  gapDemand,
   coverItems,
   coverTopLabel,
   coverSingle,
@@ -130,5 +132,65 @@ describe("小红书封面", () => {
   it("话题标签：日本有中国没有的那一类，标签给想买日本东西、做跨境的人", () => {
     expect(xhsTags("china")).toContain("#跨境电商");
     expect(xhsTags("japan")).toContain("#出海日本");
+  });
+});
+
+describe("自动对账（只在有出处的时候替他对）", () => {
+  const bet = {
+    prediction_id: "p1",
+    judgment_id: "j1",
+    side: "japan" as const,
+    signal_id: "s1",
+    will: "will" as const,
+    made_on: "2026-10-15",
+    due_at: "2028-10-15T00:00:00Z",
+  };
+  const basis = [{ url: "https://example.jp/a", title: "PayPay", excerpt: "e" }];
+  const recheck = (checked_on: string, verdict: "still" | "arrived" | "unclear", signal_id = "s1") => ({
+    signal_id,
+    side: "japan" as const,
+    checked_on,
+    verdict,
+    japan: verdict === "arrived" ? "有，已经上线。" : "没有。",
+    source_check: { status: "supported" as const, basis },
+    funded: null,
+  });
+
+  it("押之后查到这边有了：押会的算对、押不会的算错，带出处", () => {
+    const d = decideIssueBet(bet, [recheck("2027-03-01", "arrived"), recheck("2026-11-15", "still")], "2027-03-02");
+    expect(d?.outcome).toBe("hit");
+    expect(d?.note).toContain("2027-03-01");
+    expect(d?.note).toContain("https://example.jp/a");
+    expect(decideIssueBet({ ...bet, will: "wont" }, [recheck("2027-03-01", "arrived")], "2027-03-02")?.outcome).toBe("miss");
+  });
+
+  it("押之前的重查、别的条目的重查不算；没到期也没有了就不动", () => {
+    expect(decideIssueBet(bet, [recheck("2026-09-01", "arrived"), recheck("2027-01-01", "arrived", "other")], "2027-03-02")).toBeNull();
+    expect(decideIssueBet(bet, [recheck("2027-01-01", "still")], "2027-03-02")).toBeNull();
+  });
+
+  it("到期时最近一次重查有出处说还没有：押会的算错；没查清、太久没查就留给他", () => {
+    expect(decideIssueBet(bet, [recheck("2028-10-01", "still")], "2028-10-20")?.outcome).toBe("miss");
+    expect(decideIssueBet({ ...bet, will: "wont" }, [recheck("2028-10-01", "still")], "2028-10-20")?.outcome).toBe("hit");
+    expect(decideIssueBet(bet, [recheck("2028-10-01", "unclear")], "2028-10-20")).toBeNull();
+    expect(decideIssueBet(bet, [recheck("2028-06-01", "still")], "2028-10-20")).toBeNull();
+  });
+});
+
+describe("每篇笔记就是一次需求测试", () => {
+  it("gapDemand：按条目数说想要、问哪里买、想聊；整期的回应不算到哪一条上", () => {
+    const issue = {
+      content: { opening: "", bets: [], picks: [pick(), pick({ side: "us", signal_id: "s2" })] },
+      responses: [
+        { at: "", observation_id: "o1", wants_talk: true, pick: 0, signal: "pain" as const },
+        { at: "", observation_id: "o2", wants_talk: false, pick: 0, signal: "pay" as const },
+        { at: "", observation_id: "o3", wants_talk: false, pick: 1 },
+        { at: "", observation_id: "o4", wants_talk: true },
+      ],
+    };
+    const d = gapDemand([issue]);
+    expect(d.get("japan:s1")).toEqual({ pain: 1, pay: 1, other: 0, wantsTalk: 1 });
+    expect(d.get("us:s2")).toEqual({ pain: 0, pay: 0, other: 1, wantsTalk: 0 });
+    expect(d.size).toBe(2);
   });
 });

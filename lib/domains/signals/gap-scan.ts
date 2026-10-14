@@ -5,6 +5,7 @@ import { balanceBySource, GAP_SCAN_SOURCES, isChinaSource, isUsSource, newsSourc
 import { usableSummary } from "./summary";
 import { dueForRecheck, isJapanGap, recheckVerdict, RECHECKS_PER_DAY, type GapSide } from "./gaps-shared";
 import { loadGapRechecks, openGapsWithSide } from "./gaps";
+import { autoResolveIssueBets } from "./issue-resolve";
 
 /**
  * 差距清单每天专门扫一轮。以前只有被挑进报告精选的中文、美国条目才会问"日本有没有"，
@@ -133,13 +134,14 @@ export async function runGapScan(userId: string): Promise<{ picked: number; gaps
  * 进清单满一个月的，再查一次"这边现在有没有"。一天最多查 RECHECKS_PER_DAY 条，最久没查的先查。
  * 查不出结论的也记一笔（unclear），算查过了，免得每次打开页面都重查同一条。
  */
-export async function runGapRechecks(userId: string): Promise<{ rechecked: number; arrived: number }> {
+export async function runGapRechecks(userId: string): Promise<{ rechecked: number; arrived: number; resolved: number }> {
   const rechecks = await loadGapRechecks(userId);
   if (rechecks === null) throw new Error(MISSING_MIGRATION);
   const today = tokyoToday();
-  if (rechecks.some((r) => r.checked_on === today)) return { rechecked: 0, arrived: 0 };
+  if (rechecks.some((r) => r.checked_on === today)) return { rechecked: 0, arrived: 0, resolved: 0 };
   const due = dueForRecheck(await openGapsWithSide(userId, rechecks), today, RECHECKS_PER_DAY);
-  if (due.length === 0) return { rechecked: 0, arrived: 0 };
+  // 没有要重查的，也看一眼有没有到期能自动对账的
+  if (due.length === 0) return { rechecked: 0, arrived: 0, resolved: await safeAutoResolve(userId) };
 
   const sides = Array.from(new Set(due.map((g) => g.side)));
   const results = await Promise.all(
@@ -171,5 +173,15 @@ export async function runGapRechecks(userId: string): Promise<{ rechecked: numbe
   const rows = results.flat();
   const { error } = await supabaseAdmin.from("signal_gap_rechecks").insert(rows);
   if (error) throw new Error(error.message);
-  return { rechecked: rows.length, arrived: rows.filter((r) => r.verdict === "arrived").length };
+  return { rechecked: rows.length, arrived: rows.filter((r) => r.verdict === "arrived").length, resolved: await safeAutoResolve(userId) };
+}
+
+/** 周刊上押过的，重查完能自动对账的顺手对掉；对账出错不拖垮重查本身。 */
+async function safeAutoResolve(userId: string): Promise<number> {
+  try {
+    return await autoResolveIssueBets(userId);
+  } catch (e) {
+    console.error("auto resolve issue bets failed", e);
+    return 0;
+  }
 }

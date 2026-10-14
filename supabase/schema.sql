@@ -5711,3 +5711,19 @@ alter table signal_issues enable row level security;
 drop policy if exists "signal_issues_owner" on signal_issues;
 create policy "signal_issues_owner" on signal_issues
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 072：公开对账页（signal_public_records）
+-- ============================================================================
+
+create table if not exists signal_public_records (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  token       text not null unique,
+  created_at  timestamptz not null default now()
+);
+
+alter table signal_public_records enable row level security;
+
+drop policy if exists "signal_public_records_owner" on signal_public_records;
+create policy "signal_public_records_owner" on signal_public_records
+  for all using (auth.uid() = user_id);

@@ -30,9 +30,13 @@ import {
   addIssuePublish,
   addIssueResponse,
   composeAndSaveIssue,
+  describeResponse,
+  loadOwnIssue,
   type Issue,
   type IssuePlatform,
+  type ResponseSignal,
 } from "@/lib/domains/signals/issue";
+import { disablePublicRecord, enablePublicRecord } from "@/lib/domains/signals/public-record";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
@@ -538,26 +542,46 @@ export async function addIssuePublishAction(
   }
 }
 
-/** 周刊：记一条读者回应。正文记成带「读者回应」标签的观察（材料还是从一个口子进），想聊的再加「想聊」。 */
+/**
+ * 周刊：记一条读者回应。正文记成带「读者回应」标签的观察（材料还是从一个口子进）；
+ * 说想要的加「有痛」、问哪里买的加「愿付钱」、想聊的加「想聊」。回应的是第几篇也记下 —— 每篇笔记就是那一条的需求测试。
+ */
 export async function addIssueResponseAction(
   issueId: string,
-  weekStart: string,
   text: string,
-  wantsTalk: boolean
+  wantsTalk: boolean,
+  pick?: number,
+  signal?: ResponseSignal
 ): Promise<{ ok: true; issue: Issue } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
     const body = text.trim();
     if (body.length < 2) throw new Error("把读者说的话贴进来");
-    const observation = await createObservation(`读者回应（${weekStart} 那一期周刊）：${body}`, [
+    const issue = await loadOwnIssue(userId, issueId);
+    const { where, tags } = describeResponse(issue, pick, signal);
+    const observation = await createObservation(`读者回应（${where}）：${body}`, [
       EXTERNAL_TAG,
       "读者回应",
+      ...tags,
       ...(wantsTalk ? ["想聊"] : []),
     ]);
     revalidatePath("/capture");
-    return { ok: true, issue: await addIssueResponse(userId, issueId, observation.id, wantsTalk) };
+    revalidatePath("/signals/gaps");
+    return { ok: true, issue: await addIssueResponse(userId, issueId, observation.id, wantsTalk, pick, signal) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没记上") };
+  }
+}
+
+/** 公开对账页：打开（返回口令）/ 关掉（旧链接立刻失效）。 */
+export async function setPublicRecordAction(on: boolean): Promise<{ ok: true; token: string | null } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    if (on) return { ok: true, token: await enablePublicRecord(userId) };
+    await disablePublicRecord(userId);
+    return { ok: true, token: null };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, on ? "没打开" : "没关掉") };
   }
 }
 

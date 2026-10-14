@@ -1,4 +1,4 @@
-import type { GapSide } from "./gaps-shared";
+import type { GapRecheck, GapSide } from "./gaps-shared";
 
 /**
  * 周刊里浏览器端也要用的部分：类型、平台、固定的结尾、拼稿。不碰数据库。
@@ -174,7 +174,25 @@ export type IssueBet = {
   due_on: string;
 };
 
-export type IssueContent = { opening: string; picks: IssuePick[]; bets: IssueBet[] };
+/** 发出去时押进判断账本的那几条：记下是哪一条差距，每月重查发现"有了"就能自动对账。 */
+export type IssueRecordedBet = {
+  prediction_id: string;
+  judgment_id: string;
+  side: GapSide;
+  signal_id: string;
+  will: "will" | "wont";
+  /** 押的那天（YYYY-MM-DD）：之前的重查结果不算。 */
+  made_on: string;
+  due_at: string;
+};
+
+export type IssueContent = {
+  opening: string;
+  picks: IssuePick[];
+  bets: IssueBet[];
+  /** 第一次记"发了"之后才有。 */
+  recorded?: IssueRecordedBet[];
+};
 
 /** 小红书一篇：一条一篇（一篇只讲一件事的才有人看）。 */
 export type XhsNote = { title: string; body: string };
@@ -192,7 +210,21 @@ export type IssueDrafts = {
 };
 
 export type IssuePublish = { platform: IssuePlatform; url: string; at: string };
-export type IssueResponse = { at: string; observation_id: string; wants_talk: boolean };
+/**
+ * 读者回应说的是哪一类：pain = 说想要 / 自己有这个麻烦（有痛），pay = 问哪里买、多少钱（愿付钱的迹象），other = 别的。
+ * 对着宪法里证据只记的那两个信号。
+ */
+export const RESPONSE_SIGNALS = { pain: "说想要 / 有这个麻烦", pay: "问哪里买 / 多少钱", other: "别的" } as const;
+export type ResponseSignal = keyof typeof RESPONSE_SIGNALS;
+
+export type IssueResponse = {
+  at: string;
+  observation_id: string;
+  wants_talk: boolean;
+  /** 回应的是第几篇（小红书一条一篇）；整期的回应没有。 */
+  pick?: number;
+  signal?: ResponseSignal;
+};
 
 export type Issue = {
   id: string;
@@ -254,5 +286,64 @@ export function issueCounts(issue: Pick<Issue, "published" | "responses">): { pu
     published: issue.published.length,
     responses: issue.responses.length,
     wantsTalk: issue.responses.filter((r) => r.wants_talk).length,
+  };
+}
+
+// ── 每篇笔记就是一次需求测试 ───────────────────────────────────────────────
+
+export type GapDemand = { pain: number; pay: number; other: number; wantsTalk: number };
+
+/** 每条差距在周刊上收到的回应：说想要几个、问哪里买几个、想聊几个（键是 "side:signal_id"）。只数次数。 */
+export function gapDemand(issues: Pick<Issue, "content" | "responses">[]): Map<string, GapDemand> {
+  const out = new Map<string, GapDemand>();
+  for (const issue of issues) {
+    for (const r of issue.responses) {
+      const pick = r.pick !== undefined ? issue.content.picks[r.pick] : undefined;
+      if (!pick) continue;
+      const key = `${pick.side}:${pick.signal_id}`;
+      const d = out.get(key) ?? { pain: 0, pay: 0, other: 0, wantsTalk: 0 };
+      d[r.signal ?? "other"] += 1;
+      if (r.wants_talk) d.wantsTalk += 1;
+      out.set(key, d);
+    }
+  }
+  return out;
+}
+
+// ── 自动对账 ───────────────────────────────────────────────────────────────
+
+/**
+ * 周刊上押过的一条，能不能不用他点就对账：
+ * - 押之后的重查查到出处说"这边有了"：押会出现的算对，押不会的算错；
+ * - 到了期限，最近一次重查（期限前后 45 天内）查到出处说"还没有"：押会出现的算错，押不会的算对；
+ * - 别的情况（没查清、太久没查）留给他自己对 —— 只在有出处的时候替他对账。
+ */
+export const RESOLVE_WINDOW_DAYS = 45;
+
+export function decideIssueBet(
+  bet: IssueRecordedBet,
+  rechecks: GapRecheck[],
+  today: string
+): { outcome: "hit" | "miss"; note: string } | null {
+  const mine = rechecks
+    .filter((r) => r.side === bet.side && r.signal_id === bet.signal_id && r.checked_on >= bet.made_on)
+    .sort((a, b) => b.checked_on.localeCompare(a.checked_on));
+  const arrived = mine.filter((r) => r.verdict === "arrived").at(-1);
+  if (arrived) {
+    const src = arrived.source_check?.basis[0];
+    return {
+      outcome: bet.will === "will" ? "hit" : "miss",
+      note: `自动对账：${arrived.checked_on} 重查查到这边有了 —— ${arrived.japan}${src ? `（出处：${src.title || src.url} ${src.url}）` : ""}`,
+    };
+  }
+  const due = bet.due_at.slice(0, 10);
+  if (today < due) return null;
+  const dueMs = Date.parse(`${due}T00:00:00Z`);
+  const near = mine.find((r) => Math.abs(Date.parse(`${r.checked_on}T00:00:00Z`) - dueMs) <= RESOLVE_WINDOW_DAYS * 86_400_000);
+  if (near?.verdict !== "still") return null;
+  const src = near.source_check?.basis[0];
+  return {
+    outcome: bet.will === "will" ? "miss" : "hit",
+    note: `自动对账：到期时（${near.checked_on} 重查）这边还是没有 —— ${near.japan}${src ? `（出处：${src.title || src.url} ${src.url}）` : ""}`,
   };
 }
