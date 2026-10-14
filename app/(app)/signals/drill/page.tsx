@@ -38,9 +38,10 @@ export default async function DrillPage() {
         description="真实的判断要等几个月才对账，反馈太慢。这里是过去真实发生过、结果早就揭晓的事：只给你当时知道的，猜会不会，答完马上揭晓。题目挑的是和你最近在看的新闻像的事；答案上网核实过，没核实到出处的不出。对错由代码比，不用你自己判。"
       />
 
-      {open === "missing-schema" ? (
+      {open === "missing-066" || open === "missing-068" ? (
         <p className="text-sm leading-7 text-muted-foreground">
-          还差一步：迁移 066 没跑。执行 supabase/migrations/066_signal_drills.sql 之后再来。
+          还差一步：迁移 {open === "missing-066" ? "066" : "068"} 没跑。执行 supabase/migrations/
+          {open === "missing-066" ? "066_signal_drills.sql" : "068_signal_drills_criterion.sql"} 之后再来。
         </p>
       ) : open ? (
         <DrillCard key={open.id} drill={open} />

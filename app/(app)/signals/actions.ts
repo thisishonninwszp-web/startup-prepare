@@ -16,7 +16,7 @@ import { fetchGithubTools } from "@/lib/domains/signals/github";
 import { findJapanGap } from "@/lib/domains/signals/gaps";
 import { runGapRechecks, runGapScan } from "@/lib/domains/signals/gap-scan";
 import { chooseLabVariant, runSelectionLab, type LabVariantKey } from "@/lib/domains/signals/lab";
-import { answerDrill, generateDrills, type AnsweredDrill } from "@/lib/domains/signals/drills";
+import { answerDrill, flagDrill, generateDrills, type AnsweredDrill, type DrillFlag } from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
@@ -513,6 +513,18 @@ export async function generateDrillsAction(): Promise<{ ok: true; count: number 
     return { ok: true, count };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没出成题") };
+  }
+}
+
+/** 历史题：这题出得不好，跳过。 */
+export async function flagDrillAction(id: string, flag: DrillFlag): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await flagDrill(userId, id, flag);
+    revalidatePath("/signals/drill");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没跳过去") };
   }
 }
 

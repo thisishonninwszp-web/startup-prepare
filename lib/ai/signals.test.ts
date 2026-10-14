@@ -926,8 +926,11 @@ describe("parseOutcomeQueries（到期对账先查现在怎样）", () => {
 describe("历史题：出题和核实", () => {
   const draft = (over: Record<string, unknown> = {}) => ({
     topic: 0,
-    setup: "2023 年 6 月，楽天モバイル宣布缩小和 KDDI 的漫游合作范围，自建基站覆盖率超过 98%。",
+    subject: "楽天モバイル",
+    asOf: "2023-06",
+    setup: "现在是2023年6月。楽天モバイル宣布缩小和 KDDI 的漫游合作范围，自建基站覆盖率超过 98%，签约数约 480 万。",
     question: "到 2024 年 6 月底，楽天モバイル的签约数会不会超过 700 万？",
+    criterion: "以楽天モバイル官方公布的 MNO 签约数为准。",
     deadline: "2024-06-30",
     answer: true,
     whatHappened: "2024 年 5 月签约数超过 700 万。",
@@ -954,6 +957,32 @@ describe("历史题：出题和核实", () => {
       ["2024-06-30", 0],
       ["2024-06-30", -1],
     ]);
+  });
+
+  it("题面讲的不是问的那一家、没交代现在是什么时候、期限离现在太近或太远、没有判定标准的，都丢掉", () => {
+    const keep = parseDrillDrafts(
+      {
+        drills: [
+          // 只讲苹果的 Siri，问的却是谷歌：只能靠猜
+          draft({
+            subject: "谷歌",
+            setup: "现在是2011年10月。苹果推出了 iPhone 4S，核心功能是语音助手 Siri。",
+            question: "到2014年12月底，谷歌会不会推出桌面端语音助手？",
+            asOf: "2011-10",
+            deadline: "2014-12-31",
+          }),
+          draft({ setup: "2023年6月，楽天モバイル宣布缩小漫游合作。" }),
+          draft({ asOf: "2024-05" }),
+          draft({ asOf: "2021-01" }),
+          draft({ criterion: "" }),
+          draft(),
+        ],
+      },
+      1,
+      "2026-10-13"
+    );
+    expect(keep).toHaveLength(1);
+    expect(keep[0].criterion).toBe("以楽天モバイル官方公布的 MNO 签约数为准。");
   });
 
   it("核实：原文逐字对得上才留；改正的要有新答案和说明；没出处的整道丢掉", () => {

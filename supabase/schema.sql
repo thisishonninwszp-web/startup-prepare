@@ -5644,3 +5644,11 @@ alter table signal_gap_transfers enable row level security;
 drop policy if exists "signal_gap_transfers_owner" on signal_gap_transfers;
 create policy "signal_gap_transfers_owner" on signal_gap_transfers
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 068：历史题出得更公平（signal_drills.as_of / criterion / flag）
+-- ============================================================================
+
+alter table signal_drills add column if not exists as_of text;
+alter table signal_drills add column if not exists criterion text;
+alter table signal_drills add column if not exists flag text;

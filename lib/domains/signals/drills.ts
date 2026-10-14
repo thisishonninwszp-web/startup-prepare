@@ -4,7 +4,7 @@ import { webSearch } from "@/lib/web-search";
 import { mergeSources } from "./sources";
 import { tokyoToday, type BriefItem } from "./brief";
 import { CONFIDENCE_LEVELS, type ConfidenceKey } from "./practice-shared";
-import type { AnsweredDrill, OpenDrill } from "./drills-shared";
+import { DRILL_FLAGS, type AnsweredDrill, type DrillFlag, type OpenDrill } from "./drills-shared";
 
 export * from "./drills-shared";
 
@@ -22,6 +22,9 @@ const MAX_TOPICS = 10;
 const DRILL_SEARCH_RESULTS = 3;
 
 const MISSING_MIGRATION = "迁移 066 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/066_signal_drills.sql。";
+const MISSING_068 = "迁移 068 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/068_signal_drills_criterion.sql。";
+/** 068 加的列不存在时报的错。 */
+const MISSING_068_COLUMNS = /as_of|criterion|flag/;
 
 /** 他最近在看的事：最近几天"今天的世界"的精选，加上在追的问题。 */
 async function recentTopics(userId: string): Promise<string[]> {
@@ -65,8 +68,10 @@ export async function generateDrills(userId: string): Promise<number> {
     checked.map((d) => ({
       user_id: userId,
       topic: d.topic >= 0 ? topics[d.topic] : null,
+      as_of: d.asOf,
       setup: d.setup,
       question: d.question,
+      criterion: d.criterion,
       deadline: d.deadline,
       answer: d.answer,
       what_happened: d.whatHappened,
@@ -75,31 +80,61 @@ export async function generateDrills(userId: string): Promise<number> {
     }))
   );
   if (error) {
+    if (MISSING_068_COLUMNS.test(error.message)) throw new Error(MISSING_068);
     if (/signal_drills/.test(error.message)) throw new Error(MISSING_MIGRATION);
     throw new Error(error.message);
   }
   return checked.length;
 }
 
-/** 还没答的最早那一道（不带答案）。表还没建时返回 "missing-schema"。 */
-export async function nextDrill(userId: string): Promise<OpenDrill | null | "missing-schema"> {
+/**
+ * 还没答、没跳过的最早那一道（不带答案）。068 之前出的题没有"怎么才算会"，不再出给他（标准说不清的题不公平）。
+ * 表还没建返回 "missing-066"，068 没跑返回 "missing-068"。
+ */
+export async function nextDrill(userId: string): Promise<OpenDrill | null | "missing-066" | "missing-068"> {
   const { data, error } = await supabaseAdmin
     .from("signal_drills")
-    .select("id, topic, setup, question")
+    .select("id, topic, setup, question, criterion")
     .eq("user_id", userId)
     .is("guess", null)
+    .is("flag", null)
+    .not("criterion", "is", null)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) {
-    if (/signal_drills/.test(error.message)) return "missing-schema";
+    if (MISSING_068_COLUMNS.test(error.message)) return "missing-068";
+    if (/signal_drills/.test(error.message)) return "missing-066";
     throw new Error(error.message);
   }
-  return data ? { id: data.id as string, topic: (data.topic as string | null) ?? null, setup: data.setup as string, question: data.question as string } : null;
+  return data
+    ? {
+        id: data.id as string,
+        topic: (data.topic as string | null) ?? null,
+        setup: data.setup as string,
+        question: data.question as string,
+        criterion: (data.criterion as string | null) ?? null,
+      }
+    : null;
+}
+
+/** 这题出得不好，跳过：记下原因，不算进次数。答过的不能跳。 */
+export async function flagDrill(userId: string, id: string, flag: DrillFlag): Promise<void> {
+  if (!(flag in DRILL_FLAGS)) throw new Error("不认识这个原因");
+  const { error } = await supabaseAdmin
+    .from("signal_drills")
+    .update({ flag })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .is("guess", null);
+  if (error) {
+    if (MISSING_068_COLUMNS.test(error.message)) throw new Error(MISSING_068);
+    throw new Error(error.message);
+  }
 }
 
 const ANSWERED_COLUMNS =
-  "id, topic, setup, question, deadline, answer, what_happened, why_similar, source_check, guess, confidence, reasoning, answered_at";
+  "id, topic, setup, question, criterion, deadline, answer, what_happened, why_similar, source_check, guess, confidence, reasoning, answered_at";
 
 function toAnswered(r: Record<string, unknown>): AnsweredDrill {
   return {
@@ -107,6 +142,7 @@ function toAnswered(r: Record<string, unknown>): AnsweredDrill {
     topic: (r.topic as string | null) ?? null,
     setup: r.setup as string,
     question: r.question as string,
+    criterion: (r.criterion as string | null) ?? null,
     deadline: r.deadline as string,
     answer: r.answer as boolean,
     what_happened: r.what_happened as string,
@@ -155,7 +191,7 @@ export async function listAnsweredDrills(userId: string, limit = 200): Promise<A
     .order("answered_at", { ascending: false })
     .limit(limit);
   if (error) {
-    if (/signal_drills/.test(error.message)) return [];
+    if (/signal_drills/.test(error.message) || MISSING_068_COLUMNS.test(error.message)) return [];
     throw new Error(error.message);
   }
   return (data ?? []).map((r) => toAnswered(r as Record<string, unknown>));

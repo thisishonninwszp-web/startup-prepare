@@ -6,6 +6,7 @@ const drill = (guess: boolean, answer: boolean, confidence: number | null): Answ
   topic: null,
   setup: "s",
   question: "q",
+  criterion: null,
   deadline: "2024-06-30",
   answer,
   what_happened: "w",

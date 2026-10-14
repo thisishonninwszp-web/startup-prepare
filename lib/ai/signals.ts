@@ -2631,8 +2631,14 @@ const DRILL_SETTLED_DAYS = 180;
 export type DrillDraft = {
   /** 像"他最近在看的事"里的哪一件（序号）；对不上时为 -1。 */
   topic: number;
+  /** 问题问的是谁（公司或机构名）。题面里必须讲到它当时的情况，不然只能靠猜。 */
+  subject: string;
+  /** 题面里"现在"是哪年哪月（YYYY-MM）。 */
+  asOf: string;
   setup: string;
   question: string;
+  /** 怎么才算"会"：一句具体的标准。标准说不清，代码判对错就不公平。 */
+  criterion: string;
   /** 问题里的期限（YYYY-MM-DD）。 */
   deadline: string;
   /** 实际结果：true 是"会"。 */
@@ -2659,8 +2665,14 @@ const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真�
 
 每道写：
 - topic：像的是哪一件（序号）。
-- setup：当时的情况，2 到 4 句，带具体年月、具体的公司或机构名。只写当时已经知道的，不许透露后来怎样，不要用"后来""最终""结果"这种词。
-- question：一个只能答"会"或"不会"的问题，句式"到某年某月底，某某会不会……？"。期限必须早于 ${drillCutoff(today)}（结果早就揭晓了）。
+- subject：问题问的是谁（一家公司或一个机构的名字）。setup 和 question 里都要原样出现这个名字。
+- asOf：题面里的"现在"，YYYY-MM。
+- setup：以"现在是某年某月。"开头，2 到 4 句，讲 subject 在那个时候的情况（还可以带上相关的对手、政策），带具体的事实。
+  只写那个时候已经知道的，不许透露后来怎样，不要用"后来""最终""结果"这种词。
+  讲的必须是问题问的那家：问谷歌会不会做什么，就讲谷歌当时在做什么，不能只讲苹果。
+- question：一个只能答"会"或"不会"的问题，句式"到某年某月底，subject 会不会……？"。
+  期限在 asOf 之后 2 到 24 个月，而且早于 ${drillCutoff(today)}（结果早就揭晓了）。
+- criterion：怎么才算"会"，一句，具体到拿着新闻一看就能判（例："正式发布并开放给普通用户用才算；只宣布计划、只给开发者测试不算"）。
 - deadline：问题里那个期限，YYYY-MM-DD（那个月的最后一天）。
 - answer：实际结果，true 是"会"，false 是"不会"。
 - whatHappened：实际发生了什么，1 到 2 句，带日期和数字。
@@ -2674,10 +2686,20 @@ const drillPrompt = (today: string) => `他在练"读新闻、下判断"。真�
 - 四道里"会"和"不会"都要有。
 - 用中文写（公司名、产品名可以保留原文）。
 
-只输出 JSON：{"drills":[{"topic":0,"setup":"…","question":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…","queryEn":"…"}]}`;
+只输出 JSON：{"drills":[{"topic":0,"subject":"…","asOf":"2023-03","setup":"现在是2023年3月。…","question":"…","criterion":"…","deadline":"2023-12-31","answer":true,"whatHappened":"…","whySimilar":"…","query":"…","queryEn":"…"}]}`;
 
 /** 透露了结果的题面不要：答案写在题里就不是练判断了。 */
 const DRILL_LEAK = /后来|最终|最后|结果是|事后/;
+
+/** 题面的"现在"到期限隔几个月：太近没东西可判，太远中间变数太多、题面又没交代。 */
+const DRILL_MIN_MONTHS = 2;
+const DRILL_MAX_MONTHS = 24;
+
+function monthsBetween(asOf: string, deadline: string): number {
+  const [y1, m1] = asOf.split("-").map(Number);
+  const [y2, m2] = deadline.split("-").map(Number);
+  return (y2 - y1) * 12 + (m2 - m1);
+}
 
 export function parseDrillDrafts(value: unknown, topicCount: number, today: string): DrillDraft[] {
   const raw = (value as { drills?: unknown } | null)?.drills;
@@ -2688,23 +2710,44 @@ export function parseDrillDrafts(value: unknown, topicCount: number, today: stri
     if (!r || typeof r !== "object") continue;
     const v = r as Record<string, unknown>;
     const str = (k: string) => (typeof v[k] === "string" ? (v[k] as string).trim() : "");
-    const [setup, question, deadline, whatHappened, whySimilar, query, queryEn] = [
+    const [subject, asOf, setup, question, criterion, deadline, whatHappened, whySimilar, query, queryEn] = [
+      "subject",
+      "asOf",
       "setup",
       "question",
+      "criterion",
       "deadline",
       "whatHappened",
       "whySimilar",
       "query",
       "queryEn",
     ].map(str);
-    if (!setup || !question || !whatHappened || !query || typeof v.answer !== "boolean") continue;
+    if (!subject || !setup || !question || !criterion || !whatHappened || !query || typeof v.answer !== "boolean") continue;
     // 期限要是真日期、而且早就过了；题面不许漏答案
     if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || Number.isNaN(Date.parse(deadline)) || deadline >= cutoff) continue;
-    if (DRILL_LEAK.test(setup) || DRILL_LEAK.test(question)) continue;
+    if (DRILL_LEAK.test(setup) || DRILL_LEAK.test(question) || DRILL_LEAK.test(criterion)) continue;
+    // 题面要讲问的那一家（只讲苹果、问谷歌，就只能靠猜），而且交代"现在"是什么时候
+    if (!setup.includes(subject) || !question.includes(subject) || !setup.startsWith("现在是")) continue;
+    if (!/^\d{4}-\d{2}$/.test(asOf)) continue;
+    const gap = monthsBetween(asOf, deadline);
+    if (gap < DRILL_MIN_MONTHS || gap > DRILL_MAX_MONTHS) continue;
     const topic = typeof v.topic === "number" && Number.isInteger(v.topic) && v.topic >= 0 && v.topic < topicCount ? v.topic : -1;
-    out.push({ topic, setup, question, deadline, answer: v.answer, whatHappened, whySimilar, query: query.slice(0, 120), queryEn: queryEn.slice(0, 120) });
+    out.push({
+      topic,
+      subject,
+      asOf,
+      setup,
+      question,
+      criterion,
+      deadline,
+      answer: v.answer,
+      whatHappened,
+      whySimilar,
+      query: query.slice(0, 120),
+      queryEn: queryEn.slice(0, 120),
+    });
   }
-  const texts = out.flatMap((d) => [d.setup, d.question, d.whatHappened, d.whySimilar].filter(Boolean));
+  const texts = out.flatMap((d) => [d.setup, d.question, d.criterion, d.whatHappened, d.whySimilar].filter(Boolean));
   assertNoBanned(texts);
   assertChineseAllowingNames(texts);
   return out;
@@ -2739,6 +2782,8 @@ const DRILL_CHECK_PROMPT = `你在核实几道"历史题"的答案。每道下�
   "supported"：资料能支撑"实际发生了什么"和答案（会 / 不会）。
   "corrected"：资料和它记的**相互矛盾**（比如它说"会"，资料里明明没有发生）。
   "unverified"：资料和这件事对不上，或者说不清。资料里没提到不等于没发生 —— 这种情况用 unverified。
+  "ambiguous"：按题目给的标准（criterion），资料里的事算不算"会"说不清 —— 换一种理解答案就反过来。这种题不公平，用 ambiguous。
+判"会 / 不会"一律按 criterion 来，不按你自己的理解。
 - answer：corrected 时写按资料改正后的答案（true / false）；其余照抄原来的。
 - whatHappened：corrected 时写按资料改正后的"实际发生了什么"；其余照抄原来的。
 - correction：只有 corrected 时写，一句话："原来说 X，资料里是 Y"。
@@ -2787,7 +2832,7 @@ export async function checkHistoryDrills(inputs: { draft: DrillDraft; sources: S
   const blocks = usable
     .map(({ draft, sources }, i) =>
       [
-        `【${i}】${draft.setup}\n问题：${draft.question}\n它记的答案：${draft.answer ? "会" : "不会"}\n它记的实际情况：${draft.whatHappened}`,
+        `【${i}】${draft.setup}\n问题：${draft.question}\n怎么才算会：${draft.criterion}\n它记的答案：${draft.answer ? "会" : "不会"}\n它记的实际情况：${draft.whatHappened}`,
         sources.map((src, j) => `  [资料 ${j + 1}] ${src.title}\n  ${src.url}\n  ${src.content.slice(0, 1200)}`).join("\n"),
       ].join("\n")
     )

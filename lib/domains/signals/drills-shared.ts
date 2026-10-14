@@ -6,7 +6,23 @@ import { CONFIDENCE_LEVELS, type ConfidenceKey } from "./practice-shared";
  */
 
 /** 还没答的题：不带答案（答案只在答完以后才从服务器出来）。 */
-export type OpenDrill = { id: string; topic: string | null; setup: string; question: string };
+export type OpenDrill = {
+  id: string;
+  topic: string | null;
+  setup: string;
+  question: string;
+  /** 怎么才算"会"（迁移 068 之前出的题没有）。 */
+  criterion: string | null;
+};
+
+/** 觉得这题出得不好、跳过时选的原因。跳过的不算进次数，攒着拿来调出题。 */
+export const DRILL_FLAGS = {
+  mismatch: "题面讲的和问题问的不是一回事",
+  vague: "怎么才算「会」说不清",
+  famous: "答案太有名，一看就知道",
+  other: "别的问题",
+} as const;
+export type DrillFlag = keyof typeof DRILL_FLAGS;
 
 export type AnsweredDrill = OpenDrill & {
   deadline: string;
