@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { getIssue, issueCandidates, issueCounts, listIssues, weekStartOf } from "@/lib/domains/signals/issue";
 import { getPublicToken } from "@/lib/domains/signals/public-record";
+import { loadOpenDoorLinks } from "@/lib/domains/signals/fake-door";
 import { ATLAS_CATEGORIES, categoryBase, countedCases, listTransferCases, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas";
 import { IssueComposer } from "./issue-composer";
 
@@ -21,12 +22,13 @@ export default async function IssuePage() {
   if (!user) notFound();
 
   const weekStart = weekStartOf(tokyoToday());
-  const [current, candidates, past, publicToken, cases] = await Promise.all([
+  const [current, candidates, past, publicToken, cases, doors] = await Promise.all([
     getIssue(user.id, weekStart),
     issueCandidates(user.id),
     listIssues(user.id),
     getPublicToken(user.id),
     listTransferCases(user.id).catch(() => "missing-schema" as const),
+    loadOpenDoorLinks(user.id),
   ]);
   // 时差图谱里每一类的基准：点"这属于哪一类"就显示同一类的先例
   const atlasBases =
@@ -57,7 +59,14 @@ export default async function IssuePage() {
       ) : (
         <>
           <p className="mb-6 font-mono text-xs text-muted-foreground">这一期：{weekStart} 这一周</p>
-          <IssueComposer gaps={candidates.gaps} bets={candidates.bets} initial={current} publicToken={publicToken} atlasBases={atlasBases} />
+          <IssueComposer
+            gaps={candidates.gaps}
+            bets={candidates.bets}
+            initial={current}
+            publicToken={publicToken}
+            atlasBases={atlasBases}
+            doors={doors}
+          />
         </>
       )}
 

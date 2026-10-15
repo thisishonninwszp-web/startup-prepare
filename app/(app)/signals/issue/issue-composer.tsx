@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   STANCE_OPTIONS,
   STANCE_YEARS,
   stanceSentence,
+  withDoorLinks,
   type Issue,
   type IssueBet,
   type IssuePlatform,
@@ -194,7 +195,10 @@ export function IssueComposer({
   initial,
   publicToken,
   atlasBases,
+  doors,
 }: {
+  /** 开着的日文假门（键见 keyOf）：note 版文末放登记页的链接。 */
+  doors: Record<string, { token: string; title: string }>;
   /** 时差图谱里每一类的基准（图谱还没建为 null）。 */
   atlasBases: Record<AtlasCategory, CategoryBase> | null;
   gaps: IssueCandidate[];
@@ -213,6 +217,15 @@ export function IssueComposer({
   const [error, setError] = useState<string | null>(null);
 
   const [platform, setPlatform] = useState<IssuePlatform>("小红书");
+  // 链接要带网址开头，只有浏览器里知道（服务器那次渲染先不加，免得两边不一样）
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  const doorLinks = origin
+    ? (issue?.content.picks ?? []).flatMap((p) => {
+        const d = doors[keyOf(p)];
+        return d ? [{ title: d.title, url: `${origin}/soon/${d.token}` }] : [];
+      })
+    : [];
   const [url, setUrl] = useState("");
   const [response, setResponse] = useState("");
   const [wantsTalk, setWantsTalk] = useState(false);
@@ -448,9 +461,14 @@ export function IssueComposer({
             </TabsContent>
             <TabsContent value="jaLong">
               <DraftPanel
-                body={issue.drafts.jaLong}
+                body={withDoorLinks(issue.drafts.jaLong, doorLinks)}
                 titles={issue.drafts.jaTitles}
-                note="note 的长文能被 Google 搜到，慢慢积累。日文是 AI 翻译的，你的判断也是翻译过去的 —— 发之前看一眼语气对不对。"
+                note={
+                  "note 的长文能被 Google 搜到，慢慢积累。日文是 AI 翻译的，你的判断也是翻译过去的 —— 发之前看一眼语气对不对。" +
+                  (doorLinks.length > 0
+                    ? `文末自动加了 ${doorLinks.length} 条的假门登记页链接（开着的才加，关掉就不加了）。`
+                    : "这一期的几条都还没开假门；在差距清单里给某条开了，这里文末会自动加上链接。")
+                }
               />
             </TabsContent>
             <TabsContent value="zhLong">

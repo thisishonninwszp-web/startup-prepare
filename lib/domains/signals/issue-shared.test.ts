@@ -16,6 +16,8 @@ import {
   xIntentUrl,
   xhsTags,
   type IssuePick,
+  withDoorLinks,
+  DOOR_LINKS_LEAD,
 } from "./issue-shared";
 
 const pick = (over: Partial<IssuePick> = {}): IssuePick => ({
@@ -192,5 +194,21 @@ describe("每篇笔记就是一次需求测试", () => {
     expect(d.get("japan:s1")).toEqual({ pain: 1, pay: 1, other: 0, wantsTalk: 1 });
     expect(d.get("us:s2")).toEqual({ pain: 0, pay: 0, other: 1, wantsTalk: 0 });
     expect(d.size).toBe(2);
+  });
+});
+
+describe("周刊 note 版的假门链接", () => {
+  const links = [{ title: "アプリで頼める家事代行", url: "https://example.app/soon/abcdefghijkl" }];
+
+  it("放在结尾那句之后、出典之前", () => {
+    const text = "本文。\n\n結びの一文。\n\n出典：\n・記事 https://example.jp/a";
+    expect(withDoorLinks(text, links)).toBe(
+      `本文。\n\n結びの一文。\n\n${DOOR_LINKS_LEAD}\n・アプリで頼める家事代行 https://example.app/soon/abcdefghijkl\n\n出典：\n・記事 https://example.jp/a`
+    );
+  });
+
+  it("没有出典就放最后；没有开着的假门就原样返回", () => {
+    expect(withDoorLinks("本文。", links).endsWith("・アプリで頼める家事代行 https://example.app/soon/abcdefghijkl")).toBe(true);
+    expect(withDoorLinks("本文。", [])).toBe("本文。");
   });
 });

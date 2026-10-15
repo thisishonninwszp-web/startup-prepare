@@ -280,6 +280,21 @@ export function assembleDrafts(body: IssueDrafts, picks: IssuePick[]): IssueDraf
   };
 }
 
+/** note 文末那一段：这一期里开着假门的几条，各放一个登记页的链接（代码加，不让 AI 写）。 */
+export const DOOR_LINKS_LEAD =
+  "準備中のサービスです。使ってみたい方は、下のページからメールアドレスを登録できます（まだお金は一切かかりません）。";
+
+/**
+ * 日文 note 版加上假门链接：放在结尾那句之后、出典之前；没有出典就放最后。没有开着的假门就原样返回。
+ * 在显示时加（不存进稿子）：之后开的假门也会出现，关掉的就不再出现。
+ */
+export function withDoorLinks(text: string, links: { title: string; url: string }[]): string {
+  if (links.length === 0) return text;
+  const block = `${DOOR_LINKS_LEAD}\n${links.map((l) => `・${l.title} ${l.url}`).join("\n")}`;
+  const at = text.lastIndexOf("\n\n出典：");
+  return at === -1 ? `${text}\n\n${block}` : `${text.slice(0, at)}\n\n${block}${text.slice(at)}`;
+}
+
 /** 发了几处、回应几条、几个人想聊。只数次数。 */
 export function issueCounts(issue: Pick<Issue, "published" | "responses">): { published: number; responses: number; wantsTalk: number } {
   return {

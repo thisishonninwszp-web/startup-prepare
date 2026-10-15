@@ -87,6 +87,26 @@ export async function loadFakeDoorStats(userId: string): Promise<Map<string, Fak
   );
 }
 
+/** 开着的日文假门（周刊 note 版文末要放链接）：键见 transferKey。表还没建时返回空。 */
+export async function loadOpenDoorLinks(userId: string): Promise<Record<string, { token: string; title: string }>> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_fake_doors")
+    .select("signal_id, side, token, content")
+    .eq("user_id", userId)
+    .eq("open", true)
+    .eq("lang", "ja");
+  if (error) {
+    if (missing(error)) return {};
+    throw new Error(error.message);
+  }
+  return Object.fromEntries(
+    (data ?? []).map((r) => [
+      transferKey(r.side as GapSide, r.signal_id as string),
+      { token: r.token as string, title: (r.content as FakeDoorContent).title },
+    ])
+  );
+}
+
 /** AI 起草那一页的文字（价格、运营者他自己填）。查过"这边有人在头疼吗"的，把那件麻烦一起给它。 */
 export async function draftFakeDoorContent(userId: string, signalId: string, side: GapSide): Promise<FakeDoorDraft> {
   const gap = await findJapanGap(userId, signalId, side);
