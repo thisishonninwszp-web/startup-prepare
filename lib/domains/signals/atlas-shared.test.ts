@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseSentence, categoryBase, lagLabel, lagMonths, monthIndex } from "./atlas-shared";
+import { baseSentence, categoryBase, lagLabel, lagMonths, monthIndex, noUpgrade } from "./atlas-shared";
 
 describe("时差图谱", () => {
   it("monthIndex / lagMonths：年、年月、年月日都认；日本更早、认不出、没到的不算", () => {
@@ -31,5 +31,15 @@ describe("时差图谱", () => {
     expect(base.outcomes.widespread).toBe(2);
     expect(baseSentence("mobility", base)).toBe("图谱里「出行」有 4 件：2 件 3 年内到了日本，1 件 3 年以上才到，1 件至今没到或被卡住；进来又退出的 1 件。");
     expect(baseSentence("food", categoryBase([]))).toContain("还没有");
+  });
+});
+
+describe("核实只许往更差改", () => {
+  it("noUpgrade：往更成的提不认，往更差的降可以", () => {
+    expect(noUpgrade("niche", "widespread")).toBe("niche");
+    expect(noUpgrade("partial", "widespread")).toBe("partial");
+    expect(noUpgrade("blocked", "niche")).toBe("blocked");
+    expect(noUpgrade("widespread", "partial")).toBe("partial");
+    expect(noUpgrade("niche", "exited")).toBe("exited");
   });
 });

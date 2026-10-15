@@ -11,10 +11,13 @@ import {
   categoryBase,
   lagLabel,
   listTransferCases,
+  missingSeeds,
+  OUTCOME_DEFINITIONS,
+  type AtlasOutcome,
   type AtlasCategory,
   type TransferCase,
 } from "@/lib/domains/signals/atlas";
-import { ResearchAtlasButton } from "./atlas-controls";
+import { OutcomeEditor, ResearchAtlasButton } from "./atlas-controls";
 
 export const dynamic = "force-dynamic";
 // 查一批要三四十秒，由这一页的 server action 跑
@@ -38,6 +41,7 @@ function CaseRow({ c }: { c: TransferCase }) {
         <span className="text-muted-foreground">日本{c.japan_date ? `（${c.japan_date}）` : ""}：</span>
         {c.japan_event ?? "至今没有"}
       </p>
+      <OutcomeEditor id={c.id} outcome={c.outcome} />
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">原文（{c.sources.length} 处）</summary>
         <ul className="mt-1 space-y-1">
@@ -83,8 +87,11 @@ export default async function AtlasPage() {
         </p>
       ) : (
         <>
-          <div className="mb-8">
+          <div className="mb-8 space-y-3">
             <ResearchAtlasButton mode={cases.length === 0 ? "seed" : "more"} />
+            {cases.length > 0 && missingSeeds(cases).length > 0 && (
+              <ResearchAtlasButton mode="seed" label={`重试没收进来的 ${missingSeeds(cases).length} 件样例（${missingSeeds(cases).join("、")}）`} />
+            )}
             <p className="mt-2 text-xs leading-6 text-muted-foreground">
               {cases.length === 0
                 ? "这里空着。先从十件样例开始（扫码支付、共享单车、网约车……），每件都会再上网核实一遍。"
@@ -113,7 +120,17 @@ export default async function AtlasPage() {
                 })()}
                 <p className="mt-2 text-xs leading-6 text-muted-foreground">
                   件数少的时候别当真 —— 三五件的规律多半是巧合，攒到每类十件以上再看。
+                  退出的、失败的消息比成功的难查到，最容易被「缺一样不收」刷掉；图谱看着偏乐观时，先想到这一点。
                 </p>
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer text-muted-foreground">每一档是什么意思</summary>
+                  <ul className="mt-1 space-y-1 leading-6 text-muted-foreground">
+                    {(Object.keys(OUTCOME_DEFINITIONS) as AtlasOutcome[]).map((o) => (
+                      <li key={o}>{OUTCOME_DEFINITIONS[o]}</li>
+                    ))}
+                    <li>说的是这样东西在日本整体的状况，不是某一家公司的结果。核实只许往更差改，不许往更「成」提。</li>
+                  </ul>
+                </details>
               </section>
 
               {(Object.keys(ATLAS_CATEGORIES) as AtlasCategory[])

@@ -27,6 +27,27 @@ export const ATLAS_OUTCOMES = {
 } as const;
 export type AtlasOutcome = keyof typeof ATLAS_OUTCOMES;
 
+/**
+ * 每一档的意思。说的是这样东西在日本**整体**的状况，不是某一家公司的结果
+ * （メルカリ关了直播带货，不等于日本没有直播带货）。AI 出候选和核实时都按这个分。
+ */
+export const OUTCOME_DEFINITIONS: Record<AtlasOutcome, string> = {
+  widespread: "普及了：全国日常在用，资料里有数据能看出覆盖了很大一部分人（比如用户数占人口一成以上、全国大部分地方都有）",
+  partial: "部分普及：在一些城市、一些人群里常用，但还没到全国日常",
+  niche: "小规模：有人在做，但只在少数地点或很小的人群里（几十、几百个点，或几家公司试点）",
+  exited: "进来又退出了：进来过，后来做的公司基本都退了，现在日本几乎没有",
+  blocked: "被法规卡住：法规不允许，或者只开了一个很小的口子",
+  absent: "至今没有：日本还没有人做",
+};
+
+/** 越往前越"成"。核实只许往后改（资料显示更差可以降），不许往前提 —— AI 看到"100 处"就会把小规模提成普及。 */
+const OUTCOME_RANK: Record<AtlasOutcome, number> = { widespread: 4, partial: 3, niche: 2, exited: 1, blocked: 1, absent: 0 };
+
+/** 核实给的结果比原来说的更"成"，就不认，留原来的。 */
+export function noUpgrade(claimed: AtlasOutcome, verified: AtlasOutcome): AtlasOutcome {
+  return OUTCOME_RANK[verified] > OUTCOME_RANK[claimed] ? claimed : verified;
+}
+
 export const ATLAS_CARRIERS = {
   local: "日本公司",
   us: "美国公司",

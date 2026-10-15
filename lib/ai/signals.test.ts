@@ -1210,8 +1210,8 @@ describe("时差图谱：候选和核实", () => {
       d,
       sources
     );
-    expect(ok?.originDate).toBe("2014-12");
-    expect(ok?.sources).toHaveLength(3);
+    expect(ok.ok && ok.value.originDate).toBe("2014-12");
+    expect(ok.ok && ok.value.sources).toHaveLength(3);
     const missing = parseTransferVerification(
       {
         origin: { date: "2014", basis: [{ source: 2, excerpt: "多家商户都开通了支付宝扫码支付" }] },
@@ -1221,6 +1221,28 @@ describe("时差图谱：候选和核实", () => {
       d,
       sources
     );
-    expect(missing).toBeNull();
+    expect(missing).toEqual({ ok: false, why: "在日本的结果，没查到原文" });
+  });
+
+  it("结果只许往更差改：核实说普及了、原来说小规模的，留小规模；说退出了的可以降", () => {
+    const sources = [{ title: "TTG", url: "https://example.jp/t", content: "TOUCH TO GOは2020年3月23日に開業した。無人決済システムは全国100か所に導入された。2018年1月22日にAmazon Goが一般公開された。" }];
+    const d = parseTransferDrafts(
+      { cases: [draft({ thing: "无人收银店", category: "commerce", origin: "us", originDate: "2018-01-22", japanDate: "2020-03-23", outcome: "niche" })] },
+      []
+    )[0];
+    const verify = (value: string) =>
+      parseTransferVerification(
+        {
+          origin: { date: "2018-01-22", basis: [{ source: 1, excerpt: "2018年1月22日にAmazon Goが一般公開された" }] },
+          japan: { date: "2020-03-23", basis: [{ source: 1, excerpt: "TOUCH TO GOは2020年3月23日に開業した" }] },
+          outcome: { value, basis: [{ source: 1, excerpt: "無人決済システムは全国100か所に導入された" }] },
+        },
+        d,
+        sources
+      );
+    const up = verify("widespread");
+    expect(up.ok && up.value.outcome).toBe("niche");
+    const down = verify("exited");
+    expect(down.ok && down.value.outcome).toBe("exited");
   });
 });

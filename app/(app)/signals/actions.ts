@@ -38,7 +38,7 @@ import {
 } from "@/lib/domains/signals/issue";
 import { disablePublicRecord, enablePublicRecord } from "@/lib/domains/signals/public-record";
 import { ensurePracticeBreakdown, saveBreakdownLeans, type Breakdown, type Lean } from "@/lib/domains/signals/breakdown";
-import { researchTransferCases } from "@/lib/domains/signals/atlas";
+import { researchTransferCases, setCaseOutcome, type AtlasOutcome } from "@/lib/domains/signals/atlas";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
@@ -229,7 +229,11 @@ export async function submitJudgmentAction(input: {
 }
 
 /** 时差图谱：查一批、只存核实过的（三四十秒）。seed：从十件样例开始；more：再找几件。 */
-export async function researchAtlasAction(mode: "seed" | "more"): Promise<{ ok: true; tried: number; kept: number } | { ok: false; message: string }> {
+export async function researchAtlasAction(
+  mode: "seed" | "more"
+): Promise<
+  { ok: true; tried: number; kept: number; dropped: { thing: string; why: string }[]; corrected: number } | { ok: false; message: string }
+> {
   const userId = await requireUserId();
   try {
     const result = await researchTransferCases(userId, mode === "seed" ? "seed" : "more");
@@ -237,6 +241,18 @@ export async function researchAtlasAction(mode: "seed" | "more"): Promise<{ ok: 
     return { ok: true, ...result };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没查成") };
+  }
+}
+
+/** 时差图谱：他手动改一件的"在日本的结果"。 */
+export async function setCaseOutcomeAction(id: string, outcome: AtlasOutcome): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await setCaseOutcome(userId, id, outcome);
+    revalidatePath("/signals/atlas");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没改成") };
   }
 }
 

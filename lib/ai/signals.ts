@@ -8,6 +8,8 @@ import {
   ATLAS_CATEGORIES,
   ATLAS_OUTCOMES,
   monthIndex,
+  noUpgrade,
+  OUTCOME_DEFINITIONS,
   type AtlasCarrier,
   type AtlasCategory,
   type AtlasOutcome,
@@ -2504,7 +2506,8 @@ ${mustInclude.length > 0 ? `下面这几样一定要写（他的清单里重查�
 - originDate：YYYY、YYYY-MM 或 YYYY-MM-DD。
 - japanEvent：日本是哪件事，具体到公司或服务名；至今没有就写空字符串。
 - japanDate：格式同上；至今没有写空字符串。
-- outcome：${Object.keys(ATLAS_OUTCOMES).join(" / ")}（普及了 / 部分普及 / 小规模 / 进来又退出了 / 被法规卡住 / 至今没有）。
+- outcome：这样东西在日本**整体**的状况（不是某一家公司的结果），只能是下面之一：
+${Object.entries(OUTCOME_DEFINITIONS).map(([k, d]) => `  ${k}：${d}`).join("\n")}
 - carrier：${Object.keys(ATLAS_CARRIERS).join(" / ")}（谁把它带进日本：日本公司 / 美国公司 / 中国公司 / 别的 / 还没人带进来）。
 - queries：2 到 3 个搜索词，分别核实那边的日子、日本的日子、在日本的结果；用对应国家的语言，带年份和公司名。
 叙述用中文。
@@ -2585,47 +2588,59 @@ const TRANSFER_VERIFY_PROMPT = `你在核实一件"那边先有、后来到了�
 输出三样：
 - origin：{"date":"…","basis":[{"source":资料编号,"excerpt":"逐字原文"}]}。资料里确实写着那边这件事和时间才算；时间和资料不一样就按资料改（YYYY / YYYY-MM / YYYY-MM-DD）；对不上 basis 给空数组。
 - japan：{"date":"…","event":"…","basis":[…]}。同上。它说"日本至今没有"的，资料里要明确写着日本没有、还没上线、被禁止才算；资料里没提到不等于没有 —— 那种情况 basis 给空数组。
-- outcome：{"value":"…","basis":[…]}。在日本的结果，资料里看得出来才算（用户数、撤退、法规限制、店数……）；按资料可以改成别的档（${Object.keys(ATLAS_OUTCOMES).join(" / ")}）。
+- outcome：{"value":"…","basis":[…]}。这样东西在日本**整体**的状况（不是某一家公司的结果），资料里看得出来才算（用户数、店数、撤退、法规限制……）。
+  各档的意思：
+${Object.entries(OUTCOME_DEFINITIONS).map(([k, d]) => `  ${k}：${d}`).join("\n")}
+  资料显示比它说的更差，可以改成更差的那一档；说"普及了"必须有资料写着覆盖了很大一部分人，几十几百个点只算小规模。
 
 basis 逐字照抄资料原文（不翻译、不改字，15 到 150 字）。不要编资料里没有的事实。
 
 只输出 JSON：{"origin":{"date":"…","basis":[]},"japan":{"date":"…","event":"…","basis":[]},"outcome":{"value":"…","basis":[]}}`;
 
+/** 核实的结果：收了，或者为什么没收（页面上要让他看到被刷掉的是什么、卡在哪）。 */
+export type TransferVerification = { ok: true; value: VerifiedTransfer } | { ok: false; why: string };
+
 /**
- * 三样都要有逐字对得上的原文：那边的日子、日本的日子（或明确写着没有）、在日本的结果。缺一样整件不收（返回 null）。
- * 日子按资料改过的用改过的；日本没日子的只能是"至今没有"或"被卡住"。
+ * 三样都要有逐字对得上的原文：那边的日子、日本的日子（或明确写着没有）、在日本的结果。缺一样整件不收。
+ * 日子按资料改过的用改过的；结果只许往更差改、不许往更"成"提；日本没日子的只能是"至今没有"或"被卡住"。
  */
-export function parseTransferVerification(value: unknown, draft: TransferDraft, sources: SearchSource[]): VerifiedTransfer | null {
+export function parseTransferVerification(value: unknown, draft: TransferDraft, sources: SearchSource[]): TransferVerification {
   const v = (value ?? {}) as Record<string, Record<string, unknown> | undefined>;
   const originBasis = verifiedBasis(v.origin?.basis, sources);
   const japanBasis = verifiedBasis(v.japan?.basis, sources);
   const outcomeBasis = verifiedBasis(v.outcome?.basis, sources);
-  if (originBasis.length === 0 || japanBasis.length === 0 || outcomeBasis.length === 0) return null;
+  if (originBasis.length === 0) return { ok: false, why: `${draft.origin === "china" ? "中国" : "美国"}那边什么时候有的，没查到原文` };
+  if (japanBasis.length === 0) return { ok: false, why: draft.japanDate ? "日本什么时候有的，没查到原文" : "日本至今没有，没查到资料明确这么写" };
+  if (outcomeBasis.length === 0) return { ok: false, why: "在日本的结果，没查到原文" };
   const originDate = typeof v.origin?.date === "string" && monthIndex(v.origin.date.trim()) !== null ? v.origin.date.trim() : draft.originDate;
   const rawJapan = typeof v.japan?.date === "string" ? v.japan.date.trim() : "";
   const japanDate = rawJapan && monthIndex(rawJapan) !== null ? rawJapan : rawJapan ? draft.japanDate : null;
-  const outcome = pickKey(v.outcome?.value, Object.keys(ATLAS_OUTCOMES) as AtlasOutcome[]) ?? draft.outcome;
-  if (japanDate === null && outcome !== "absent" && outcome !== "blocked") return null;
-  if (japanDate !== null && outcome === "absent") return null;
+  const verifiedOutcome = pickKey(v.outcome?.value, Object.keys(ATLAS_OUTCOMES) as AtlasOutcome[]) ?? draft.outcome;
+  const outcome = noUpgrade(draft.outcome, verifiedOutcome);
+  if (japanDate === null && outcome !== "absent" && outcome !== "blocked") return { ok: false, why: "日本没查到日子，又说不上是没有还是被卡住" };
+  if (japanDate !== null && outcome === "absent") return { ok: false, why: "说日本至今没有，资料里却有日子" };
   const japanEvent = typeof v.japan?.event === "string" && v.japan.event.trim() ? v.japan.event.trim() : draft.japanEvent;
   const seen = new Set<string>();
   const all = [...originBasis, ...japanBasis, ...outcomeBasis].filter((b) => !seen.has(b.excerpt) && seen.add(b.excerpt));
   return {
-    thing: draft.thing,
-    category: draft.category,
-    origin: draft.origin,
-    originEvent: draft.originEvent,
-    originDate,
-    japanEvent: japanDate === null ? null : japanEvent,
-    japanDate,
-    outcome,
-    carrier: japanDate === null && outcome === "absent" ? "none" : draft.carrier,
-    sources: all,
+    ok: true,
+    value: {
+      thing: draft.thing,
+      category: draft.category,
+      origin: draft.origin,
+      originEvent: draft.originEvent,
+      originDate,
+      japanEvent: japanDate === null ? null : japanEvent,
+      japanDate,
+      outcome,
+      carrier: japanDate === null && outcome === "absent" ? "none" : draft.carrier,
+      sources: all,
+    },
   };
 }
 
-export async function verifyTransferCase(draft: TransferDraft, sources: SearchSource[]): Promise<VerifiedTransfer | null> {
-  if (sources.length === 0) return null;
+export async function verifyTransferCase(draft: TransferDraft, sources: SearchSource[]): Promise<TransferVerification> {
+  if (sources.length === 0) return { ok: false, why: "一篇资料都没搜到" };
   const contents = [
     `东西：${draft.thing}`,
     `那边（${draft.origin === "china" ? "中国" : "美国"}）：${draft.originEvent}，${draft.originDate}`,

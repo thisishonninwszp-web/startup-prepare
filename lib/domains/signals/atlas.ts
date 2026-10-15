@@ -1,10 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { proposeTransferCases, verifyTransferCase, type TransferDraft, type VerifiedTransfer } from "@/lib/ai";
+import { proposeTransferCases, verifyTransferCase, type TransferDraft, type TransferVerification, type VerifiedTransfer } from "@/lib/ai";
 import { webSearch } from "@/lib/web-search";
 import { tokyoToday } from "./brief";
 import { listGapBoard } from "./gaps";
 import { mergeSources } from "./sources";
-import { lagMonths, type TransferCase } from "./atlas-shared";
+import { ATLAS_OUTCOMES, lagMonths, noUpgrade, type AtlasOutcome, type TransferCase } from "./atlas-shared";
 
 export * from "./atlas-shared";
 
@@ -59,7 +59,7 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2017-08",
     outcome: "exited",
     carrier: "china",
-    queries: ["摩拜单车 2016年4月22日 上海 上线", "Mobike 札幌 2017年8月 サービス開始", "モバイク 2020年2月16日 シェアサイクル事業 停止 撤退"],
+    queries: ["摩拜单车 2016年4月22日 上海 上线", "Mobike 札幌 2017年8月 サービス開始", "モバイク・ジャパン 終了 OR 撤退 OR 事業停止 2020"],
   },
   {
     thing: "外卖平台",
@@ -71,7 +71,7 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2016-09",
     outcome: "partial",
     carrier: "us",
-    queries: ["美团外卖 2013年11月 上线", "Uber Eats Tokyo launch September 2016", "DiDi Food Japan shut down 2022"],
+    queries: ["美团外卖 2013年11月 上线", "Uber Eats 日本 2016年9月 東京 サービス開始", "フードデリバリー 利用率 日本 調査 Uber Eats 出前館"],
   },
   {
     thing: "网约车",
@@ -95,7 +95,7 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2017",
     outcome: "widespread",
     carrier: "china",
-    queries: ["抖音 2016年9月 上线 字节跳动", "TikTok 日本 2017年 サービス開始", "TikTok 日本 利用者数 国内"],
+    queries: ["抖音 2016年9月 上线 字节跳动", "TikTok 日本版 2017年 リリース", "TikTok 国内 月間アクティブユーザー 日本 万人"],
   },
   {
     thing: "超级 App 里的小程序",
@@ -180,23 +180,51 @@ export async function listTransferCases(userId: string): Promise<TransferCase[] 
   return (data ?? []).map((r) => toCase(r as Record<string, unknown>));
 }
 
-async function verifyDraft(draft: TransferDraft): Promise<VerifiedTransfer | null> {
+async function verifyDraft(draft: TransferDraft): Promise<TransferVerification> {
   const found = await Promise.all(draft.queries.map((q) => webSearch(q, RESULTS_PER_QUERY).catch(() => [])));
   const sources = mergeSources(found, RESULTS_PER_QUERY * draft.queries.length);
-  return verifyTransferCase(draft, sources).catch((e) => {
+  return verifyTransferCase(draft, sources).catch((e): TransferVerification => {
     console.error("atlas verify failed", draft.thing, e);
-    return null;
+    return { ok: false, why: "核实那一步出错了" };
   });
+}
+
+/**
+ * 早先收进来的样例，按"结果只许往更差改"重新校正一遍（核实那一步曾把小规模提成普及）。返回改了几件。
+ */
+async function correctSeedOutcomes(userId: string, cases: TransferCase[]): Promise<number> {
+  let fixed = 0;
+  for (const c of cases.filter((x) => x.found_via === "seed")) {
+    const seed = SEED_CASES.find((d) => d.thing === c.thing);
+    if (!seed) continue;
+    const outcome = noUpgrade(seed.outcome, c.outcome);
+    if (outcome === c.outcome) continue;
+    const { error } = await supabaseAdmin.from("signal_transfer_cases").update({ outcome }).eq("id", c.id).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    fixed += 1;
+  }
+  return fixed;
+}
+
+/** 他手动改"在日本的结果"（分档本身带一点判断）。 */
+export async function setCaseOutcome(userId: string, id: string, outcome: AtlasOutcome): Promise<void> {
+  if (!(outcome in ATLAS_OUTCOMES)) throw new Error("不认识这一档");
+  const { error } = await supabaseAdmin.from("signal_transfer_cases").update({ outcome }).eq("id", id).eq("user_id", userId);
+  if (error) throw new Error(error.message);
 }
 
 /**
  * 查一批、只存核实过的。mode=seed：从十件样例开始；mode=more：AI 提候选，
  * 差距清单里重查发现"日本有了"的一起拿去查。返回这次查了几件、收了几件。
  */
-export async function researchTransferCases(userId: string, mode: "seed" | "more"): Promise<{ tried: number; kept: number }> {
+export async function researchTransferCases(
+  userId: string,
+  mode: "seed" | "more"
+): Promise<{ tried: number; kept: number; dropped: { thing: string; why: string }[]; corrected: number }> {
   const existing = await listTransferCases(userId);
   if (existing === "missing-schema") throw new Error(MISSING_MIGRATION);
   const have = existing.map((c) => c.thing);
+  const corrected = mode === "seed" ? await correctSeedOutcomes(userId, existing) : 0;
 
   let drafts: TransferDraft[];
   let fromRecheck = new Set<string>();
@@ -212,9 +240,11 @@ export async function researchTransferCases(userId: string, mode: "seed" | "more
     drafts = await proposeTransferCases({ count: BATCH - arrived.length, mustInclude: arrived, existing: have });
     drafts = drafts.slice(0, BATCH);
   }
-  if (drafts.length === 0) return { tried: 0, kept: 0 };
+  if (drafts.length === 0) return { tried: 0, kept: 0, dropped: [], corrected };
 
-  const verified = (await Promise.all(drafts.map(verifyDraft))).filter((v): v is VerifiedTransfer => v !== null);
+  const results = await Promise.all(drafts.map(verifyDraft));
+  const verified: VerifiedTransfer[] = results.flatMap((r) => (r.ok ? [r.value] : []));
+  const dropped = results.flatMap((r, i) => (r.ok ? [] : [{ thing: drafts[i].thing, why: r.why }]));
   if (verified.length > 0) {
     const { error } = await supabaseAdmin.from("signal_transfer_cases").upsert(
       verified.map((v) => ({
@@ -236,5 +266,11 @@ export async function researchTransferCases(userId: string, mode: "seed" | "more
     );
     if (error) throw new Error(error.message);
   }
-  return { tried: drafts.length, kept: verified.length };
+  return { tried: drafts.length, kept: verified.length, dropped, corrected };
+}
+
+/** 样例里还没收进来的几件（页面上给"重试"）。 */
+export function missingSeeds(cases: TransferCase[]): string[] {
+  const have = new Set(cases.map((c) => c.thing));
+  return SEED_CASES.filter((d) => !have.has(d.thing)).map((d) => d.thing);
 }
