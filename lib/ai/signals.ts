@@ -2499,6 +2499,7 @@ const transferProposePrompt = (count: number, mustInclude: string[]) => `你帮�
 ${mustInclude.length > 0 ? `下面这几样一定要写（他的清单里重查发现日本已经有了）：\n${mustInclude.map((t) => `- ${t}`).join("\n")}\n` : ""}再另外提 ${count} 件"已经有的"里面没有的。挑法：
 - 各个类别都要有。别只挑有名的成功案例 —— 退出的、被法规卡住的、至今没到的同样重要（只挑成功的就是幸存者偏差）。
 - 只挑你很确定真实发生过、网上查得到的。
+- 日本比那边还早就有同类东西的，不算"那边先有"，别提。
 
 每件写：
 - thing：东西的名字，中文，短（例："扫码支付""共享充电宝"）。
@@ -2506,12 +2507,12 @@ ${mustInclude.length > 0 ? `下面这几样一定要写（他的清单里重查�
 - origin：china / us。
 - originEvent：那边是哪件事让它出现或普及的，具体到公司。
 - originDate：YYYY、YYYY-MM 或 YYYY-MM-DD。
-- japanEvent：日本是哪件事，具体到公司或服务名；至今没有就写空字符串。
+- japanEvent：日本**最早**出现的同类东西是哪件事，具体到公司或服务名 —— 不是最有名的那家（扫码支付在日本最早的不是 PayPay），也不一定是把它带火的同一家公司；至今没有就写空字符串。
 - japanDate：格式同上；至今没有写空字符串。
 - outcome：这样东西在日本**整体**的状况（不是某一家公司的结果），只能是下面之一：
 ${Object.entries(OUTCOME_DEFINITIONS).map(([k, d]) => `  ${k}：${d}`).join("\n")}
 - carrier：${Object.keys(ATLAS_CARRIERS).join(" / ")}（谁把它带进日本：日本公司 / 美国公司 / 中国公司 / 别的 / 还没人带进来）。
-- queries：2 到 3 个搜索词，分别核实那边的日子、日本的日子、在日本的结果；用对应国家的语言，带年份和公司名。
+- queries：3 到 4 个搜索词，分别核实那边的日子、日本的日子、在日本的结果，再加一个专门找日本最早同类的（日语，带「日本初」「国内初」这类词，不带你写的那家公司名 —— 防的是你记得的那家并不是最早的）；其余用对应国家的语言，带年份和公司名。
 叙述用中文。
 
 只输出 JSON：{"cases":[{"thing":"…","category":"payment","origin":"china","originEvent":"…","originDate":"2014","japanEvent":"…","japanDate":"2018-10","outcome":"widespread","carrier":"local","queries":["…","…"]}]}`;
@@ -2540,7 +2541,7 @@ export function parseTransferDrafts(value: unknown, existing: string[]): Transfe
     const queries = (Array.isArray(v.queries) ? v.queries : [])
       .filter((q): q is string => typeof q === "string" && !!q.trim())
       .map((q) => q.trim().slice(0, 120))
-      .slice(0, 3);
+      .slice(0, 4);
     if (!thing || !category || !origin || !outcome || !carrier || !str("originEvent") || queries.length === 0) continue;
     if (monthIndex(originDate) === null || (japanDate !== null && monthIndex(japanDate) === null)) continue;
     if (japanDate === null && outcome !== "absent" && outcome !== "blocked") continue;
@@ -2589,7 +2590,9 @@ const TRANSFER_VERIFY_PROMPT = `你在核实一件"那边先有、后来到了�
 
 输出三样：
 - origin：{"date":"…","basis":[{"source":资料编号,"excerpt":"逐字原文"}]}。资料里确实写着那边这件事和时间才算；时间和资料不一样就按资料改（YYYY / YYYY-MM / YYYY-MM-DD）；对不上 basis 给空数组。
-- japan：{"date":"…","event":"…","basis":[…]}。同上。它说"日本至今没有"的，资料里要明确写着日本没有、还没上线、被禁止才算；资料里没提到不等于没有 —— 那种情况 basis 给空数组。
+- japan：{"date":"…","event":"…","carrier":"…","basis":[…]}。要的是日本**最早**出现的同类东西 —— 不一定是最有名的那家，也不一定是同一家公司。资料里写着比它说的更早的同类，就改成更早的那件（event、date、carrier 一起改）。同类 = 用户拿来做同一件事、用法基本一样；名字像、用法不同的不算。日本比那边还早就有的，也照实写日本的日子。
+  carrier：这一件是谁带进日本的，${Object.keys(ATLAS_CARRIERS).filter((k) => k !== "none").join(" / ")}（日本公司 / 美国公司 / 中国公司 / 别的）。
+  它说"日本至今没有"的，资料里要明确写着日本没有、还没上线、被禁止才算；资料里没提到不等于没有 —— 那种情况 basis 给空数组。
 - outcome：{"value":"…","basis":[…]}。这样东西在日本**整体**的状况（不是某一家公司的结果），资料里看得出来才算（用户数、店数、撤退、法规限制……）。
   各档的意思：
 ${Object.entries(OUTCOME_DEFINITIONS).map(([k, d]) => `  ${k}：${d}`).join("\n")}
@@ -2597,10 +2600,13 @@ ${Object.entries(OUTCOME_DEFINITIONS).map(([k, d]) => `  ${k}：${d}`).join("\n"
 
 basis 逐字照抄资料原文（不翻译、不改字，15 到 150 字）。不要编资料里没有的事实。
 
-只输出 JSON：{"origin":{"date":"…","basis":[]},"japan":{"date":"…","event":"…","basis":[]},"outcome":{"value":"…","basis":[]}}`;
+只输出 JSON：{"origin":{"date":"…","basis":[]},"japan":{"date":"…","event":"…","carrier":"local","basis":[]},"outcome":{"value":"…","basis":[]}}`;
 
-/** 核实的结果：收了，或者为什么没收（页面上要让他看到被刷掉的是什么、卡在哪）。 */
-export type TransferVerification = { ok: true; value: VerifiedTransfer } | { ok: false; why: string };
+/**
+ * 核实的结果：收了，或者为什么没收（页面上要让他看到被刷掉的是什么、卡在哪）。
+ * japanFirst：查到日本比那边还早 —— 这是查出来的事实，不是没查到；补查时要记下来，不是原样不动。
+ */
+export type TransferVerification = { ok: true; value: VerifiedTransfer } | { ok: false; why: string; japanFirst?: true };
 
 /**
  * 三样都要有逐字对得上的原文：那边的日子、日本的日子（或明确写着没有）、在日本的结果。缺一样整件不收。
@@ -2622,6 +2628,15 @@ export function parseTransferVerification(value: unknown, draft: TransferDraft, 
   if (japanDate === null && outcome !== "absent" && outcome !== "blocked") return { ok: false, why: "日本没查到日子，又说不上是没有还是被卡住" };
   if (japanDate !== null && outcome === "absent") return { ok: false, why: "说日本至今没有，资料里却有日子" };
   const japanEvent = typeof v.japan?.event === "string" && v.japan.event.trim() ? v.japan.event.trim() : draft.japanEvent;
+  // 日本比那边还早：不是"那边先有、后来才到"，时间差是负的，算进统计会被当成"没到"
+  if (japanDate !== null && (monthIndex(japanDate) ?? 0) < (monthIndex(originDate) ?? 0)) {
+    return {
+      ok: false,
+      japanFirst: true,
+      why: `日本比那边还早：${japanEvent ?? "日本那件"}（${japanDate}）早于${draft.origin === "china" ? "中国" : "美国"}的 ${originDate} —— 不算「那边先有、后来才到日本」`,
+    };
+  }
+  const verifiedCarrier = pickKey(v.japan?.carrier, Object.keys(ATLAS_CARRIERS).filter((k) => k !== "none") as AtlasCarrier[]);
   const seen = new Set<string>();
   const all = [...originBasis, ...japanBasis, ...outcomeBasis].filter((b) => !seen.has(b.excerpt) && seen.add(b.excerpt));
   return {
@@ -2635,7 +2650,7 @@ export function parseTransferVerification(value: unknown, draft: TransferDraft, 
       japanEvent: japanDate === null ? null : japanEvent,
       japanDate,
       outcome,
-      carrier: japanDate === null && outcome === "absent" ? "none" : draft.carrier,
+      carrier: japanDate === null && outcome === "absent" ? "none" : (verifiedCarrier ?? draft.carrier),
       sources: all,
     },
   };
@@ -2664,6 +2679,56 @@ export async function verifyTransferCase(draft: TransferDraft, sources: SearchSo
       },
     }),
     (value) => parseTransferVerification(value, draft, sources)
+  );
+}
+
+const RECHECK_QUERY_PROMPT = `时差图谱里已经收进来的一件要补查。写 3 个搜索词：
+1. 专门找日本**最早**的同类东西：日语，带「日本初」「国内初」「先駆け」这类词，不带它现在写的那家公司名 —— 它现在写的常常是最有名的那家，不是最早的。
+2、3. 补"要补的"那几样（没写就一个核实日本那件的日子，一个核实它在日本整体的结果，比如用户数、店数、撤退）。用对应国家的语言，带年份和公司名。
+
+只输出 JSON：{"queries":["…","…","…"]}`;
+
+export function parseRecheckQueries(value: unknown): string[] {
+  const raw = (value as { queries?: unknown } | null)?.queries;
+  const queries = (Array.isArray(raw) ? raw : [])
+    .filter((q): q is string => typeof q === "string" && !!q.trim())
+    .map((q) => q.trim().slice(0, 120))
+    .slice(0, 3);
+  if (queries.length < 2) throw new Error("搜索词太少");
+  return queries;
+}
+
+/** 补查一件：一个找日本最早同类的搜索词，两个补没被证明的那几样。 */
+export async function planTransferRecheckQueries(input: {
+  thing: string;
+  origin: "china" | "us";
+  originEvent: string;
+  originDate: string;
+  japanEvent: string | null;
+  japanDate: string | null;
+  outcome: AtlasOutcome;
+  focus: string[];
+}): Promise<string[]> {
+  const contents = [
+    `东西：${input.thing}`,
+    `那边（${input.origin === "china" ? "中国" : "美国"}）：${input.originEvent}，${input.originDate}`,
+    `日本现在写的：${input.japanDate ? `${input.japanEvent ?? ""}，${input.japanDate}` : "至今没有"}`,
+    `在日本的结果：${OUTCOME_DEFINITIONS[input.outcome]}`,
+    `要补的：${input.focus.length > 0 ? input.focus.join("、") : "（没写）"}`,
+  ].join("\n");
+  return executeAiJson(
+    { operation: "atlas_recheck_queries", module: "unknown", outputMode: "json", timeoutMs: 15_000 },
+    () => ({
+      model: MODEL,
+      contents,
+      config: {
+        systemInstruction: RECHECK_QUERY_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 400,
+      },
+    }),
+    parseRecheckQueries
   );
 }
 

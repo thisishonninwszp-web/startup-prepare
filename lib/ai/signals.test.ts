@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1244,6 +1244,74 @@ describe("时差图谱：候选和核实", () => {
     expect(up.ok && up.value.outcome).toBe("niche");
     const down = verify("exited");
     expect(down.ok && down.value.outcome).toBe("exited");
+  });
+
+  it("日本那件按资料换成更早的同类：日子、事、谁带进来的一起换；时间差跟着变短", () => {
+    const sources = [
+      { title: "Origami", url: "https://example.jp/o", content: "Origami Payは2016年5月19日にQRコード決済の提供を開始した。PayPayの登録ユーザー数は7000万人を突破した。" },
+      { title: "虎嗅", url: "https://example.cn/h", content: "2014年底好德、可的、联华等多家商户都开通了支付宝扫码支付。" },
+    ];
+    const d = parseTransferDrafts({ cases: [draft()] }, [])[0];
+    const r = parseTransferVerification(
+      {
+        origin: { date: "2014-12", basis: [{ source: 2, excerpt: "多家商户都开通了支付宝扫码支付" }] },
+        japan: { date: "2016-05-19", event: "Origami Pay", carrier: "local", basis: [{ source: 1, excerpt: "Origami Payは2016年5月19日にQRコード決済の提供を開始した" }] },
+        outcome: { value: "widespread", basis: [{ source: 1, excerpt: "PayPayの登録ユーザー数は7000万人を突破した" }] },
+      },
+      d,
+      sources
+    );
+    expect(r.ok && [r.value.japanEvent, r.value.japanDate, r.value.carrier]).toEqual(["Origami Pay", "2016-05-19", "local"]);
+    // 认不出的 carrier 留原来的；"还没人带进来"不许用在有日子的那件上
+    const odd = parseTransferVerification(
+      {
+        origin: { date: "2014-12", basis: [{ source: 2, excerpt: "多家商户都开通了支付宝扫码支付" }] },
+        japan: { date: "2016-05-19", event: "Origami Pay", carrier: "none", basis: [{ source: 1, excerpt: "Origami Payは2016年5月19日にQRコード決済の提供を開始した" }] },
+        outcome: { value: "widespread", basis: [{ source: 1, excerpt: "PayPayの登録ユーザー数は7000万人を突破した" }] },
+      },
+      d,
+      sources
+    );
+    expect(odd.ok && odd.value.carrier).toBe("local");
+  });
+
+  it("日本比那边还早：不收，标 japanFirst、写清两边的日子（不是没查到，是查出来了）", () => {
+    const sources = [
+      { title: "出前館", url: "https://example.jp/d", content: "2000年10月にデリバリー総合サイト「出前館」をオープン。出前館の加盟店は全国で9万店を超えた。" },
+      { title: "美团", url: "https://example.cn/m", content: "美团外卖于2013年11月正式上线。" },
+    ];
+    const d = parseTransferDrafts(
+      { cases: [draft({ thing: "外卖平台", category: "food", originEvent: "美团外卖上线", originDate: "2013-11", japanEvent: "Uber Eats", japanDate: "2016-09", outcome: "partial", carrier: "us" })] },
+      []
+    )[0];
+    const r = parseTransferVerification(
+      {
+        origin: { date: "2013-11", basis: [{ source: 2, excerpt: "美团外卖于2013年11月正式上线" }] },
+        japan: { date: "2000-10", event: "出前館", carrier: "local", basis: [{ source: 1, excerpt: "2000年10月にデリバリー総合サイト「出前館」をオープン" }] },
+        outcome: { value: "partial", basis: [{ source: 1, excerpt: "出前館の加盟店は全国で9万店を超えた" }] },
+      },
+      d,
+      sources
+    );
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.japanFirst).toBe(true);
+    expect(!r.ok && r.why).toContain("出前館（2000-10）");
+    expect(!r.ok && r.why).toContain("2013-11");
+  });
+
+  it("parseTransferDrafts：搜索词最多留四个（多出来的那个专门找日本最早的同类）", () => {
+    const out = parseTransferDrafts({ cases: [draft({ queries: ["a", "b", "c", "日本初 QRコード決済", "e"] })] }, []);
+    expect(out[0].queries).toEqual(["a", "b", "c", "日本初 QRコード決済"]);
+  });
+
+  it("parseRecheckQueries：去空、截长、最多三个；少于两个不收", () => {
+    expect(parseRecheckQueries({ queries: [" 日本初 QRコード決済 ", "", "Origami Pay 2016", "PayPay 登録者数", "多余"] })).toEqual([
+      "日本初 QRコード決済",
+      "Origami Pay 2016",
+      "PayPay 登録者数",
+    ]);
+    expect(() => parseRecheckQueries({ queries: ["只有一个"] })).toThrow();
+    expect(() => parseRecheckQueries(null)).toThrow();
   });
 });
 

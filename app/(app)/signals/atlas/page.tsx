@@ -19,7 +19,7 @@ import {
   type AtlasCategory,
   type TransferCase,
 } from "@/lib/domains/signals/atlas";
-import { OutcomeEditor, RejudgeButton, ResearchAtlasButton } from "./atlas-controls";
+import { OutcomeEditor, RecheckCaseButton, RejudgeButton, ResearchAtlasButton } from "./atlas-controls";
 
 export const dynamic = "force-dynamic";
 // 查一批要三四十秒，由这一页的 server action 跑
@@ -44,12 +44,15 @@ function CaseRow({ c }: { c: TransferCase }) {
         {c.japan_event ?? "至今没有"}
       </p>
       {c.judge_status === "failed" && (
-        <p className="text-xs leading-6 text-verdict-learned">没过裁判：{c.judge_note ?? "原文证明不了"} —— 先不算进统计。</p>
+        <p className="text-xs leading-6 text-verdict-learned">不算进统计：{c.judge_note ?? "裁判看来原文证明不了"}。</p>
       )}
       {(c.judge_status === null || c.judge_status === "unavailable") && (
         <p className="text-xs leading-6 text-muted-foreground">这一件的原文还没请裁判看过{c.judge_note ? `（${c.judge_note}）` : ""}。</p>
       )}
-      <OutcomeEditor id={c.id} outcome={c.outcome} />
+      <div className="flex flex-wrap items-start gap-x-4">
+        <OutcomeEditor id={c.id} outcome={c.outcome} />
+        <RecheckCaseButton id={c.id} />
+      </div>
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">原文（{c.sources.length} 处）</summary>
         <ul className="mt-1 space-y-1">
@@ -111,6 +114,13 @@ export default async function AtlasPage() {
                 ? "这里空着。先从十件样例开始（扫码支付、共享单车、网约车……），每件都会再上网核实一遍。"
                 : "再找几件：AI 提候选（专门要退出的、被卡住的、至今没到的，只收成功的就是幸存者偏差），差距清单里重查发现「日本有了」的也一起查。"}
             </p>
+            {cases.length > 0 && (
+              <p className="text-xs leading-6 text-muted-foreground">
+                日本那一栏要的是查到的<strong className="font-medium text-foreground">最早</strong>一件同类，不是最有名的那家 ——
+                扫码支付在日本最早的是 Origami Pay（2016），不是 PayPay（2018）；视频订阅最早的是 Hulu（2011），不是 Netflix（2015）。
+                挑有名的那家，时间差会被拉长，「两年内会不会出现」就会偏向「不会」。每件下面点「补查」，会专门去找更早的，顺便补裁判没认的那几样。
+              </p>
+            )}
           </div>
 
           {cases.length > 0 && (
@@ -118,7 +128,7 @@ export default async function AtlasPage() {
               <section className="mb-10">
                 <h2 className="text-base font-semibold">
                   按类别（算进统计的 {countedCases(cases).length} 件
-                  {cases.length > countedCases(cases).length ? `，没过裁判的 ${cases.length - countedCases(cases).length} 件不算` : ""}）
+                  {cases.length > countedCases(cases).length ? `，没过裁判或补查没过的 ${cases.length - countedCases(cases).length} 件不算` : ""}）
                 </h2>
                 <ul className="mt-3 space-y-2 text-sm leading-7">
                   {(Object.keys(ATLAS_CATEGORIES) as AtlasCategory[])

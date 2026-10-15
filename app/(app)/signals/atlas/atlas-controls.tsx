@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ATLAS_OUTCOMES, type AtlasOutcome } from "@/lib/domains/signals/atlas-shared";
-import { rejudgeAtlasAction, researchAtlasAction, setCaseOutcomeAction } from "../actions";
+import { recheckAtlasCaseAction, rejudgeAtlasAction, researchAtlasAction, setCaseOutcomeAction } from "../actions";
 
 /** 查一批（三四十秒）：空的时候从十件样例开始，之后再找几件。没收进来的写清卡在哪。 */
 export function ResearchAtlasButton({ mode, label }: { mode: "seed" | "more"; label?: string }) {
@@ -82,6 +82,48 @@ export function RejudgeButton({ count }: { count: number }) {
         {pending ? "裁判在一条条看原文……十几秒" : `请裁判把已收的再看一遍（${count} 件）`}
       </Button>
       {message && <p className="mt-2 text-sm text-muted-foreground">{message}</p>}
+    </div>
+  );
+}
+
+/**
+ * 补查一件（三四十秒）：专门找日本最早的同类（早先挑的常常是最有名的那家），再补裁判没认的那几样。
+ * 核实上了就换成新的、说改了什么；没核实上原来那件不动。
+ */
+export function RecheckCaseButton({ id }: { id: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <div className="text-xs">
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            setMessage(null);
+            const r = await recheckAtlasCaseAction(id);
+            if (!r.ok) return setMessage(r.message);
+            if (!r.kept) {
+              setMessage(r.marked ? `${r.why}。已标成不算进统计。` : `这次没补上（${r.why}），原来那件不动。`);
+            } else {
+              const changed = r.changes.length > 0 ? `改了：${r.changes.join("；")}` : "日子、结果、谁带进来的都没变";
+              const verdict =
+                r.status === "passed"
+                  ? "裁判看过，三样都有原文证明。"
+                  : r.status === "failed"
+                    ? `${r.note ?? "裁判看来原文证明不了"}，先不算进统计。`
+                    : `裁判这次没调通${r.note ? `（${r.note}）` : ""}。`;
+              setMessage(`${changed}。${verdict}`);
+            }
+            router.refresh();
+          })
+        }
+      >
+        {pending ? "在上网补查……三四十秒" : "补查"}
+      </Button>
+      {message && <p className="mt-1 leading-6 text-muted-foreground">{message}</p>}
     </div>
   );
 }

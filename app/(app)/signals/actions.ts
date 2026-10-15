@@ -38,7 +38,14 @@ import {
 } from "@/lib/domains/signals/issue";
 import { disablePublicRecord, enablePublicRecord } from "@/lib/domains/signals/public-record";
 import { ensurePracticeBreakdown, saveBreakdownLeans, type Breakdown, type Lean } from "@/lib/domains/signals/breakdown";
-import { rejudgeTransferCases, researchTransferCases, setCaseOutcome, type AtlasOutcome } from "@/lib/domains/signals/atlas";
+import {
+  recheckTransferCase,
+  rejudgeTransferCases,
+  researchTransferCases,
+  setCaseOutcome,
+  type AtlasOutcome,
+  type RecheckResult,
+} from "@/lib/domains/signals/atlas";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
@@ -255,6 +262,18 @@ export async function rejudgeAtlasAction(): Promise<
     return { ok: true, ...result };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没判成") };
+  }
+}
+
+/** 时差图谱：补查一件（专门找日本最早的同类、补裁判没认的那几样，三四十秒）。 */
+export async function recheckAtlasCaseAction(id: string): Promise<({ ok: true } & RecheckResult) | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const result = await recheckTransferCase(userId, id);
+    revalidatePath("/signals/atlas");
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没补查成") };
   }
 }
 

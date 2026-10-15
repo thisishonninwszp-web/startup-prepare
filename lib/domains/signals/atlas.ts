@@ -1,8 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   judgeTransferEvidence,
+  planTransferRecheckQueries,
   proposeTransferCases,
   verifyTransferCase,
+  type SearchSource,
   type TransferClaims,
   type TransferDraft,
   type TransferVerification,
@@ -15,12 +17,14 @@ import { mergeSources } from "./sources";
 import {
   ATLAS_OUTCOMES,
   CLAIM_LABELS,
+  lagLabel,
   lagMonths,
   noUpgrade,
   OUTCOME_DEFINITIONS,
   unprovenClaims,
   type AtlasOutcome,
   type AtlasSource,
+  ATLAS_CARRIERS,
   type JudgeStatus,
   type TransferCase,
 } from "./atlas-shared";
@@ -51,11 +55,17 @@ export const SEED_CASES: TransferDraft[] = [
     origin: "china",
     originEvent: "支付宝、微信大力推广线下二维码支付",
     originDate: "2014",
-    japanEvent: "PayPay 上线",
-    japanDate: "2018-10-05",
+    // 日本最早的不是 PayPay（2018-10），是 Origami Pay（2016-05-19）—— 挑有名的那家会把时间差拉长两年多
+    japanEvent: "Origami Pay 开始提供 QR 码支付",
+    japanDate: "2016-05",
     outcome: "widespread",
     carrier: "local",
-    queries: ["支付宝 微信 线下 二维码支付 2014 推广", "PayPay 2018年10月5日 サービス開始", "PayPay 登録ユーザー 7000万 突破"],
+    queries: [
+      "支付宝 微信 线下 二维码支付 2014 推广",
+      "Origami Pay 2016年5月 QRコード決済 サービス開始",
+      "日本初 QRコード決済 スマホ決済 国内初",
+      "PayPay 登録ユーザー 7000万 突破",
+    ],
   },
   {
     thing: "共享充电宝",
@@ -67,7 +77,12 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2018-04",
     outcome: "widespread",
     carrier: "local",
-    queries: ["共享充电宝 2017 融资 街电 小电 来电", "ChargeSPOT 2018年4月 サービス開始 INFORICH", "ChargeSPOT 全国47都道府県 設置"],
+    queries: [
+      "共享充电宝 2017 融资 街电 小电 来电",
+      "ChargeSPOT 2018年4月 サービス開始 INFORICH",
+      "日本初 モバイルバッテリー シェアリング サービス",
+      "ChargeSPOT 全国47都道府県 設置",
+    ],
   },
   {
     thing: "无桩共享单车",
@@ -79,7 +94,12 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2017-08",
     outcome: "exited",
     carrier: "china",
-    queries: ["摩拜单车 2016年4月22日 上海 上线", "Mobike 札幌 2017年8月 サービス開始", "モバイク・ジャパン 終了 OR 撤退 OR 事業停止 2020"],
+    queries: [
+      "摩拜单车 2016年4月22日 上海 上线",
+      "Mobike 札幌 2017年8月 サービス開始",
+      "日本初 ステーション不要 シェアサイクル 乗り捨て",
+      "モバイク・ジャパン 終了 OR 撤退 OR 事業停止 2020",
+    ],
   },
   {
     thing: "外卖平台",
@@ -91,7 +111,13 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2016-09",
     outcome: "partial",
     carrier: "us",
-    queries: ["美团外卖 2013年11月 上线", "Uber Eats 日本 2016年9月 東京 サービス開始", "フードデリバリー 利用率 日本 調査 Uber Eats 出前館"],
+    // 出前館 2000 年就有网上叫外卖，比美团早；补查会核出来，到时候这件要说得更窄（平台派骑手送）
+    queries: [
+      "美团外卖 2013年11月 上线",
+      "Uber Eats 日本 2016年9月 東京 サービス開始",
+      "日本初 デリバリー ポータルサイト 出前 ネット注文",
+      "フードデリバリー 利用率 日本 調査 Uber Eats 出前館",
+    ],
   },
   {
     thing: "网约车",
@@ -103,7 +129,12 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2024-04",
     outcome: "blocked",
     carrier: "local",
-    queries: ["滴滴打车 2012年9月 上线 北京", "日本版ライドシェア 2024年4月 開始 タクシー会社", "日本版ライドシェア タクシー会社以外 参入 見送り"],
+    queries: [
+      "滴滴打车 2012年9月 上线 北京",
+      "日本版ライドシェア 2024年4月 開始 タクシー会社",
+      "日本初 ライドシェア 実証実験 自家用車 中止",
+      "日本版ライドシェア タクシー会社以外 参入 見送り",
+    ],
   },
   {
     thing: "短视频",
@@ -115,7 +146,12 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2017",
     outcome: "widespread",
     carrier: "china",
-    queries: ["抖音 2016年9月 上线 字节跳动", "TikTok 日本版 2017年 リリース", "TikTok 国内 月間アクティブユーザー 日本 万人"],
+    queries: [
+      "抖音 2016年9月 上线 字节跳动",
+      "TikTok 日本版 2017年 リリース",
+      "日本初 ショート動画アプリ 10代 流行",
+      "TikTok 国内 月間アクティブユーザー 日本 万人",
+    ],
   },
   {
     thing: "超级 App 里的小程序",
@@ -127,7 +163,12 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2020-07",
     outcome: "partial",
     carrier: "local",
-    queries: ["微信小程序 2017年1月 正式上线", "LINEミニアプリ 2020年7月 エントリー受付 開始", "LINEミニアプリ 導入 企業数"],
+    queries: [
+      "微信小程序 2017年1月 正式上线",
+      "LINEミニアプリ 2020年7月 エントリー受付 開始",
+      "国内初 スーパーアプリ ミニアプリ 提供開始",
+      "LINEミニアプリ 導入 企業数",
+    ],
   },
   {
     thing: "直播带货",
@@ -139,7 +180,12 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2017",
     outcome: "niche",
     carrier: "local",
-    queries: ["淘宝直播 2016年4月 正式上线", "メルカリチャンネル 2017年 開始 ライブコマース", "メルカリチャンネル 2019年7月8日 終了"],
+    queries: [
+      "淘宝直播 2016年4月 正式上线",
+      "メルカリチャンネル 2017年 開始 ライブコマース",
+      "日本初 ライブコマース アプリ 2017",
+      "メルカリチャンネル 2019年7月8日 終了",
+    ],
   },
   {
     thing: "无人收银店",
@@ -151,7 +197,12 @@ export const SEED_CASES: TransferDraft[] = [
     japanDate: "2020-03-23",
     outcome: "niche",
     carrier: "local",
-    queries: ["Amazon Go opens to public January 22 2018", "TOUCH TO GO 高輪ゲートウェイ 2020年3月23日 開業", "TOUCH TO GO 無人決済システム 100か所 導入"],
+    queries: [
+      "Amazon Go opens to public January 22 2018",
+      "TOUCH TO GO 高輪ゲートウェイ 2020年3月23日 開業",
+      "日本初 無人決済店舗 レジなし 実証実験",
+      "TOUCH TO GO 無人決済システム 100か所 導入",
+    ],
   },
   {
     thing: "流媒体订阅视频",
@@ -159,11 +210,17 @@ export const SEED_CASES: TransferDraft[] = [
     origin: "us",
     originEvent: "Netflix 开始在线播放",
     originDate: "2007-01",
-    japanEvent: "Netflix 进入日本",
-    japanDate: "2015-09-02",
+    // 日本最早的不是 Netflix（2015-09），是 Hulu 日本版（2011-09-01，Hulu 第一次出海）
+    japanEvent: "Hulu 在日本开始提供定额制视频播放",
+    japanDate: "2011-09",
     outcome: "widespread",
     carrier: "us",
-    queries: ["Netflix streaming launched January 2007 Watch Now", "Netflix Japan launch September 2 2015", "Netflix 日本 会員数"],
+    queries: [
+      "Netflix streaming launched January 2007 Watch Now",
+      "Hulu 日本 2011年9月1日 サービス開始",
+      "日本初 定額制 動画配信サービス 見放題",
+      "動画配信サービス 利用率 日本 調査",
+    ],
   },
 ];
 
@@ -247,10 +304,14 @@ export async function listTransferCases(userId: string): Promise<TransferCase[] 
 
 type Judged = { value: VerifiedTransfer; status: JudgeStatus; note: string | null };
 
-/** 搜、核实、请裁判。三样里有一样没被原文证明就不收（写清是哪一样）；裁判不可用照收、标出来。 */
-async function verifyDraft(draft: TransferDraft): Promise<{ ok: true; judged: Judged } | { ok: false; why: string }> {
+/**
+ * 搜、核实、请裁判。核实没过的写清卡在哪一样；过了的请裁判，裁判的结果（包括没过）原样带回 ——
+ * 新查的不收没过裁判的，补查的要把没过记下来。prior：补查时把原来那几条原文一起给核实那一步看。
+ */
+async function checkDraft(draft: TransferDraft, prior: SearchSource[] = []): Promise<{ ok: true; judged: Judged } | { ok: false; why: string; japanFirst?: true }> {
   const found = await Promise.all(draft.queries.map((q) => webSearch(q, RESULTS_PER_QUERY).catch(() => [])));
-  const sources = mergeSources(found, RESULTS_PER_QUERY * draft.queries.length);
+  // 新搜到的在前：同一个网址，整页比原来那一句摘录看得全
+  const sources = mergeSources([...found, prior], RESULTS_PER_QUERY * draft.queries.length + prior.length);
   const verified = await verifyTransferCase(draft, sources).catch((e): TransferVerification => {
     console.error("atlas verify failed", draft.thing, e);
     return { ok: false, why: "核实那一步出错了" };
@@ -261,8 +322,14 @@ async function verifyDraft(draft: TransferDraft): Promise<{ ok: true; judged: Ju
     claimsOf({ origin: v.origin, origin_event: v.originEvent, origin_date: v.originDate, japan_event: v.japanEvent, japan_date: v.japanDate, outcome: v.outcome }),
     v.sources
   );
-  if (judged.status === "failed") return { ok: false, why: judged.note ?? "裁判看来原文证明不了" };
   return { ok: true, judged: { value: { ...v, sources: judged.sources }, status: judged.status, note: judged.note } };
+}
+
+/** 新查的：没过裁判的不收（写清是哪一样）；裁判不可用照收、标出来。 */
+async function verifyDraft(draft: TransferDraft): Promise<{ ok: true; judged: Judged } | { ok: false; why: string }> {
+  const r = await checkDraft(draft);
+  if (r.ok && r.judged.status === "failed") return { ok: false, why: r.judged.note ?? "裁判看来原文证明不了" };
+  return r;
 }
 
 /**
@@ -399,4 +466,89 @@ export async function researchTransferCases(
 export function missingSeeds(cases: TransferCase[]): string[] {
   const have = new Set(cases.map((c) => c.thing));
   return SEED_CASES.filter((d) => !have.has(d.thing)).map((d) => d.thing);
+}
+
+export type RecheckResult =
+  | { kept: true; status: JudgeStatus; note: string | null; changes: string[] }
+  | { kept: false; why: string; marked: boolean };
+
+/**
+ * 补查一件：专门找日本**最早**的同类（早先挑的常常是最有名的那家，时间差被拉长），
+ * 再补裁判没认的那几样。原来那几条原文一起给核实那一步看，查到的新原文再请裁判。
+ * - 核实过了：日子、结果（只许往差改）、谁带进来的、原文、裁判结果都换成新的，返回改了什么。
+ * - 查到日本比那边还早：这是查出来的事实，标成不算进统计、写清原因。
+ * - 别的没核实上（没搜到、没对上原文）：原来那件不动，只说这次卡在哪。
+ */
+export async function recheckTransferCase(userId: string, id: string): Promise<RecheckResult> {
+  const cases = await listTransferCases(userId);
+  if (cases === "missing-schema") throw new Error(MISSING_MIGRATION);
+  const c = cases.find((x) => x.id === id);
+  if (!c) throw new Error("找不到这一件");
+
+  const focus =
+    c.judge_status === "failed"
+      ? unprovenClaims(c.sources).map((claim) => CLAIM_LABELS[claim])
+      : [];
+  const queries = await planTransferRecheckQueries({
+    thing: c.thing,
+    origin: c.origin,
+    originEvent: c.origin_event,
+    originDate: c.origin_date,
+    japanEvent: c.japan_event,
+    japanDate: c.japan_date,
+    outcome: c.outcome,
+    focus,
+  });
+  const draft: TransferDraft = {
+    thing: c.thing,
+    category: c.category,
+    origin: c.origin,
+    originEvent: c.origin_event,
+    originDate: c.origin_date,
+    japanEvent: c.japan_event,
+    japanDate: c.japan_date,
+    outcome: c.outcome,
+    carrier: c.carrier,
+    queries,
+  };
+  const prior: SearchSource[] = c.sources.map((s) => ({ title: s.title, url: s.url, content: s.excerpt }));
+  const r = await checkDraft(draft, prior);
+
+  const update = async (fields: Record<string, unknown>) => {
+    const { error } = await supabaseAdmin.from("signal_transfer_cases").update(fields).eq("id", c.id).eq("user_id", userId);
+    if (error) {
+      if (/judge_/.test(error.message)) throw new Error(MISSING_074);
+      throw new Error(error.message);
+    }
+  };
+
+  if (!r.ok) {
+    if (!r.japanFirst) return { kept: false, why: r.why, marked: false };
+    await update({ judge_status: "failed", judge_note: `补查时发现${r.why}。要么不收，要么把这样东西说得更窄再查` });
+    return { kept: false, why: r.why, marked: true };
+  }
+
+  const v = r.judged.value;
+  const lag = lagMonths(v.originDate, v.japanDate);
+  const changes = [
+    v.originDate !== c.origin_date ? `那边的日子 ${c.origin_date} → ${v.originDate}` : "",
+    v.japanDate !== c.japan_date || v.japanEvent !== c.japan_event
+      ? `日本 ${c.japan_event ?? "至今没有"}（${c.japan_date ?? "—"}）→ ${v.japanEvent ?? "至今没有"}（${v.japanDate ?? "—"}）`
+      : "",
+    lag !== c.lag_months ? `时间差 ${lagLabel(c.lag_months)} → ${lagLabel(lag)}` : "",
+    v.outcome !== c.outcome ? `结果 ${ATLAS_OUTCOMES[c.outcome]} → ${ATLAS_OUTCOMES[v.outcome]}` : "",
+    v.carrier !== c.carrier ? `谁带进来 ${ATLAS_CARRIERS[c.carrier]} → ${ATLAS_CARRIERS[v.carrier]}` : "",
+  ].filter(Boolean);
+  await update({
+    origin_date: v.originDate,
+    japan_event: v.japanEvent,
+    japan_date: v.japanDate,
+    outcome: v.outcome,
+    carrier: v.carrier,
+    lag_months: lag,
+    sources: v.sources,
+    judge_status: r.judged.status,
+    judge_note: r.judged.note,
+  });
+  return { kept: true, status: r.judged.status, note: r.judged.note, changes };
 }
