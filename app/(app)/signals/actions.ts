@@ -26,6 +26,15 @@ import {
   type DrillFlag,
 } from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
+import { analyzeGapVoices, type GapVoices } from "@/lib/domains/signals/voices";
+import {
+  deleteDoorSignup,
+  draftFakeDoorContent,
+  saveFakeDoor,
+  setFakeDoorOpen,
+  type FakeDoor,
+  type FakeDoorDraft,
+} from "@/lib/domains/signals/fake-door";
 import {
   addIssuePublish,
   addIssueResponse,
@@ -682,6 +691,75 @@ export async function analyzeGapTransferAction(
     return { ok: true, analysis: await analyzeGapTransfer(userId, signalId, side) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没查成") };
+  }
+}
+
+/** 差距清单：这边有没有人在为这件事头疼（问答网站、吐槽、App 差评里的真人原话，三四十秒）。 */
+export async function analyzeGapVoicesAction(
+  signalId: string,
+  side: GapSide
+): Promise<{ ok: true; analysis: GapVoices } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, analysis: await analyzeGapVoices(userId, signalId, side) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没查成") };
+  }
+}
+
+/** 假门测试：AI 起草那一页的文字（十几秒）。 */
+export async function draftFakeDoorAction(
+  signalId: string,
+  side: GapSide
+): Promise<{ ok: true; draft: FakeDoorDraft } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, draft: await draftFakeDoorContent(userId, signalId, side) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没起草成") };
+  }
+}
+
+/** 假门测试：发布（第一次生成链接）或改文字。 */
+export async function saveFakeDoorAction(
+  signalId: string,
+  side: GapSide,
+  content: unknown
+): Promise<{ ok: true; door: FakeDoor } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const door = await saveFakeDoor(userId, signalId, side, content);
+    revalidatePath("/signals/gaps");
+    revalidatePath("/signals/gaps/door");
+    return { ok: true, door };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没存上") };
+  }
+}
+
+/** 假门测试：关掉 / 重新打开。 */
+export async function setFakeDoorOpenAction(doorId: string, open: boolean): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await setFakeDoorOpen(userId, doorId, open);
+    revalidatePath("/signals/gaps");
+    revalidatePath("/signals/gaps/door");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没改成") };
+  }
+}
+
+/** 假门测试：删掉一个登记（连同那条观察）。 */
+export async function deleteDoorSignupAction(signupId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await deleteDoorSignup(userId, signupId);
+    revalidatePath("/signals/gaps/door");
+    revalidatePath("/signals/gaps");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没删掉") };
   }
 }
 

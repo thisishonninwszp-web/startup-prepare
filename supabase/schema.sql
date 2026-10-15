@@ -5764,3 +5764,78 @@ create policy "signal_transfer_cases_owner" on signal_transfer_cases
 alter table signal_transfer_cases add column if not exists judge_status text
   check (judge_status in ('passed', 'failed', 'unavailable'));
 alter table signal_transfer_cases add column if not exists judge_note text;
+
+-- ============================================================================
+-- 075：差距清单 · 这边有人在为这个头疼吗（signal_gap_voices）
+-- ============================================================================
+
+create table if not exists signal_gap_voices (
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  signal_id   uuid not null,
+  side        text not null check (side in ('japan', 'us', 'china')),
+  analysis    jsonb not null,
+  created_at  timestamptz not null default now(),
+  primary key (user_id, signal_id, side)
+);
+
+alter table signal_gap_voices enable row level security;
+
+drop policy if exists "signal_gap_voices_owner" on signal_gap_voices;
+create policy "signal_gap_voices_owner" on signal_gap_voices
+  for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 076：假门测试（signal_fake_doors / signal_fake_door_signups / signal_fake_door_view）
+-- ============================================================================
+
+create table if not exists signal_fake_doors (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  signal_id   uuid not null,
+  side        text not null check (side in ('japan', 'us', 'china')),
+  token       text not null unique,
+  lang        text not null check (lang in ('ja', 'zh')),
+  content     jsonb not null,
+  views       integer not null default 0,
+  open        boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  constraint signal_fake_doors_uniq unique (user_id, signal_id, side)
+);
+
+alter table signal_fake_doors enable row level security;
+
+drop policy if exists "signal_fake_doors_owner" on signal_fake_doors;
+create policy "signal_fake_doors_owner" on signal_fake_doors
+  for all using (auth.uid() = user_id);
+
+create table if not exists signal_fake_door_signups (
+  id              uuid primary key default gen_random_uuid(),
+  door_id         uuid not null references signal_fake_doors (id) on delete cascade,
+  user_id         uuid not null references auth.users (id) on delete cascade,
+  email           text not null,
+  note            text,
+  cancel_token    text not null unique,
+  observation_id  uuid,
+  created_at      timestamptz not null default now()
+);
+
+create unique index if not exists signal_fake_door_signups_email_uniq
+  on signal_fake_door_signups (door_id, lower(email));
+create index if not exists signal_fake_door_signups_door_idx
+  on signal_fake_door_signups (door_id, created_at desc);
+
+alter table signal_fake_door_signups enable row level security;
+
+drop policy if exists "signal_fake_door_signups_owner" on signal_fake_door_signups;
+create policy "signal_fake_door_signups_owner" on signal_fake_door_signups
+  for all using (auth.uid() = user_id);
+
+create or replace function signal_fake_door_view(p_token text) returns void
+  language sql
+as $$
+  update signal_fake_doors set views = views + 1 where token = p_token and open;
+$$;
+
+revoke execute on function signal_fake_door_view(text) from public, anon, authenticated;
+grant execute on function signal_fake_door_view(text) to service_role;
