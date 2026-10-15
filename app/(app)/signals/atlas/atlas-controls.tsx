@@ -70,7 +70,9 @@ export function RejudgeButton({ count }: { count: number }) {
             if (result.ok) {
               setMessage(
                 `裁判看了 ${result.judged} 件，没过的 ${result.failed} 件（不删，先不算进统计）` +
-                  (result.unavailable > 0 ? `；${result.unavailable} 件这次裁判没调通，过会儿再点一次。` : "。")
+                  (result.unavailable > 0 ? `；${result.unavailable} 件这次裁判没调通（${result.error ?? "原因不明"}），过会儿再点一次` : "") +
+                  (result.left > 0 ? `；时间到了，还剩 ${result.left} 件没判，再点一次接着判` : "") +
+                  "。"
               );
               router.refresh();
             } else setMessage(result.message);

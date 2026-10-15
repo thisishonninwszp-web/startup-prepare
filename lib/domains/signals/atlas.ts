@@ -211,12 +211,13 @@ async function judgeCase(
   claims: TransferClaims,
   sources: AtlasSource[]
 ): Promise<{ sources: AtlasSource[]; status: JudgeStatus; note: string | null }> {
-  const proves = await judgeTransferEvidence(
+  const result = await judgeTransferEvidence(
     claims,
     sources.map((s) => s.excerpt)
   );
-  if (!proves) return { sources, status: "unavailable", note: null };
-  const judged = sources.map((s, i) => ({ ...s, proves: proves[i] }));
+  // 没调通：照收，note 里记下为什么（限流、Key、额度……），页面上看得到
+  if (!result.ok) return { sources, status: "unavailable", note: `裁判没调通：${result.error}` };
+  const judged = sources.map((s, i) => ({ ...s, proves: result.proves[i] }));
   const unproven = unprovenClaims(judged);
   return unproven.length === 0
     ? { sources: judged, status: "passed", note: null }
@@ -267,27 +268,44 @@ async function verifyDraft(draft: TransferDraft): Promise<{ ok: true; judged: Ju
 /**
  * 已经收进来、还没请裁判看过（或当时裁判不可用）的，请裁判再看一遍。没过的不删，标"没过裁判"、不算进统计。
  */
-export async function rejudgeTransferCases(userId: string): Promise<{ judged: number; failed: number; unavailable: number }> {
+/** 请裁判再看一遍时，一次请求最多用多久（页面的请求一共 60 秒），到了就停，剩下的再点一次。 */
+const REJUDGE_BUDGET_MS = 45_000;
+
+export async function rejudgeTransferCases(
+  userId: string
+): Promise<{ judged: number; failed: number; unavailable: number; left: number; error: string | null }> {
   const cases = await listTransferCases(userId);
   if (cases === "missing-schema") throw new Error(MISSING_MIGRATION);
   const todo = cases.filter((c) => c.judge_status === null || c.judge_status === "unavailable");
-  const results = await Promise.all(todo.map((c) => judgeCase(claimsOf(c), c.sources)));
-  for (const [i, r] of results.entries()) {
-    const { error } = await supabaseAdmin
+  const startedAt = Date.now();
+  let judged = 0;
+  let failed = 0;
+  let unavailable = 0;
+  let error: string | null = null;
+  let done = 0;
+  // 一件接一件地判、判完一件存一件：一次并发十个 Jev 会限流；时间到了就停，判过的不丢
+  for (const c of todo) {
+    if (Date.now() - startedAt > REJUDGE_BUDGET_MS) break;
+    const r = await judgeCase(claimsOf(c), c.sources);
+    const { error: updateError } = await supabaseAdmin
       .from("signal_transfer_cases")
       .update({ sources: r.sources, judge_status: r.status, judge_note: r.note })
-      .eq("id", todo[i].id)
+      .eq("id", c.id)
       .eq("user_id", userId);
-    if (error) {
-      if (/judge_/.test(error.message)) throw new Error(MISSING_074);
-      throw new Error(error.message);
+    if (updateError) {
+      if (/judge_/.test(updateError.message)) throw new Error(MISSING_074);
+      throw new Error(updateError.message);
+    }
+    done += 1;
+    if (r.status === "unavailable") {
+      unavailable += 1;
+      error = error ?? r.note;
+    } else {
+      judged += 1;
+      if (r.status === "failed") failed += 1;
     }
   }
-  return {
-    judged: results.filter((r) => r.status !== "unavailable").length,
-    failed: results.filter((r) => r.status === "failed").length,
-    unavailable: results.filter((r) => r.status === "unavailable").length,
-  };
+  return { judged, failed, unavailable, left: todo.length - done, error };
 }
 
 /**
@@ -343,7 +361,9 @@ export async function researchTransferCases(
   }
   if (drafts.length === 0) return { tried: 0, kept: 0, dropped: [], corrected };
 
-  const results = await Promise.all(drafts.map(verifyDraft));
+  // 两件一组地查：每件最后要请一次裁判，一次并发太多 Jev 会限流
+  const results: Awaited<ReturnType<typeof verifyDraft>>[] = [];
+  for (let i = 0; i < drafts.length; i += 2) results.push(...(await Promise.all(drafts.slice(i, i + 2).map(verifyDraft))));
   const verified: Judged[] = results.flatMap((r) => (r.ok ? [r.judged] : []));
   const dropped = results.flatMap((r, i) => (r.ok ? [] : [{ thing: drafts[i].thing, why: r.why }]));
   if (verified.length > 0) {

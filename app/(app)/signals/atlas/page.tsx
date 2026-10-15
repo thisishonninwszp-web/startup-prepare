@@ -47,7 +47,7 @@ function CaseRow({ c }: { c: TransferCase }) {
         <p className="text-xs leading-6 text-verdict-learned">没过裁判：{c.judge_note ?? "原文证明不了"} —— 先不算进统计。</p>
       )}
       {(c.judge_status === null || c.judge_status === "unavailable") && (
-        <p className="text-xs leading-6 text-muted-foreground">这一件的原文还没请裁判看过。</p>
+        <p className="text-xs leading-6 text-muted-foreground">这一件的原文还没请裁判看过{c.judge_note ? `（${c.judge_note}）` : ""}。</p>
       )}
       <OutcomeEditor id={c.id} outcome={c.outcome} />
       <details className="text-xs">

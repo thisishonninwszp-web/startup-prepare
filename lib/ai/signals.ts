@@ -2691,8 +2691,11 @@ export type TransferClaims = Record<AtlasClaim, string>;
  * 原文逐字核对只保证"这句话在网页上"；证明没证明，要另一个模型独立看。
  * 返回每条原文证明的那一样（null = 都证明不了）；裁判不可用返回 null（调用方标"还没请裁判看过"）。
  */
-export async function judgeTransferEvidence(claims: TransferClaims, excerpts: string[]): Promise<(AtlasClaim | null)[] | null> {
-  if (excerpts.length === 0) return [];
+export async function judgeTransferEvidence(
+  claims: TransferClaims,
+  excerpts: string[]
+): Promise<{ ok: true; proves: (AtlasClaim | null)[] } | { ok: false; error: string }> {
+  if (excerpts.length === 0) return { ok: true, proves: [] };
   const options = ["都证明不了：说的是别的事，或者只是沾边", `能证明：${claims.origin}`, `能证明：${claims.japan}`, `能证明：${claims.outcome}`];
   const questions: Record<string, JevQuestion> = {};
   excerpts.forEach((_, i) => {
@@ -2707,12 +2710,14 @@ export async function judgeTransferEvidence(claims: TransferClaims, excerpts: st
     excerpts.map((e, i) => `[${i}] 「${e}」`).join("\n"),
   ].join("\n\n");
   try {
-    return await executeJev({ operation: "atlas_judge", module: "unknown", timeoutMs: 30_000 }, { state, questions }, (result) =>
+    const proves = await executeJev({ operation: "atlas_judge", module: "unknown", timeoutMs: 30_000 }, { state, questions }, (result) =>
       parseTransferProves(result, excerpts.length)
     );
+    return { ok: true, proves };
   } catch (e) {
     console.error("atlas judge failed", e);
-    return null;
+    // 把原因带出去：限流、Key 不对、额度用完，页面上要看得出卡在哪
+    return { ok: false, error: e instanceof Error ? e.message.slice(0, 160) : "没调通" };
   }
 }
 

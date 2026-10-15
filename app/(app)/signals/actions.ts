@@ -246,7 +246,7 @@ export async function researchAtlasAction(
 
 /** 时差图谱：已经收进来、还没请裁判看过的，请裁判再看一遍。 */
 export async function rejudgeAtlasAction(): Promise<
-  { ok: true; judged: number; failed: number; unavailable: number } | { ok: false; message: string }
+  { ok: true; judged: number; failed: number; unavailable: number; left: number; error: string | null } | { ok: false; message: string }
 > {
   const userId = await requireUserId();
   try {
