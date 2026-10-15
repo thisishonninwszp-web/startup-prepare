@@ -262,3 +262,43 @@ async function replaceDepartments(
     );
   if (error) throw new Error(error.message);
 }
+
+/**
+ * 书签小工具送来的那一页（浏览器里已经有的正文，要登录的、脚本画出来的页面也行）。
+ * 和读网址一样存成 url 类材料，正文用送来的这份，不再让服务器去读。
+ */
+export async function saveClippedMaterial(
+  userId: string,
+  input: { url: string; title: string; text: string; note: string }
+): Promise<CreateMaterialResult & { title: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(input.url.trim());
+  } catch {
+    throw new Error("URL 格式无效");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("只支持 http / https URL");
+  const text = input.text.trim();
+  if (text.length < 20) throw new Error("没收到正文");
+  const note = input.note.trim().slice(0, 500);
+  const title = (input.title.trim() || parsed.hostname).slice(0, 60);
+  const noteLine = note ? `我为什么存这个：${note}\n\n` : "";
+  const summarized = summarizeExtractedText(`${noteLine}${input.title.trim() ? `${input.title.trim()}\n\n` : ""}${text}`);
+  const saved = await saveExtractedMaterial({
+    userId,
+    sourceType: "url",
+    title,
+    inputText: note || null,
+    sourceUrl: parsed.toString(),
+    fileName: null,
+    fileType: null,
+    fileSize: null,
+    extractedText: summarized.text,
+    extractionMeta: { format: "clip", url: parsed.toString() },
+    visibleSheets: [],
+    unreadable: summarized.is_truncated ? ["正文太长，只存了前面一部分"] : [],
+    isTruncated: summarized.is_truncated,
+  });
+  return { ...saved, title };
+}
+

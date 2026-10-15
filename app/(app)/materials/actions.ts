@@ -16,6 +16,7 @@ import { extractTextLikeMaterial } from "./extraction";
 import { getRealityMaterial } from "./queries";
 import {
   runMaterialAiPipeline,
+  saveClippedMaterial,
   saveExtractedMaterial,
   saveTextMaterial,
   saveUrlMaterial,
@@ -80,9 +81,17 @@ export async function createRealityMaterial(formData: FormData): Promise<void> {
   redirect(`/materials/${result.id}`);
 }
 
-export async function createUrlMaterial(url: string): Promise<CreateMaterialResult> {
+export async function createUrlMaterial(url: string, note = ""): Promise<CreateMaterialResult> {
   const userId = await requireUserId();
-  return saveUrlMaterial(userId, url);
+  return saveUrlMaterial(userId, url, note);
+}
+
+/** 书签小工具送来的那一页：用浏览器里的正文存（要登录的页面也行）。 */
+export async function createClippedMaterial(input: { url: string; title: string; text: string; note: string }): Promise<CreateMaterialResult> {
+  const userId = await requireUserId();
+  const result = await saveClippedMaterial(userId, input);
+  revalidatePath("/materials");
+  return result;
 }
 
 export async function createFileMaterial(

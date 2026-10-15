@@ -7,6 +7,7 @@ import {
   listRealityMaterials,
 } from "./queries";
 import { MaterialInput } from "./material-input";
+import { ClipBookmarklet } from "./clip-bookmarklet";
 import {
   DEPARTMENT_LABELS,
   SOURCE_LABELS,
@@ -67,6 +68,7 @@ export default async function MaterialsPage({
       ) : (
         <>
           <MaterialInput initialUrl={sharedUrl} />
+          <ClipBookmarklet />
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {pending.length > 0 ? (
