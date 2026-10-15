@@ -57,7 +57,23 @@ export const ATLAS_CARRIERS = {
 } as const;
 export type AtlasCarrier = keyof typeof ATLAS_CARRIERS;
 
-export type AtlasSource = { url: string; title: string; excerpt: string };
+/** 三样说法：那边的日子、日本的日子（或没有）、在日本的结果。 */
+export const ATLAS_CLAIMS = ["origin", "japan", "outcome"] as const;
+export type AtlasClaim = (typeof ATLAS_CLAIMS)[number];
+export const CLAIM_LABELS: Record<AtlasClaim, string> = { origin: "那边什么时候有", japan: "日本什么时候有", outcome: "在日本的结果" };
+
+/** 一条原文。proves：裁判判它证明的是哪一样（null = 都证明不了）；没请裁判看过的没有这个字段。 */
+export type AtlasSource = { url: string; title: string; excerpt: string; proves?: AtlasClaim | null };
+
+export type JudgeStatus = "passed" | "failed" | "unavailable";
+
+/**
+ * 裁判看完每条原文以后，这一件过没过：三样里每一样都至少有一条原文被判"证明了它"才算过。
+ * 返回没被证明的那几样（空 = 过了）。
+ */
+export function unprovenClaims(sources: Pick<AtlasSource, "proves">[]): AtlasClaim[] {
+  return ATLAS_CLAIMS.filter((claim) => !sources.some((s) => s.proves === claim));
+}
 
 export type TransferCase = {
   id: string;
@@ -73,7 +89,15 @@ export type TransferCase = {
   lag_months: number | null;
   sources: AtlasSource[];
   found_via: "seed" | "research" | "recheck";
+  /** 裁判看没看过、过没过（迁移 074 之前、没判过为 null）。没过的不算进统计。 */
+  judge_status: JudgeStatus | null;
+  judge_note: string | null;
 };
+
+/** 算进统计的：没过裁判的不算（没判过、裁判不可用的照算，页面上标出来）。 */
+export function countedCases<T extends Pick<TransferCase, "judge_status">>(cases: T[]): T[] {
+  return cases.filter((c) => c.judge_status !== "failed");
+}
 
 /** "2018"、"2018-10"、"2018-10-05" 都认；认不出返回 null。只精确到月。 */
 export function monthIndex(date: string): number | null {

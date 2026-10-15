@@ -38,7 +38,7 @@ import {
 } from "@/lib/domains/signals/issue";
 import { disablePublicRecord, enablePublicRecord } from "@/lib/domains/signals/public-record";
 import { ensurePracticeBreakdown, saveBreakdownLeans, type Breakdown, type Lean } from "@/lib/domains/signals/breakdown";
-import { researchTransferCases, setCaseOutcome, type AtlasOutcome } from "@/lib/domains/signals/atlas";
+import { rejudgeTransferCases, researchTransferCases, setCaseOutcome, type AtlasOutcome } from "@/lib/domains/signals/atlas";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
@@ -241,6 +241,20 @@ export async function researchAtlasAction(
     return { ok: true, ...result };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没查成") };
+  }
+}
+
+/** 时差图谱：已经收进来、还没请裁判看过的，请裁判再看一遍。 */
+export async function rejudgeAtlasAction(): Promise<
+  { ok: true; judged: number; failed: number; unavailable: number } | { ok: false; message: string }
+> {
+  const userId = await requireUserId();
+  try {
+    const result = await rejudgeTransferCases(userId);
+    revalidatePath("/signals/atlas");
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没判成") };
   }
 }
 

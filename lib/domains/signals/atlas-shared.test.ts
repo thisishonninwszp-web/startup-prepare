@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseSentence, categoryBase, lagLabel, lagMonths, monthIndex, noUpgrade } from "./atlas-shared";
+import { baseSentence, categoryBase, countedCases, lagLabel, lagMonths, monthIndex, noUpgrade, unprovenClaims } from "./atlas-shared";
 
 describe("时差图谱", () => {
   it("monthIndex / lagMonths：年、年月、年月日都认；日本更早、认不出、没到的不算", () => {
@@ -41,5 +41,17 @@ describe("核实只许往更差改", () => {
     expect(noUpgrade("blocked", "niche")).toBe("blocked");
     expect(noUpgrade("widespread", "partial")).toBe("partial");
     expect(noUpgrade("niche", "exited")).toBe("exited");
+  });
+});
+
+describe("裁判过没过", () => {
+  it("unprovenClaims：三样里每一样都要有一条原文被判证明了它", () => {
+    expect(unprovenClaims([{ proves: "origin" }, { proves: "japan" }, { proves: "outcome" }, { proves: null }])).toEqual([]);
+    expect(unprovenClaims([{ proves: "japan" }, { proves: null }, {}])).toEqual(["origin", "outcome"]);
+  });
+
+  it("countedCases：没过裁判的不算，没判过、裁判不可用的照算", () => {
+    const cases = [{ judge_status: "passed" as const }, { judge_status: "failed" as const }, { judge_status: null }, { judge_status: "unavailable" as const }];
+    expect(countedCases(cases)).toHaveLength(3);
   });
 });

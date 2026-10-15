@@ -5756,3 +5756,11 @@ alter table signal_transfer_cases enable row level security;
 drop policy if exists "signal_transfer_cases_owner" on signal_transfer_cases;
 create policy "signal_transfer_cases_owner" on signal_transfer_cases
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 074：时差图谱请裁判（signal_transfer_cases.judge_status / judge_note）
+-- ============================================================================
+
+alter table signal_transfer_cases add column if not exists judge_status text
+  check (judge_status in ('passed', 'failed', 'unavailable'));
+alter table signal_transfer_cases add column if not exists judge_note text;

@@ -1,10 +1,29 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { proposeTransferCases, verifyTransferCase, type TransferDraft, type TransferVerification, type VerifiedTransfer } from "@/lib/ai";
+import {
+  judgeTransferEvidence,
+  proposeTransferCases,
+  verifyTransferCase,
+  type TransferClaims,
+  type TransferDraft,
+  type TransferVerification,
+  type VerifiedTransfer,
+} from "@/lib/ai";
 import { webSearch } from "@/lib/web-search";
 import { tokyoToday } from "./brief";
 import { listGapBoard } from "./gaps";
 import { mergeSources } from "./sources";
-import { ATLAS_OUTCOMES, lagMonths, noUpgrade, type AtlasOutcome, type TransferCase } from "./atlas-shared";
+import {
+  ATLAS_OUTCOMES,
+  CLAIM_LABELS,
+  lagMonths,
+  noUpgrade,
+  OUTCOME_DEFINITIONS,
+  unprovenClaims,
+  type AtlasOutcome,
+  type AtlasSource,
+  type JudgeStatus,
+  type TransferCase,
+} from "./atlas-shared";
 
 export * from "./atlas-shared";
 
@@ -15,6 +34,7 @@ export * from "./atlas-shared";
  */
 
 const MISSING_MIGRATION = "迁移 073 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/073_signal_transfer_cases.sql。";
+const MISSING_074 = "迁移 074 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/074_signal_transfer_judge.sql。";
 
 /** 每件搜几篇资料（每个搜索词）。 */
 const RESULTS_PER_QUERY = 3;
@@ -162,31 +182,112 @@ function toCase(r: Record<string, unknown>): TransferCase {
     lag_months: (r.lag_months as number | null) ?? null,
     sources: (r.sources as TransferCase["sources"]) ?? [],
     found_via: r.found_via as TransferCase["found_via"],
+    judge_status: (r.judge_status as JudgeStatus | null | undefined) ?? null,
+    judge_note: (r.judge_note as string | null | undefined) ?? null,
   };
 }
 
+/** 三样说法写成裁判看得懂的话。 */
+function claimsOf(c: {
+  origin: "china" | "us";
+  origin_event: string;
+  origin_date: string;
+  japan_event: string | null;
+  japan_date: string | null;
+  outcome: AtlasOutcome;
+}): TransferClaims {
+  return {
+    origin: `${c.origin === "china" ? "中国" : "美国"}在 ${c.origin_date}：${c.origin_event}`,
+    japan: c.japan_date ? `日本在 ${c.japan_date}：${c.japan_event ?? ""}` : "日本至今没有这样东西",
+    outcome: `它在日本的结果是——${OUTCOME_DEFINITIONS[c.outcome]}`,
+  };
+}
+
+/**
+ * 请裁判看一件的原文：每条标上证明的是哪一样，三样都有人证明才算过。
+ * 裁判不可用就原样返回、标"还没请裁判看过"。
+ */
+async function judgeCase(
+  claims: TransferClaims,
+  sources: AtlasSource[]
+): Promise<{ sources: AtlasSource[]; status: JudgeStatus; note: string | null }> {
+  const proves = await judgeTransferEvidence(
+    claims,
+    sources.map((s) => s.excerpt)
+  );
+  if (!proves) return { sources, status: "unavailable", note: null };
+  const judged = sources.map((s, i) => ({ ...s, proves: proves[i] }));
+  const unproven = unprovenClaims(judged);
+  return unproven.length === 0
+    ? { sources: judged, status: "passed", note: null }
+    : { sources: judged, status: "failed", note: `裁判看来，「${unproven.map((c) => CLAIM_LABELS[c]).join("」「")}」那几句原文证明不了` };
+}
+
+const CASE_COLUMNS =
+  "id, thing, category, origin, origin_event, origin_date, japan_event, japan_date, outcome, carrier, lag_months, sources, found_via";
+
 /** 图谱里的全部（按类别、时间差排）；表还没建返回 "missing-schema"。 */
 export async function listTransferCases(userId: string): Promise<TransferCase[] | "missing-schema"> {
-  const { data, error } = await supabaseAdmin
-    .from("signal_transfer_cases")
-    .select("id, thing, category, origin, origin_event, origin_date, japan_event, japan_date, outcome, carrier, lag_months, sources, found_via")
-    .eq("user_id", userId)
-    .order("category")
-    .order("lag_months", { ascending: true, nullsFirst: false });
-  if (error) {
+  // 074 没跑就不带裁判那两列再查一次
+  for (const columns of [`${CASE_COLUMNS}, judge_status, judge_note`, CASE_COLUMNS]) {
+    const { data, error } = await supabaseAdmin
+      .from("signal_transfer_cases")
+      .select(columns)
+      .eq("user_id", userId)
+      .order("category")
+      .order("lag_months", { ascending: true, nullsFirst: false });
+    if (!error) return ((data ?? []) as unknown as Record<string, unknown>[]).map(toCase);
+    if (/judge_/.test(error.message)) continue;
     if (/signal_transfer_cases/.test(error.message)) return "missing-schema";
     throw new Error(error.message);
   }
-  return (data ?? []).map((r) => toCase(r as Record<string, unknown>));
+  return "missing-schema";
 }
 
-async function verifyDraft(draft: TransferDraft): Promise<TransferVerification> {
+type Judged = { value: VerifiedTransfer; status: JudgeStatus; note: string | null };
+
+/** 搜、核实、请裁判。三样里有一样没被原文证明就不收（写清是哪一样）；裁判不可用照收、标出来。 */
+async function verifyDraft(draft: TransferDraft): Promise<{ ok: true; judged: Judged } | { ok: false; why: string }> {
   const found = await Promise.all(draft.queries.map((q) => webSearch(q, RESULTS_PER_QUERY).catch(() => [])));
   const sources = mergeSources(found, RESULTS_PER_QUERY * draft.queries.length);
-  return verifyTransferCase(draft, sources).catch((e): TransferVerification => {
+  const verified = await verifyTransferCase(draft, sources).catch((e): TransferVerification => {
     console.error("atlas verify failed", draft.thing, e);
     return { ok: false, why: "核实那一步出错了" };
   });
+  if (!verified.ok) return verified;
+  const v = verified.value;
+  const judged = await judgeCase(
+    claimsOf({ origin: v.origin, origin_event: v.originEvent, origin_date: v.originDate, japan_event: v.japanEvent, japan_date: v.japanDate, outcome: v.outcome }),
+    v.sources
+  );
+  if (judged.status === "failed") return { ok: false, why: judged.note ?? "裁判看来原文证明不了" };
+  return { ok: true, judged: { value: { ...v, sources: judged.sources }, status: judged.status, note: judged.note } };
+}
+
+/**
+ * 已经收进来、还没请裁判看过（或当时裁判不可用）的，请裁判再看一遍。没过的不删，标"没过裁判"、不算进统计。
+ */
+export async function rejudgeTransferCases(userId: string): Promise<{ judged: number; failed: number; unavailable: number }> {
+  const cases = await listTransferCases(userId);
+  if (cases === "missing-schema") throw new Error(MISSING_MIGRATION);
+  const todo = cases.filter((c) => c.judge_status === null || c.judge_status === "unavailable");
+  const results = await Promise.all(todo.map((c) => judgeCase(claimsOf(c), c.sources)));
+  for (const [i, r] of results.entries()) {
+    const { error } = await supabaseAdmin
+      .from("signal_transfer_cases")
+      .update({ sources: r.sources, judge_status: r.status, judge_note: r.note })
+      .eq("id", todo[i].id)
+      .eq("user_id", userId);
+    if (error) {
+      if (/judge_/.test(error.message)) throw new Error(MISSING_074);
+      throw new Error(error.message);
+    }
+  }
+  return {
+    judged: results.filter((r) => r.status !== "unavailable").length,
+    failed: results.filter((r) => r.status === "failed").length,
+    unavailable: results.filter((r) => r.status === "unavailable").length,
+  };
 }
 
 /**
@@ -243,11 +344,11 @@ export async function researchTransferCases(
   if (drafts.length === 0) return { tried: 0, kept: 0, dropped: [], corrected };
 
   const results = await Promise.all(drafts.map(verifyDraft));
-  const verified: VerifiedTransfer[] = results.flatMap((r) => (r.ok ? [r.value] : []));
+  const verified: Judged[] = results.flatMap((r) => (r.ok ? [r.judged] : []));
   const dropped = results.flatMap((r, i) => (r.ok ? [] : [{ thing: drafts[i].thing, why: r.why }]));
   if (verified.length > 0) {
     const { error } = await supabaseAdmin.from("signal_transfer_cases").upsert(
-      verified.map((v) => ({
+      verified.map(({ value: v, status, note }) => ({
         user_id: userId,
         thing: v.thing,
         category: v.category,
@@ -261,10 +362,15 @@ export async function researchTransferCases(
         lag_months: lagMonths(v.originDate, v.japanDate),
         sources: v.sources,
         found_via: mode === "seed" ? "seed" : fromRecheck.has(v.thing) ? "recheck" : "research",
+        judge_status: status,
+        judge_note: note,
       })),
       { onConflict: "user_id,thing", ignoreDuplicates: true }
     );
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (/judge_/.test(error.message)) throw new Error(MISSING_074);
+      throw new Error(error.message);
+    }
   }
   return { tried: drafts.length, kept: verified.length, dropped, corrected };
 }

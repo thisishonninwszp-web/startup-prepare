@@ -9,6 +9,8 @@ import {
   ATLAS_OUTCOMES,
   baseSentence,
   categoryBase,
+  CLAIM_LABELS,
+  countedCases,
   lagLabel,
   listTransferCases,
   missingSeeds,
@@ -17,7 +19,7 @@ import {
   type AtlasCategory,
   type TransferCase,
 } from "@/lib/domains/signals/atlas";
-import { OutcomeEditor, ResearchAtlasButton } from "./atlas-controls";
+import { OutcomeEditor, RejudgeButton, ResearchAtlasButton } from "./atlas-controls";
 
 export const dynamic = "force-dynamic";
 // 查一批要三四十秒，由这一页的 server action 跑
@@ -41,12 +43,21 @@ function CaseRow({ c }: { c: TransferCase }) {
         <span className="text-muted-foreground">日本{c.japan_date ? `（${c.japan_date}）` : ""}：</span>
         {c.japan_event ?? "至今没有"}
       </p>
+      {c.judge_status === "failed" && (
+        <p className="text-xs leading-6 text-verdict-learned">没过裁判：{c.judge_note ?? "原文证明不了"} —— 先不算进统计。</p>
+      )}
+      {(c.judge_status === null || c.judge_status === "unavailable") && (
+        <p className="text-xs leading-6 text-muted-foreground">这一件的原文还没请裁判看过。</p>
+      )}
       <OutcomeEditor id={c.id} outcome={c.outcome} />
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">原文（{c.sources.length} 处）</summary>
         <ul className="mt-1 space-y-1">
           {c.sources.map((s, i) => (
             <li key={i} className="text-muted-foreground">
+              {s.proves !== undefined && (
+                <span className="mr-1 font-mono">[{s.proves ? `证明：${CLAIM_LABELS[s.proves]}` : "裁判看来证明不了"}]</span>
+              )}
               「{s.excerpt}」
               <a href={s.url} target="_blank" rel="noopener noreferrer" className="ml-1 text-primary underline-offset-4 hover:underline">
                 {s.title || "来源"} ↗
@@ -89,6 +100,9 @@ export default async function AtlasPage() {
         <>
           <div className="mb-8 space-y-3">
             <ResearchAtlasButton mode={cases.length === 0 ? "seed" : "more"} />
+            {cases.some((c) => c.judge_status === null || c.judge_status === "unavailable") && (
+              <RejudgeButton count={cases.filter((c) => c.judge_status === null || c.judge_status === "unavailable").length} />
+            )}
             {cases.length > 0 && missingSeeds(cases).length > 0 && (
               <ResearchAtlasButton mode="seed" label={`重试没收进来的 ${missingSeeds(cases).length} 件样例（${missingSeeds(cases).join("、")}）`} />
             )}
@@ -102,16 +116,19 @@ export default async function AtlasPage() {
           {cases.length > 0 && (
             <>
               <section className="mb-10">
-                <h2 className="text-base font-semibold">按类别（{cases.length} 件）</h2>
+                <h2 className="text-base font-semibold">
+                  按类别（算进统计的 {countedCases(cases).length} 件
+                  {cases.length > countedCases(cases).length ? `，没过裁判的 ${cases.length - countedCases(cases).length} 件不算` : ""}）
+                </h2>
                 <ul className="mt-3 space-y-2 text-sm leading-7">
                   {(Object.keys(ATLAS_CATEGORIES) as AtlasCategory[])
-                    .filter((k) => cases.some((c) => c.category === k))
+                    .filter((k) => countedCases(cases).some((c) => c.category === k))
                     .map((k) => (
-                      <li key={k}>{baseSentence(k, categoryBase(cases.filter((c) => c.category === k)))}</li>
+                      <li key={k}>{baseSentence(k, categoryBase(countedCases(cases).filter((c) => c.category === k)))}</li>
                     ))}
                 </ul>
                 {(() => {
-                  const all = categoryBase(cases);
+                  const all = categoryBase(countedCases(cases));
                   return all.chinaCarried > 0 ? (
                     <p className="mt-3 text-xs leading-6 text-muted-foreground">
                       中国公司直接进日本的 {all.chinaCarried} 件里，退出了 {all.chinaExited} 件。谁带进来，常常比东西本身更决定结果。

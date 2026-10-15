@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ATLAS_OUTCOMES, type AtlasOutcome } from "@/lib/domains/signals/atlas-shared";
-import { researchAtlasAction, setCaseOutcomeAction } from "../actions";
+import { rejudgeAtlasAction, researchAtlasAction, setCaseOutcomeAction } from "../actions";
 
 /** 查一批（三四十秒）：空的时候从十件样例开始，之后再找几件。没收进来的写清卡在哪。 */
 export function ResearchAtlasButton({ mode, label }: { mode: "seed" | "more"; label?: string }) {
@@ -49,6 +49,37 @@ export function ResearchAtlasButton({ mode, label }: { mode: "seed" | "more"; la
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** 已经收进来、还没请裁判看过的，请裁判再看一遍（十几秒）。 */
+export function RejudgeButton({ count }: { count: number }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <div>
+      <Button
+        variant="outline"
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            setMessage(null);
+            const result = await rejudgeAtlasAction();
+            if (result.ok) {
+              setMessage(
+                `裁判看了 ${result.judged} 件，没过的 ${result.failed} 件（不删，先不算进统计）` +
+                  (result.unavailable > 0 ? `；${result.unavailable} 件这次裁判没调通，过会儿再点一次。` : "。")
+              );
+              router.refresh();
+            } else setMessage(result.message);
+          })
+        }
+      >
+        {pending ? "裁判在一条条看原文……十几秒" : `请裁判把已收的再看一遍（${count} 件）`}
+      </Button>
+      {message && <p className="mt-2 text-sm text-muted-foreground">{message}</p>}
     </div>
   );
 }

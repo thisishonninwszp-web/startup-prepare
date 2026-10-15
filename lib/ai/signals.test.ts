@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1244,5 +1244,23 @@ describe("时差图谱：候选和核实", () => {
     expect(up.ok && up.value.outcome).toBe("niche");
     const down = verify("exited");
     expect(down.ok && down.value.outcome).toBe("exited");
+  });
+});
+
+describe("时差图谱请裁判", () => {
+  const result = (answers: Record<string, unknown>) => ({ model: "jev", answers, usage: { input_tokens: 1, output_tokens: 1 } });
+  const answer = (p: number[]) => ({ type: "score", score: 0, confidence: 0.5, probabilities: Object.fromEntries(p.map((v, i) => [String(i), v])) });
+
+  it("parseTransferProves：概率最高、过了门槛的那一样才算证明；最高是都证明不了、或拿不准的算 null", () => {
+    const proves = parseTransferProves(
+      result({
+        e_0: answer([0.1, 0.8, 0.05, 0.05]),
+        e_1: answer([0.7, 0.1, 0.1, 0.1]),
+        e_2: answer([0.2, 0.1, 0.3, 0.4]),
+        e_3: answer([0.05, 0.05, 0.05, 0.85]),
+      }),
+      5
+    );
+    expect(proves).toEqual(["origin", null, null, "outcome", null]);
   });
 });

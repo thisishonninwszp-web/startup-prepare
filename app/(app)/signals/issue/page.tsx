@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { getIssue, issueCandidates, issueCounts, listIssues, weekStartOf } from "@/lib/domains/signals/issue";
 import { getPublicToken } from "@/lib/domains/signals/public-record";
-import { ATLAS_CATEGORIES, categoryBase, listTransferCases, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas";
+import { ATLAS_CATEGORIES, categoryBase, countedCases, listTransferCases, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas";
 import { IssueComposer } from "./issue-composer";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export default async function IssuePage() {
     cases === "missing-schema" || cases.length === 0
       ? null
       : (Object.fromEntries(
-          (Object.keys(ATLAS_CATEGORIES) as AtlasCategory[]).map((k) => [k, categoryBase(cases.filter((c) => c.category === k))])
+          (Object.keys(ATLAS_CATEGORIES) as AtlasCategory[]).map((k) => [k, categoryBase(countedCases(cases).filter((c) => c.category === k))])
         ) as Record<AtlasCategory, CategoryBase>);
   const earlier = past.filter((p) => p.week_start !== weekStart);
 

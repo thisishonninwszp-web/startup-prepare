@@ -10,6 +10,8 @@ import {
   monthIndex,
   noUpgrade,
   OUTCOME_DEFINITIONS,
+  ATLAS_CLAIMS,
+  type AtlasClaim,
   type AtlasCarrier,
   type AtlasCategory,
   type AtlasOutcome,
@@ -2663,6 +2665,55 @@ export async function verifyTransferCase(draft: TransferDraft, sources: SearchSo
     }),
     (value) => parseTransferVerification(value, draft, sources)
   );
+}
+
+/** 裁判判一条原文证明的是哪一样：概率最高的那一项过了门槛才算。 */
+const PROVES_ABOVE = 0.5;
+
+/** 每条原文：四个选项（都证明不了 / 那边的日子 / 日本的日子 / 结果）里概率最高的那个，过了门槛才算证明。 */
+export function parseTransferProves(result: JevResult, count: number): (AtlasClaim | null)[] {
+  return Array.from({ length: count }, (_, i) => {
+    const probs = (result.answers[`e_${i}`] as { probabilities?: Record<string, unknown> } | undefined)?.probabilities ?? {};
+    const values = [0, 1, 2, 3].map((k) => {
+      const v = probs[String(k)];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+    const top = values.indexOf(Math.max(...values));
+    return top > 0 && values[top] > PROVES_ABOVE ? ATLAS_CLAIMS[top - 1] : null;
+  });
+}
+
+/** 这一件的三样说法，写成裁判看得懂的话。 */
+export type TransferClaims = Record<AtlasClaim, string>;
+
+/**
+ * 每条原文请 Jev 判：它证明的是三样说法里的哪一样，还是都证明不了。
+ * 原文逐字核对只保证"这句话在网页上"；证明没证明，要另一个模型独立看。
+ * 返回每条原文证明的那一样（null = 都证明不了）；裁判不可用返回 null（调用方标"还没请裁判看过"）。
+ */
+export async function judgeTransferEvidence(claims: TransferClaims, excerpts: string[]): Promise<(AtlasClaim | null)[] | null> {
+  if (excerpts.length === 0) return [];
+  const options = ["都证明不了：说的是别的事，或者只是沾边", `能证明：${claims.origin}`, `能证明：${claims.japan}`, `能证明：${claims.outcome}`];
+  const questions: Record<string, JevQuestion> = {};
+  excerpts.forEach((_, i) => {
+    questions[`e_${i}`] = {
+      type: "score",
+      instructions: `[${i}] 这一句原文，直接写着下面哪一样？只写着同一年、同一家公司，却没写那件事本身的，算都证明不了。`,
+      criteria: options,
+    };
+  });
+  const state = [
+    `三样说法：\n1. ${claims.origin}\n2. ${claims.japan}\n3. ${claims.outcome}`,
+    excerpts.map((e, i) => `[${i}] 「${e}」`).join("\n"),
+  ].join("\n\n");
+  try {
+    return await executeJev({ operation: "atlas_judge", module: "unknown", timeoutMs: 30_000 }, { state, questions }, (result) =>
+      parseTransferProves(result, excerpts.length)
+    );
+  } catch (e) {
+    console.error("atlas judge failed", e);
+    return null;
+  }
 }
 
 // ── 判断前的拆解卡：给地图，不给方向 ───────────────────────────────────────
