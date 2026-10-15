@@ -271,6 +271,10 @@ export default async function JapanGapsPage() {
         <Link href="/signals/issue" className="text-primary underline-offset-4 hover:underline">
           挑几条、写上你的判断，整理成这周的周刊发出去 →
         </Link>
+        <span className="mx-2 text-muted-foreground">·</span>
+        <Link href="/signals/atlas" className="text-primary underline-offset-4 hover:underline">
+          时差图谱：这类东西以前多久到日本 →
+        </Link>
       </p>
 
       <h2 className="mb-4 text-xl font-semibold">中国有、日本还没有</h2>

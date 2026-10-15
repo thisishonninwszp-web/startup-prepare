@@ -5727,3 +5727,32 @@ alter table signal_public_records enable row level security;
 drop policy if exists "signal_public_records_owner" on signal_public_records;
 create policy "signal_public_records_owner" on signal_public_records
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 073：时差图谱（signal_transfer_cases）
+-- ============================================================================
+
+create table if not exists signal_transfer_cases (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users (id) on delete cascade,
+  thing         text not null,
+  category      text not null check (category in ('payment', 'mobility', 'commerce', 'food', 'content', 'work', 'hardware', 'other')),
+  origin        text not null check (origin in ('china', 'us')),
+  origin_event  text not null,
+  origin_date   text not null,
+  japan_event   text,
+  japan_date    text,
+  outcome       text not null check (outcome in ('widespread', 'partial', 'niche', 'exited', 'blocked', 'absent')),
+  carrier       text not null check (carrier in ('local', 'us', 'china', 'other', 'none')),
+  lag_months    integer,
+  sources       jsonb not null,
+  found_via     text not null check (found_via in ('seed', 'research', 'recheck')),
+  created_at    timestamptz not null default now(),
+  constraint signal_transfer_cases_uniq unique (user_id, thing)
+);
+
+alter table signal_transfer_cases enable row level security;
+
+drop policy if exists "signal_transfer_cases_owner" on signal_transfer_cases;
+create policy "signal_transfer_cases_owner" on signal_transfer_cases
+  for all using (auth.uid() = user_id);

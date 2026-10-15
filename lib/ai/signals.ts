@@ -3,6 +3,16 @@ import { FIRST_INQUIRY_QUESTION } from "./core";
 import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/lib/ai-gateway";
 import { MODEL, generateContent } from "./shared";
 import { INFERENCE_LENSES, TIER_VALUE, type InferenceBasis, type InferenceLens } from "@/lib/domains/signals/inference-shared";
+import {
+  ATLAS_CARRIERS,
+  ATLAS_CATEGORIES,
+  ATLAS_OUTCOMES,
+  monthIndex,
+  type AtlasCarrier,
+  type AtlasCategory,
+  type AtlasOutcome,
+  type AtlasSource,
+} from "@/lib/domains/signals/atlas-shared";
 
 // ---------------------------------------------------------------------------
 // 外部雷达（Phase D）：把 Tavily 检索结果嚼成对抗管线的原料（不做 feed、不排名）
@@ -2462,6 +2472,181 @@ export async function extractStepEvidence(claim: string, sources: SearchSource[]
       },
     }),
     (value) => parseStepEvidence(value, sources)
+  );
+}
+
+// ── 时差图谱：那边先有，什么时候到了日本 ─────────────────────────────────────
+
+export type TransferDraft = {
+  thing: string;
+  category: AtlasCategory;
+  origin: "china" | "us";
+  originEvent: string;
+  originDate: string;
+  japanEvent: string | null;
+  japanDate: string | null;
+  outcome: AtlasOutcome;
+  carrier: AtlasCarrier;
+  /** 核实用的搜索词：那边的日子、日本的日子、在日本的结果。 */
+  queries: string[];
+};
+
+const transferProposePrompt = (count: number, mustInclude: string[]) => `你帮他攒一张"时差图谱"：一样东西在中国或美国先出现，后来什么时候到了日本（或没到）、在日本的结果怎样、是谁带进来的。
+${mustInclude.length > 0 ? `下面这几样一定要写（他的清单里重查发现日本已经有了）：\n${mustInclude.map((t) => `- ${t}`).join("\n")}\n` : ""}再另外提 ${count} 件"已经有的"里面没有的。挑法：
+- 各个类别都要有。别只挑有名的成功案例 —— 退出的、被法规卡住的、至今没到的同样重要（只挑成功的就是幸存者偏差）。
+- 只挑你很确定真实发生过、网上查得到的。
+
+每件写：
+- thing：东西的名字，中文，短（例："扫码支付""共享充电宝"）。
+- category：${Object.keys(ATLAS_CATEGORIES).join(" / ")}。
+- origin：china / us。
+- originEvent：那边是哪件事让它出现或普及的，具体到公司。
+- originDate：YYYY、YYYY-MM 或 YYYY-MM-DD。
+- japanEvent：日本是哪件事，具体到公司或服务名；至今没有就写空字符串。
+- japanDate：格式同上；至今没有写空字符串。
+- outcome：${Object.keys(ATLAS_OUTCOMES).join(" / ")}（普及了 / 部分普及 / 小规模 / 进来又退出了 / 被法规卡住 / 至今没有）。
+- carrier：${Object.keys(ATLAS_CARRIERS).join(" / ")}（谁把它带进日本：日本公司 / 美国公司 / 中国公司 / 别的 / 还没人带进来）。
+- queries：2 到 3 个搜索词，分别核实那边的日子、日本的日子、在日本的结果；用对应国家的语言，带年份和公司名。
+叙述用中文。
+
+只输出 JSON：{"cases":[{"thing":"…","category":"payment","origin":"china","originEvent":"…","originDate":"2014","japanEvent":"…","japanDate":"2018-10","outcome":"widespread","carrier":"local","queries":["…","…"]}]}`;
+
+function pickKey<T extends string>(raw: unknown, keys: readonly T[]): T | null {
+  return typeof raw === "string" && (keys as readonly string[]).includes(raw) ? (raw as T) : null;
+}
+
+/** 类别、结果、日子格式都要对；日本没日子的只能是"至今没有"或"被卡住"，有日子的不能是"至今没有"。已经有的、重复的丢掉。 */
+export function parseTransferDrafts(value: unknown, existing: string[]): TransferDraft[] {
+  const raw = (value as { cases?: unknown } | null)?.cases;
+  if (!Array.isArray(raw)) throw new Error("缺少 cases");
+  const seen = new Set(existing.map((t) => t.trim()));
+  const out: TransferDraft[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const str = (k: string) => (typeof v[k] === "string" ? (v[k] as string).trim() : "");
+    const thing = str("thing").slice(0, 30);
+    const category = pickKey(v.category, Object.keys(ATLAS_CATEGORIES) as AtlasCategory[]);
+    const origin = pickKey(v.origin, ["china", "us"] as const);
+    const outcome = pickKey(v.outcome, Object.keys(ATLAS_OUTCOMES) as AtlasOutcome[]);
+    const carrier = pickKey(v.carrier, Object.keys(ATLAS_CARRIERS) as AtlasCarrier[]);
+    const originDate = str("originDate");
+    const japanDate = str("japanDate") || null;
+    const queries = (Array.isArray(v.queries) ? v.queries : [])
+      .filter((q): q is string => typeof q === "string" && !!q.trim())
+      .map((q) => q.trim().slice(0, 120))
+      .slice(0, 3);
+    if (!thing || !category || !origin || !outcome || !carrier || !str("originEvent") || queries.length === 0) continue;
+    if (monthIndex(originDate) === null || (japanDate !== null && monthIndex(japanDate) === null)) continue;
+    if (japanDate === null && outcome !== "absent" && outcome !== "blocked") continue;
+    if (japanDate !== null && outcome === "absent") continue;
+    if (seen.has(thing)) continue;
+    seen.add(thing);
+    out.push({
+      thing,
+      category,
+      origin,
+      originEvent: str("originEvent"),
+      originDate,
+      japanEvent: str("japanEvent") || null,
+      japanDate,
+      outcome,
+      carrier,
+      queries,
+    });
+  }
+  assertNoBanned(out.flatMap((d) => [d.thing, d.originEvent, d.japanEvent ?? ""]).filter(Boolean));
+  return out;
+}
+
+/** 提几件候选（还没核实）。mustInclude 是清单里重查发现"日本有了"的那几样。 */
+export async function proposeTransferCases(input: { count: number; mustInclude: string[]; existing: string[] }): Promise<TransferDraft[]> {
+  const contents = input.existing.length > 0 ? `已经有的：${input.existing.join("、")}` : "已经有的：（还没有）";
+  return executeAiJson(
+    { operation: "atlas_propose", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验：类别、结果、谁带进来的只能用规定的几个词，日子要写成 YYYY / YYYY-MM / YYYY-MM-DD。" : ""),
+      config: {
+        systemInstruction: transferProposePrompt(input.count, input.mustInclude),
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 6000,
+      },
+    }),
+    (value) => parseTransferDrafts(value, input.existing)
+  );
+}
+
+export type VerifiedTransfer = Omit<TransferDraft, "queries"> & { sources: AtlasSource[] };
+
+const TRANSFER_VERIFY_PROMPT = `你在核实一件"那边先有、后来到了日本（或没到）"的事。下面是它记的三样说法，和上网搜到的资料。
+
+输出三样：
+- origin：{"date":"…","basis":[{"source":资料编号,"excerpt":"逐字原文"}]}。资料里确实写着那边这件事和时间才算；时间和资料不一样就按资料改（YYYY / YYYY-MM / YYYY-MM-DD）；对不上 basis 给空数组。
+- japan：{"date":"…","event":"…","basis":[…]}。同上。它说"日本至今没有"的，资料里要明确写着日本没有、还没上线、被禁止才算；资料里没提到不等于没有 —— 那种情况 basis 给空数组。
+- outcome：{"value":"…","basis":[…]}。在日本的结果，资料里看得出来才算（用户数、撤退、法规限制、店数……）；按资料可以改成别的档（${Object.keys(ATLAS_OUTCOMES).join(" / ")}）。
+
+basis 逐字照抄资料原文（不翻译、不改字，15 到 150 字）。不要编资料里没有的事实。
+
+只输出 JSON：{"origin":{"date":"…","basis":[]},"japan":{"date":"…","event":"…","basis":[]},"outcome":{"value":"…","basis":[]}}`;
+
+/**
+ * 三样都要有逐字对得上的原文：那边的日子、日本的日子（或明确写着没有）、在日本的结果。缺一样整件不收（返回 null）。
+ * 日子按资料改过的用改过的；日本没日子的只能是"至今没有"或"被卡住"。
+ */
+export function parseTransferVerification(value: unknown, draft: TransferDraft, sources: SearchSource[]): VerifiedTransfer | null {
+  const v = (value ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  const originBasis = verifiedBasis(v.origin?.basis, sources);
+  const japanBasis = verifiedBasis(v.japan?.basis, sources);
+  const outcomeBasis = verifiedBasis(v.outcome?.basis, sources);
+  if (originBasis.length === 0 || japanBasis.length === 0 || outcomeBasis.length === 0) return null;
+  const originDate = typeof v.origin?.date === "string" && monthIndex(v.origin.date.trim()) !== null ? v.origin.date.trim() : draft.originDate;
+  const rawJapan = typeof v.japan?.date === "string" ? v.japan.date.trim() : "";
+  const japanDate = rawJapan && monthIndex(rawJapan) !== null ? rawJapan : rawJapan ? draft.japanDate : null;
+  const outcome = pickKey(v.outcome?.value, Object.keys(ATLAS_OUTCOMES) as AtlasOutcome[]) ?? draft.outcome;
+  if (japanDate === null && outcome !== "absent" && outcome !== "blocked") return null;
+  if (japanDate !== null && outcome === "absent") return null;
+  const japanEvent = typeof v.japan?.event === "string" && v.japan.event.trim() ? v.japan.event.trim() : draft.japanEvent;
+  const seen = new Set<string>();
+  const all = [...originBasis, ...japanBasis, ...outcomeBasis].filter((b) => !seen.has(b.excerpt) && seen.add(b.excerpt));
+  return {
+    thing: draft.thing,
+    category: draft.category,
+    origin: draft.origin,
+    originEvent: draft.originEvent,
+    originDate,
+    japanEvent: japanDate === null ? null : japanEvent,
+    japanDate,
+    outcome,
+    carrier: japanDate === null && outcome === "absent" ? "none" : draft.carrier,
+    sources: all,
+  };
+}
+
+export async function verifyTransferCase(draft: TransferDraft, sources: SearchSource[]): Promise<VerifiedTransfer | null> {
+  if (sources.length === 0) return null;
+  const contents = [
+    `东西：${draft.thing}`,
+    `那边（${draft.origin === "china" ? "中国" : "美国"}）：${draft.originEvent}，${draft.originDate}`,
+    `日本：${draft.japanDate ? `${draft.japanEvent ?? ""}，${draft.japanDate}` : "至今没有"}`,
+    `在日本的结果：${draft.outcome}`,
+    "",
+    sources.map((src, j) => `[资料 ${j + 1}] ${src.title}\n${src.url}\n${src.content.slice(0, 1200)}`).join("\n\n"),
+  ].join("\n");
+  return executeAiJson(
+    { operation: "atlas_verify", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验。basis 必须逐字照抄资料原文，source 是资料编号。" : ""),
+      config: {
+        systemInstruction: TRANSFER_VERIFY_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2000,
+      },
+    }),
+    (value) => parseTransferVerification(value, draft, sources)
   );
 }
 

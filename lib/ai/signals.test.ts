@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1158,5 +1158,69 @@ describe("判断前的拆解卡：给地图，不给方向", () => {
     expect(now[0].basis[0].url).toBe("https://example.gov/pce");
     expect(now[1].now).toBe("没查到现在的情况。");
     expect(now[2]).toEqual({ now: "没查到现在的情况。", basis: [] });
+  });
+});
+
+describe("时差图谱：候选和核实", () => {
+  const draft = (over: Record<string, unknown> = {}) => ({
+    thing: "扫码支付",
+    category: "payment",
+    origin: "china",
+    originEvent: "支付宝推广线下扫码",
+    originDate: "2014",
+    japanEvent: "PayPay 上线",
+    japanDate: "2018-10-05",
+    outcome: "widespread",
+    carrier: "local",
+    queries: ["PayPay 2018年10月5日"],
+    ...over,
+  });
+
+  it("parseTransferDrafts：类别、日子格式不对的、日本没日子却说普及了的、已经有的都丢掉", () => {
+    const out = parseTransferDrafts(
+      {
+        cases: [
+          draft(),
+          draft({ thing: "A", category: "fintech" }),
+          draft({ thing: "B", originDate: "很早以前" }),
+          draft({ thing: "C", japanDate: "", outcome: "widespread" }),
+          draft({ thing: "D", japanDate: "2020", outcome: "absent" }),
+          draft({ thing: "网约车", japanDate: "", outcome: "blocked" }),
+          draft({ thing: "共享充电宝" }),
+        ],
+      },
+      ["共享充电宝"]
+    );
+    expect(out.map((d) => d.thing)).toEqual(["扫码支付", "网约车"]);
+    expect(out[1].japanDate).toBeNull();
+  });
+
+  it("parseTransferVerification：三样都要有对得上的原文；日子按资料改；缺一样整件不收", () => {
+    const sources = [
+      { title: "PayPay", url: "https://example.jp/p", content: "PayPayは2018年10月5日にサービスを開始した。登録ユーザー数は7000万人を突破した。" },
+      { title: "虎嗅", url: "https://example.cn/h", content: "2014年底好德、可的、联华等多家商户都开通了支付宝扫码支付。" },
+    ];
+    const d = parseTransferDrafts({ cases: [draft()] }, [])[0];
+    const ok = parseTransferVerification(
+      {
+        origin: { date: "2014-12", basis: [{ source: 2, excerpt: "多家商户都开通了支付宝扫码支付" }] },
+        japan: { date: "2018-10-05", event: "PayPay 上线", basis: [{ source: 1, excerpt: "PayPayは2018年10月5日にサービスを開始した" }] },
+        outcome: { value: "widespread", basis: [{ source: 1, excerpt: "登録ユーザー数は7000万人を突破した" }] },
+      },
+      d,
+      sources
+    );
+    expect(ok?.originDate).toBe("2014-12");
+    expect(ok?.sources).toHaveLength(3);
+    const missing = parseTransferVerification(
+      {
+        origin: { date: "2014", basis: [{ source: 2, excerpt: "多家商户都开通了支付宝扫码支付" }] },
+        japan: { date: "2018-10-05", basis: [{ source: 1, excerpt: "PayPayは2018年10月5日にサービスを開始した" }] },
+        outcome: { value: "widespread", basis: [] },
+      },
+      d,
+      sources
+    );
+    expect(missing).toBeNull();
   });
 });

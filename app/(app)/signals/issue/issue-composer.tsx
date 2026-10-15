@@ -26,6 +26,7 @@ import {
   type PickStance,
 } from "@/lib/domains/signals/issue-shared";
 import type { IssueCandidate } from "@/lib/domains/signals/issue";
+import { ATLAS_CATEGORIES, baseSentence, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas-shared";
 import { addIssuePublishAction, addIssueResponseAction, composeIssueAction, setPublicRecordAction } from "../actions";
 
 const OUTCOME = { pending: "还在等", hit: "对了", miss: "错了" } as const;
@@ -88,7 +89,8 @@ function OptionRow<K extends string>({
   );
 }
 
-type PickInput = { stance: Partial<PickStance>; note: string };
+/** category 只在页面上用（点了就显示同一类的先例），不存。 */
+type PickInput = { stance: Partial<PickStance>; note: string; category?: AtlasCategory };
 
 function DraftPanel({
   body,
@@ -191,7 +193,10 @@ export function IssueComposer({
   bets,
   initial,
   publicToken,
+  atlasBases,
 }: {
+  /** 时差图谱里每一类的基准（图谱还没建为 null）。 */
+  atlasBases: Record<AtlasCategory, CategoryBase> | null;
   gaps: IssueCandidate[];
   bets: IssueBet[];
   initial: Issue | null;
@@ -286,6 +291,24 @@ export function IssueComposer({
                   </Button>
                   {on && (
                     <div className="mt-3 space-y-2">
+                      {atlasBases && g.here === "日本" && (
+                        <>
+                          <OptionRow
+                            label="先看先例：这属于哪一类？"
+                            options={ATLAS_CATEGORIES}
+                            value={picked[k].category}
+                            onChange={(v) => update(k, { category: v })}
+                          />
+                          {picked[k].category && (
+                            <p className="text-sm leading-7 text-muted-foreground">
+                              {baseSentence(picked[k].category!, atlasBases[picked[k].category!])}
+                              <a href="/signals/atlas" target="_blank" className="ml-1 text-primary underline-offset-4 hover:underline">
+                                看是哪几件 ↗
+                              </a>
+                            </p>
+                          )}
+                        </>
+                      )}
                       <OptionRow
                         label={`${STANCE_YEARS} 年内${g.here}会不会出现？`}
                         options={STANCE_OPTIONS}

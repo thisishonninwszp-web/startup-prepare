@@ -38,6 +38,7 @@ import {
 } from "@/lib/domains/signals/issue";
 import { disablePublicRecord, enablePublicRecord } from "@/lib/domains/signals/public-record";
 import { ensurePracticeBreakdown, saveBreakdownLeans, type Breakdown, type Lean } from "@/lib/domains/signals/breakdown";
+import { researchTransferCases } from "@/lib/domains/signals/atlas";
 import type { GapTransfer } from "@/lib/domains/signals/gaps-shared";
 import { generateDigest, generateDigestDetail } from "@/lib/domains/signals/digest";
 import { generateWeekly } from "@/lib/domains/signals/weekly";
@@ -224,6 +225,18 @@ export async function submitJudgmentAction(input: {
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "判断没存上") };
+  }
+}
+
+/** 时差图谱：查一批、只存核实过的（三四十秒）。seed：从十件样例开始；more：再找几件。 */
+export async function researchAtlasAction(mode: "seed" | "more"): Promise<{ ok: true; tried: number; kept: number } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const result = await researchTransferCases(userId, mode === "seed" ? "seed" : "more");
+    revalidatePath("/signals/atlas");
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没查成") };
   }
 }
 
