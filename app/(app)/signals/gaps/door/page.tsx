@@ -28,10 +28,10 @@ export default async function FakeDoorEditPage({ searchParams }: { searchParams:
   const signalId = searchParams.signal ?? "";
   if (!side || !/^[0-9a-f-]{36}$/i.test(signalId)) notFound();
 
-  const [gap, door] = await Promise.all([findJapanGap(user.id, signalId, side), getFakeDoor(user.id, signalId, side)]);
+  const [gap, door] = await Promise.all([findJapanGap(user.id, signalId, side), getFakeDoor(user.id, { kind: "gap", signalId, side })]);
   if (!gap) notFound();
   const { here } = gapPlaces(side);
-  const signups = door && door !== "missing-schema" ? await listDoorSignups(user.id, door.id) : [];
+  const signups = door && typeof door !== "string" ? await listDoorSignups(user.id, door.id) : [];
 
   return (
     <PageContainer width="narrow">
@@ -46,13 +46,13 @@ export default async function FakeDoorEditPage({ searchParams }: { searchParams:
         description={`给「${gap.headline}」做一页准备中的服务，写明预计价格，看${here}的陌生人愿不愿意留邮箱。没有人脉时，这是「愿付钱」最近的证据；留了邮箱的人，就是你可以约来聊 15 分钟的人。`}
       />
 
-      {door === "missing-schema" ? (
+      {typeof door === "string" ? (
         <p className="text-sm leading-7 text-muted-foreground">
           还差一步：迁移 076 没跑。执行 supabase/migrations/076_signal_fake_doors.sql 之后再来。
         </p>
       ) : (
         <>
-          <DoorEditor signalId={signalId} side={side} here={here} door={door} />
+          <DoorEditor target={{ kind: "gap", signalId, side }} readers={`${here}的陌生人`} door={door} />
           {door && (
             <section className="mt-10">
               <h2 className="text-base font-semibold">留了邮箱的人（{signups.length}）</h2>

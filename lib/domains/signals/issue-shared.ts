@@ -162,6 +162,8 @@ export type IssuePick = {
   judgment: string;
   /** 原文链接（押进账本时带上）。 */
   url?: string | null;
+  /** 日本人为这件麻烦自己会搜的说法（"听一听"时查过才有，只给日本这边）：note 版的标题用上它。 */
+  searchPhrases?: string[];
 };
 
 /** 公开对账的一条：押过什么、结果。 */
@@ -290,9 +292,40 @@ export const DOOR_LINKS_LEAD =
  */
 export function withDoorLinks(text: string, links: { title: string; url: string }[]): string {
   if (links.length === 0) return text;
-  const block = `${DOOR_LINKS_LEAD}\n${links.map((l) => `・${l.title} ${l.url}`).join("\n")}`;
-  const at = text.lastIndexOf("\n\n出典：");
+  return beforeSources(text, `${DOOR_LINKS_LEAD}\n${links.map((l) => `・${l.title} ${l.url}`).join("\n")}`, "ja");
+}
+
+/** 一段插在出处 / 出典之前（结尾那句之后）；没有出处就放最后。 */
+function beforeSources(text: string, block: string, lang: "zh" | "ja"): string {
+  const at = text.lastIndexOf(lang === "zh" ? "\n\n出处：" : "\n\n出典：");
   return at === -1 ? `${text}\n\n${block}` : `${text.slice(0, at)}\n\n${block}${text.slice(at)}`;
+}
+
+/** 周刊付费版的那一句（代码加）。 */
+export const ISSUE_DOOR_LINE = {
+  zh: "这份周刊在筹备付费版。有兴趣的话，可以在这里留个邮箱（现在不收钱）：",
+  ja: "この週刊の有料版を準備しています。興味のある方は、こちらからメールアドレスを登録できます（まだお金はかかりません）：",
+} as const;
+
+/** 长文加上周刊付费版的登记页链接（显示时加，不存进稿子；没开着就原样返回）。 */
+export function withIssueDoorLink(text: string, url: string | null, lang: "zh" | "ja"): string {
+  return url ? beforeSources(text, `${ISSUE_DOOR_LINE[lang]}${url}`, lang) : text;
+}
+
+/** 搜索词里的站名不算"说法"（「〇〇 困る 知恵袋」里的知恵袋）。 */
+const PHRASE_NOISE = new Set(["知恵袋", "教えて!goo", "教えてgoo", "note", "X", "Twitter", "知乎", "小红书", "豆瓣", "贴吧"]);
+
+/**
+ * 标题有没有用上日本人自己搜的说法：一个说法里至少两个词（只有一个词就那一个）出现在某个标题里，算用上了。
+ * 返回用上了的那几个说法。只用来提醒他，不拦着发。
+ */
+export function phraseHits(titles: string[], phrases: string[]): string[] {
+  return phrases.filter((phrase) => {
+    const words = phrase.split(/[\s　]+/).filter((w) => w.length >= 2 && !PHRASE_NOISE.has(w));
+    if (words.length === 0) return false;
+    const need = Math.min(2, words.length);
+    return titles.some((t) => words.filter((w) => t.includes(w)).length >= need);
+  });
 }
 
 /** 发了几处、回应几条、几个人想聊。只数次数。 */

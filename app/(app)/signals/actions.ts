@@ -32,6 +32,7 @@ import {
   draftFakeDoorContent,
   saveFakeDoor,
   setFakeDoorOpen,
+  validTarget,
   type FakeDoor,
   type FakeDoorDraft,
 } from "@/lib/domains/signals/fake-door";
@@ -707,30 +708,29 @@ export async function analyzeGapVoicesAction(
   }
 }
 
-/** 假门测试：AI 起草那一页的文字（十几秒）。 */
-export async function draftFakeDoorAction(
-  signalId: string,
-  side: GapSide
-): Promise<{ ok: true; draft: FakeDoorDraft } | { ok: false; message: string }> {
+/** 假门测试：AI 起草那一页的文字（十几秒）。target：差距的某一条，或者周刊本身。 */
+export async function draftFakeDoorAction(target: unknown): Promise<{ ok: true; draft: FakeDoorDraft } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    return { ok: true, draft: await draftFakeDoorContent(userId, signalId, side) };
+    const t = validTarget(target);
+    if (!t) throw new Error("不认识这一页");
+    return { ok: true, draft: await draftFakeDoorContent(userId, t) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没起草成") };
   }
 }
 
 /** 假门测试：发布（第一次生成链接）或改文字。 */
-export async function saveFakeDoorAction(
-  signalId: string,
-  side: GapSide,
-  content: unknown
-): Promise<{ ok: true; door: FakeDoor } | { ok: false; message: string }> {
+export async function saveFakeDoorAction(target: unknown, content: unknown): Promise<{ ok: true; door: FakeDoor } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    const door = await saveFakeDoor(userId, signalId, side, content);
+    const t = validTarget(target);
+    if (!t) throw new Error("不认识这一页");
+    const door = await saveFakeDoor(userId, t, content);
     revalidatePath("/signals/gaps");
     revalidatePath("/signals/gaps/door");
+    revalidatePath("/signals/issue");
+    revalidatePath("/signals/issue/door");
     return { ok: true, door };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没存上") };
@@ -744,6 +744,8 @@ export async function setFakeDoorOpenAction(doorId: string, open: boolean): Prom
     await setFakeDoorOpen(userId, doorId, open);
     revalidatePath("/signals/gaps");
     revalidatePath("/signals/gaps/door");
+    revalidatePath("/signals/issue");
+    revalidatePath("/signals/issue/door");
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没改成") };
@@ -757,6 +759,7 @@ export async function deleteDoorSignupAction(signupId: string): Promise<{ ok: tr
     await deleteDoorSignup(userId, signupId);
     revalidatePath("/signals/gaps/door");
     revalidatePath("/signals/gaps");
+    revalidatePath("/signals/issue/door");
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没删掉") };

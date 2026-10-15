@@ -2938,9 +2938,19 @@ export type IssueComposeInput = {
     funded?: { company: string };
     conditions?: { name: string; holds: "yes" | "no" | "unclear"; here: string }[];
     judgment: string;
+    /** 日本人为这件麻烦自己会搜的说法（只给日文版：标题和小标题用上，有痛的人一搜就能搜到）。 */
+    searchPhrases?: string[];
   }[];
   bets: { question: string; judgment: string; outcome: "pending" | "hit" | "miss"; made_on: string; due_on: string }[];
 };
+
+/** 日文版多给的一段：每条日本人自己搜的说法（中文版不给，免得日文混进中文稿）。 */
+export function issuePhrasesText(input: IssueComposeInput): string {
+  const lines = input.picks.flatMap((p, i) =>
+    p.searchPhrases && p.searchPhrases.length > 0 ? [`【第 ${i + 1} 条 · 日本人为这件麻烦自己会搜的说法】${p.searchPhrases.map((q) => `「${q}」`).join("")}`] : []
+  );
+  return lines.join("\n");
+}
 
 const HOLDS_TEXT = { yes: "这边也成立", no: "这边不成立", unclear: "说不清" } as const;
 const OUTCOME_TEXT = { pending: "还在等", hit: "对了", miss: "错了" } as const;
@@ -2995,6 +3005,8 @@ const ISSUE_JA_PROMPT = `${ISSUE_SHARED_RULES}
 - 他写的判断和开头是中文，忠实翻译成日文，不加不减、不改语气的强弱。
 - jaLong：note 用的长文。
 - jaTitles：3 个标题候选，每个 30 字以内，带一个具体的事实。
+- 给了【日本人为这件麻烦自己会搜的说法】的：jaTitles 里至少两个标题，用上其中一个说法里的词（照原样用那几个词，不换成书面语、不换成那边的产品名）；
+  jaLong 里那一条的小标题也用上。note 的文章靠 Google 搜进来，有这个麻烦的人搜的就是这些词。
 
 只输出 JSON：{"jaLong":"…","jaTitles":["…","…","…"]}`;
 
@@ -3066,19 +3078,20 @@ export async function composeIssue(input: IssueComposeInput): Promise<{
   jaTitles: string[];
 }> {
   const contents = issueInputText(input);
-  const call = <T>(operation: string, systemInstruction: string, parse: (v: unknown) => T, retryHint: string) =>
+  const phrases = issuePhrasesText(input);
+  const call = <T>(operation: string, systemInstruction: string, parse: (v: unknown) => T, retryHint: string, extra = "") =>
     executeAiJson(
       { operation, module: "unknown", outputMode: "json", timeoutMs: 55_000 },
       (attempt) => ({
         model: MODEL,
-        contents: contents + (attempt === 1 ? `\n\n上一次输出没通过校验：${retryHint}` : ""),
+        contents: contents + (extra ? `\n\n${extra}` : "") + (attempt === 1 ? `\n\n上一次输出没通过校验：${retryHint}` : ""),
         config: { systemInstruction, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 8000 },
       }),
       parse
     );
   const [zh, ja] = await Promise.all([
     call("signal_issue_zh", ISSUE_ZH_PROMPT, (v) => parseIssueZh(v, input), "他的判断、开头、押的那句必须一字不改；小红书一条一篇、每篇 600 字以内、标题 20 字以内；不许写空话。"),
-    call("signal_issue_ja", ISSUE_JA_PROMPT, parseIssueJa, "要写成日文（です・ます調）。"),
+    call("signal_issue_ja", ISSUE_JA_PROMPT, parseIssueJa, "要写成日文（です・ます調）。", phrases),
   ]);
   return { ...zh, ...ja };
 }

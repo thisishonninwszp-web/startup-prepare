@@ -96,6 +96,7 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
 
   const analysis: GapVoices = {
     pain: plan.pain,
+    queries: plan.queries,
     quotes,
     searched: { pages: pages.length, reviews: reviews.length },
     judged: judged.ok,

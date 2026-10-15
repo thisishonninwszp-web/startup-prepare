@@ -5839,3 +5839,25 @@ $$;
 
 revoke execute on function signal_fake_door_view(text) from public, anon, authenticated;
 grant execute on function signal_fake_door_view(text) to service_role;
+
+-- ============================================================================
+-- 077：周刊本身的假门（signal_fake_doors.kind = 'issue'）
+-- ============================================================================
+
+alter table signal_fake_doors add column if not exists kind text not null default 'gap';
+
+alter table signal_fake_doors drop constraint if exists signal_fake_doors_kind_check;
+alter table signal_fake_doors add constraint signal_fake_doors_kind_check check (kind in ('gap', 'issue'));
+
+alter table signal_fake_doors alter column signal_id drop not null;
+alter table signal_fake_doors alter column side drop not null;
+
+-- 差距的那种必须挂在一条上；周刊的那种不挂
+alter table signal_fake_doors drop constraint if exists signal_fake_doors_shape;
+alter table signal_fake_doors add constraint signal_fake_doors_shape check (
+  (kind = 'gap' and signal_id is not null and side is not null)
+  or (kind = 'issue' and signal_id is null and side is null)
+);
+
+create unique index if not exists signal_fake_doors_issue_uniq
+  on signal_fake_doors (user_id, lang) where kind = 'issue';

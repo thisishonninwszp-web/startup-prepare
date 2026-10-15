@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { DOOR_LIMITS, doorLang, type FakeDoorContent } from "@/lib/domains/signals/fake-door-shared";
-import type { GapSide } from "@/lib/domains/signals/gaps-shared";
+import { DOOR_LIMITS, targetLang, type DoorTarget, type FakeDoorContent } from "@/lib/domains/signals/fake-door-shared";
 import type { DoorSignup, FakeDoor } from "@/lib/domains/signals/fake-door";
 import { deleteDoorSignupAction, draftFakeDoorAction, saveFakeDoorAction, setFakeDoorOpenAction } from "../../actions";
 
@@ -23,8 +22,8 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-/** 起草 → 改、填价格 → 发布；发布过的显示链接、看了几次、开关。 */
-export function DoorEditor({ signalId, side, here, door }: { signalId: string; side: GapSide; here: string; door: FakeDoor | null }) {
+/** 起草 → 改、填价格 → 发布；发布过的显示链接、看了几次、开关。target：差距的某一条，或者周刊本身。 */
+export function DoorEditor({ target, readers, door }: { target: DoorTarget; /** 给谁看（提示里用）。 */ readers: string; door: FakeDoor | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -34,13 +33,13 @@ export function DoorEditor({ signalId, side, here, door }: { signalId: string; s
   const [copied, setCopied] = useState(false);
   useEffect(() => setOrigin(window.location.origin), []);
 
-  const lang = doorLang(side);
+  const lang = targetLang(target);
   const set = (patch: Partial<FakeDoorContent>) => setForm((f) => ({ ...(f ?? EMPTY), ...patch }));
 
   const draft = () =>
     startTransition(async () => {
       setError(null);
-      const r = await draftFakeDoorAction(signalId, side);
+      const r = await draftFakeDoorAction(target);
       if (r.ok) setForm((f) => ({ ...EMPTY, ...r.draft, price: f?.price ?? "", operator: f?.operator ?? "" }));
       else setError(r.message);
     });
@@ -48,7 +47,7 @@ export function DoorEditor({ signalId, side, here, door }: { signalId: string; s
   const save = () =>
     startTransition(async () => {
       setError(null);
-      const r = await saveFakeDoorAction(signalId, side, form);
+      const r = await saveFakeDoorAction(target, form);
       if (r.ok) {
         setEditing(false);
         router.refresh();
@@ -122,7 +121,7 @@ export function DoorEditor({ signalId, side, here, door }: { signalId: string; s
             </Button>
           </div>
           <p className="text-xs leading-6 text-muted-foreground">
-            页面用{lang === "ja" ? "日文" : "中文"}（给{here}的陌生人看）。起草完你逐句改，价格自己填，看过了再发布。
+            页面用{lang === "ja" ? "日文" : "中文"}（给{readers}看）。起草完你逐句改，价格自己填，看过了再发布。
           </p>
         </div>
       )}

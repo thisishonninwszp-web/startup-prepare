@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1330,5 +1330,15 @@ describe("时差图谱请裁判", () => {
       5
     );
     expect(proves).toEqual(["origin", null, null, "outcome", null]);
+  });
+});
+
+describe("周刊日文版：日本人自己搜的说法", () => {
+  it("issuePhrasesText：只列给了说法的那几条，标第几条；一条都没有就是空的", () => {
+    const pick = (searchPhrases?: string[]) => ({ there: "中国", here: "日本", headline: "h", background: "b", hereNow: "n", judgment: "j", searchPhrases });
+    expect(issuePhrasesText({ opening: "", bets: [], picks: [pick(), pick(["デリバリー 遅い 困る", "出前 どうしてる"])] })).toBe(
+      "【第 2 条 · 日本人为这件麻烦自己会搜的说法】「デリバリー 遅い 困る」「出前 どうしてる」"
+    );
+    expect(issuePhrasesText({ opening: "", bets: [], picks: [pick(), pick([])] })).toBe("");
   });
 });

@@ -2,7 +2,7 @@ import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/l
 import { MODEL } from "./shared";
 import { assertChineseAllowingNames, type SearchSource } from "./signals";
 import { VOICE_KINDS, type VoiceKind } from "@/lib/domains/signals/voices-shared";
-import { DOOR_LIMITS, type DoorLang, type FakeDoorDraft } from "@/lib/domains/signals/fake-door-shared";
+import { DOOR_LIMITS, ISSUE_DOOR_AUDIENCE, type DoorLang, type FakeDoorDraft } from "@/lib/domains/signals/fake-door-shared";
 
 // ---------------------------------------------------------------------------
 // 需求方：这边有没有人在为这件事头疼（真人原话），以及假门测试那一页的文字。
@@ -206,6 +206,7 @@ const DOOR_BANNED = [
   /\d[\d,]*\s*万?\s*(人|社|名|店|家|ユーザー|用户)\s*(が|以上|突破|在用|使用|选择|導入|利用)/,
   /(利用|導入|登録|使用)(者|社|店|用户)?(数|人数)/,
   /[¥￥]|\d\s*[円元]/,
+  /(購読|订阅)(者|人)?数|订阅人数|命中率|的中率|稼げ|儲か|赚钱/,
 ];
 
 export function parseFakeDoorDraft(value: unknown, lang: DoorLang): FakeDoorDraft {
@@ -262,6 +263,49 @@ export async function draftFakeDoor(input: {
         (attempt === 1 ? "\n\n上一次输出没通过校验：不写人数、评价、价格、夸张的话；四格都要写；照规定的语言和字数。" : ""),
       config: {
         systemInstruction: doorPrompt(input.lang, input.there, input.here),
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 800,
+      },
+    }),
+    (value) => parseFakeDoorDraft(value, input.lang)
+  );
+}
+
+// ── 周刊本身的假门：这份周刊能不能卖 ────────────────────────────────────────
+
+const issueDoorPrompt = (lang: DoorLang) => {
+  const ja = lang === "ja";
+  return `他每周写一份周刊：核实过的"中国（和美国）已经有、日本还没有"的东西，每条附出处、这类东西以前多久到日本、能不能搬到日本（哪些条件这边不成立）、他自己押的判断，押过的到期公开对账。
+想测一测：有没有人愿意为这份周刊的付费版付钱。做法是放一页"准备中的付费版"，看陌生人愿不愿意留邮箱。你起草这一页的文字。
+
+写给：${ISSUE_DOOR_AUDIENCE[lang]}。用${ja ? "日语" : "中文"}写，说人话：
+- title：一句说明这是什么的话（例："${ja ? "中国にあって日本にまだないサービスを、毎週まとめて" : "每周几条：中国有、日本还没有的生意"}"），不起品牌名。${DOOR_LIMITS.title} 字以内。
+- lead：一到两句，说它帮读的人省掉什么、看清什么。${DOOR_LIMITS.lead} 字以内。
+- points：3 条，付费版里有什么（从上面那几样里挑，写具体），每条 ${DOOR_LIMITS.point} 字以内。
+- audience：最适合谁，一句，${DOOR_LIMITS.audience} 字以内。
+
+铁律（写了就作废）：
+- 不编任何事实：不写有多少人在读、订阅人数、合作公司、评价、获奖、"No.1"、命中率。
+- 不写夸张的话（"革命""最强""绝对"），不保证赚钱。
+- 不写价格（他自己填）。
+- "还没有付费版、现在不收钱"那段说明由页面自己加，你不用写。
+
+只输出 JSON：{"title":"…","lead":"…","points":["…","…","…"],"audience":"…"}`;
+};
+
+/** 周刊付费版那一页的文字（价格、运营者他自己填）。recent：最近几期写过的几条（举例用）。 */
+export async function draftIssueDoor(input: { lang: DoorLang; recent: string[] }): Promise<FakeDoorDraft> {
+  const contents = input.recent.length > 0 ? `最近几期写过的：\n${input.recent.map((h) => `- ${h}`).join("\n")}` : "最近几期写过的：（还没有）";
+  return executeAiJson(
+    { operation: "fake_door_issue_draft", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1 ? "\n\n上一次输出没通过校验：不写人数、评价、价格、夸张的话；四格都要写；照规定的语言和字数。" : ""),
+      config: {
+        systemInstruction: issueDoorPrompt(input.lang),
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 800,

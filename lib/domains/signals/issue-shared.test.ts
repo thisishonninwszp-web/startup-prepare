@@ -18,6 +18,9 @@ import {
   type IssuePick,
   withDoorLinks,
   DOOR_LINKS_LEAD,
+  withIssueDoorLink,
+  ISSUE_DOOR_LINE,
+  phraseHits,
 } from "./issue-shared";
 
 const pick = (over: Partial<IssuePick> = {}): IssuePick => ({
@@ -210,5 +213,28 @@ describe("周刊 note 版的假门链接", () => {
   it("没有出典就放最后；没有开着的假门就原样返回", () => {
     expect(withDoorLinks("本文。", links).endsWith("・アプリで頼める家事代行 https://example.app/soon/abcdefghijkl")).toBe(true);
     expect(withDoorLinks("本文。", [])).toBe("本文。");
+  });
+});
+
+describe("周刊付费版的登记页", () => {
+  it("中文长文放在出处之前，note 版放在出典之前；没开着就原样返回", () => {
+    expect(withIssueDoorLink("正文。\n\n结尾。\n\n出处：\n・a https://a", "https://x/soon/t", "zh")).toBe(
+      `正文。\n\n结尾。\n\n${ISSUE_DOOR_LINE.zh}https://x/soon/t\n\n出处：\n・a https://a`
+    );
+    const ja = withIssueDoorLink(withDoorLinks("本文。\n\n出典：\n・a https://a", [{ title: "家事代行", url: "https://x/soon/g" }]), "https://x/soon/t", "ja");
+    expect(ja.indexOf("家事代行")).toBeLessThan(ja.indexOf(ISSUE_DOOR_LINE.ja));
+    expect(ja.indexOf(ISSUE_DOOR_LINE.ja)).toBeLessThan(ja.indexOf("出典："));
+    expect(withIssueDoorLink("正文。", null, "zh")).toBe("正文。");
+  });
+});
+
+describe("note 标题用上日本人自己搜的说法", () => {
+  it("phraseHits：一个说法里至少两个词出现在某个标题里才算；站名不算词", () => {
+    const phrases = ["デリバリー 遅い 困る", "出前 届かない 知恵袋", "置き配"];
+    expect(phraseHits(["デリバリーが遅い問題、中国ではもう解決済み"], phrases)).toEqual(["デリバリー 遅い 困る"]);
+    expect(phraseHits(["出前が届かない夜に"], phrases)).toEqual(["出前 届かない 知恵袋"]);
+    expect(phraseHits(["置き配が当たり前になる日"], phrases)).toEqual(["置き配"]);
+    expect(phraseHits(["中国の新しいサービス"], phrases)).toEqual([]);
+    expect(phraseHits(["知恵袋で見つけた話"], ["知恵袋"])).toEqual([]);
   });
 });

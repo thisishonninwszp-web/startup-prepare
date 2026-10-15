@@ -21,6 +21,8 @@ import {
   STANCE_YEARS,
   stanceSentence,
   withDoorLinks,
+  withIssueDoorLink,
+  phraseHits,
   type Issue,
   type IssueBet,
   type IssuePlatform,
@@ -196,9 +198,12 @@ export function IssueComposer({
   publicToken,
   atlasBases,
   doors,
+  issueDoors,
 }: {
   /** 开着的日文假门（键见 keyOf）：note 版文末放登记页的链接。 */
   doors: Record<string, { token: string; title: string }>;
+  /** 周刊付费版的登记页（开着的才有口令）：中文长文、note 版文末各放一句。 */
+  issueDoors: { zh: string | null; ja: string | null };
   /** 时差图谱里每一类的基准（图谱还没建为 null）。 */
   atlasBases: Record<AtlasCategory, CategoryBase> | null;
   gaps: IssueCandidate[];
@@ -226,6 +231,9 @@ export function IssueComposer({
         return d ? [{ title: d.title, url: `${origin}/soon/${d.token}` }] : [];
       })
     : [];
+  const phrases = (issue?.content.picks ?? []).flatMap((p) => p.searchPhrases ?? []);
+  const usedPhrases = issue?.drafts ? phraseHits(issue.drafts.jaTitles, phrases) : [];
+  const issueDoorUrl = (lang: "zh" | "ja") => (origin && issueDoors[lang] ? `${origin}/soon/${issueDoors[lang]}` : null);
   const [url, setUrl] = useState("");
   const [response, setResponse] = useState("");
   const [wantsTalk, setWantsTalk] = useState(false);
@@ -432,6 +440,11 @@ export function IssueComposer({
                     一条一篇：小红书上一篇只讲一件事的才有人看。一周发完这几篇，比一次发一篇合集更容易被推出去。
                     每篇的封面下载下来当第一张图；话题标签和结尾问读者的那句已经加好了。
                   </p>
+                  {issueDoorUrl("zh") && (
+                    <p className="text-xs leading-6 text-muted-foreground">
+                      小红书不让放外链：周刊付费版的登记页放主页简介里 —— <span className="break-all font-mono">{issueDoorUrl("zh")}</span>
+                    </p>
+                  )}
                   {issue.drafts.zhNotes.map((n, i) => {
                     const pick = issue.content.picks[i];
                     const demand = pick ? gapDemand([issue]).get(`${pick.side}:${pick.signal_id}`) : undefined;
@@ -461,21 +474,29 @@ export function IssueComposer({
             </TabsContent>
             <TabsContent value="jaLong">
               <DraftPanel
-                body={withDoorLinks(issue.drafts.jaLong, doorLinks)}
+                body={withIssueDoorLink(withDoorLinks(issue.drafts.jaLong, doorLinks), issueDoorUrl("ja"), "ja")}
                 titles={issue.drafts.jaTitles}
                 note={
                   "note 的长文能被 Google 搜到，慢慢积累。日文是 AI 翻译的，你的判断也是翻译过去的 —— 发之前看一眼语气对不对。" +
                   (doorLinks.length > 0
                     ? `文末自动加了 ${doorLinks.length} 条的假门登记页链接（开着的才加，关掉就不加了）。`
-                    : "这一期的几条都还没开假门；在差距清单里给某条开了，这里文末会自动加上链接。")
+                    : "这一期的几条都还没开假门；在差距清单里给某条开了，这里文末会自动加上链接。") +
+                  (phrases.length === 0
+                    ? "这一期的几条都还没在差距清单里「听一听」，标题没有日本人自己搜的说法可用。"
+                    : usedPhrases.length > 0
+                      ? `标题用上了日本人自己搜的说法：${usedPhrases.map((q) => `「${q}」`).join("")}。`
+                      : `标题没用上日本人自己搜的说法（${phrases.map((q) => `「${q}」`).join("")}），发之前可以自己改一下标题 —— 有这个麻烦的人搜的就是这些词。`)
                 }
               />
             </TabsContent>
             <TabsContent value="zhLong">
               <DraftPanel
-                body={issue.drafts.zhLong}
+                body={withIssueDoorLink(issue.drafts.zhLong, issueDoorUrl("zh"), "zh")}
                 titles={issue.drafts.zhTitles}
-                note="公众号、即刻用（可选）。你的判断是一字不改放进去的（代码核对过）。"
+                note={
+                  "公众号、即刻用（可选）。你的判断是一字不改放进去的（代码核对过）。" +
+                  (issueDoorUrl("zh") ? "文末自动加了周刊付费版的登记页链接。" : "")
+                }
               />
             </TabsContent>
           </Tabs>

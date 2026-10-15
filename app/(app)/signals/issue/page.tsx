@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { getIssue, issueCandidates, issueCounts, listIssues, weekStartOf } from "@/lib/domains/signals/issue";
 import { getPublicToken } from "@/lib/domains/signals/public-record";
-import { loadOpenDoorLinks } from "@/lib/domains/signals/fake-door";
+import { loadIssueDoors, loadOpenDoorLinks } from "@/lib/domains/signals/fake-door";
 import { ATLAS_CATEGORIES, categoryBase, countedCases, listTransferCases, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas";
 import { IssueComposer } from "./issue-composer";
 
@@ -22,13 +22,14 @@ export default async function IssuePage() {
   if (!user) notFound();
 
   const weekStart = weekStartOf(tokyoToday());
-  const [current, candidates, past, publicToken, cases, doors] = await Promise.all([
+  const [current, candidates, past, publicToken, cases, doors, issueDoors] = await Promise.all([
     getIssue(user.id, weekStart),
     issueCandidates(user.id),
     listIssues(user.id),
     getPublicToken(user.id),
     listTransferCases(user.id).catch(() => "missing-schema" as const),
     loadOpenDoorLinks(user.id),
+    loadIssueDoors(user.id),
   ]);
   // 时差图谱里每一类的基准：点"这属于哪一类"就显示同一类的先例
   const atlasBases =
@@ -49,7 +50,7 @@ export default async function IssuePage() {
       <PageHeader
         eyebrow="Weekly"
         title="周刊"
-        description="朋友圈小，就写出来让陌生人找上门。每周一期「那边有、这边还没有」：挑几条核实过的，每条写一句你自己的判断，再公开对账押过的。系统排成中文长文、小红书、日文 note、日文 X 四个版本，你复制去发。前两三个月多半没人来，靠的是每周不断。"
+        description="朋友圈小，就写出来让陌生人找上门。每周一期「那边有、这边还没有」：挑几条核实过的，每条写一句你自己的判断，再公开对账押过的。系统排成小红书、日文 note、中文长文三个版本，你复制去发。前两三个月多半没人来，靠的是每周不断。"
       />
 
       {current === "missing-schema" ? (
@@ -66,7 +67,27 @@ export default async function IssuePage() {
             publicToken={publicToken}
             atlasBases={atlasBases}
             doors={doors}
+            issueDoors={{ zh: issueDoors.zh?.open ? issueDoors.zh.token : null, ja: issueDoors.ja?.open ? issueDoors.ja.token : null }}
           />
+          <section className="mt-12 border-t pt-6">
+            <h2 className="text-base font-semibold">这份周刊能不能卖</h2>
+            <p className="mt-1 text-sm leading-7 text-muted-foreground">
+              给周刊的付费版做一页「准备中」，看陌生人看着价格还愿不愿意留邮箱。开着的话，链接会自动放进中文长文和 note 版的文末。
+            </p>
+            <ul className="mt-3 space-y-2 text-sm">
+              {(["zh", "ja"] as const).map((l) => {
+                const d = issueDoors[l];
+                return (
+                  <li key={l}>
+                    <Link href={`/signals/issue/door?lang=${l}`} className="text-primary underline-offset-4 hover:underline">
+                      {l === "zh" ? "中文页（给想做日本市场的中国公司、做跨境的人）" : "日文页（给日本公司做新规事业的人）"}
+                      {d ? `：${d.open ? "" : "关着 · "}看了 ${d.views} 次 · 留了邮箱 ${d.signups} 人 →` : "：还没做 →"}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         </>
       )}
 

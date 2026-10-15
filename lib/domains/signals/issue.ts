@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { composeIssue } from "@/lib/ai";
 import { tokyoToday } from "./brief";
 import { loadGapTransfers } from "./gap-transfer";
+import { loadGapVoices } from "./voices";
 import { listGapBoard, GAP_SIDES } from "./gaps";
 import { gapPlaces, transferKey, type GapSide, type JapanGap } from "./gaps-shared";
 import { displayQuestion, ISSUE_BET_PREFIX, listJudgments } from "./practice";
@@ -150,6 +151,7 @@ export async function listIssues(userId: string): Promise<Issue[]> {
 function buildPick(
   board: Awaited<ReturnType<typeof listGapBoard>>,
   transfers: Awaited<ReturnType<typeof loadGapTransfers>>,
+  voices: Awaited<ReturnType<typeof loadGapVoices>>,
   side: GapSide,
   signalId: string,
   stance: PickStance,
@@ -160,6 +162,8 @@ function buildPick(
   const gap: JapanGap | undefined = arrived ?? open;
   if (!gap) throw new Error("清单里找不到其中一条了，刷新一下再选");
   const transfer = transfers.get(transferKey(side, signalId));
+  // 日本这边（中国、美国 → 日本）才有：note 是日文的
+  const phrases = side === "china" ? [] : (voices.get(transferKey(side, signalId))?.queries ?? []);
   const sources = [
     ...(gap.url ? [{ title: gap.title, url: gap.url }] : []),
     ...gap.check.basis.map((b) => ({ title: b.title, url: b.url })),
@@ -180,6 +184,7 @@ function buildPick(
     // 判断由服务器按他点的选项拼（不信浏览器传来的那句话）
     judgment: stanceSentence(stance, gapPlaces(side).here, note),
     url: gap.url,
+    ...(phrases.length > 0 ? { searchPhrases: phrases } : {}),
   };
 }
 
@@ -193,12 +198,13 @@ export async function composeAndSaveIssue(
   const stances = input.picks.map((p) => validStance(p.stance));
   if (stances.some((s) => s === null)) throw new Error("每条都先点一下：两年内会不会出现");
   if (input.picks.some((p) => p.note.trim().length > ISSUE_NOTE_MAX)) throw new Error(`补的那句最多 ${ISSUE_NOTE_MAX} 字`);
-  const [board, transfers, candidates] = await Promise.all([
+  const [board, transfers, candidates, voices] = await Promise.all([
     listGapBoard(userId, tokyoToday()),
     loadGapTransfers(userId),
     issueCandidates(userId),
+    loadGapVoices(userId),
   ]);
-  const picks = input.picks.map((p, i) => buildPick(board, transfers, p.side, p.signal_id, stances[i]!, p.note));
+  const picks = input.picks.map((p, i) => buildPick(board, transfers, voices, p.side, p.signal_id, stances[i]!, p.note));
   const bets = candidates.bets.filter((b) => input.betIds.includes(b.id));
   const content = { opening: input.opening.trim(), picks, bets };
 
@@ -206,7 +212,18 @@ export async function composeAndSaveIssue(
     opening: content.opening,
     picks: picks.map((p) => {
       const { there, here } = gapPlaces(p.side);
-      return { there, here, headline: p.headline, background: p.background, hereNow: p.here, whyNow: p.whyNow, funded: p.funded, conditions: p.conditions, judgment: p.judgment };
+      return {
+        there,
+        here,
+        headline: p.headline,
+        background: p.background,
+        hereNow: p.here,
+        whyNow: p.whyNow,
+        funded: p.funded,
+        conditions: p.conditions,
+        judgment: p.judgment,
+        searchPhrases: p.searchPhrases,
+      };
     }),
     bets,
   });

@@ -15,6 +15,34 @@ export function doorLang(side: GapSide): DoorLang {
   return side === "china" ? "zh" : "ja";
 }
 
+/**
+ * 一页假门挂在哪：差距清单的某一条（测"这样东西有没有人要"），或者周刊本身（测"这份周刊能不能卖"，迁移 077）。
+ */
+export type DoorTarget = { kind: "gap"; signalId: string; side: GapSide } | { kind: "issue"; lang: DoorLang };
+
+/** 浏览器传来的 target 先查形状再用（signalId 是 uuid、side 和 lang 只认那几个）。 */
+export function validTarget(raw: unknown): DoorTarget | null {
+  const v = (raw ?? {}) as Record<string, unknown>;
+  if (v.kind === "gap") {
+    const side = v.side;
+    if (typeof v.signalId !== "string" || !/^[0-9a-f-]{36}$/i.test(v.signalId)) return null;
+    if (side !== "japan" && side !== "us" && side !== "china") return null;
+    return { kind: "gap", signalId: v.signalId, side };
+  }
+  if (v.kind === "issue" && (v.lang === "ja" || v.lang === "zh")) return { kind: "issue", lang: v.lang };
+  return null;
+}
+
+export function targetLang(target: DoorTarget): DoorLang {
+  return target.kind === "gap" ? doorLang(target.side) : target.lang;
+}
+
+/** 周刊付费版的那一页给谁看。 */
+export const ISSUE_DOOR_AUDIENCE: Record<DoorLang, string> = {
+  zh: "想做日本市场的中国公司、做跨境生意的人、在日本想创业的华人",
+  ja: "日本公司里做新规事业的人、在找中国和美国新服务的人",
+};
+
 /** AI 起草的那几格。 */
 export type FakeDoorDraft = { title: string; lead: string; points: string[]; audience: string };
 

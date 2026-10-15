@@ -28,6 +28,8 @@ export type VoiceQuote = {
 export type GapVoices = {
   /** 它要解决的那件麻烦（从用的人那边说，AI 写的）。 */
   pain: string;
+  /** 这边的人为这件麻烦自己会搜的说法（周刊 note 版的标题用它，有痛的人一搜就能搜到）。早期查过的没有。 */
+  queries?: string[];
   quotes: VoiceQuote[];
   /** 翻了几篇网页、几条差评（一句都没找到时，分得清是没搜到还是搜到了没人说）。 */
   searched: { pages: number; reviews: number };

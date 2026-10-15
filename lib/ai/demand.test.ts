@@ -79,6 +79,14 @@ describe("假门测试：AI 起草的文字", () => {
     expect(() => parseFakeDoorDraft({ ...ja, points: ["a", "b"] }, "ja")).toThrow();
   });
 
+  it("周刊付费版：不许写订阅人数、命中率、能赚钱", () => {
+    const zh = { title: "每周几条：中国有、日本还没有的生意", lead: "每周替你核实日本还缺什么。", points: ["每条附出处", "以前多久到日本", "能不能搬过来"], audience: "想做日本市场的中国公司" };
+    expect(parseFakeDoorDraft(zh, "zh")).toEqual(zh);
+    expect(() => parseFakeDoorDraft({ ...zh, lead: "判断命中率很高的周刊。" }, "zh")).toThrow();
+    expect(() => parseFakeDoorDraft({ ...zh, lead: "看了就能赚钱。" }, "zh")).toThrow();
+    expect(() => parseFakeDoorDraft({ ...zh, points: ["订阅人数持续增长", "b", "c"] }, "zh")).toThrow();
+  });
+
   it("语言要对：日文页写成中文的作废，中文页写成日文的作废", () => {
     const zh = { title: "手机上就能约的上门家政", lead: "给双职工家庭的上门家政，在手机上约附近的阿姨。", points: ["选好时间", "附近的阿姨上门", "做完在手机上付钱"], audience: "双职工家庭" };
     expect(parseFakeDoorDraft(zh, "zh")).toEqual(zh);

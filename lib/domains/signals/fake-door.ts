@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase";
 import { EXTERNAL_TAG } from "@/app/(app)/ideas/types";
-import { draftFakeDoor } from "@/lib/ai";
+import { draftFakeDoor, draftIssueDoor } from "@/lib/ai";
 import { findJapanGap } from "./gaps";
 import { gapPlaces, transferKey, type GapSide } from "./gaps-shared";
 import { loadGapVoices } from "./voices";
+import { listIssues } from "./issue";
 import {
   DOOR_NOTE_MAX,
   doorLang,
@@ -12,6 +13,7 @@ import {
   validDoorContent,
   validEmail,
   type DoorLang,
+  type DoorTarget,
   type FakeDoorContent,
   type FakeDoorDraft,
   type FakeDoorStats,
@@ -20,20 +22,22 @@ import {
 export * from "./fake-door-shared";
 
 /**
- * 假门测试：差距清单里的一条，做一页"准备中的服务"（/soon/<随机口令>，不用登录），写明预计价格，
+ * 假门测试：差距清单里的一条（或者周刊本身的付费版），做一页"准备中"（/soon/<随机口令>，不用登录），写明预计价格，
  * 陌生人可以留邮箱"做出来了告诉我"。只数看了几次、留了几个邮箱。
  * 留下的邮箱只有他自己看得到；同时记一条带「假门登记」标签的观察（不含完整邮箱），进捕捉链条。
  */
 
 const MISSING_MIGRATION = "迁移 076 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/076_signal_fake_doors.sql。";
+const MISSING_077 = "迁移 077 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/077_signal_fake_door_issue.sql。";
 
 /** 一页一小时最多收几个登记（防有人刷）。 */
 const SIGNUPS_PER_HOUR = 30;
 
 export type FakeDoor = {
   id: string;
-  signal_id: string;
-  side: GapSide;
+  /** 周刊那种（kind=issue）没有。 */
+  signal_id: string | null;
+  side: GapSide | null;
   token: string;
   lang: DoorLang;
   content: FakeDoorContent;
@@ -50,16 +54,19 @@ function missing(error: { message: string }): boolean {
   return /signal_fake_door/.test(error.message);
 }
 
-/** 这一条的假门（没做过为 null）；表还没建返回 "missing-schema"。 */
-export async function getFakeDoor(userId: string, signalId: string, side: GapSide): Promise<FakeDoor | null | "missing-schema"> {
-  const { data, error } = await supabaseAdmin
-    .from("signal_fake_doors")
-    .select(DOOR_COLUMNS)
-    .eq("user_id", userId)
-    .eq("signal_id", signalId)
-    .eq("side", side)
-    .maybeSingle();
+/** 077 之前没有 kind 这一列（周刊那种还开不了）。 */
+function missingKind(error: { message: string }): boolean {
+  return /\bkind\b/.test(error.message);
+}
+
+/** 这一页（没做过为 null）；表还没建返回 "missing-schema"，周刊那种在迁移 077 之前返回 "missing-077"。 */
+export async function getFakeDoor(userId: string, target: DoorTarget): Promise<FakeDoor | null | "missing-schema" | "missing-077"> {
+  const base = supabaseAdmin.from("signal_fake_doors").select(DOOR_COLUMNS).eq("user_id", userId);
+  const query =
+    target.kind === "gap" ? base.eq("signal_id", target.signalId).eq("side", target.side) : base.eq("kind", "issue").eq("lang", target.lang);
+  const { data, error } = await query.maybeSingle();
   if (error) {
+    if (target.kind === "issue" && missingKind(error)) return "missing-077";
     if (missing(error)) return "missing-schema";
     throw new Error(error.message);
   }
@@ -71,7 +78,8 @@ export async function loadFakeDoorStats(userId: string): Promise<Map<string, Fak
   const { data, error } = await supabaseAdmin
     .from("signal_fake_doors")
     .select("id, signal_id, side, views, open, signal_fake_door_signups(count)")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .not("signal_id", "is", null);
   if (error) {
     if (missing(error)) return new Map();
     throw new Error(error.message);
@@ -94,7 +102,8 @@ export async function loadOpenDoorLinks(userId: string): Promise<Record<string, 
     .select("signal_id, side, token, content")
     .eq("user_id", userId)
     .eq("open", true)
-    .eq("lang", "ja");
+    .eq("lang", "ja")
+    .not("signal_id", "is", null);
   if (error) {
     if (missing(error)) return {};
     throw new Error(error.message);
@@ -107,8 +116,47 @@ export async function loadOpenDoorLinks(userId: string): Promise<Record<string, 
   );
 }
 
-/** AI 起草那一页的文字（价格、运营者他自己填）。查过"这边有人在头疼吗"的，把那件麻烦一起给它。 */
-export async function draftFakeDoorContent(userId: string, signalId: string, side: GapSide): Promise<FakeDoorDraft> {
+export type IssueDoorSummary = { token: string; title: string; open: boolean; views: number; signups: number };
+
+/** 周刊付费版的两页（中文、日文，做过的才有）。表没建、077 没跑都返回空。 */
+export async function loadIssueDoors(userId: string): Promise<Partial<Record<DoorLang, IssueDoorSummary>>> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_fake_doors")
+    .select("lang, token, content, views, open, signal_fake_door_signups(count)")
+    .eq("user_id", userId)
+    .eq("kind", "issue");
+  if (error) {
+    if (missing(error) || missingKind(error)) return {};
+    throw new Error(error.message);
+  }
+  return Object.fromEntries(
+    (data ?? []).map((r) => {
+      const counted = r.signal_fake_door_signups as unknown as { count: number }[] | null;
+      return [
+        r.lang as DoorLang,
+        {
+          token: r.token as string,
+          title: (r.content as FakeDoorContent).title,
+          open: r.open as boolean,
+          views: r.views as number,
+          signups: counted?.[0]?.count ?? 0,
+        },
+      ];
+    })
+  );
+}
+
+/**
+ * AI 起草那一页的文字（价格、运营者他自己填）。
+ * 差距的那种：查过"这边有人在头疼吗"的，把那件麻烦一起给它。周刊的那种：给它最近几期写过的几条当例子。
+ */
+export async function draftFakeDoorContent(userId: string, target: DoorTarget): Promise<FakeDoorDraft> {
+  if (target.kind === "issue") {
+    const issues = await listIssues(userId);
+    const recent = issues.flatMap((i) => i.content.picks.map((p) => p.headline)).slice(0, 6);
+    return draftIssueDoor({ lang: target.lang, recent });
+  }
+  const { signalId, side } = target;
   const gap = await findJapanGap(userId, signalId, side);
   if (!gap) throw new Error("清单里找不到这一条了");
   const { there, here } = gapPlaces(side);
@@ -125,11 +173,12 @@ export async function draftFakeDoorContent(userId: string, signalId: string, sid
 }
 
 /** 发布（第一次生成口令）或改文字。内容按 validDoorContent 查。 */
-export async function saveFakeDoor(userId: string, signalId: string, side: GapSide, raw: unknown): Promise<FakeDoor> {
+export async function saveFakeDoor(userId: string, target: DoorTarget, raw: unknown): Promise<FakeDoor> {
   const content = validDoorContent(raw);
   if (typeof content === "string") throw new Error(content);
-  const existing = await getFakeDoor(userId, signalId, side);
+  const existing = await getFakeDoor(userId, target);
   if (existing === "missing-schema") throw new Error(MISSING_MIGRATION);
+  if (existing === "missing-077") throw new Error(MISSING_077);
   if (existing) {
     const { data, error } = await supabaseAdmin
       .from("signal_fake_doors")
@@ -141,13 +190,20 @@ export async function saveFakeDoor(userId: string, signalId: string, side: GapSi
     if (error) throw new Error(error.message);
     return data as FakeDoor;
   }
-  if (!(await findJapanGap(userId, signalId, side))) throw new Error("清单里找不到这一条了");
-  const { data, error } = await supabaseAdmin
-    .from("signal_fake_doors")
-    .insert({ user_id: userId, signal_id: signalId, side, token: randomBytes(12).toString("base64url"), lang: doorLang(side), content })
-    .select(DOOR_COLUMNS)
-    .single();
-  if (error) throw new Error(error.message);
+  const token = randomBytes(12).toString("base64url");
+  let row: Record<string, unknown>;
+  if (target.kind === "gap") {
+    if (!(await findJapanGap(userId, target.signalId, target.side))) throw new Error("清单里找不到这一条了");
+    // 不写 kind（默认 gap）：077 没跑也能用
+    row = { user_id: userId, signal_id: target.signalId, side: target.side, token, lang: doorLang(target.side), content };
+  } else {
+    row = { user_id: userId, kind: "issue", token, lang: target.lang, content };
+  }
+  const { data, error } = await supabaseAdmin.from("signal_fake_doors").insert(row).select(DOOR_COLUMNS).single();
+  if (error) {
+    if (missingKind(error)) throw new Error(MISSING_077);
+    throw new Error(error.message);
+  }
   return data as FakeDoor;
 }
 
