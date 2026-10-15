@@ -64,8 +64,11 @@ const OPPORTUNITY_LABELS: Record<NonNullable<BriefItem["opportunity"]>, string> 
 /** 去别的页面的入口，收成一行文字。 */
 const LINKS: { href: string; label: string }[] = [
   { href: "/signals/practice", label: "判断账本" },
+  { href: "/signals/drill", label: "历史题" },
   { href: "/signals/questions", label: "我在追的问题" },
   { href: "/signals/gaps", label: "那边有、这边没有" },
+  { href: "/signals/atlas", label: "时差图谱" },
+  { href: "/signals/issue", label: "周刊" },
   { href: "/signals/precedents", label: "先例" },
   { href: "/signals/slow", label: "慢变量" },
   { href: "/signals/week", label: "周报" },
