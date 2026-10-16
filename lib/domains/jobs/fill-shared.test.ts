@@ -13,6 +13,9 @@ const profile: JobProfile = {
     name: "呉　山",
     kana: "ご さん",
     email: "a@example.jp",
+    birth: "1999/04/07",
+    school: "大阪大学 経済学部",
+    employer: "株式会社Focus",
     address: "大阪府大阪市北区1-1",
     salary_want: "500万円以上",
     visa_expiry: "2028-03-31",
@@ -51,7 +54,13 @@ describe("填表的值（代码算，不经过 AI）", () => {
       pr: "PR。",
       motivation: "自分で書いた<動機>",
       phone: "",
+      birth_year: "1999",
+      birth_month: "4",
+      birth_day: "7",
+      school: "大阪大学 経済学部",
+      employer: "株式会社Focus",
     });
+    expect(fillValues({ ...profile, personal: { ...profile.personal, birth: "平成11年" } }, null)).toMatchObject({ birth_year: "", birth_month: "", birth_day: "" });
     expect(fillValues({ ...profile, visa: "none", salaryNow: null }, null)).toMatchObject({ visa: "", salary_now: "", pr: "" });
   });
 
@@ -69,6 +78,13 @@ describe("表单", () => {
     expect(pickOption(["はい", "いいえ"], "はい")).toBe(0);
     expect(pickOption(prefectures, "東京都")).toBeNull();
     expect(pickOption(prefectures, "")).toBeNull();
+  });
+
+  it("pickOption：数字按数值比（年、月、日的下拉框）", () => {
+    expect(pickOption(["--", "1998年", "1999年", "2000年"], "1999")).toBe(2);
+    expect(pickOption(["月", "01", "02", "03", "04"], "4")).toBe(4);
+    expect(pickOption(["", "4月", "14月"], "4")).toBe(1);
+    expect(pickOption(["1", "2"], "7")).toBeNull();
   });
 
   it("isConsentField：同意、规约、个人信息的勾选框一律不替他勾", () => {

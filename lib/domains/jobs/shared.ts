@@ -110,6 +110,10 @@ export type PersonalInfo = {
   phone: string;
   postal: string;
   address: string;
+  /** 最終学歴（学校名、学部）。 */
+  school: string;
+  /** 现在（或最近）的勤务先。 */
+  employer: string;
   /** 应募表单上「希望年収」那一格原样写什么，比如「500万円以上」。 */
   salary_want: string;
   /** 「入社可能時期」，比如「内定後2ヶ月」。 */
@@ -124,6 +128,8 @@ export const EMPTY_PERSONAL: PersonalInfo = {
   phone: "",
   postal: "",
   address: "",
+  school: "",
+  employer: "",
   salary_want: "",
   available_from: "",
   visa_expiry: "",
@@ -136,6 +142,8 @@ export const PERSONAL_FIELDS: [keyof PersonalInfo, string][] = [
   ["phone", "電話番号"],
   ["postal", "郵便番号"],
   ["address", "住所"],
+  ["school", "最終学歴（学校名・学部）"],
+  ["employer", "現在の勤務先（会社名）"],
   ["salary_want", "希望年収（表单上原样写的那句，比如「500万円以上」）"],
   ["available_from", "入社可能時期（比如「内定後2ヶ月」）"],
   ["visa_expiry", "在留期限"],
@@ -343,20 +351,20 @@ export function atsOf(url: string | null): AtsKey | null {
   return null;
 }
 
+/** 招聘系统的域名（搜索时只要这几个网站的页面）。 */
+export const ATS_HOSTS: string[] = Object.values(ATS_SITES).map((s) => s.host);
+
 const CAREER_KEYWORDS: Record<JobCategory, string> = {
   data: "データアナリスト",
   consulting: "コンサルタント",
-  planning: "事業企画 OR 経営企画",
+  planning: "事業企画 経営企画",
   chinese: "中国語",
 };
 
-/** 只搜招聘系统页面的搜索词：职位关键词、地点（加リモート）、几个招聘系统的域名。 */
+/** 搜招聘系统页面用的搜索词：职位关键词和地点（加リモート）。网站范围由 webSearch 的 domains 限定。 */
 export function careerQuery(category: JobCategory, locations: string[]): string {
   const places = [...locations.map((l) => l.trim()).filter(Boolean), "リモート"];
-  const sites = Object.values(ATS_SITES)
-    .map((s) => `site:${s.host}`)
-    .join(" OR ");
-  return `${CAREER_KEYWORDS[category]} ${places.join(" OR ")} ${sites}`;
+  return `${CAREER_KEYWORDS[category]} 求人 ${places.join(" ")}`;
 }
 
 /** 四类轮流取：每类最多 perCat 条，一共最多 cap 条。不在你选的几类里的不取。 */

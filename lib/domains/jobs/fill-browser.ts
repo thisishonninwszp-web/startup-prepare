@@ -127,6 +127,20 @@ export async function pageText(page: Page): Promise<string> {
 
 export const textual = (f: FormField) => f.kind === "text" || f.kind === "textarea" || f.kind === "select";
 
+/**
+ * 表单常常是页面里的脚本后来才画出来的（HRMOS 点「応募する」只换网址、不重新加载页面）：
+ * 每半秒读一次，读到两格以上能填字的格子就停，最多等 timeoutMs。
+ */
+export async function waitForForm(page: Page, timeoutMs: number): Promise<{ frame: Frame; fields: FormField[] }> {
+  const deadline = Date.now() + timeoutMs;
+  let found = await pickFormFrame(page);
+  while (found.fields.filter(textual).length < 2 && Date.now() < deadline) {
+    await page.waitForTimeout(500);
+    found = await pickFormFrame(page);
+  }
+  return found;
+}
+
 export type Report = { filled: number; todo: { index: number; label: string; reason: string }[]; consent: { index: number; label: string }[] };
 
 export async function fillFields(
@@ -137,7 +151,14 @@ export async function fillFields(
   pdfPath: string | null
 ): Promise<Report> {
   const report: Report = { filled: 0, todo: [], consent: [] };
-  for (const field of fields) {
+  // 填郵便番号会让很多网站自动补住所，把填好的住所盖掉：住所放到最后、等一秒再填
+  const ordered = [...fields.filter((f) => map.get(f.index) !== "address"), ...fields.filter((f) => map.get(f.index) === "address")];
+  let waitedForPostal = false;
+  for (const field of ordered) {
+    if (map.get(field.index) === "address" && !waitedForPostal) {
+      await frame.waitForTimeout(1_000);
+      waitedForPostal = true;
+    }
     if (isConsentField(field)) {
       report.consent.push({ index: field.index, label: field.label });
       continue;

@@ -380,25 +380,36 @@ export async function tailorResume(
 const FIELD_MAP_PROMPT = `下面是日本一家公司招聘页上的应募表单，列出了每一格（编号、类型、格子名字、选项），还有"可以填的东西"的清单（键和说明）。
 把每一格对应到清单里的一样；对应不上的不写。
 - 只按格子的名字和类型对应，拿不准就不写，不要猜。
-- 同一样可以对应好几格（比如邮箱和"邮箱确认"）。
+- 只有邮箱可以对应两格（邮箱和"邮箱确认"）；别的一样只对应一格。
 - 文件上传格只能对应 resume_pdf；文字格、下拉框不能对应 resume_pdf。
 - 勾选框、单选、"同意"之类的一律不要对应。
 - 姓和名分两格时用 last_name / first_name，合在一格用 name；ふりがな同理。
-- 只有"住所"一格、或者"都道府県"的下拉框，都对应 address。
+- 住所分成好几格时，只有第一格（都道府県・市区町村・番地，或者"都道府県"的下拉框）对应 address；建物名、部屋番号那格不对应。
+- 生年月日分成年、月、日几个下拉框时，用 birth_year / birth_month / birth_day；格子名字可能对不齐，看选项判断（四位数的是年、1 到 12 的是月、1 到 31 的是日）。
 
 只输出 JSON：{"map":[{"index":0,"key":"email"}]}`;
 
-/** 只留认得的格子和键；文件格只能放 PDF、PDF 只能放文件格；勾选框、单选、同意框不对应。 */
+/** 一样东西只能对应几格：邮箱可以有"再输一次"，别的只填页面上最先出现的那一格（住所第二行、建物名不重复填）。 */
+const REPEATABLE_KEYS = new Set<FillKey>(["email"]);
+
+/** 只留认得的格子和键；文件格只能放 PDF、PDF 只能放文件格；勾选框、单选、同意框不对应；除邮箱外一样只对应一格。 */
 export function parseFieldMap(value: unknown, fields: FormField[]): Map<number, FillKey> {
   const byIndex = new Map(fields.map((f) => [f.index, f]));
-  const out = new Map<number, FillKey>();
+  const valid: [FormField, FillKey][] = [];
   for (const item of Array.isArray((value as { map?: unknown } | null)?.map) ? (value as { map: unknown[] }).map : []) {
     const x = (item ?? {}) as Record<string, unknown>;
     const field = byIndex.get(Number(x.index));
-    if (!field || !isFillKey(x.key) || out.has(field.index)) continue;
+    if (!field || !isFillKey(x.key)) continue;
     if (field.kind === "checkbox" || field.kind === "radio" || isConsentField(field)) continue;
     if ((field.kind === "file") !== (x.key === "resume_pdf")) continue;
-    out.set(field.index, x.key);
+    valid.push([field, x.key]);
+  }
+  const out = new Map<number, FillKey>();
+  const used = new Set<FillKey>();
+  for (const [field, key] of valid.sort((a, b) => a[0].index - b[0].index)) {
+    if (out.has(field.index) || (used.has(key) && !REPEATABLE_KEYS.has(key))) continue;
+    out.set(field.index, key);
+    used.add(key);
   }
   return out;
 }

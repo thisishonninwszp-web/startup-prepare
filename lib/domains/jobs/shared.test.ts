@@ -66,10 +66,8 @@ describe("搜索", () => {
     expect(searchQuery("chinese", [])).toBe("中国語 活かせる 求人 企画 フルリモート");
   });
 
-  it("careerQuery：只搜招聘系统的页面，地点之外带上リモート", () => {
-    expect(careerQuery("planning", ["大阪"])).toBe(
-      "事業企画 OR 経営企画 大阪 OR リモート site:hrmos.co OR site:herp.careers OR site:open.talentio.com OR site:greenhouse.io OR site:jobs.lever.co"
-    );
+  it("careerQuery：职位关键词和地点，地点之外带上リモート（网站范围另外给）", () => {
+    expect(careerQuery("planning", ["大阪"])).toBe("事業企画 経営企画 求人 大阪 リモート");
   });
 
   it("atsOf：按域名认招聘系统，子域名也认，别的不认", () => {

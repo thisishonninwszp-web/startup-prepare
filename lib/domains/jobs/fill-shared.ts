@@ -17,8 +17,13 @@ export const FILL_KEYS = {
   email: "メールアドレス（確認用の再入力欄も同じ）",
   phone: "電話番号",
   postal: "郵便番号",
-  address: "住所",
+  address: "住所（都道府県・市区町村・番地の欄。建物名・部屋番号の欄は対象外）",
   birth: "生年月日（一つの欄）",
+  birth_year: "生年月日の年（年・月・日が別々の欄のとき）",
+  birth_month: "生年月日の月（年・月・日が別々の欄のとき）",
+  birth_day: "生年月日の日（年・月・日が別々の欄のとき）",
+  school: "最終学歴の学校名",
+  employer: "現在（直近）の勤務先の会社名",
   salary_now: "現在の年収",
   salary_want: "希望年収",
   available_from: "入社可能時期・入社可能日",
@@ -62,6 +67,8 @@ export function fillValues(profile: JobProfile, resume: Pick<JobResume, "section
   const kana = splitName(p.kana);
   const section = (key: ResumeSectionKey) => (resume ? sectionText(key, resume.sections[key]) : "");
   const expiry = p.visa_expiry.trim();
+  // 生日拆成年、月、日（"1999/04/07"、"1999-4-7"、"1999年4月7日" 都认；和暦认不出来就不拆）
+  const birth = p.birth.normalize("NFKC").match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
   return {
     name: p.name.trim(),
     last_name: name?.last ?? "",
@@ -74,6 +81,11 @@ export function fillValues(profile: JobProfile, resume: Pick<JobResume, "section
     postal: p.postal.trim(),
     address: p.address.trim(),
     birth: p.birth.trim(),
+    birth_year: birth ? String(Number(birth[1])) : "",
+    birth_month: birth ? String(Number(birth[2])) : "",
+    birth_day: birth ? String(Number(birth[3])) : "",
+    school: p.school.trim(),
+    employer: p.employer.trim(),
     salary_now: profile.salaryNow !== null ? `${profile.salaryNow}万円` : "",
     salary_want: p.salary_want.trim(),
     available_from: p.available_from.trim(),
@@ -98,6 +110,11 @@ export function pickOption(options: string[], value: string): number | null {
   const norm = options.map((o) => o.normalize("NFKC").trim());
   const exact = norm.findIndex((o) => o === v);
   if (exact >= 0) return exact;
+  // 年、月、日的下拉框：按数值比（"4" 挑 "04" 或 "4月"，不挑 "14月"）
+  if (/^\d+$/.test(v)) {
+    const numeric = norm.findIndex((o) => /\d/.test(o) && Number(o.replace(/\D/g, "")) === Number(v));
+    return numeric >= 0 ? numeric : null;
+  }
   let best = -1;
   norm.forEach((o, i) => {
     if (o.length >= 2 && v.includes(o) && (best < 0 || o.length > norm[best].length)) best = i;

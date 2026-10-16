@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { mapFormFields } from "@/lib/ai";
 import { claimFillRequests, loadFillJob, recordSiteApplication, setFillStatus, MISSING_FILL_MIGRATION } from "@/lib/domains/jobs/fill";
-import { CLICK_APPLY, fillFields, HAS_CAPTCHA, markScript, pageText, pickFormFrame, settle, summary, textual } from "@/lib/domains/jobs/fill-browser";
+import { CLICK_APPLY, fillFields, HAS_CAPTCHA, markScript, pageText, settle, summary, textual, waitForForm } from "@/lib/domains/jobs/fill-browser";
 import { fillValues, looksSubmitted, resumeHtml } from "@/lib/domains/jobs/fill-shared";
 import { tokyoDate } from "@/lib/domains/jobs/shared";
 
@@ -90,12 +90,12 @@ async function handle(job: { id: string; userId: string }): Promise<void> {
     await page.goto(posting.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await settle(page);
 
-    let found = await pickFormFrame(page);
+    let found = await waitForForm(page, 4_000);
     if (found.fields.filter(textual).length < 2) {
       const clicked = await page.mainFrame().evaluate(CLICK_APPLY).catch(() => false);
       if (clicked) {
         await settle(page);
-        found = await pickFormFrame(page);
+        found = await waitForForm(page, 10_000);
       }
     }
     if (found.fields.some((f) => f.type === "password")) {

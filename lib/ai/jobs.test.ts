@@ -149,6 +149,7 @@ describe("表单格子对应", () => {
     field(3, "checkbox", "個人情報の取り扱いに同意する"),
     field(4, "textarea", "志望動機"),
     field(5, "select", "都道府県"),
+    field(6, "text", "建物名 [例）クロスタワー12F]"),
   ];
 
   it("parseFieldMap：不认识的格子和键丢掉；文件格只能放 PDF；同意框和勾选框不对应", () => {
@@ -161,6 +162,7 @@ describe("表单格子对应", () => {
           { index: 3, key: "name" },
           { index: 4, key: "resume_pdf" },
           { index: 5, key: "address" },
+          { index: 6, key: "address" },
           { index: 9, key: "phone" },
           { index: 0, key: "bogus" },
         ],
