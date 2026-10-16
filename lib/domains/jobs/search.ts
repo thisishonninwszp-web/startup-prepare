@@ -30,7 +30,7 @@ import {
  * - 快搜（打开 /jobs 时在 server action 里跑，60 秒）：每类用今天轮到的一个说法，先搜公司招聘系统（HRMOS、HERP 等，
  *   不用登录就能应募，填表助手对付得了）；招聘系统找到的不够 2 个，再用一般搜索看求人网站。最多留 8 条。
  * - 大搜（他电脑上的填表助手每天第一次开起来时跑，没有时间限制）：每类用两个说法，招聘系统和求人网站都搜，
- *   每类最多读 10 页，最多留 30 条。
+ *   每类最多读 20 页，最多留 40 条。
  * 搜到的是列表页（公司的职位列表、求人网站的搜索结果）就顺着里面职位名对得上这一类的链接读单个岗位。
  * 抽完按地点、经验要求、招哪种人过滤（按事实筛，不打分），四类轮流取。
  * 招聘系统用 Tavily 限定域名（Gemini 的 Google 不理会 site:，Tavily 一个月一千次左右，所以大搜也只用两个说法）；
@@ -59,13 +59,14 @@ export const QUICK_SEARCH: SearchLimits = {
   boards: false,
 };
 
+// 读到的岗位约一半会因为地点、经验要求被筛掉（2026-10-17 试过），所以每类多读一些
 export const BIG_SEARCH: SearchLimits = {
   variants: 2,
-  pagesPerCategory: 10,
-  listPagesToOpen: 6,
-  linksPerListPage: 4,
-  cap: 30,
-  perCat: 8,
+  pagesPerCategory: 20,
+  listPagesToOpen: 8,
+  linksPerListPage: 5,
+  cap: 40,
+  perCat: 12,
   boards: true,
 };
 
