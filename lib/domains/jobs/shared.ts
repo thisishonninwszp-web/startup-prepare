@@ -380,6 +380,64 @@ export function atsOf(url: string | null): AtsKey | null {
   return null;
 }
 
+/** 单个岗位页的路径（公司列表页、应募页、职位分组页都不算）。 */
+const ATS_DETAIL_PATHS: Record<AtsKey, RegExp> = {
+  hrmos: /^\/pages\/[^/]+\/jobs\/[^/]+$/,
+  herp: /^\/v1\/[^/]+\/[A-Za-z0-9_-]{8,20}$|^\/careers\/companies\/[^/]+\/jobs\/[A-Za-z0-9_-]+$/,
+  talentio: /^\/r\/1\/c\/[^/]+\/pages\/\d+$/,
+  greenhouse: /^\/[^/]+\/jobs\/\d+$/,
+  lever: /^\/[^/]+\/[0-9a-f-]{36}$/,
+};
+
+/** 这个网址是不是招聘系统上"单个岗位"的页面。 */
+export function isAtsDetailUrl(url: string): boolean {
+  const ats = atsOf(url);
+  if (!ats) return false;
+  try {
+    const path = new URL(url).pathname.replace(/\/$/, "");
+    return ATS_DETAIL_PATHS[ats].test(path) && !path.endsWith("/apply");
+  } catch {
+    return false;
+  }
+}
+
+function anchorText(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+}
+
+/** 招聘系统的列表页上，单个岗位的链接和链接上的字（职位名）。同一个网址只留第一次。 */
+export function atsJobLinks(html: string, baseUrl: string): { url: string; text: string }[] {
+  const out: { url: string; text: string }[] = [];
+  const seen = new Set<string>();
+  for (const m of html.matchAll(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    let url: string;
+    try {
+      url = normalizeUrl(new URL(m[1].replace(/&amp;/g, "&"), baseUrl).toString());
+    } catch {
+      continue;
+    }
+    if (seen.has(url) || !isAtsDetailUrl(url)) continue;
+    seen.add(url);
+    out.push({ url, text: anchorText(m[2]).slice(0, 120) });
+  }
+  return out;
+}
+
+const CATEGORY_TITLE: Record<JobCategory, RegExp> = {
+  data: /データ|アナリスト|分析|analyst|data/i,
+  consulting: /コンサル|consult/i,
+  planning: /企画|経営|事業開発|事業推進|bizdev|strategy/i,
+  chinese: /中国|中文|chinese|china/i,
+};
+
+/** 从列表页里挑职位名对得上这一类的，最多 n 个；一个都对不上就不读（不随便挑）。 */
+export function pickJobLinks(links: { url: string; text: string }[], category: JobCategory, n: number): string[] {
+  return links
+    .filter((l) => CATEGORY_TITLE[category].test(l.text))
+    .slice(0, n)
+    .map((l) => l.url);
+}
+
 /** 招聘系统的域名（搜索时只要这几个网站的页面）。 */
 export const ATS_HOSTS: string[] = Object.values(ATS_SITES).map((s) => s.host);
 

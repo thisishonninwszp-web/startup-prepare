@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   atsOf,
+  atsJobLinks,
   belowFloor,
+  isAtsDetailUrl,
+  pickJobLinks,
   experienceVerdict,
   hireTypeOrder,
   careerQuery,
@@ -98,6 +101,36 @@ describe("搜索", () => {
     expect(atsOf("https://evilhrmos.co/x")).toBeNull();
     expect(atsOf(null)).toBeNull();
     expect(atsOf("not a url")).toBeNull();
+  });
+
+  it("isAtsDetailUrl：认单个岗位的页，不认公司列表页和应募页", () => {
+    expect(isAtsDetailUrl("https://hrmos.co/pages/axc/jobs/002d")).toBe(true);
+    expect(isAtsDetailUrl("https://hrmos.co/pages/axc/jobs")).toBe(false);
+    expect(isAtsDetailUrl("https://hrmos.co/pages/axc/jobs/002d/apply")).toBe(false);
+    expect(isAtsDetailUrl("https://herp.careers/v1/tappinc/9scO9j0dym8m")).toBe(true);
+    expect(isAtsDetailUrl("https://herp.careers/v1/tappinc")).toBe(false);
+    expect(isAtsDetailUrl("https://herp.careers/v1/tappinc/requisition-groups/de6e2779-b833-4f88-a44b-b0edbe4467da")).toBe(false);
+    expect(isAtsDetailUrl("https://herp.careers/careers/companies/bita/jobs/kTJtyYyBUMo7")).toBe(true);
+    expect(isAtsDetailUrl("https://herp.careers/careers/jobs?parent-job-role-ids=data")).toBe(false);
+    expect(isAtsDetailUrl("https://jobs.lever.co/acme/0c1d2e3f-0000-1111-2222-333344445555")).toBe(true);
+    expect(isAtsDetailUrl("https://job-boards.greenhouse.io/acme/jobs/4012345")).toBe(true);
+    expect(isAtsDetailUrl("https://doda.jp/DodaFront/View/JobSearchDetail/j_jid__1/")).toBe(false);
+  });
+
+  it("atsJobLinks + pickJobLinks：从列表页挑职位名对得上这一类的单个岗位", () => {
+    const html = `<a href="/pages/axc/jobs/001a">データアナリスト（中途）</a>
+      <a href="https://hrmos.co/pages/axc/jobs/002d"><span>コンサルティング営業</span></a>
+      <a href="/pages/axc/jobs">一覧</a><a href="https://twitter.com/intent/tweet?u=x">share</a>
+      <a href="/pages/axc/jobs/003a">経理スタッフ</a><a href="/pages/axc/jobs/001a">データアナリスト（中途）</a>`;
+    const links = atsJobLinks(html, "https://hrmos.co/pages/axc/jobs");
+    expect(links).toEqual([
+      { url: "https://hrmos.co/pages/axc/jobs/001a", text: "データアナリスト（中途）" },
+      { url: "https://hrmos.co/pages/axc/jobs/002d", text: "コンサルティング営業" },
+      { url: "https://hrmos.co/pages/axc/jobs/003a", text: "経理スタッフ" },
+    ]);
+    expect(pickJobLinks(links, "data", 2)).toEqual(["https://hrmos.co/pages/axc/jobs/001a"]);
+    expect(pickJobLinks(links, "consulting", 2)).toEqual(["https://hrmos.co/pages/axc/jobs/002d"]);
+    expect(pickJobLinks(links, "chinese", 2)).toEqual([]);
   });
 
   it("pickCandidates：四类轮流，每类最多 2 条，一共最多 8 条，不在四类里的不取", () => {
