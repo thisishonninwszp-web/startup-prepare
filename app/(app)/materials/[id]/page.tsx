@@ -17,13 +17,18 @@ import {
 import { MATERIAL_ROUTE_TARGETS, type MaterialRouteTarget } from "../types";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/ui/page-container";
+import { addPostingFromMaterialAction } from "@/app/(app)/jobs/actions";
 
 export const dynamic = "force-dynamic";
+// "这是岗位"要重新读招聘页、请 AI 抽岗位再对照底稿，二三十秒
+export const maxDuration = 60;
 
 export default async function MaterialDetailPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams: { job_error?: string };
 }) {
   const supabase = createClient();
   const {
@@ -55,15 +60,26 @@ export default async function MaterialDetailPage({
             {STATUS_LABELS[material.status]}
           </p>
         </div>
-        {material.status === "failed" ? (
-          <form action={retryRealityMaterialAi}>
+        <div className="flex flex-wrap items-center gap-2">
+          {material.status === "failed" ? (
+            <form action={retryRealityMaterialAi}>
+              <input type="hidden" name="material_id" value={material.id} />
+              <Button className="rounded-md border px-3 py-2 text-sm hover:bg-muted">
+                重试 AI 审阅
+              </Button>
+            </form>
+          ) : null}
+          <form action={addPostingFromMaterialAction}>
             <input type="hidden" name="material_id" value={material.id} />
-            <Button className="rounded-md border px-3 py-2 text-sm hover:bg-muted">
-              重试 AI 审阅
+            <Button variant="outline" size="sm">
+              这是岗位
             </Button>
           </form>
-        ) : null}
+        </div>
       </div>
+      {searchParams.job_error ? (
+        <p className="mb-4 text-sm text-muted-foreground">没转成岗位：{searchParams.job_error}</p>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
