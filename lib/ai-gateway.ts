@@ -32,6 +32,7 @@ export type AiModule =
   | "concepts"
   | "business_plans"
   | "self"
+  | "jobs"
   | "unknown";
 
 export type AiPayloadLogging = "encrypted" | "metadata_only";
