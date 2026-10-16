@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fillValues, fitsMaxLength, isConsentField, looksSubmitted, pickOption, resumeHtml, splitName } from "./fill-shared";
+import { fillValues, fitsMaxLength, isConsentField, kanaForLabel, looksSubmitted, pickOption, resumeHtml, splitName } from "./fill-shared";
 import { EMPTY_PERSONAL, type JobProfile, type ResumeSection, type ResumeSectionKey } from "./shared";
 
 const profile: JobProfile = {
@@ -62,6 +62,13 @@ describe("填表的值（代码算，不经过 AI）", () => {
     });
     expect(fillValues({ ...profile, personal: { ...profile.personal, birth: "平成11年" } }, null)).toMatchObject({ birth_year: "", birth_month: "", birth_day: "" });
     expect(fillValues({ ...profile, visa: "none", salaryNow: null }, null)).toMatchObject({ visa: "", salary_now: "", pr: "" });
+  });
+
+  it("kanaForLabel：「ふりがな」给平假名，「フリガナ／カナ」给片假名，别的原样", () => {
+    expect(kanaForLabel("ふりがな 必須 [例）たなか たろう]", "ゴ サンチヘイ")).toBe("ご さんちへい");
+    expect(kanaForLabel("フリガナ", "ご さんちへい")).toBe("ゴ サンチヘイ");
+    expect(kanaForLabel("セイ（カナ）", "ご")).toBe("ゴ");
+    expect(kanaForLabel("氏名", "ゴ サンチヘイ")).toBe("ゴ サンチヘイ");
   });
 
   it("fitsMaxLength：没有上限的都算放得下", () => {

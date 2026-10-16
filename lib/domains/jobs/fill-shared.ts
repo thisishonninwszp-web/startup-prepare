@@ -98,6 +98,16 @@ export function fillValues(profile: JobProfile, resume: Pick<JobResume, "section
   };
 }
 
+const toHiragana = (s: string) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+const toKatakana = (s: string) => s.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+
+/** 假名格子：「ふりがな」给平假名，「フリガナ／カナ／セイ・メイ」给片假名（条件页里写哪种都行）。 */
+export function kanaForLabel(label: string, value: string): string {
+  if (/ふりがな|ひらがな/.test(label)) return toHiragana(value);
+  if (/フリガナ|カタカナ|カナ|セイ|メイ/.test(label)) return toKatakana(value);
+  return value;
+}
+
 /** 放不放得进有字数上限的格子（跟浏览器一样按 value.length 数）。 */
 export function fitsMaxLength(text: string, maxLength: number | null): boolean {
   return maxLength === null || text.length <= maxLength;

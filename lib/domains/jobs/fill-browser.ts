@@ -1,5 +1,5 @@
 import type { Frame, Page } from "playwright-core";
-import { fitsMaxLength, isConsentField, pickOption, type FillKey, type FormField, type TextFillKey } from "./fill-shared";
+import { fitsMaxLength, isConsentField, kanaForLabel, pickOption, type FillKey, type FormField, type TextFillKey } from "./fill-shared";
 
 /**
  * 官网填表助手在浏览器里做的事：读格子、找应募入口、填、标黄、读页面文字。
@@ -185,6 +185,7 @@ export async function fillFields(
         todo("条件页或简历里没有这一样");
         continue;
       }
+      if (key === "kana" || key === "last_kana" || key === "first_kana") value = kanaForLabel(field.label, value);
       if (field.kind === "select") {
         const option = pickOption(field.options, value);
         if (option === null) {
