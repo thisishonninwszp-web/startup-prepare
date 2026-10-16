@@ -2,6 +2,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   belowFloor,
   categoryLabel,
+  EXPERIENCE_LABELS,
+  experienceVerdict,
+  HIRE_TYPES,
   locationVerdict,
   REMOTE_LEVELS,
   salaryDiff,
@@ -23,7 +26,10 @@ export function PostingFacts({ posting, profile }: { posting: JobPosting; profil
           {f.location || "勤务地没写"} · {REMOTE_LEVELS[f.remote]}
         </Badge>
         {unclear && <Badge variant="muted">地点说不清</Badge>}
+        <Badge variant="muted">{HIRE_TYPES[f.hire_type ?? "unclear"]}</Badge>
+        <Badge variant="muted">{EXPERIENCE_LABELS[experienceVerdict(f.experience?.min_years)]}</Badge>
       </div>
+      {f.experience?.quote && <p className="text-xs text-muted-foreground">经验要求原话：「{f.experience.quote}」</p>}
 
       <div>
         <h3 className="font-semibold">年收</h3>

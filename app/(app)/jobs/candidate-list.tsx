@@ -9,6 +9,9 @@ import {
   ATS_SITES,
   belowFloor,
   categoryLabel,
+  EXPERIENCE_LABELS,
+  experienceVerdict,
+  HIRE_TYPES,
   locationVerdict,
   REMOTE_LEVELS,
   salaryDiff,
@@ -50,6 +53,8 @@ export function CandidateList({ candidates, profile }: { candidates: JobPosting[
             <div className="mt-1 flex flex-wrap gap-2 text-xs">
               <Badge variant="outline">{categoryLabel(c.category)}</Badge>
               {ats && <Badge variant="secondary">官网可直接应募（{ATS_SITES[ats].label}）</Badge>}
+              <Badge variant="muted">{HIRE_TYPES[c.facts.hire_type ?? "unclear"]}</Badge>
+              <Badge variant="muted">{EXPERIENCE_LABELS[experienceVerdict(c.facts.experience?.min_years)]}</Badge>
               <Badge variant="muted">
                 {c.facts.location || "勤务地没写"} · {REMOTE_LEVELS[c.facts.remote]}
               </Badge>

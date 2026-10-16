@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   atsOf,
   belowFloor,
+  experienceVerdict,
+  hireTypeOrder,
   careerQuery,
   effectiveStatus,
   locationVerdict,
@@ -36,6 +38,22 @@ describe("年收：只说差多少", () => {
   });
 });
 
+describe("经验要求和招聘类型", () => {
+  it("experienceVerdict：不问的能投；要 1 年的勉强；要 2 年以上的筛掉；没写的说不清", () => {
+    expect(experienceVerdict(0)).toBe("fits");
+    expect(experienceVerdict(1)).toBe("stretch");
+    expect(experienceVerdict(2)).toBe("too_much");
+    expect(experienceVerdict(5)).toBe("too_much");
+    expect(experienceVerdict(null)).toBe("unknown");
+    expect(experienceVerdict(undefined)).toBe("unknown");
+  });
+
+  it("hireTypeOrder：中途排在第二新卒前面，说不清的在中间", () => {
+    const items = [{ id: "s", hire_type: "second_new" as const }, { id: "u", hire_type: "unclear" as const }, { id: "m", hire_type: "mid" as const }];
+    expect([...items].sort((a, b) => hireTypeOrder(a.hire_type) - hireTypeOrder(b.hire_type)).map((i) => i.id)).toEqual(["m", "u", "s"]);
+  });
+});
+
 describe("地点", () => {
   it("全远程、基本远程不管在哪都留；勤务地含大阪的留；说不清的保留", () => {
     expect(locationVerdict("東京都港区", "full", ["大阪"])).toBe("keep");
@@ -62,12 +80,13 @@ describe("去重", () => {
 
 describe("搜索", () => {
   it("searchQuery：地点之外总带上フルリモート", () => {
-    expect(searchQuery("data", ["大阪"])).toBe("データアナリスト 中途採用 求人 大阪 OR フルリモート");
-    expect(searchQuery("chinese", [])).toBe("中国語 活かせる 求人 企画 フルリモート");
+    expect(searchQuery("data", ["大阪"])).toBe("データアナリスト 中途採用 未経験可 求人 大阪 OR フルリモート");
+    expect(searchQuery("chinese", [])).toBe("中国語 活かせる 中途採用 未経験可 求人 フルリモート");
+    expect(searchQuery("consulting", ["大阪"])).not.toContain("第二新卒");
   });
 
   it("careerQuery：职位关键词和地点，地点之外带上リモート（网站范围另外给）", () => {
-    expect(careerQuery("planning", ["大阪"])).toBe("事業企画 経営企画 求人 大阪 リモート");
+    expect(careerQuery("planning", ["大阪"])).toBe("事業企画 経営企画 中途 未経験歓迎 求人 大阪 リモート");
   });
 
   it("atsOf：按域名认招聘系统，子域名也认，别的不认", () => {

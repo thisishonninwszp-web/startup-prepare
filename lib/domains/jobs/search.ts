@@ -2,7 +2,7 @@ import { webSearch } from "@/lib/web-search";
 import { extractPostingFacts, type ExtractedPosting } from "@/lib/ai";
 import { getJobProfile, markSearched, MISSING_MIGRATION } from "./profile";
 import { cleanOldCandidates, knownUrls, readJobPage, savePosting } from "./postings";
-import { ATS_HOSTS, atsOf, careerQuery, JOB_CATEGORIES, locationVerdict, normalizeUrl, pickCandidates, searchQuery, tokyoDate } from "./shared";
+import { ATS_HOSTS, atsOf, careerQuery, experienceVerdict, hireTypeOrder, JOB_CATEGORIES, locationVerdict, normalizeUrl, pickCandidates, searchQuery, tokyoDate } from "./shared";
 
 /**
  * 每天搜岗位：每类搜两次（一般的一次、只搜公司招聘系统页面的一次，最多 8 次），每类读前 3 页
@@ -71,7 +71,11 @@ export async function runDailyJobSearch(userId: string, today = tokyoDate()): Pr
     })
   )
     .filter((x): x is Analyzed => x !== null)
-    .filter((x) => locationVerdict(x.extracted.facts.location, x.extracted.facts.remote, profile.locations) !== "drop");
+    .filter((x) => locationVerdict(x.extracted.facts.location, x.extracted.facts.remote, profile.locations) !== "drop")
+    // 按事实筛：只招新卒的、必须条件要 2 年以上经验的不留（他工作半年）
+    .filter((x) => x.extracted.facts.hire_type !== "new" && experienceVerdict(x.extracted.facts.experience?.min_years) !== "too_much")
+    // 同一类里中途在前、第二新卒在后（只按招哪种排，不打分）
+    .sort((a, b) => hireTypeOrder(a.extracted.facts.hire_type) - hireTypeOrder(b.extracted.facts.hire_type));
 
   let kept = 0;
   for (const item of pickCandidates(analyzed, profile.categories)) {

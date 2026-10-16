@@ -4,6 +4,7 @@ import { checkDraft, checkSentences, entrySourceText, numbersIn, quoteIn } from 
 import { FILL_KEYS, isConsentField, isFillKey, type FillKey, type FormField } from "@/lib/domains/jobs/fill-shared";
 import {
   CAREER_TOPICS,
+  HIRE_TYPES,
   JOB_CATEGORIES,
   REMOTE_LEVELS,
   RESUME_SECTION_KEYS,
@@ -11,6 +12,7 @@ import {
   type CareerEntry,
   type CareerTopic,
   type DroppedSentence,
+  type HireType,
   type PostingCategory,
   type PostingCondition,
   type PostingFacts,
@@ -73,10 +75,14 @@ const EXTRACT_PROMPT = `下面是一个网页的正文。他在日本找工作�
   - fit：fits（企划、分析、市场、咨询、翻译口译、工程师这类要专业知识的工作）/ no（主要是接客、店头销售、工厂、仓库、清扫、驾驶、护理这类现场作业）/ unclear（看不出来）
   - quote：業務内容的原话，逐字照抄（10 到 150 字）
   - reason：一句中文，说为什么这样判。只说工作内容，不替入管下结论。
+- hire_type：招的是哪种人：mid（中途採用、経験者採用；"ポテンシャル採用""未経験歓迎"的中途也算 mid）/ second_new（明写对象是第二新卒、既卒）/ new（只招新卒）/ unclear（看不出来）。中途和第二新卒都写了的算 mid。
+- experience：必须条件里要求的最少实务经验：
+  - min_years：整数年数；写着"未経験可""経験不問""未経験歓迎"填 0；没写经验年数填 null。"〇ヶ月以上"按不满一年填 1。
+  - quote：写着这件事的那一句原话，逐字照抄；min_years 是 null 时写空字符串。
 
 原话一律逐字照抄，不翻译、不改字、不补字；找不到原话的条目不要写。
 
-只输出 JSON：{"is_posting":true,"company":"…","title":"…","location":"…","remote":"unknown","salary_min":null,"salary_max":null,"salary_quote":"","conditions":[{"text":"…","quote":"…","required":true}],"terms":[{"label":"…","quote":"…"}],"category":"data","visa":{"fit":"fits","quote":"…","reason":"…"}}`;
+只输出 JSON：{"is_posting":true,"company":"…","title":"…","location":"…","remote":"unknown","salary_min":null,"salary_max":null,"salary_quote":"","conditions":[{"text":"…","quote":"…","required":true}],"terms":[{"label":"…","quote":"…"}],"category":"data","visa":{"fit":"fits","quote":"…","reason":"…"},"hire_type":"mid","experience":{"min_years":null,"quote":""}}`;
 
 /** 原话对不上的条件、别的条件丢掉；年收的数要在年收原话里（写成円的也认）；签证没有原话撑着算说不清。 */
 export function parsePostingFacts(value: unknown, body: string): ExtractedPosting {
@@ -124,6 +130,17 @@ export function parsePostingFacts(value: unknown, body: string): ExtractedPostin
   const quoteOk = quoteIn(visaQuote, body);
   const fit: VisaFit = quoteOk && typeof visaRaw.fit === "string" && visaRaw.fit in VISA_FITS ? (visaRaw.fit as VisaFit) : "unclear";
 
+  const hireType: HireType = typeof v.hire_type === "string" && v.hire_type in HIRE_TYPES ? (v.hire_type as HireType) : "unclear";
+  // 经验年数只认原话里写着的：年数要出现在原话里；0 要原话里写着未経験、不問
+  const expRaw = (v.experience ?? {}) as Record<string, unknown>;
+  const expQuote = str(expRaw.quote, 200);
+  const years = typeof expRaw.min_years === "number" && Number.isInteger(expRaw.min_years) && expRaw.min_years >= 0 && expRaw.min_years < 30 ? expRaw.min_years : null;
+  const expOk =
+    years !== null &&
+    quoteIn(expQuote, body) &&
+    (years === 0 ? /未経験|経験不問|不問|ポテンシャル/.test(expQuote) : numbersIn(expQuote).includes(String(years)) || /ヶ月|か月|カ月/.test(expQuote));
+  const experience = expOk ? { min_years: years, quote: expQuote } : { min_years: null, quote: "" };
+
   return {
     is_posting: true,
     company,
@@ -138,6 +155,8 @@ export function parsePostingFacts(value: unknown, body: string): ExtractedPostin
       conditions,
       terms,
       visa: { fit, quote: quoteOk ? visaQuote : "", reason: str(visaRaw.reason, 120) },
+      hire_type: hireType,
+      experience,
     },
   };
 }

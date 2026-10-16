@@ -29,6 +29,31 @@ export type RemoteLevel = keyof typeof REMOTE_LEVELS;
 export const VISA_FITS = { fits: "对得上", no: "对不上", unclear: "说不清" } as const;
 export type VisaFit = keyof typeof VISA_FITS;
 
+/** 招的是哪种人：他工作半年，第二新卒的话等于白丢一年涨薪，所以中途优先、新卒筛掉。 */
+export const HIRE_TYPES = { mid: "中途", second_new: "第二新卒枠", new: "只招新卒", unclear: "没写招哪种" } as const;
+export type HireType = keyof typeof HIRE_TYPES;
+
+/** 同一类里的先后：中途在前，说不清的其次，第二新卒最后（新卒已经筛掉）。按这一个事实排，不打分。 */
+export function hireTypeOrder(type: HireType | undefined): number {
+  return type === "mid" ? 0 : type === "second_new" ? 2 : type === "new" ? 3 : 1;
+}
+
+export type ExperienceVerdict = "fits" | "stretch" | "too_much" | "unknown";
+export const EXPERIENCE_LABELS: Record<ExperienceVerdict, string> = {
+  fits: "未経験・経験不問",
+  stretch: "要 1 年经验（你半年）",
+  too_much: "要 2 年以上经验",
+  unknown: "经验要求没写",
+};
+
+/** 必须条件里写的最少经验年数：0 = 不问、1 = 勉强够得着、2 年以上筛掉（他 2026-04 入职，半年）。 */
+export function experienceVerdict(minYears: number | null | undefined): ExperienceVerdict {
+  if (minYears === null || minYears === undefined) return "unknown";
+  if (minYears <= 0) return "fits";
+  if (minYears <= 1) return "stretch";
+  return "too_much";
+}
+
 export const APPLICATION_STATUSES = {
   applied: "投了",
   replied: "回了",
@@ -184,6 +209,9 @@ export type PostingFacts = {
   conditions: PostingCondition[];
   terms: PostingTerm[];
   visa: PostingVisa;
+  /** 2026-10-16 加的两样；之前存的岗位没有，读的时候当"没写"。 */
+  hire_type?: HireType;
+  experience?: { min_years: number | null; quote: string };
 };
 /** entry_ids[i] 是第 i 条条件对得上的底稿 id（空 = 底稿里没有）；blocker.index 从 1 数，0 = 没指明哪条。 */
 export type PostingMatch = { entry_ids: string[][]; blocker: { index: number; text: string } };
@@ -313,11 +341,12 @@ export function normalizeUrl(url: string): string {
   }
 }
 
+// 找中途、经验要求低的（他工作半年；第二新卒的岗位不专门去找）
 const CATEGORY_QUERIES: Record<JobCategory, string> = {
-  data: "データアナリスト 中途採用 求人",
-  consulting: "コンサルタント 第二新卒 求人",
-  planning: "事業企画 経営企画 中途採用 求人",
-  chinese: "中国語 活かせる 求人 企画",
+  data: "データアナリスト 中途採用 未経験可 求人",
+  consulting: "コンサルタント 中途採用 未経験可 求人",
+  planning: "事業企画 経営企画 中途採用 未経験可 求人",
+  chinese: "中国語 活かせる 中途採用 未経験可 求人",
 };
 
 /** 每类一个搜索词；地点之外总带上フルリモート（全远程不管在哪都要）。 */
@@ -364,7 +393,7 @@ const CAREER_KEYWORDS: Record<JobCategory, string> = {
 /** 搜招聘系统页面用的搜索词：职位关键词和地点（加リモート）。网站范围由 webSearch 的 domains 限定。 */
 export function careerQuery(category: JobCategory, locations: string[]): string {
   const places = [...locations.map((l) => l.trim()).filter(Boolean), "リモート"];
-  return `${CAREER_KEYWORDS[category]} 求人 ${places.join(" ")}`;
+  return `${CAREER_KEYWORDS[category]} 中途 未経験歓迎 求人 ${places.join(" ")}`;
 }
 
 /** 四类轮流取：每类最多 perCat 条，一共最多 cap 条。不在你选的几类里的不取。 */

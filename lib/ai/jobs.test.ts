@@ -8,6 +8,8 @@ const BODY = [
   "勤務地：大阪府大阪市北区",
   "年収：450万円〜600万円",
   "応募資格：Excelでのデータ集計の実務経験",
+  "応募資格：Excelでのデータ集計の実務経験1年以上",
+  "中途採用（未経験歓迎）",
   "歓迎：中国語でのビジネス会話ができる方",
   "仕事内容：広告データの分析と改善提案を担当していただきます",
   "残業：月20時間程度",
@@ -31,6 +33,8 @@ describe("抽岗位", () => {
     terms: [{ label: "加班", quote: "残業：月20時間程度" }],
     category: "data",
     visa: { fit: "fits", quote: "広告データの分析と改善提案を担当していただきます", reason: "分析和提案属于专业工作" },
+    hire_type: "mid",
+    experience: { min_years: 1, quote: "応募資格：Excelでのデータ集計の実務経験1年以上" },
   };
 
   it("原话对不上的条件丢掉；年收数字要在原话里", () => {
@@ -49,6 +53,17 @@ describe("抽岗位", () => {
     expect(r.is_posting && r.facts.visa).toEqual({ fit: "unclear", quote: "", reason: "x" });
     expect(parsePostingFacts({ is_posting: false }, BODY)).toEqual({ is_posting: false });
     expect(() => parsePostingFacts({ ...good, company: "" }, BODY)).toThrow(/公司名/);
+  });
+
+  it("招聘类型和经验年数：原话对得上才认；年数要在原话里；写着未経験的算 0", () => {
+    const r = parsePostingFacts(good, BODY);
+    expect(r.is_posting && [r.facts.hire_type, r.facts.experience]).toEqual(["mid", { min_years: 1, quote: "応募資格：Excelでのデータ集計の実務経験1年以上" }]);
+    const wrongYears = parsePostingFacts({ ...good, experience: { min_years: 3, quote: "応募資格：Excelでのデータ集計の実務経験1年以上" } }, BODY);
+    expect(wrongYears.is_posting && wrongYears.facts.experience).toEqual({ min_years: null, quote: "" });
+    const none = parsePostingFacts({ ...good, experience: { min_years: 0, quote: "中途採用（未経験歓迎）" } }, BODY);
+    expect(none.is_posting && none.facts.experience?.min_years).toBe(0);
+    const odd = parsePostingFacts({ ...good, hire_type: "bogus", experience: null }, BODY);
+    expect(odd.is_posting && [odd.facts.hire_type, odd.facts.experience]).toEqual(["unclear", { min_years: null, quote: "" }]);
   });
 
   it("年收写成円也认（4500000 = 450 万）", () => {
