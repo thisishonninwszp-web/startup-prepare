@@ -2,7 +2,7 @@ import { webSearch } from "@/lib/web-search";
 import { extractPostingFacts, type ExtractedPosting } from "@/lib/ai";
 import { getJobProfile, markSearched, MISSING_MIGRATION } from "./profile";
 import { cleanOldCandidates, knownUrls, readJobPage, savePosting } from "./postings";
-import { atsOf, careerQuery, JOB_CATEGORIES, locationVerdict, normalizeUrl, pickCandidates, searchQuery, tokyoDate } from "./shared";
+import { ATS_HOSTS, atsOf, careerQuery, JOB_CATEGORIES, locationVerdict, normalizeUrl, pickCandidates, searchQuery, tokyoDate } from "./shared";
 
 /**
  * 每天搜岗位：每类搜两次（一般的一次、只搜公司招聘系统页面的一次，最多 8 次），每类读前 3 页
@@ -40,7 +40,7 @@ export async function runDailyJobSearch(userId: string, today = tokyoDate()): Pr
     profile.categories.map(async (category) => {
       const [general, career] = await Promise.all([
         webSearch(searchQuery(category, profile.locations), 5).catch(() => null),
-        webSearch(careerQuery(category, profile.locations), 5).catch(() => null),
+        webSearch(careerQuery(category, profile.locations), 5, { domains: ATS_HOSTS }).catch(() => null),
       ]);
       if (!general && !career) {
         skipped.push(`${JOB_CATEGORIES[category]}：没搜成`);

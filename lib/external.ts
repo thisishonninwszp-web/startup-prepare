@@ -39,10 +39,11 @@ function toResults(data: unknown): TavilyResult[] {
   }));
 }
 
-/** 按主题联网搜索，返回带正文与真实链接的结果。 */
+/** 按主题联网搜索，返回带正文与真实链接的结果。includeDomains：只要这几个网站的页面。 */
 export async function tavilySearch(
   query: string,
-  maxResults = 6
+  maxResults = 6,
+  includeDomains?: string[]
 ): Promise<TavilyResult[]> {
   const res = await fetch(`${TAVILY_BASE}/search`, {
     method: "POST",
@@ -52,6 +53,7 @@ export async function tavilySearch(
       max_results: maxResults,
       search_depth: "basic",
       include_answer: false,
+      ...(includeDomains?.length ? { include_domains: includeDomains } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Tavily 搜索失败（${res.status}）`);

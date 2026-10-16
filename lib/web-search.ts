@@ -93,8 +93,30 @@ async function googleSearch(query: string, maxResults: number): Promise<TavilyRe
   return results.slice(0, maxResults);
 }
 
-/** 和 tavilySearch 一样的用法和返回。两边都失败时抛 Tavily 的错（调用方本来就会降级）。 */
-export async function webSearch(query: string, maxResults = 6): Promise<TavilyResult[]> {
+function inDomains(url: string, domains: string[]): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return domains.some((d) => host === d || host.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 和 tavilySearch 一样的用法和返回。两边都失败时抛 Tavily 的错（调用方本来就会降级）。
+ * domains：只要这几个网站的页面。Gemini 的 Google 搜索不理会 site:（2026-10 试过，十条里只有一条在范围里），
+ * 所以这时先用 Tavily 的 include_domains，没结果再用 Google 搜、按域名过滤。
+ */
+export async function webSearch(query: string, maxResults = 6, options: { domains?: string[] } = {}): Promise<TavilyResult[]> {
+  const domains = options.domains ?? [];
+  if (domains.length > 0) {
+    const viaTavily = await tavilySearch(query, maxResults, domains).catch(() => [] as TavilyResult[]);
+    const kept = viaTavily.filter((r) => inDomains(r.url, domains));
+    if (kept.length > 0) return kept;
+    const siteQuery = `${query} ${domains.map((d) => `site:${d}`).join(" OR ")}`;
+    const viaGoogle = await withTimeout(googleSearch(siteQuery, maxResults), GOOGLE_BUDGET_MS, [] as TavilyResult[]).catch(() => [] as TavilyResult[]);
+    return viaGoogle.filter((r) => inDomains(r.url, domains));
+  }
   try {
     // 超时、限流（429）、一篇都没读到，都改用 Tavily
     const found = await withTimeout(googleSearch(query, maxResults), GOOGLE_BUDGET_MS, [] as TavilyResult[]);
