@@ -4,7 +4,7 @@ import { listConfirmedEntries } from "./base";
 import { getPosting } from "./postings";
 import { getJobProfile, MISSING_MIGRATION } from "./profile";
 import { getResume, latestResume, tailorForPosting } from "./resumes";
-import { tokyoDate, type JobPosting, type JobProfile, type JobResume } from "./shared";
+import { boardOf, BOARD_SITES, tokyoDate, type JobPosting, type JobProfile, type JobResume } from "./shared";
 
 /**
  * 官网填表助手的数据库这一侧。网页上点「去填表」只是把岗位记成 requested；
@@ -45,6 +45,8 @@ export async function requestFill(userId: string, postingId: string): Promise<vo
   const posting = await getPosting(userId, postingId);
   if (!posting) throw new Error("找不到这个岗位");
   if (!posting.url) throw new Error("这个岗位没有网址（是贴文字加进来的），没有页面可填。");
+  const board = boardOf(posting.url);
+  if (board) throw new Error(`这是 ${BOARD_SITES[board].label} 上的岗位，要登录 ${BOARD_SITES[board].label} 才能投，助手不碰登录。`);
   const { error } = await supabaseAdmin
     .from("job_postings")
     .update({ fill_status: "requested", fill_requested_at: new Date().toISOString(), fill_note: null })

@@ -30,12 +30,14 @@ export function FillPanel({
   postingId,
   hasUrl,
   atsLabel,
+  boardLabel,
   state,
   missingMigration,
 }: {
   postingId: string;
   hasUrl: boolean;
   atsLabel: string | null;
+  boardLabel: string | null;
   state: FillState | null;
   missingMigration: string | null;
 }) {
@@ -64,6 +66,17 @@ export function FillPanel({
       <section className="space-y-2 text-sm leading-7">
         <h2 className="text-base font-semibold">去填表</h2>
         <p className="text-muted-foreground">这个岗位是贴文字加进来的，没有页面可以填。</p>
+      </section>
+    );
+  }
+
+  if (boardLabel) {
+    return (
+      <section className="space-y-2 text-sm leading-7">
+        <h2 className="text-base font-semibold">去哪投</h2>
+        <p className="text-muted-foreground">
+          这是 {boardLabel} 上的岗位，要登录 {boardLabel} 才能投，填表助手不碰登录。上面的简历可以复制过去用；投完回来在下面点「记下：投了」。
+        </p>
       </section>
     );
   }

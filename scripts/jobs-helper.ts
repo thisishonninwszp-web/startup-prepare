@@ -9,7 +9,6 @@
  *
  * 环境变量（.env.local）：JOBS_BROWSER=msedge（默认）或 chrome。
  */
-import dns from "node:dns";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,29 +17,16 @@ import { mapFormFields } from "@/lib/ai";
 import { claimFillRequests, loadFillJob, recordSiteApplication, setFillStatus, MISSING_FILL_MIGRATION } from "@/lib/domains/jobs/fill";
 import { CLICK_APPLY, fillFields, HAS_CAPTCHA, markScript, pageText, settle, summary, textual, waitForForm } from "@/lib/domains/jobs/fill-browser";
 import { fillValues, looksSubmitted, resumeHtml } from "@/lib/domains/jobs/fill-shared";
+import { listJobProfileUsers } from "@/lib/domains/jobs/profile";
+import { runBigJobSearch } from "@/lib/domains/jobs/search";
 import { tokyoDate } from "@/lib/domains/jobs/shared";
+import { bigSearchedOn, markBigSearched } from "./big-search-state";
+import { patchDns } from "./dns-patch";
 
 const POLL_MS = 5_000;
 const WATCH_MS = 2_000;
 const WAIT_LIMIT_MS = 2 * 60 * 60 * 1000;
 const CHANNEL = process.env.JOBS_BROWSER === "chrome" ? "chrome" : "msedge";
-
-/** 这台电脑的路由器有时解析不了 supabase.co（见项目记忆）：先用 8.8.8.8 查，查不到再走系统的。 */
-function patchDns(): void {
-  dns.setServers(["8.8.8.8", "1.1.1.1"]);
-  const original = dns.lookup;
-  const patched = ((host: string, options: unknown, callback?: unknown) => {
-    const cb = (typeof options === "function" ? options : callback) as (err: Error | null, address?: unknown, family?: number) => void;
-    const opts = (typeof options === "function" || options === undefined ? {} : options) as { all?: boolean; family?: number };
-    if (opts.family === 6) return (original as (...a: unknown[]) => void)(host, options, callback);
-    dns.resolve4(host, (err, addresses) => {
-      if (err || !addresses?.length) return (original as (...a: unknown[]) => void)(host, options, callback);
-      if (opts.all) cb(null, addresses.map((address) => ({ address, family: 4 })));
-      else cb(null, addresses[0], 4);
-    });
-  }) as typeof dns.lookup;
-  dns.lookup = patched;
-}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -151,6 +137,31 @@ async function handle(job: { id: string; userId: string }): Promise<void> {
   }
 }
 
+// ---- 每天的大搜 ------------------------------------------------------------------------------
+
+// 网页上的快搜不算大搜：它每类只搜一个说法、最多留 8 条
+let bigSearching = false;
+
+/** 助手开着时每天第一次自动大搜一轮（在后台跑，不挡着填表）。 */
+async function maybeBigSearch(): Promise<void> {
+  if (bigSearching) return;
+  const today = tokyoDate();
+  if (bigSearchedOn() === today) return;
+  bigSearching = true;
+  try {
+    console.log("今天还没大搜，开始搜岗位（几分钟，不挡着填表）……");
+    for (const userId of await listJobProfileUsers()) {
+      const r = await runBigJobSearch(userId, today);
+      console.log(`今天的大搜：读了 ${r.read} 个岗位，新留下 ${r.kept} 条${r.skipped.length ? `（${r.skipped.join("；")}）` : ""}。去 /jobs 的「今天搜到的」看。`);
+    }
+    markBigSearched(today);
+  } catch (e) {
+    console.error(`大搜没搜成：${e instanceof Error ? e.message : String(e)}（过一会儿会再试）`);
+  } finally {
+    bigSearching = false;
+  }
+}
+
 async function main(): Promise<void> {
   patchDns();
   console.log(`填表助手开着（用 ${CHANNEL === "chrome" ? "Chrome" : "Edge"}）。网页上点「去填表」的岗位，几秒内会在这里打开。Ctrl+C 退出。`);
@@ -165,6 +176,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void stop());
 
   for (;;) {
+    void maybeBigSearch();
     try {
       for (const job of await claimFillRequests()) {
         if (active.has(job.id)) continue;

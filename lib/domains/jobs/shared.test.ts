@@ -5,7 +5,9 @@ import {
   QUERY_VARIANTS,
   variantIndex,
   atsOf,
-  atsJobLinks,
+  boardDetailUrl,
+  boardOf,
+  jobLinks,
   belowFloor,
   isAtsDetailUrl,
   pickJobLinks,
@@ -134,12 +136,12 @@ describe("搜索", () => {
     expect(isAtsDetailUrl("https://doda.jp/DodaFront/View/JobSearchDetail/j_jid__1/")).toBe(false);
   });
 
-  it("atsJobLinks + pickJobLinks：从列表页挑职位名对得上这一类的单个岗位", () => {
+  it("jobLinks + pickJobLinks：从列表页挑职位名对得上这一类的单个岗位", () => {
     const html = `<a href="/pages/axc/jobs/001a">データアナリスト（中途）</a>
       <a href="https://hrmos.co/pages/axc/jobs/002d"><span>コンサルティング営業</span></a>
       <a href="/pages/axc/jobs">一覧</a><a href="https://twitter.com/intent/tweet?u=x">share</a>
       <a href="/pages/axc/jobs/003a">経理スタッフ</a><a href="/pages/axc/jobs/001a">データアナリスト（中途）</a>`;
-    const links = atsJobLinks(html, "https://hrmos.co/pages/axc/jobs");
+    const links = jobLinks(html, "https://hrmos.co/pages/axc/jobs");
     expect(links).toEqual([
       { url: "https://hrmos.co/pages/axc/jobs/001a", text: "データアナリスト（中途）" },
       { url: "https://hrmos.co/pages/axc/jobs/002d", text: "コンサルティング営業" },
@@ -148,6 +150,30 @@ describe("搜索", () => {
     expect(pickJobLinks(links, "data", 2)).toEqual(["https://hrmos.co/pages/axc/jobs/001a"]);
     expect(pickJobLinks(links, "consulting", 2)).toEqual(["https://hrmos.co/pages/axc/jobs/002d"]);
     expect(pickJobLinks(links, "chinese", 2)).toEqual([]);
+  });
+
+  it("求人网站：认单个岗位页、去掉页签和追踪参数归成一个网址；列表页不算", () => {
+    expect(boardDetailUrl("https://doda.jp/DodaFront/View/JobSearchDetail/j_jid__3015975882/-tab__pr/")).toBe(
+      "https://doda.jp/DodaFront/View/JobSearchDetail/j_jid__3015975882/"
+    );
+    expect(boardDetailUrl("https://tenshoku.mynavi.jp/jobinfo-431002-1-13-1/adv7/?af=&ty=eg&utm_source=engineer")).toBe(
+      "https://tenshoku.mynavi.jp/jobinfo-431002-1-13-1/"
+    );
+    expect(boardDetailUrl("https://www.green-japan.com/company/1234/job/56789")).toBe("https://www.green-japan.com/company/1234/job/56789");
+    expect(boardDetailUrl("https://employment.en-japan.com/desc_1234567/?arearoute=1")).toBe("https://employment.en-japan.com/desc_1234567/");
+    expect(boardDetailUrl("https://doda.jp/DodaFront/View/JobSearchList/j_pr__27/-oc__0206M/-preBtn__1")).toBeNull();
+    expect(boardDetailUrl("https://hrmos.co/pages/axc/jobs/001a")).toBeNull();
+    expect(boardOf("https://doda.jp/x")).toBe("doda");
+    expect(boardOf("https://hrmos.co/pages/a/jobs/1")).toBeNull();
+  });
+
+  it("jobLinks：求人网站列表页里同一个岗位的几个链接只留第一个（职位名那个）", () => {
+    const html = `<a href="/DodaFront/View/JobSearchDetail/j_jid__3015175117/">マーケティングエンジニア／広告運用・分析 株式会社ヘルメス</a>
+      <a href="/DodaFront/View/JobSearchDetail/j_jid__3015175117/-tab__jd/">仕事内容 広告計測・データ分析</a>
+      <a href="/DodaFront/View/JobSearchList/j_pr__27/">大阪の求人</a>`;
+    expect(jobLinks(html, "https://doda.jp/DodaFront/View/JobSearchList/j_pr__27/")).toEqual([
+      { url: "https://doda.jp/DodaFront/View/JobSearchDetail/j_jid__3015175117/", text: "マーケティングエンジニア／広告運用・分析 株式会社ヘルメス" },
+    ]);
   });
 
   it("pickCandidates：四类轮流，每类最多 2 条，一共最多 8 条，不在四类里的不取", () => {

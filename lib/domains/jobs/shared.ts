@@ -363,10 +363,22 @@ function variantFor(category: JobCategory, today: string): string {
   return list[variantIndex(today, list.length)];
 }
 
-/** 一般搜索的词：今天轮到的说法 + 中途、未经验可；地点之外总带上フルリモート（全远程不管在哪都要）。 */
-export function searchQuery(category: JobCategory, locations: string[], today = tokyoDate()): string {
+/** 从今天轮到的那个说法开始，往后数 n 个（大搜一次用两个说法）。 */
+export function variantsFrom(category: JobCategory, today: string, n: number): string[] {
+  const list = QUERY_VARIANTS[category];
+  const start = variantIndex(today, list.length);
+  return Array.from({ length: Math.min(n, list.length) }, (_, i) => list[(start + i) % list.length]);
+}
+
+/** 一般搜索（多半搜到求人网站的列表页）的词：说法 + 中途、未经验可；地点之外总带上フルリモート。 */
+export function boardQueryFor(variant: string, locations: string[]): string {
   const places = [...locations.map((l) => l.trim()).filter(Boolean), "フルリモート"];
-  return `${variantFor(category, today)} 中途採用 未経験可 求人 ${places.join(" OR ")}`;
+  return `${variant} 中途採用 未経験可 求人 ${places.join(" OR ")}`;
+}
+
+/** 一般搜索的词，用今天轮到的说法。 */
+export function searchQuery(category: JobCategory, locations: string[], today = tokyoDate()): string {
+  return boardQueryFor(variantFor(category, today), locations);
 }
 
 /** 公司自己的招聘系统：这些页面不用登录就能应募，填表助手专门对付它们。 */
@@ -419,18 +431,63 @@ function anchorText(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 }
 
-/** 招聘系统的列表页上，单个岗位的链接和链接上的字（职位名）。同一个网址只留第一次。 */
-export function atsJobLinks(html: string, baseUrl: string): { url: string; text: string }[] {
+/**
+ * 求人网站：单个岗位页不用登录就能看，所以收进候选；但应募要登录那个网站，填表助手不碰，只标"要在 doda 上投"。
+ * detail 认单个岗位的路径，canonical 把页签、追踪参数去掉归成一个网址（同一个岗位在列表页上常有好几个链接）。
+ */
+export const BOARD_SITES = {
+  doda: { label: "doda", host: "doda.jp", detail: /\/DodaFront\/View\/JobSearchDetail\/j_jid__(\d+)/, canonical: (m: RegExpMatchArray) => `https://doda.jp/DodaFront/View/JobSearchDetail/j_jid__${m[1]}/` },
+  mynavi: { label: "マイナビ転職", host: "tenshoku.mynavi.jp", detail: /\/jobinfo-(\d+-\d+-\d+-\d+)/, canonical: (m: RegExpMatchArray) => `https://tenshoku.mynavi.jp/jobinfo-${m[1]}/` },
+  green: { label: "Green", host: "green-japan.com", detail: /\/company\/(\d+)\/job\/(\d+)/, canonical: (m: RegExpMatchArray) => `https://www.green-japan.com/company/${m[1]}/job/${m[2]}` },
+  en: { label: "エン転職", host: "employment.en-japan.com", detail: /\/desc_(\d+)/, canonical: (m: RegExpMatchArray) => `https://employment.en-japan.com/desc_${m[1]}/` },
+} as const;
+export type BoardKey = keyof typeof BOARD_SITES;
+export const BOARD_HOSTS: string[] = Object.values(BOARD_SITES).map((s) => s.host);
+
+function hostMatches(url: string, host: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h === host || h.endsWith(`.${host}`);
+  } catch {
+    return false;
+  }
+}
+
+/** 这个网址是哪个求人网站的。 */
+export function boardOf(url: string | null): BoardKey | null {
+  if (!url) return null;
+  for (const [key, site] of Object.entries(BOARD_SITES) as [BoardKey, (typeof BOARD_SITES)[BoardKey]][]) {
+    if (hostMatches(url, site.host)) return key;
+  }
+  return null;
+}
+
+/** 求人网站上单个岗位页的标准网址；不是单个岗位页返回 null。 */
+export function boardDetailUrl(url: string): string | null {
+  const board = boardOf(url);
+  if (!board) return null;
+  const m = new URL(url).pathname.match(BOARD_SITES[board].detail);
+  return m ? BOARD_SITES[board].canonical(m) : null;
+}
+
+/** 单个岗位页的网址（招聘系统的照原样去掉跟踪参数，求人网站的归成标准网址）；列表页、别的网站返回 null。 */
+export function jobDetailUrl(url: string): string | null {
+  if (isAtsDetailUrl(url)) return normalizeUrl(url);
+  return boardDetailUrl(url);
+}
+
+/** 列表页上单个岗位的链接和链接上的字（职位名）。同一个岗位只留第一个链接（多半是写着职位名的那个）。 */
+export function jobLinks(html: string, baseUrl: string): { url: string; text: string }[] {
   const out: { url: string; text: string }[] = [];
   const seen = new Set<string>();
   for (const m of html.matchAll(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-    let url: string;
+    let url: string | null;
     try {
-      url = normalizeUrl(new URL(m[1].replace(/&amp;/g, "&"), baseUrl).toString());
+      url = jobDetailUrl(new URL(m[1].replace(/&amp;/g, "&"), baseUrl).toString());
     } catch {
       continue;
     }
-    if (seen.has(url) || !isAtsDetailUrl(url)) continue;
+    if (!url || seen.has(url)) continue;
     seen.add(url);
     out.push({ url, text: anchorText(m[2]).slice(0, 120) });
   }
@@ -455,10 +512,15 @@ export function pickJobLinks(links: { url: string; text: string }[], category: J
 /** 招聘系统的域名（搜索时只要这几个网站的页面）。 */
 export const ATS_HOSTS: string[] = Object.values(ATS_SITES).map((s) => s.host);
 
-/** 搜招聘系统页面用的搜索词：今天轮到的说法和地点（加リモート）。网站范围由 webSearch 的 domains 限定。 */
-export function careerQuery(category: JobCategory, locations: string[], today = tokyoDate()): string {
+/** 搜招聘系统页面用的词：说法和地点（加リモート）。网站范围由 webSearch 的 domains 限定。 */
+export function careerQueryFor(variant: string, locations: string[]): string {
   const places = [...locations.map((l) => l.trim()).filter(Boolean), "リモート"];
-  return `${variantFor(category, today)} 中途 未経験歓迎 求人 ${places.join(" ")}`;
+  return `${variant} 中途 未経験歓迎 求人 ${places.join(" ")}`;
+}
+
+/** 搜招聘系统页面用的词，用今天轮到的说法。 */
+export function careerQuery(category: JobCategory, locations: string[], today = tokyoDate()): string {
+  return careerQueryFor(variantFor(category, today), locations);
 }
 
 /** 四类轮流取：每类最多 perCat 条，一共最多 cap 条。不在你选的几类里的不取。 */

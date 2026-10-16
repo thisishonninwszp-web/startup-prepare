@@ -14,7 +14,8 @@
     "test": "vitest run",
     "context:export": "tsx --env-file=.env.local scripts/export-ai-context.ts",
     "context:mcp": "tsx --env-file=.env.local scripts/mcp-server.ts",
-    "jobs:helper": "tsx --env-file=.env.local scripts/jobs-helper.ts"
+    "jobs:helper": "tsx --env-file=.env.local scripts/jobs-helper.ts",
+    "jobs:search": "tsx --env-file=.env.local scripts/jobs-search.ts"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",

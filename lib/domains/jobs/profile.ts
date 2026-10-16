@@ -62,3 +62,10 @@ export async function markSearched(userId: string, day: string): Promise<void> {
   const { error } = await supabaseAdmin.from("job_profiles").update({ last_search_on: day }).eq("user_id", userId);
   if (error) throw new Error(error.message);
 }
+
+/** 填了条件页的所有人（单用户阶段就是他自己）：大搜给每个人各搜一轮。 */
+export async function listJobProfileUsers(): Promise<string[]> {
+  const { data, error } = await supabaseAdmin.from("job_profiles").select("user_id");
+  if (error) throw new Error(isMissingJobTables(error.message) ? MISSING_MIGRATION : error.message);
+  return (data ?? []).map((r) => r.user_id as string);
+}

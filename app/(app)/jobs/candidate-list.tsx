@@ -8,6 +8,8 @@ import {
   atsOf,
   ATS_SITES,
   belowFloor,
+  boardOf,
+  BOARD_SITES,
   categoryLabel,
   EXPERIENCE_LABELS,
   experienceVerdict,
@@ -44,6 +46,7 @@ export function CandidateList({ candidates, profile }: { candidates: JobPosting[
         const diff = salaryDiff(profile.salaryNow, c.facts.salary_min, c.facts.salary_max);
         const unclear = locationVerdict(c.facts.location, c.facts.remote, profile.locations) === "unclear";
         const ats = atsOf(c.url);
+        const board = boardOf(c.url);
         return (
           <div key={c.id} className="rounded-lg border border-border p-4 text-sm leading-7">
             <p className="font-medium">
@@ -53,6 +56,7 @@ export function CandidateList({ candidates, profile }: { candidates: JobPosting[
             <div className="mt-1 flex flex-wrap gap-2 text-xs">
               <Badge variant="outline">{categoryLabel(c.category)}</Badge>
               {ats && <Badge variant="secondary">官网可直接应募（{ATS_SITES[ats].label}）</Badge>}
+              {board && <Badge variant="muted">要在 {BOARD_SITES[board].label} 上投</Badge>}
               <Badge variant="muted">{HIRE_TYPES[c.facts.hire_type ?? "unclear"]}</Badge>
               <Badge variant="muted">{EXPERIENCE_LABELS[experienceVerdict(c.facts.experience?.min_years)]}</Badge>
               <Badge variant="muted">

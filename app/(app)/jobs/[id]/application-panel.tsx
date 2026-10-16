@@ -20,15 +20,17 @@ export function ApplicationPanel({
   postingId,
   resumeId,
   application,
+  defaultChannel,
 }: {
   postingId: string;
   resumeId: string | null;
   application: JobApplication | null;
+  defaultChannel: Channel;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [channel, setChannel] = useState<Channel>("board");
+  const [channel, setChannel] = useState<Channel>(defaultChannel);
   const [appliedOn, setAppliedOn] = useState(tokyoDate());
   const [salary, setSalary] = useState(application?.offered_salary ? String(application.offered_salary) : "");
 
