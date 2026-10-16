@@ -144,7 +144,8 @@ components/ui/       共享原子组件(shadcn 模式);页面禁止手搓 button
   (写推论的 Gemini 和判档位的 Jev 分开;页面只显示五档(很可能/较可能/一半一半/不太可能/很不可能)和"拿不准",不显示 Jev 的数字)
 - 上网搜索:一律走 `lib/web-search.ts` 的 `webSearch`(Gemini 自带的 Google 搜索只用来找网页,正文由代码自己读、
   挑和搜索词最相关的段落;12 秒没好、出错、一篇都没读到就退回 Tavily)。不直接调 `tavilySearch`,
-  也不用 AI 搜出来的那段总结 —— 没法逐字核对。用量在 /signals/sources 能看到
+  也不用 AI 搜出来的那段总结 —— 没法逐字核对。只要某几个网站的页面时传 `domains`(Gemini 的 Google 搜索不理会 site:,
+  这时先走 Tavily 的 include_domains,没结果再用 Google 搜、按域名过滤)。用量在 /signals/sources 能看到
 - 部署:Vercel
 
 ## 代码约定
