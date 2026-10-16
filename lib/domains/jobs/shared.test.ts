@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  atsOf,
   belowFloor,
+  careerQuery,
   effectiveStatus,
   locationVerdict,
   marketRows,
@@ -62,6 +64,23 @@ describe("搜索", () => {
   it("searchQuery：地点之外总带上フルリモート", () => {
     expect(searchQuery("data", ["大阪"])).toBe("データアナリスト 中途採用 求人 大阪 OR フルリモート");
     expect(searchQuery("chinese", [])).toBe("中国語 活かせる 求人 企画 フルリモート");
+  });
+
+  it("careerQuery：只搜招聘系统的页面，地点之外带上リモート", () => {
+    expect(careerQuery("planning", ["大阪"])).toBe(
+      "事業企画 OR 経営企画 大阪 OR リモート site:hrmos.co OR site:herp.careers OR site:open.talentio.com OR site:greenhouse.io OR site:jobs.lever.co"
+    );
+  });
+
+  it("atsOf：按域名认招聘系统，子域名也认，别的不认", () => {
+    expect(atsOf("https://hrmos.co/pages/abc/jobs/123")).toBe("hrmos");
+    expect(atsOf("https://herp.careers/v1/abc/xyz")).toBe("herp");
+    expect(atsOf("https://job-boards.greenhouse.io/abc/jobs/1")).toBe("greenhouse");
+    expect(atsOf("https://jobs.lever.co/abc/1")).toBe("lever");
+    expect(atsOf("https://doda.jp/DodaFront/View/JobSearchDetail/j_jid__1/")).toBeNull();
+    expect(atsOf("https://evilhrmos.co/x")).toBeNull();
+    expect(atsOf(null)).toBeNull();
+    expect(atsOf("not a url")).toBeNull();
   });
 
   it("pickCandidates：四类轮流，每类最多 2 条，一共最多 8 条，不在四类里的不取", () => {

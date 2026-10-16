@@ -102,15 +102,43 @@ export const CANDIDATE_TTL_DAYS = 14;
 // 类型
 // ---------------------------------------------------------------------------
 
-export type PersonalInfo = { name: string; kana: string; birth: string; email: string; phone: string; address: string };
-export const EMPTY_PERSONAL: PersonalInfo = { name: "", kana: "", birth: "", email: "", phone: "", address: "" };
+export type PersonalInfo = {
+  name: string;
+  kana: string;
+  birth: string;
+  email: string;
+  phone: string;
+  postal: string;
+  address: string;
+  /** 应募表单上「希望年収」那一格原样写什么，比如「500万円以上」。 */
+  salary_want: string;
+  /** 「入社可能時期」，比如「内定後2ヶ月」。 */
+  available_from: string;
+  visa_expiry: string;
+};
+export const EMPTY_PERSONAL: PersonalInfo = {
+  name: "",
+  kana: "",
+  birth: "",
+  email: "",
+  phone: "",
+  postal: "",
+  address: "",
+  salary_want: "",
+  available_from: "",
+  visa_expiry: "",
+};
 export const PERSONAL_FIELDS: [keyof PersonalInfo, string][] = [
   ["name", "氏名"],
   ["kana", "ふりがな"],
   ["birth", "生年月日"],
   ["email", "メールアドレス"],
   ["phone", "電話番号"],
+  ["postal", "郵便番号"],
   ["address", "住所"],
+  ["salary_want", "希望年収（表单上原样写的那句，比如「500万円以上」）"],
+  ["available_from", "入社可能時期（比如「内定後2ヶ月」）"],
+  ["visa_expiry", "在留期限"],
 ];
 
 export type JobProfile = {
@@ -288,6 +316,47 @@ const CATEGORY_QUERIES: Record<JobCategory, string> = {
 export function searchQuery(category: JobCategory, locations: string[]): string {
   const places = [...locations.map((l) => l.trim()).filter(Boolean), "フルリモート"];
   return `${CATEGORY_QUERIES[category]} ${places.join(" OR ")}`;
+}
+
+/** 公司自己的招聘系统：这些页面不用登录就能应募，填表助手专门对付它们。 */
+export const ATS_SITES = {
+  hrmos: { label: "HRMOS", host: "hrmos.co" },
+  herp: { label: "HERP", host: "herp.careers" },
+  talentio: { label: "Talentio", host: "open.talentio.com" },
+  greenhouse: { label: "Greenhouse", host: "greenhouse.io" },
+  lever: { label: "Lever", host: "jobs.lever.co" },
+} as const;
+export type AtsKey = keyof typeof ATS_SITES;
+
+/** 这个网址是不是公司招聘系统的页面（按域名认，子域名也算）。 */
+export function atsOf(url: string | null): AtsKey | null {
+  if (!url) return null;
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  for (const [key, site] of Object.entries(ATS_SITES) as [AtsKey, (typeof ATS_SITES)[AtsKey]][]) {
+    if (host === site.host || host.endsWith(`.${site.host}`)) return key;
+  }
+  return null;
+}
+
+const CAREER_KEYWORDS: Record<JobCategory, string> = {
+  data: "データアナリスト",
+  consulting: "コンサルタント",
+  planning: "事業企画 OR 経営企画",
+  chinese: "中国語",
+};
+
+/** 只搜招聘系统页面的搜索词：职位关键词、地点（加リモート）、几个招聘系统的域名。 */
+export function careerQuery(category: JobCategory, locations: string[]): string {
+  const places = [...locations.map((l) => l.trim()).filter(Boolean), "リモート"];
+  const sites = Object.values(ATS_SITES)
+    .map((s) => `site:${s.host}`)
+    .join(" OR ");
+  return `${CAREER_KEYWORDS[category]} ${places.join(" OR ")} ${sites}`;
 }
 
 /** 四类轮流取：每类最多 perCat 条，一共最多 cap 条。不在你选的几类里的不取。 */
