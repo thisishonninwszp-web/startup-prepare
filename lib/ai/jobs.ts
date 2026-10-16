@@ -1,6 +1,7 @@
 import { executeAiJson } from "@/lib/ai-gateway";
 import { MODEL } from "./shared";
 import { checkDraft, checkSentences, entrySourceText, numbersIn, quoteIn } from "@/lib/domains/jobs/provenance-shared";
+import { FILL_KEYS, isConsentField, isFillKey, type FillKey, type FormField } from "@/lib/domains/jobs/fill-shared";
 import {
   CAREER_TOPICS,
   JOB_CATEGORIES,
@@ -372,4 +373,56 @@ export async function tailorResume(
     ])
   ) as Record<ResumeSectionKey, ResumeSection>;
   return { ...result, sections };
+}
+
+// ---- 表单格子对应（官网填表助手）--------------------------------------------------
+
+const FIELD_MAP_PROMPT = `下面是日本一家公司招聘页上的应募表单，列出了每一格（编号、类型、格子名字、选项），还有"可以填的东西"的清单（键和说明）。
+把每一格对应到清单里的一样；对应不上的不写。
+- 只按格子的名字和类型对应，拿不准就不写，不要猜。
+- 同一样可以对应好几格（比如邮箱和"邮箱确认"）。
+- 文件上传格只能对应 resume_pdf；文字格、下拉框不能对应 resume_pdf。
+- 勾选框、单选、"同意"之类的一律不要对应。
+- 姓和名分两格时用 last_name / first_name，合在一格用 name；ふりがな同理。
+- 只有"住所"一格、或者"都道府県"的下拉框，都对应 address。
+
+只输出 JSON：{"map":[{"index":0,"key":"email"}]}`;
+
+/** 只留认得的格子和键；文件格只能放 PDF、PDF 只能放文件格；勾选框、单选、同意框不对应。 */
+export function parseFieldMap(value: unknown, fields: FormField[]): Map<number, FillKey> {
+  const byIndex = new Map(fields.map((f) => [f.index, f]));
+  const out = new Map<number, FillKey>();
+  for (const item of Array.isArray((value as { map?: unknown } | null)?.map) ? (value as { map: unknown[] }).map : []) {
+    const x = (item ?? {}) as Record<string, unknown>;
+    const field = byIndex.get(Number(x.index));
+    if (!field || !isFillKey(x.key) || out.has(field.index)) continue;
+    if (field.kind === "checkbox" || field.kind === "radio" || isConsentField(field)) continue;
+    if ((field.kind === "file") !== (x.key === "resume_pdf")) continue;
+    out.set(field.index, x.key);
+  }
+  return out;
+}
+
+/** 表单上每一格对应哪一样（AI 只看得到格子的名字和可以填的东西的说明，看不到他的任何个人信息）。 */
+export async function mapFormFields(userId: string, fields: FormField[]): Promise<Map<number, FillKey>> {
+  const candidates = fields.filter((f) => f.kind !== "checkbox" && f.kind !== "radio");
+  if (candidates.length === 0) return new Map();
+  const fieldLines = candidates
+    .map((f) => `[${f.index}] ${f.kind}${f.type !== f.kind ? `/${f.type}` : ""}　${f.label || "（没有名字）"}${f.options.length ? `　选项：${f.options.slice(0, 12).join(" / ")}` : ""}`)
+    .join("\n");
+  const keyLines = (Object.entries(FILL_KEYS) as [FillKey, string][]).map(([k, d]) => `${k}：${d}`).join("\n");
+  return executeAiJson(
+    { userId, operation: "job_field_map", module: "jobs", outputMode: "json", timeoutMs: 30_000, payloadLogging: "metadata_only" },
+    (attempt) => ({
+      model: MODEL,
+      contents: `表单的格子：\n${fieldLines}\n\n可以填的东西：\n${keyLines}` + (attempt === 1 ? "\n\n上一次输出没通过校验：只输出 {\"map\":[…]}。" : ""),
+      config: {
+        systemInstruction: FIELD_MAP_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parseFieldMap(value, fields)
+  );
 }

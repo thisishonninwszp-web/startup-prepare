@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assertNoPraise, parseEntryDraft, parseMatch, parsePostingFacts, parseTailored } from "./jobs";
+import { assertNoPraise, parseEntryDraft, parseFieldMap, parseMatch, parsePostingFacts, parseTailored } from "./jobs";
+import type { FormField } from "@/lib/domains/jobs/fill-shared";
 
 const BODY = [
   "職種：データアナリスト",
@@ -128,5 +129,50 @@ describe("改简历", () => {
 
   it("職務要約和職務経歴一句都没留下就算失败（让 AI 重写一次）", () => {
     expect(() => parseTailored({ ...value, summary: [], history: [] }, sources, "")).toThrow(/職務要約/);
+  });
+});
+
+describe("表单格子对应", () => {
+  const field = (index: number, kind: FormField["kind"], label: string): FormField => ({
+    index,
+    kind,
+    type: kind,
+    label,
+    required: false,
+    maxLength: null,
+    options: [],
+  });
+  const fields = [
+    field(0, "text", "メールアドレス"),
+    field(1, "text", "メールアドレス（確認）"),
+    field(2, "file", "履歴書・職務経歴書"),
+    field(3, "checkbox", "個人情報の取り扱いに同意する"),
+    field(4, "textarea", "志望動機"),
+    field(5, "select", "都道府県"),
+  ];
+
+  it("parseFieldMap：不认识的格子和键丢掉；文件格只能放 PDF；同意框和勾选框不对应", () => {
+    const r = parseFieldMap(
+      {
+        map: [
+          { index: 0, key: "email" },
+          { index: "1", key: "email" },
+          { index: 2, key: "resume_pdf" },
+          { index: 3, key: "name" },
+          { index: 4, key: "resume_pdf" },
+          { index: 5, key: "address" },
+          { index: 9, key: "phone" },
+          { index: 0, key: "bogus" },
+        ],
+      },
+      fields
+    );
+    expect(Array.from(r.entries())).toEqual([
+      [0, "email"],
+      [1, "email"],
+      [2, "resume_pdf"],
+      [5, "address"],
+    ]);
+    expect(parseFieldMap({}, fields).size).toBe(0);
   });
 });
