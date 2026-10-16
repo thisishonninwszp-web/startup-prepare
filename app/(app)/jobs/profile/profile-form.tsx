@@ -91,7 +91,7 @@ export function ProfileForm({ profile }: { profile: JobProfile | null }) {
       </fieldset>
 
       <fieldset className="space-y-3">
-        <legend className="text-sm font-semibold">个人信息（只用来打印简历）</legend>
+        <legend className="text-sm font-semibold">个人信息（打印简历、填应募表单用）</legend>
         {PERSONAL_FIELDS.map(([key, label]) => (
           <div key={key} className="space-y-1">
             <Label htmlFor={key}>{label}</Label>

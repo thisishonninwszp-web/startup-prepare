@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import { createMarketBet, recordApplication, setApplicationStatus } from "@/lib/domains/jobs/applications";
 import { confirmEntry, deleteEntry, draftEntry } from "@/lib/domains/jobs/base";
+import { requestFill } from "@/lib/domains/jobs/fill";
 import { createPosting, createPostingFromMaterial, dropCandidate, pickPosting, readJobPage, refreshMatch } from "@/lib/domains/jobs/postings";
 import { saveJobProfile } from "@/lib/domains/jobs/profile";
 import { saveResumeEdit, tailorForPosting } from "@/lib/domains/jobs/resumes";
@@ -263,5 +264,17 @@ export async function createMarketBetAction(input: { text: string; dueOn: string
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没押上") };
+  }
+}
+
+/** 「去填表」：记成等填表，他电脑上的填表助手会来取。 */
+export async function requestFillAction(postingId: string): Promise<Result> {
+  const userId = await requireUserId();
+  try {
+    await requestFill(userId, postingId);
+    revalidatePath(`/jobs/${postingId}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没交给填表助手") };
   }
 }

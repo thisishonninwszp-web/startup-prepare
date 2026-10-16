@@ -6,10 +6,13 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Separator } from "@/components/ui/separator";
 import { getApplicationForPosting } from "@/lib/domains/jobs/applications";
 import { listCareerEntries } from "@/lib/domains/jobs/base";
+import { getFillState, MISSING_FILL_MIGRATION } from "@/lib/domains/jobs/fill";
 import { getPosting } from "@/lib/domains/jobs/postings";
 import { getJobProfile } from "@/lib/domains/jobs/profile";
 import { latestResume } from "@/lib/domains/jobs/resumes";
+import { atsOf, ATS_SITES } from "@/lib/domains/jobs/shared";
 import { ApplicationPanel } from "./application-panel";
+import { FillPanel } from "./fill-panel";
 import { MatchView } from "./match-view";
 import { PostingFacts } from "./posting-facts";
 import { ResumePanel } from "./resume-panel";
@@ -30,13 +33,15 @@ export default async function JobPostingPage({ params }: { params: { id: string 
 
   const posting = await getPosting(user.id, params.id);
   if (!posting) notFound();
-  const [profile, entries, resume, application] = await Promise.all([
+  const [profile, entries, resume, application, fill] = await Promise.all([
     getJobProfile(user.id),
     listCareerEntries(user.id),
     latestResume(user.id, posting.id),
     getApplicationForPosting(user.id, posting.id),
+    getFillState(user.id, posting.id),
   ]);
   const confirmed = entries === "missing-schema" ? [] : entries.filter((e) => e.confirmed_at);
+  const ats = atsOf(posting.url);
 
   return (
     <PageContainer>
@@ -74,6 +79,14 @@ export default async function JobPostingPage({ params }: { params: { id: string 
         <MatchView posting={posting} entries={confirmed} />
         <Separator />
         <ResumePanel postingId={posting.id} resume={resume} hasEntries={confirmed.length > 0} />
+        <Separator />
+        <FillPanel
+          postingId={posting.id}
+          hasUrl={!!posting.url}
+          atsLabel={ats ? ATS_SITES[ats].label : null}
+          state={fill === "missing-schema" ? null : fill}
+          missingMigration={fill === "missing-schema" ? MISSING_FILL_MIGRATION : null}
+        />
         <Separator />
         <ApplicationPanel postingId={posting.id} resumeId={resume?.id ?? null} application={application} />
       </div>

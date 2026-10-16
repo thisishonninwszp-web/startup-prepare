@@ -25,7 +25,7 @@ export default async function JobProfilePage() {
       </p>
       <PageHeader
         title="条件"
-        description="每天搜什么岗位、年收跟现在差多少，都按这里写的来。最下面的个人信息只在打印简历时填进去，不会发给 AI。"
+        description="每天搜什么岗位、年收跟现在差多少，都按这里写的来。最下面的个人信息只在打印简历、填表助手在你电脑上填应募表单时用，不会发给 AI。"
       />
       {profile === "missing-schema" ? (
         <p className="text-sm leading-7 text-muted-foreground">{MISSING_MIGRATION}</p>
