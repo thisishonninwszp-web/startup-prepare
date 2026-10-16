@@ -21,13 +21,14 @@ it("exposes all four independent system entries", () => {
       "/retrospectives",
       "/dreams",
       "/self",
+      "/jobs",
     ])
   );
 });
 
-it("keeps the navigation at four groups and fourteen items", () => {
+it("keeps the navigation at four groups and fifteen items", () => {
   expect(NAV_GROUPS).toHaveLength(4);
-  expect(NAV_GROUPS.flatMap((group) => group.items)).toHaveLength(14);
+  expect(NAV_GROUPS.flatMap((group) => group.items)).toHaveLength(15);
 });
 
 // AppShell 用 ICONS[item.href] 取图标后直接 <Icon />，缺一个键就是整个应用壳白屏。
