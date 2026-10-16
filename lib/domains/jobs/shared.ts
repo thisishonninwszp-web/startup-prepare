@@ -341,18 +341,32 @@ export function normalizeUrl(url: string): string {
   }
 }
 
-// 找中途、经验要求低的（他工作半年；第二新卒的岗位不专门去找）
-const CATEGORY_QUERIES: Record<JobCategory, string> = {
-  data: "データアナリスト 中途採用 未経験可 求人",
-  consulting: "コンサルタント 中途採用 未経験可 求人",
-  planning: "事業企画 経営企画 中途採用 未経験可 求人",
-  chinese: "中国語 活かせる 中途採用 未経験可 求人",
+/**
+ * 每一类的几种说法，按日子轮着用：搜索词每天一样的话，第三天起搜到的几乎都是看过的。
+ * 只放他要的方向（业务/DX 咨询、BA、企划），第二新卒不专门去找。
+ */
+export const QUERY_VARIANTS: Record<JobCategory, string[]> = {
+  data: ["データアナリスト", "ビジネスアナリスト", "マーケティングアナリスト", "データ活用推進"],
+  consulting: ["コンサルタント", "業務改善コンサルタント", "DXコンサルタント", "ITコンサルタント"],
+  planning: ["事業企画 経営企画", "新規事業 企画", "事業開発", "経営企画 アシスタント"],
+  chinese: ["中国語 活かせる", "中国語 ビジネスレベル 企画", "中国語 マーケティング", "中国事業 推進"],
 };
 
-/** 每类一个搜索词；地点之外总带上フルリモート（全远程不管在哪都要）。 */
-export function searchQuery(category: JobCategory, locations: string[]): string {
+/** 今天轮到第几个说法（按东京的日子算，同一天搜几次都一样）。 */
+export function variantIndex(today: string, count: number): number {
+  const day = Math.floor(Date.parse(`${today}T00:00:00Z`) / 86_400_000);
+  return ((day % count) + count) % count;
+}
+
+function variantFor(category: JobCategory, today: string): string {
+  const list = QUERY_VARIANTS[category];
+  return list[variantIndex(today, list.length)];
+}
+
+/** 一般搜索的词：今天轮到的说法 + 中途、未经验可；地点之外总带上フルリモート（全远程不管在哪都要）。 */
+export function searchQuery(category: JobCategory, locations: string[], today = tokyoDate()): string {
   const places = [...locations.map((l) => l.trim()).filter(Boolean), "フルリモート"];
-  return `${CATEGORY_QUERIES[category]} ${places.join(" OR ")}`;
+  return `${variantFor(category, today)} 中途採用 未経験可 求人 ${places.join(" OR ")}`;
 }
 
 /** 公司自己的招聘系统：这些页面不用登录就能应募，填表助手专门对付它们。 */
@@ -424,9 +438,9 @@ export function atsJobLinks(html: string, baseUrl: string): { url: string; text:
 }
 
 const CATEGORY_TITLE: Record<JobCategory, RegExp> = {
-  data: /データ|アナリスト|分析|analyst|data/i,
+  data: /データ|アナリスト|分析|analyst|data|BI/i,
   consulting: /コンサル|consult/i,
-  planning: /企画|経営|事業開発|事業推進|bizdev|strategy/i,
+  planning: /企画|経営|事業開発|事業推進|新規事業|bizdev|strategy/i,
   chinese: /中国|中文|chinese|china/i,
 };
 
@@ -441,17 +455,10 @@ export function pickJobLinks(links: { url: string; text: string }[], category: J
 /** 招聘系统的域名（搜索时只要这几个网站的页面）。 */
 export const ATS_HOSTS: string[] = Object.values(ATS_SITES).map((s) => s.host);
 
-const CAREER_KEYWORDS: Record<JobCategory, string> = {
-  data: "データアナリスト",
-  consulting: "コンサルタント",
-  planning: "事業企画 経営企画",
-  chinese: "中国語",
-};
-
-/** 搜招聘系统页面用的搜索词：职位关键词和地点（加リモート）。网站范围由 webSearch 的 domains 限定。 */
-export function careerQuery(category: JobCategory, locations: string[]): string {
+/** 搜招聘系统页面用的搜索词：今天轮到的说法和地点（加リモート）。网站范围由 webSearch 的 domains 限定。 */
+export function careerQuery(category: JobCategory, locations: string[], today = tokyoDate()): string {
   const places = [...locations.map((l) => l.trim()).filter(Boolean), "リモート"];
-  return `${CAREER_KEYWORDS[category]} 中途 未経験歓迎 求人 ${places.join(" ")}`;
+  return `${variantFor(category, today)} 中途 未経験歓迎 求人 ${places.join(" ")}`;
 }
 
 /** 四类轮流取：每类最多 perCat 条，一共最多 cap 条。不在你选的几类里的不取。 */

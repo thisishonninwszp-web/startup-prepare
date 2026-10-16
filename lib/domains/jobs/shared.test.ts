@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  addDays,
+  ALL_CATEGORIES,
+  QUERY_VARIANTS,
+  variantIndex,
   atsOf,
   atsJobLinks,
   belowFloor,
@@ -82,14 +86,27 @@ describe("去重", () => {
 });
 
 describe("搜索", () => {
+  // 2026-10-14 轮到每一类的第一个说法
+  const DAY0 = "2026-10-14";
+
   it("searchQuery：地点之外总带上フルリモート", () => {
-    expect(searchQuery("data", ["大阪"])).toBe("データアナリスト 中途採用 未経験可 求人 大阪 OR フルリモート");
-    expect(searchQuery("chinese", [])).toBe("中国語 活かせる 中途採用 未経験可 求人 フルリモート");
-    expect(searchQuery("consulting", ["大阪"])).not.toContain("第二新卒");
+    expect(searchQuery("data", ["大阪"], DAY0)).toBe("データアナリスト 中途採用 未経験可 求人 大阪 OR フルリモート");
+    expect(searchQuery("chinese", [], DAY0)).toBe("中国語 活かせる 中途採用 未経験可 求人 フルリモート");
   });
 
   it("careerQuery：职位关键词和地点，地点之外带上リモート（网站范围另外给）", () => {
-    expect(careerQuery("planning", ["大阪"])).toBe("事業企画 経営企画 中途 未経験歓迎 求人 大阪 リモート");
+    expect(careerQuery("planning", ["大阪"], DAY0)).toBe("事業企画 経営企画 中途 未経験歓迎 求人 大阪 リモート");
+  });
+
+  it("按日子轮换说法：连着几天各不相同，转一圈回到原来那个；哪个说法都不找第二新卒", () => {
+    for (const category of ALL_CATEGORIES) {
+      const n = QUERY_VARIANTS[category].length;
+      const days = Array.from({ length: n }, (_, i) => addDays(DAY0, i));
+      expect(new Set(days.map((d) => searchQuery(category, ["大阪"], d))).size).toBe(n);
+      expect(careerQuery(category, ["大阪"], addDays(DAY0, n))).toBe(careerQuery(category, ["大阪"], DAY0));
+      for (const d of days) expect(searchQuery(category, ["大阪"], d)).not.toContain("第二新卒");
+    }
+    expect(variantIndex("2026-10-17", 4)).toBe(3);
   });
 
   it("atsOf：按域名认招聘系统，子域名也认，别的不认", () => {
