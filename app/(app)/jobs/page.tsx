@@ -8,6 +8,8 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { listMarketApps } from "@/lib/domains/jobs/applications";
 import { listCareerEntries } from "@/lib/domains/jobs/base";
+import { listCaseDrills } from "@/lib/domains/jobs/cases";
+import { RECENT_DRILLS, STUCK_STEPS, stuckCounts, type StuckStep } from "@/lib/domains/jobs/case-shared";
 import { listChinaRuns, MISSING_CHINA_MIGRATION } from "@/lib/domains/jobs/china";
 import { RUN_STATUS_LABELS } from "@/lib/domains/jobs/china-shared";
 import { listPostings } from "@/lib/domains/jobs/postings";
@@ -41,12 +43,15 @@ export default async function JobsPage() {
   }
 
   const today = tokyoDate();
-  const [{ picked, candidates }, apps, entries, chinaRuns] = await Promise.all([
+  const [{ picked, candidates }, apps, entries, chinaRuns, caseDrills] = await Promise.all([
     listPostings(user.id),
     listMarketApps(user.id),
     listCareerEntries(user.id),
     listChinaRuns(user.id),
+    listCaseDrills(user.id),
   ]);
+  const caseStats = caseDrills === "missing-schema" ? null : stuckCounts(caseDrills);
+  const companyOf = new Map([...picked, ...candidates].map((p) => [p.id, p.company_name]));
   const confirmed = entries === "missing-schema" ? 0 : entries.filter((e) => e.confirmed_at).length;
   const statusByPosting = new Map(apps.map((a) => [a.posting_id, effectiveStatus(a, today)]));
 
@@ -89,6 +94,28 @@ export default async function JobsPage() {
             <div className="mt-4">
               <BetForm />
             </div>
+            {caseStats && caseDrills !== "missing-schema" && caseStats.total > 0 && (
+              <details className="mt-4 text-xs leading-6 text-muted-foreground">
+                <summary className="cursor-pointer">
+                  练过 {caseStats.total} 道 case
+                  {caseStats.recent > 0 &&
+                    `；最近 ${caseStats.recent} 道里：${(Object.keys(STUCK_STEPS) as StuckStep[])
+                      .filter((k) => caseStats.counts[k] > 0)
+                      .map((k) => `${STUCK_STEPS[k]} ${caseStats.counts[k]} 次`)
+                      .join("、")}`}
+                </summary>
+                <ul className="mt-2 space-y-1">
+                  {caseDrills.slice(0, RECENT_DRILLS).map((d) => (
+                    <li key={d.id}>
+                      <Link href={`/jobs/case/${d.id}`} className="underline-offset-4 hover:underline">
+                        {companyOf.get(d.posting_id) ?? "岗位"}：{d.prompt_ja.length > 30 ? `${d.prompt_ja.slice(0, 30)}…` : d.prompt_ja}
+                      </Link>
+                      {d.stuck_step && ` · ${STUCK_STEPS[d.stuck_step]}`}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </section>
 
           <section>

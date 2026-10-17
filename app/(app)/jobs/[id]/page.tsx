@@ -11,7 +11,9 @@ import { getPosting } from "@/lib/domains/jobs/postings";
 import { getJobProfile } from "@/lib/domains/jobs/profile";
 import { latestResume } from "@/lib/domains/jobs/resumes";
 import { atsOf, ATS_SITES, boardOf, BOARD_SITES } from "@/lib/domains/jobs/shared";
+import { listCaseDrills, MISSING_CASE_MIGRATION } from "@/lib/domains/jobs/cases";
 import { ApplicationPanel } from "./application-panel";
+import { CasePanel } from "./case-panel";
 import { FillPanel } from "./fill-panel";
 import { MatchView } from "./match-view";
 import { PostingFacts } from "./posting-facts";
@@ -33,12 +35,13 @@ export default async function JobPostingPage({ params }: { params: { id: string 
 
   const posting = await getPosting(user.id, params.id);
   if (!posting) notFound();
-  const [profile, entries, resume, application, fill] = await Promise.all([
+  const [profile, entries, resume, application, fill, cases] = await Promise.all([
     getJobProfile(user.id),
     listCareerEntries(user.id),
     latestResume(user.id, posting.id),
     getApplicationForPosting(user.id, posting.id),
     getFillState(user.id, posting.id),
+    listCaseDrills(user.id, posting.id),
   ]);
   const confirmed = entries === "missing-schema" ? [] : entries.filter((e) => e.confirmed_at);
   const ats = atsOf(posting.url);
@@ -80,6 +83,12 @@ export default async function JobPostingPage({ params }: { params: { id: string 
         <MatchView posting={posting} entries={confirmed} />
         <Separator />
         <ResumePanel postingId={posting.id} resume={resume} hasEntries={confirmed.length > 0} />
+        <Separator />
+        <CasePanel
+          postingId={posting.id}
+          drills={cases === "missing-schema" ? [] : cases}
+          missingMigration={cases === "missing-schema" ? MISSING_CASE_MIGRATION : null}
+        />
         <Separator />
         <FillPanel
           postingId={posting.id}
