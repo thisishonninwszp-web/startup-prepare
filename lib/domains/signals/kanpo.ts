@@ -26,6 +26,12 @@ export async function saveNotices(notices: KanpoNoticeInput[]): Promise<void> {
   if (error) fail(error.message);
 }
 
+/** 重抓一天之前先删掉那天存的：规则改了，切出来的条数和编号都可能变，只 upsert 会留下旧的。 */
+export async function clearDay(issueDate: string): Promise<void> {
+  const { error } = await supabaseAdmin.from("kanpo_notices").delete().eq("issue_date", issueDate);
+  if (error) fail(error.message);
+}
+
 export async function markFetched(issueDate: string, pages: number, notices: number, incomplete: number): Promise<void> {
   const { error } = await supabaseAdmin
     .from("kanpo_fetch_days")

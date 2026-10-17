@@ -54,7 +54,10 @@ const DIGIT = "[0-9０-９〇一二三四五六七八九]";
 const SEPARATOR = "[,，、\\uE000-\\uE6EF\\uE6F1-\\uE887\\uE889-\\uF8FF]";
 const NUMBER = `(${MINUS})?\\s*(${DIGIT}+(?:${SEPARATOR}${DIGIT}{3})*)`;
 const PERIOD = /第\s*[0-9０-９〇一二三四五六七八九十百]+\s*期/;
-const HEADER = /第\s*[0-9０-９〇一二三四五六七八九十百]+\s*期\s*決算公告|^決算公告$/gm;
+/** 「第37期決算公告」之外，也有「令和７年度決算公告」「2026年３月期決算公告」这样起标题的。 */
+const HEADER = /第\s*[0-9０-９〇一二三四五六七八九十百]+\s*期\s*(?:修正)?決算公告|^決算公告$|^[^\s、。，,（）()]{0,12}(?:年度|期)決算公告/gm;
+/** 别的公告的标题（合併公告、資本金の額の減少公告、解散公告……）：单独一行、短、以「公告」结尾。 */
+const OTHER_TITLE = /^[^\s、。，,]{0,14}公告$/m;
 const COMPANY = /(株式会社|有限会社|合同会社|（株）|\(株\)|特定目的会社|一般社団法人|一般財団法人|社会医療法人|医療法人)/;
 /** 「株式会社」被折行拆开：这一行以「株式/合同/有限」结尾，下一行以「会社」开头。 */
 const SPLIT_SUFFIX = /(株式|合同|有限)$/;
@@ -90,12 +93,28 @@ export function squashCjk(text: string): string {
     .join("\n");
 }
 
+/**
+ * 一条决算公告到哪为止。下一条决算公告的标题之外，还有两种情况会把别人的数字串进来：
+ * 后面跟着合併公告之类（里面常有「最終貸借対照表の要旨」）；别家的贷借对照表接在后面、它的标题落在了别处。
+ * 所以从自己的贷借对照表往后找，碰到别的公告的标题，或者已经出现过「合計」又来一个「貸借対照表」，就切在那一行。
+ */
+function ownPart(block: string): string {
+  const bs = block.indexOf("貸借対照表");
+  if (bs < 0) return block;
+  let end = block.length;
+  const title = OTHER_TITLE.exec(block.slice(bs));
+  if (title) end = bs + title.index;
+  const again = block.indexOf("貸借対照表", bs + 1);
+  if (again >= 0 && again < end && block.slice(bs, again).includes("合計")) end = block.lastIndexOf("\n", again) + 1;
+  return block.slice(0, end);
+}
+
 /** 切成一条条决算公告（start 是在去空格以后的文字里的位置，抓取时用来算在第几页）。没有「貸借対照表」的不算。 */
 export function splitNotices(text: string, alreadySquashed = false): { start: number; block: string }[] {
   const squashed = alreadySquashed ? text : squashCjk(text);
   const starts = [...squashed.matchAll(HEADER)].map((m) => m.index ?? 0);
   return starts
-    .map((start, i) => ({ start, block: squashed.slice(start, i + 1 < starts.length ? starts[i + 1] : start + 4000) }))
+    .map((start, i) => ({ start, block: ownPart(squashed.slice(start, i + 1 < starts.length ? starts[i + 1] : start + 4000)) }))
     .filter((n) => n.block.includes("貸借対照表"));
 }
 
@@ -121,13 +140,14 @@ export function parseNotice(block: string): ParsedNotice {
   const unitMatch = /単位[：:・]?\s*(千円|百万円|円)|金額\s*[(（](千円|百万円|円)[)）]/.exec(block);
   const unit = (unitMatch ? (unitMatch[1] ?? unitMatch[2]) : null) as KanpoUnit | null;
   const bs = block.slice(block.indexOf("貸借対照表"));
-  let assets = numberAfter("(?<!純)資産合計", bs) ?? numberAfter("資産の部合計", bs);
-  if (assets === null) assets = numberAfter("合計", bs.slice(Math.max(0, bs.indexOf("資産"))));
-  const netAssets = numberAfter("(?<![・び])純資産合計", bs);
+  // 「流動資産合計」「投資その他の資産合計」「純資産合計」都不是资产合计：前面紧挨着汉字或「の」的不算
+  let assets = numberAfter("(?<![\\u4e00-\\u9fffの])資産合計", bs) ?? numberAfter("資産の部合計", bs);
+  if (assets === null) assets = numberAfter("(?:^|\\n)合計", bs.slice(Math.max(0, bs.indexOf("資産"))));
+  const netAssets = numberAfter("(?<![・び債])純資産合計", bs);
   const retained = numberAfter("(?<!その他)利益剰余金", bs);
-  // 贷借对照表里的「(うち当期純利益)(N)」优先；没有就取损益计算书的「当期純利益 N」（不取「税引前」那一行，可能在表前面）
+  // 贷借对照表里的「(うち当期純利益)(N)」（也有写「内」、不写「うち」、写「当期利益」的）优先；没有就取损益计算书的「当期純利益 N」（不取「税引前」那一行，可能在表前面）
   const ni =
-    new RegExp("[(（]うち当期純(利益|損失)(?:金額)?[)）]\\s*[(（]?\\s*" + NUMBER).exec(bs) ??
+    new RegExp("[(（](?:うち|内)?当期純?(利益|損失)(?:金額)?[)）]\\s*[(（]?\\s*" + NUMBER).exec(bs) ??
     new RegExp("(?<!前)当期純(利益|損失)(?:金額)?\\s*[(（]?\\s*" + NUMBER).exec(block);
   let netIncome = ni ? toInt(ni[2], ni[3]) : null;
   if (ni && ni[1] === "損失" && netIncome !== null) netIncome = -Math.abs(netIncome);

@@ -173,7 +173,7 @@ async function maybeKanpo(): Promise<void> {
   kanpoFetching = true;
   try {
     console.log("今天还没抓官报，开始抓会社決算公告（不挡着填表）……");
-    const r = await runKanpoFetch(undefined, (line) => console.log(`官报 ${line}`));
+    const r = await runKanpoFetch({}, (line) => console.log(`官报 ${line}`));
     markKanpoFetched(today);
     if (r.days > 0) console.log(`官报抓完了：${r.days} 天，决算公告 ${r.notices} 条。去 /signals/kanpo 看。`);
   } catch (e) {
