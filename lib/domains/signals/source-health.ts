@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import type { BriefItem } from "./brief";
+import { collectDropped, type DroppedLine } from "./filler";
 import { CN_APP_SOURCE, GITHUB_SOURCE, newsSourceLabel, REPORT_SECTION_KINDS, RSS_FEEDS, rssSource, signalKindOf, type SignalKind } from "./feeds";
 
 /**
@@ -57,5 +58,22 @@ export async function sourceHealth(userId: string): Promise<SourceHealth[]> {
       const label = newsSourceLabel(source);
       return { source, label, kind: signalKindOf(source), fetched: fetchedCounts[i], picked: picks.get(label) ?? 0 };
     })
+  );
+}
+
+export const DROPPED_DAYS = 7;
+
+/** 最近一周删掉的空话（信息源体检页看删得对不对）。 */
+export async function droppedSentences(userId: string): Promise<DroppedLine[]> {
+  const since = new Date(Date.now() - DROPPED_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const { data, error } = await supabaseAdmin
+    .from("signal_briefs")
+    .select("brief_date, kind, items")
+    .eq("user_id", userId)
+    .in("kind", REPORT_SECTION_KINDS)
+    .gte("brief_date", since);
+  if (error) throw new Error(error.message);
+  return collectDropped(
+    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, kind: r.kind as string, items: (r.items as BriefItem[] | null) ?? null }))
   );
 }

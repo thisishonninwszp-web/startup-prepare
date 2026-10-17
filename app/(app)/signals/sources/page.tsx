@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tallyFeedback } from "@/lib/domains/signals/feedback";
-import { HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
+import { DROPPED_DAYS, droppedSentences, HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
 import { tavilyUsage } from "@/lib/external";
 import { googleSearchCount } from "@/lib/web-search";
 
@@ -31,11 +31,12 @@ export default async function SourcesPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [feedback, health, google, tavily] = await Promise.all([
+  const [feedback, health, google, tavily, dropped] = await Promise.all([
     tallyFeedback(user.id, HEALTH_DAYS),
     sourceHealth(user.id),
     googleSearchCount().catch(() => null),
     tavilyUsage(),
+    droppedSentences(user.id).catch(() => []),
   ]);
   const anyFeedback = feedback.some((f) => f.useful + f.useless > 0);
 
@@ -69,6 +70,29 @@ export default async function SourcesPage() {
           <p className="text-sm text-muted-foreground">
             这里空着。报告每一节底下有「有用 / 没用」，看完顺手点一下，两周后这里就能看出哪节一直在被跳过。
           </p>
+        )}
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-base font-semibold">删掉的空话</h2>
+        <p className="text-sm leading-7 text-muted-foreground">
+          最近 {DROPPED_DAYS} 天，报告里删了 {dropped.length} 句只给前面下结论的话（「这表明……」「，这意味着……」）。
+          点开看删了哪些 —— 要是里面有人名、公司、数字、日期，就是规则删错了，记下来改。
+        </p>
+        {dropped.length > 0 && (
+          <details className="mt-2 text-sm">
+            <summary className="cursor-pointer text-muted-foreground">看删了哪些</summary>
+            <ul className="mt-2 space-y-1">
+              {dropped.map((d, i) => (
+                <li key={i} className="leading-7">
+                  <span className="mr-2 font-mono text-xs text-muted-foreground">
+                    {d.date} · {SECTION_NAMES[d.kind] ?? d.kind}
+                  </span>
+                  {d.sentence}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </section>
 

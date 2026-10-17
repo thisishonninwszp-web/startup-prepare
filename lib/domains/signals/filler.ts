@@ -74,3 +74,14 @@ export function cleanBriefItem(item: BriefItem): BriefItem {
     ...(dropped.length > 0 ? { dropped } : {}),
   };
 }
+
+export type DroppedLine = { date: string; kind: string; sentence: string };
+
+/** 这几天的报告里删掉了哪些（新报告存在条目上，旧报告现删的也算），新的在前。 */
+export function collectDropped(rows: { brief_date: string; kind: string; items: BriefItem[] | null }[]): DroppedLine[] {
+  return rows
+    .flatMap((r) =>
+      (r.items ?? []).flatMap((item) => (cleanBriefItem(item).dropped ?? []).map((sentence) => ({ date: r.brief_date, kind: r.kind, sentence })))
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+}

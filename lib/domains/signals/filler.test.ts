@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BriefItem } from "./brief";
-import { cleanBriefItem, dropEmptyConclusions, isCommentSentence } from "./filler";
+import { cleanBriefItem, collectDropped, dropEmptyConclusions, isCommentSentence } from "./filler";
 
 describe("去掉只给前面下结论的空话", () => {
   it("整句只是在评论上一句：删掉", () => {
@@ -86,5 +86,20 @@ describe("一条报告条目", () => {
   it("「也值得一看」那几条原样返回", () => {
     const extra = { ...item, extra: true, background: "", for_you: "" };
     expect(cleanBriefItem(extra)).toBe(extra);
+  });
+});
+
+describe("信息源体检：这几天删了哪些", () => {
+  it("存下的和现删的都算，新的在前", () => {
+    const base = { signal_id: "s", title: "t", url: null, source: "x", headline: "h", for_you: "" };
+    const rows = [
+      { brief_date: "2026-10-15", kind: "news", items: [{ ...base, background: "日银加息。", dropped: ["这表明进入新阶段。"] } as BriefItem] },
+      { brief_date: "2026-10-16", kind: "money", items: [{ ...base, background: "A 社融资 10 亿日元。这说明投资人看好。" } as BriefItem] },
+      { brief_date: "2026-10-16", kind: "tools", items: null },
+    ];
+    expect(collectDropped(rows)).toEqual([
+      { date: "2026-10-16", kind: "money", sentence: "这说明投资人看好。" },
+      { date: "2026-10-15", kind: "news", sentence: "这表明进入新阶段。" },
+    ]);
   });
 });
