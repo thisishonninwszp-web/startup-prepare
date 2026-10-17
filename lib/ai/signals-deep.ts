@@ -24,8 +24,10 @@ export type ThereNamePlan = { name: string; parent: string; query: string };
 const thereNamePrompt = (input: ThereInput) => `下面是${input.there}已经有的一样东西（一条新闻里讲到的）。要去${input.there}的商业媒体上查它做到多大、怎么收钱。
 
 写三样：
-- name：这样东西在${input.there}的叫法（产品名、服务名或公司名），用${input.language}，照新闻里的写法，越短越好，不要加修饰。
-- parent：它属于哪家公司或哪个平台；没有或不知道就写空字符串，不要猜。
+- name：这样东西本身在${input.there}的叫法，用${input.language}，越短越好，不要加修饰。
+  写的是"东西"：一个产品、一项服务、一个行业或一种做法（例："某某外卖 App""无人机送药""豆腐"）。
+  不要写新闻里出现的某家公司的名字 —— 新闻讲的是一个行业时，name 就写那个行业的东西，不写其中一家公司。
+- parent：这样东西属于哪家公司或哪个平台（公司名写在这里）；讲的是一个行业、不属于哪一家的，写空字符串；不知道也写空字符串，不要猜。
 - query：一个${input.language}搜索词，查它"谁在做、做到多大、怎么收钱、哪年开始"，用${input.there}本地人会搜的说法，不要带"日本"，3 到 8 个词。
 
 只输出 JSON：{"name":"…","parent":"…","query":"…"}`;
