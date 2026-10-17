@@ -25,6 +25,8 @@ export type JapanGap = {
   whyNow?: string;
   /** 日本已经有公司为这件事拉到投资：说明方向被验证过，也说明你晚了一步。 */
   funded?: { company: string; url: string; excerpt: string };
+  /** 报告里核对过的原文依据（读到正文的条目才有）。 */
+  basis?: string[];
 };
 
 const GAP_OPENERS = ["没有", "有类似的"];
@@ -84,6 +86,7 @@ export function collectJapanGaps(briefs: { brief_date: string; items: BriefItem[
         event: item.event,
         whyNow: s.whyNow,
         funded: s.funded,
+        ...(item.basis && item.basis.length > 0 ? { basis: item.basis } : {}),
       });
     }
   }

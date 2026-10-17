@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { companyKey, formatYen, parseNotice, splitNotices, watchKeys } from "./kanpo-shared";
+import { companyKey, formatYen, noticeSummary, parseNotice, splitNotices, watchKeys } from "./kanpo-shared";
 
 const FIXTURE = readFileSync(fileURLToPath(new URL("./__fixtures__/kanpo-20261016-p80-83.txt", import.meta.url)), "utf8");
 const parsed = splitNotices(FIXTURE).map((b) => parseNotice(b.block));
@@ -252,5 +252,24 @@ describe("金额显示", () => {
     expect(formatYen(-31_000)).toBe("−3万円");
     expect(formatYen(1_000_000)).toBe("100万円");
     expect(formatYen(500)).toBe("500円");
+  });
+});
+
+describe("决算公告说成一行字（周刊的材料）", () => {
+  const n = {
+    company_name: "株式会社譚仔日本",
+    issue_date: "2026-10-16",
+    period: "第3期",
+    fiscal_end: "令和８年３月31日現在",
+    total_assets: 320_000_000,
+    net_income: -160_000_000,
+    retained_earnings: -1_440_000_000,
+    complete: true,
+  };
+  it("总资产、当期纯损失、累计亏损", () => {
+    expect(noticeSummary(n)).toBe("株式会社譚仔日本（2026-10-16 官报，第3期 令和８年３月31日現在）：总资产 3.2亿円，当期纯损失 1.6亿円，累计亏损 14.4亿円");
+  });
+  it("没抽全的只说登了", () => {
+    expect(noticeSummary({ ...n, complete: false })).toBe("株式会社譚仔日本：2026-10-16 的官报登了决算公告，数字没抽全");
   });
 });

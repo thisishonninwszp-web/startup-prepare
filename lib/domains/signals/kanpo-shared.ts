@@ -192,3 +192,22 @@ export function formatYen(n: number): string {
   if (a >= 1e4) return `${sign}${Math.round(a / 1e4).toLocaleString("ja-JP")}万円`;
   return `${sign}${a.toLocaleString("ja-JP")}円`;
 }
+
+/** 一条决算公告说成一行字（周刊的材料用；页面上用 NoticeLine）。没抽全的只说登了。 */
+export function noticeSummary(
+  n: Pick<KanpoNotice, "company_name" | "issue_date" | "period" | "fiscal_end" | "total_assets" | "net_income" | "retained_earnings" | "complete">
+): string {
+  const name = n.company_name ?? "这家公司";
+  if (!n.complete) return `${name}：${n.issue_date} 的官报登了决算公告，数字没抽全`;
+  const parts = [
+    n.total_assets !== null ? `总资产 ${formatYen(n.total_assets)}` : null,
+    n.net_income !== null ? `${n.net_income < 0 ? "当期纯损失" : "当期纯利益"} ${formatYen(Math.abs(n.net_income))}` : null,
+    n.retained_earnings !== null
+      ? n.retained_earnings < 0
+        ? `累计亏损 ${formatYen(Math.abs(n.retained_earnings))}`
+        : `利益剰余金 ${formatYen(n.retained_earnings)}`
+      : null,
+  ].filter(Boolean);
+  const when = [n.period, n.fiscal_end].filter(Boolean).join(" ");
+  return `${name}（${n.issue_date} 官报${when ? `，${when}` : ""}）：${parts.join("，")}`;
+}
