@@ -8,6 +8,8 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { listMarketApps } from "@/lib/domains/jobs/applications";
 import { listCareerEntries } from "@/lib/domains/jobs/base";
+import { listChinaRuns, MISSING_CHINA_MIGRATION } from "@/lib/domains/jobs/china";
+import { RUN_STATUS_LABELS } from "@/lib/domains/jobs/china-shared";
 import { listPostings } from "@/lib/domains/jobs/postings";
 import { getJobProfile, MISSING_MIGRATION } from "@/lib/domains/jobs/profile";
 import { categoryLabel, EFFECTIVE_LABELS, effectiveStatus, marketRows, tokyoDate } from "@/lib/domains/jobs/shared";
@@ -39,10 +41,11 @@ export default async function JobsPage() {
   }
 
   const today = tokyoDate();
-  const [{ picked, candidates }, apps, entries] = await Promise.all([
+  const [{ picked, candidates }, apps, entries, chinaRuns] = await Promise.all([
     listPostings(user.id),
     listMarketApps(user.id),
     listCareerEntries(user.id),
+    listChinaRuns(user.id),
   ]);
   const confirmed = entries === "missing-schema" ? 0 : entries.filter((e) => e.confirmed_at).length;
   const statusByPosting = new Map(apps.map((a) => [a.posting_id, effectiveStatus(a, today)]));
@@ -123,6 +126,33 @@ export default async function JobsPage() {
                   );
                 })}
               </ul>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-base font-semibold">面试时给对方当场用</h2>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              面试官说一句他们做什么生意，当场用中文查中国做同样生意的公司，原文、日文翻译、出处摆在一起。页面是日文、没有侧边栏，可以直接共享屏幕。面试前一晚先拿那家的生意跑一次，现场跑不出来就打开那次的。
+            </p>
+            <Button asChild variant="outline" size="sm" className="mt-3">
+              <Link href="/demo/china">打开「御社の商売、中国ではどうなっている？」</Link>
+            </Button>
+            {chinaRuns === "missing-schema" ? (
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">{MISSING_CHINA_MIGRATION}</p>
+            ) : (
+              chinaRuns.length > 0 && (
+                <ul className="mt-4 space-y-2">
+                  {chinaRuns.map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center gap-2 text-sm leading-7">
+                      <span className="font-mono text-xs text-muted-foreground">{tokyoDate(new Date(r.created_at))}</span>
+                      <Link href={`/demo/china/${r.id}`} className="underline-offset-4 hover:underline">
+                        {r.business}
+                      </Link>
+                      <Badge variant="muted">{RUN_STATUS_LABELS[r.status]}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )
             )}
           </section>
         </div>
