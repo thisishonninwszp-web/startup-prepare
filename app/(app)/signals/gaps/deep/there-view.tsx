@@ -54,9 +54,11 @@ export function ThereView({
     });
   return (
     <div className="space-y-3">
-      {initial?.name && (
+      {(initial?.category || initial?.name) && (
         <p className="text-xs leading-6 text-muted-foreground">
-          按「{initial.name}」{initial.parent ? `（属于 ${initial.parent}）` : ""}去{there}的商业媒体上查的。
+          按
+          {initial.product ? `「${initial.product}」${initial.parent ? `（属于 ${initial.parent}）` : ""}和` : ""}
+          「{initial.category ?? initial.name}」去{there}的商业媒体上查的。
         </p>
       )}
       {initial && initial.facts.length > 0 && (

@@ -1,7 +1,7 @@
 import { executeAiJson } from "@/lib/ai-gateway";
 import { MODEL } from "./shared";
 import { assertChineseAllowingNames, assertNoBanned, type SearchSource } from "./signals";
-import { checkThereFacts, THERE_MAX_FACTS, type ThereFact, type ThereLanguage } from "@/lib/domains/signals/deep-shared";
+import { checkThereFacts, THERE_MAX_FACTS, type ThereFact, type ThereLanguage, type ThereNames } from "@/lib/domains/signals/deep-shared";
 
 // ---------------------------------------------------------------------------
 // 差距的「一条讲透」：那边查一查。
@@ -15,31 +15,29 @@ export type ThereInput = {
   language: ThereLanguage;
   headline: string;
   background: string;
-  /** 这样东西在那边的叫法、属于哪家（摘事实时用来分清主语）。 */
-  name?: string;
-  parent?: string;
+  /** 这样东西的两个叫法和属于谁（摘事实时用来分清主语）。 */
+  names?: ThereNames;
 };
 
-export type ThereNamePlan = { name: string; parent: string; query: string };
+export type ThereNamePlan = ThereNames & { query: string };
 
 const thereNamePrompt = (input: ThereInput) => `下面是${input.there}已经有的一样东西（一条新闻里讲到的）。要去${input.there}的商业媒体上查它做到多大、怎么收钱。
 
-写三样：
-- name：这样东西本身在${input.there}的叫法，用${input.language}，越短越好，不要加修饰。
-  写的是"东西"：一个产品、一项服务、一个行业或一种做法（例："某某外卖 App""无人机送药""豆腐"）。
-  不要写新闻里出现的某家公司的名字 —— 新闻讲的是一个行业时，name 就写那个行业的东西，不写其中一家公司。
-- parent：这样东西属于哪家公司或哪个平台（公司名写在这里）；讲的是一个行业、不属于哪一家的，写空字符串；不知道也写空字符串，不要猜。
-- query：一个${input.language}搜索词，查它"谁在做、做到多大、怎么收钱、哪年开始"，用${input.there}本地人会搜的说法，不要带"日本"，3 到 8 个词。
+写四样，都用${input.language}，越短越好，不要加修饰：
+- product：新闻里点了名的那个产品或服务的名字（例："某某外卖 App"）；新闻讲的是一个行业、没有点名哪个产品，就写空字符串。不要写公司名。
+- category：这一类东西的叫法（例："外卖 App""无人机送药""豆芽"）。一定要写。
+- parent：product 属于哪家公司或哪个平台（公司名写在这里）；没有 product、或不知道，写空字符串，不要猜。
+- query：一个搜索词，查它"谁在做、做到多大、怎么收钱、哪年开始"，用${input.there}本地人会搜的说法，不要带"日本"，3 到 8 个词。
 
-只输出 JSON：{"name":"…","parent":"…","query":"…"}`;
+只输出 JSON：{"product":"…","category":"…","parent":"…","query":"…"}`;
 
-/** 叫法必须有（搜索词由代码拿它拼）；母公司、兜底搜索词可以空。 */
+/** 这一类东西的叫法必须有（搜索词由代码拿它拼）；产品名、母公司、兜底搜索词可以空。 */
 export function parseThereName(value: unknown): ThereNamePlan {
   const v = (value ?? {}) as Record<string, unknown>;
   const str = (k: string, max: number) => (typeof v[k] === "string" ? (v[k] as string).trim().slice(0, max) : "");
-  const name = str("name", 40);
-  if (!name) throw new Error("没写叫法");
-  return { name, parent: str("parent", 40), query: str("query", 120) };
+  const category = str("category", 40);
+  if (!category) throw new Error("没写这一类东西的叫法");
+  return { product: str("product", 40), category, parent: str("parent", 40), query: str("query", 120) };
 }
 
 export async function planThereName(input: ThereInput): Promise<ThereNamePlan> {
@@ -47,7 +45,7 @@ export async function planThereName(input: ThereInput): Promise<ThereNamePlan> {
     { operation: "gap_there_name", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
     (attempt) => ({
       model: MODEL,
-      contents: `${input.headline}\n${input.background}` + (attempt === 1 ? "\n\n上一次输出没通过校验。只输出 JSON，name 必填。" : ""),
+      contents: `${input.headline}\n${input.background}` + (attempt === 1 ? "\n\n上一次输出没通过校验。只输出 JSON，category 必填。" : ""),
       config: {
         systemInstruction: thereNamePrompt(input),
         responseMimeType: "application/json",
@@ -74,6 +72,8 @@ const thereFactsPrompt = (there: string) => `你在帮一个人把${there}那边
   数字是哪一年的、资料写了就写上；资料没写哪年，就在句末写"（资料没写哪年）"。
   它所属的公司或平台里、管这样东西的那块业务的数字也要摘（例如一款外卖 App 是某平台的外卖业务独立出来的，那块外卖业务的订单量要摘），
   主语写那块业务或那家公司，并注明关系，例如"某平台外卖业务（这款 App 的前身）……"，不能写成这样东西本身的数字。
+  这一类东西整体的数字（市场规模、行业规模、有几家在做）也要摘，主语写这一类，例如"中国外卖市场……"。
+  同一类里别家公司的数字（不是这样东西、也不是它所属的那块业务）不摘 —— 那是别的东西。
   母公司整体的数字（总营收、总用户、股价）跟这样东西没关系，不摘。
 - company：这条讲的是哪家公司，照原文写法；不是讲某一家公司就写空字符串。
 - excerpt：资料里支撑这条的原文，逐字照抄（不翻译、不改字，20 到 150 字）。
@@ -102,7 +102,9 @@ export async function extractThereFacts(input: ThereInput, sources: SearchSource
       model: MODEL,
       contents:
         `【这样东西】${input.headline}\n${input.background}` +
-        (input.name ? `\n【在${input.there}的叫法】${input.name}${input.parent ? `（属于 ${input.parent}）` : ""}` : "") +
+        (input.names
+          ? `\n【在${input.there}的叫法】${input.names.product ? `产品：${input.names.product}${input.names.parent ? `（属于 ${input.names.parent}）` : ""}；` : ""}这一类：${input.names.category}`
+          : "") +
         `\n\n${block}` +
         (attempt === 1 ? "\n\n上一次输出没通过校验。excerpt 必须逐字照抄资料原文；fact 用简体中文、只写事实。" : ""),
       config: {

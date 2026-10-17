@@ -50,22 +50,22 @@ describe("那边查一查：只收对得上原文的事实", () => {
     expect(facts.map((f) => f.kind)).toEqual(["scale", undefined]);
   });
 
-  it("搜索词由代码拼：做到多大、怎么收钱两次只搜商业媒体，AI 写的那个词不限网站", () => {
-    expect(thereSearches("中文", " 点淘 ", "点淘 直播 短剧")).toEqual([
+  it("搜索词由代码拼：产品的规模、收钱，这一类的规模，母公司的规模都只搜商业媒体，AI 写的那个词不限网站", () => {
+    expect(thereSearches("中文", { product: " 点淘 ", category: "短剧 直播电商", parent: "淘宝直播" }, "点淘 直播 短剧")).toEqual([
       { query: "点淘 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
       { query: "点淘 商业模式 营收 融资", domains: THERE_MEDIA["中文"] },
+      { query: "短剧 直播电商 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
+      { query: "淘宝直播 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
       { query: "点淘 直播 短剧", domains: [] },
     ]);
-    expect(thereSearches("英文", "Alexa+", "")).toHaveLength(2);
   });
 
-  it("写了属于谁，就再搜一次母公司的规模（也只搜商业媒体）；和叫法一样的不重复搜", () => {
-    expect(thereSearches("中文", "点淘", "", "淘宝直播")).toEqual([
-      { query: "点淘 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
-      { query: "点淘 商业模式 营收 融资", domains: THERE_MEDIA["中文"] },
-      { query: "淘宝直播 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
+  it("没有产品名（讲的是一个行业）：这一类的规模和收钱；重复的叫法不重复搜", () => {
+    expect(thereSearches("日文", { product: "", category: "もやし", parent: "" }, "")).toEqual([
+      { query: "もやし 利用者数 売上", domains: THERE_MEDIA["日文"] },
+      { query: "もやし 収益 資金調達", domains: THERE_MEDIA["日文"] },
     ]);
-    expect(thereSearches("中文", "点淘", "", " 点淘 ")).toHaveLength(2);
+    expect(thereSearches("中文", { product: "点淘", category: "点淘", parent: " 点淘 " }, "")).toHaveLength(2);
   });
 });
 

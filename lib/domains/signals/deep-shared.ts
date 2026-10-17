@@ -32,19 +32,32 @@ const MONEY_WORDS: Record<ThereLanguage, string> = { 中文: "商业模式 营�
 
 export type ThereSearch = { query: string; domains: string[] };
 
+/** 这样东西的两个叫法：产品名（新闻里点了名才有）和这一类东西的叫法；再加属于谁。 */
+export type ThereNames = { product: string; category: string; parent: string };
+
 /**
- * 叫法 + 规模的词、叫法 + 收钱的词（都只搜商业媒体），写了属于谁就再搜一次母公司 + 规模的词，最后是 AI 写的那个词（不限网站，兜底）。
- * 母公司那一次是试出来的：商业媒体讲的常是「淘宝直播 GMV」，不是「点淘」这个名字。
+ * 都只搜商业媒体的：产品的规模和收钱（没有产品名就用这一类的叫法）、这一类东西的规模、母公司的规模；最后是 AI 写的那个词（不限网站，兜底）。
+ * 两个叫法一起搜是试出来的：只给一个叫法时，AI 有时写产品（点淘），有时写一类（短剧直播电商），有时写成一家公司，搜出来的料跟着大起大落。
+ * 母公司那一次也是试出来的：商业媒体讲的常是「淘宝直播 GMV」，不是「点淘」这个名字。叫法重复的不重复搜。
  */
-export function thereSearches(language: ThereLanguage, name: string, freeQuery: string, parent = ""): ThereSearch[] {
-  const n = name.trim();
-  const p = parent.trim();
-  return [
-    { query: `${n} ${SCALE_WORDS[language]}`, domains: THERE_MEDIA[language] },
-    { query: `${n} ${MONEY_WORDS[language]}`, domains: THERE_MEDIA[language] },
-    ...(p && p !== n ? [{ query: `${p} ${SCALE_WORDS[language]}`, domains: THERE_MEDIA[language] }] : []),
-    ...(freeQuery.trim() ? [{ query: freeQuery.trim(), domains: [] }] : []),
+export function thereSearches(language: ThereLanguage, names: ThereNames, freeQuery: string): ThereSearch[] {
+  const product = names.product.trim();
+  const category = names.category.trim();
+  const parent = names.parent.trim();
+  const main = product || category;
+  const media = THERE_MEDIA[language];
+  const out: ThereSearch[] = [
+    { query: `${main} ${SCALE_WORDS[language]}`, domains: media },
+    { query: `${main} ${MONEY_WORDS[language]}`, domains: media },
   ];
+  const used = new Set([main]);
+  for (const extra of [category, parent]) {
+    if (!extra || used.has(extra)) continue;
+    used.add(extra);
+    out.push({ query: `${extra} ${SCALE_WORDS[language]}`, domains: media });
+  }
+  if (freeQuery.trim()) out.push({ query: freeQuery.trim(), domains: [] });
+  return out;
 }
 
 export type ThereFact = {
@@ -64,7 +77,9 @@ export type GapThere = {
   facts: ThereFact[];
   /** 用了哪几个搜索词（一条没摘到时，页面上请他自己去搜）。 */
   queries: string[];
-  /** AI 写的叫法和属于谁（早期查的没有）。 */
+  /** AI 写的两个叫法和属于谁（早期查的没有；10-17 那几次只有一个 name）。 */
+  product?: string;
+  category?: string;
   name?: string;
   parent?: string;
   /** 读了几篇（一条都没摘到时，分得清是没搜到还是搜到了对不上）。 */

@@ -80,15 +80,17 @@ export async function runThereCheck(userId: string, signalId: string, side: GapS
   if (!gap) throw new Error("清单里找不到这一条了");
   const input = { there: gapPlaces(side).there, language: thereLanguage(side), headline: gap.headline, background: gap.background };
   const plan = await planThereName(input);
-  const searches = thereSearches(input.language, plan.name, plan.query, plan.parent);
+  const names = { product: plan.product, category: plan.category, parent: plan.parent };
+  const searches = thereSearches(input.language, names, plan.query);
   const results = await Promise.all(searches.map((s) => webSearch(s.query, THERE_RESULTS, { domains: s.domains }).catch(() => [])));
   const seen = new Set<string>();
   const sources = results.flat().filter((r) => r.url && !seen.has(r.url) && seen.add(r.url));
-  const facts = sources.length > 0 ? await extractThereFacts({ ...input, name: plan.name, parent: plan.parent }, sources) : [];
+  const facts = sources.length > 0 ? await extractThereFacts({ ...input, names }, sources) : [];
   const there: GapThere = {
     facts,
     queries: searches.map((s) => s.query),
-    name: plan.name,
+    ...(plan.product ? { product: plan.product } : {}),
+    category: plan.category,
     ...(plan.parent ? { parent: plan.parent } : {}),
     searched: { pages: sources.length },
     checked_at: new Date().toISOString(),

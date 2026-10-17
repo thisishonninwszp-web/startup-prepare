@@ -26,10 +26,15 @@ describe("那边查一查", () => {
 });
 
 describe("那边查一查：AI 只写叫法", () => {
-  it("叫法必填；母公司、兜底搜索词可以空", () => {
-    expect(parseThereName({ name: " 点淘 ", parent: "淘宝", query: "点淘 直播 短剧" })).toEqual({ name: "点淘", parent: "淘宝", query: "点淘 直播 短剧" });
-    expect(parseThereName({ name: "Alexa+" })).toEqual({ name: "Alexa+", parent: "", query: "" });
-    expect(() => parseThereName({ name: " ", parent: "淘宝" })).toThrow();
+  it("这一类东西的叫法必填；产品名、母公司、兜底搜索词可以空", () => {
+    expect(parseThereName({ product: " 点淘 ", category: "短剧 直播电商", parent: "淘宝", query: "点淘 直播 短剧" })).toEqual({
+      product: "点淘",
+      category: "短剧 直播电商",
+      parent: "淘宝",
+      query: "点淘 直播 短剧",
+    });
+    expect(parseThereName({ category: "もやし" })).toEqual({ product: "", category: "もやし", parent: "", query: "" });
+    expect(() => parseThereName({ product: "点淘", category: " " })).toThrow();
   });
 
   it("摘出来的事实带着格子", () => {
