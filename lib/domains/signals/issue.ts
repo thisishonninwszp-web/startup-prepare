@@ -3,6 +3,10 @@ import { composeIssue } from "@/lib/ai";
 import { tokyoToday } from "./brief";
 import { loadGapTransfers } from "./gap-transfer";
 import { loadGapVoices } from "./voices";
+import { voiceCounts } from "./voices-shared";
+import { baseSentence, categoryBase, countedCases, listTransferCases } from "./atlas";
+import { gapKanpo, kanpoLines, loadGapDeeps } from "./deep";
+import type { GapDeep } from "./deep-shared";
 import { listGapBoard, GAP_SIDES } from "./gaps";
 import { gapPlaces, transferKey, type GapSide, type JapanGap } from "./gaps-shared";
 import { displayQuestion, ISSUE_BET_PREFIX, listJudgments } from "./practice";
@@ -59,7 +63,12 @@ function daysAgo(n: number): string {
 }
 
 /** 这周能写的：最近两周进清单的差距、重查发现这边有了的；最近两周新押的、刚对过账的判断。 */
-export async function issueCandidates(userId: string): Promise<{ gaps: IssueCandidate[]; bets: IssueBet[] }> {
+export async function issueCandidates(
+  userId: string,
+  /** 从一条讲透跳过来的那一条（可能超过两周），也放进候选。 */
+  include: { side: GapSide; signal_id: string }[] = []
+): Promise<{ gaps: IssueCandidate[]; bets: IssueBet[] }> {
+  const included = (side: GapSide, signalId: string) => include.some((x) => x.side === side && x.signal_id === signalId);
   const since = daysAgo(LOOKBACK_DAYS);
   const [board, transfers, judgments] = await Promise.all([
     listGapBoard(userId, tokyoToday()),
@@ -68,7 +77,7 @@ export async function issueCandidates(userId: string): Promise<{ gaps: IssueCand
   ]);
   const gaps: IssueCandidate[] = GAP_SIDES.flatMap((side) => [
     ...board.sides[side].arrived
-      .filter((g) => g.arrivedOn >= since)
+      .filter((g) => g.arrivedOn >= since || included(side, g.signal_id))
       .map((g) => ({
         side,
         ...gapPlaces(side),
@@ -80,7 +89,7 @@ export async function issueCandidates(userId: string): Promise<{ gaps: IssueCand
         hasTransfer: transfers.has(transferKey(side, g.signal_id)),
       })),
     ...board.sides[side].open
-      .filter((g) => g.brief_date >= since)
+      .filter((g) => g.brief_date >= since || included(side, g.signal_id))
       .map((g) => ({
         side,
         ...gapPlaces(side),
@@ -147,6 +156,15 @@ export async function listIssues(userId: string): Promise<Issue[]> {
   return (data ?? []).map((r) => toIssue(r as Record<string, unknown>));
 }
 
+function findBoardGap(board: Awaited<ReturnType<typeof listGapBoard>>, side: GapSide, signalId: string) {
+  const arrived = board.sides[side].arrived.find((g) => g.signal_id === signalId);
+  const open = board.sides[side].open.find((g) => g.signal_id === signalId);
+  return { arrived, gap: (arrived ?? open) as JapanGap | undefined };
+}
+
+/** 一条讲透里攒的料：存下的那边查一查、类别算出的同类基准、对上的官报决算。 */
+type PickExtra = { deep: GapDeep | undefined; benchmark: string | undefined; kanpo: string[] };
+
 /** 从清单里按 id 取一条差距，拼成这一期的一条（事实全从服务器拿）。 */
 function buildPick(
   board: Awaited<ReturnType<typeof listGapBoard>>,
@@ -155,19 +173,22 @@ function buildPick(
   side: GapSide,
   signalId: string,
   stance: PickStance,
-  note: string
+  note: string,
+  extra: PickExtra
 ): IssuePick {
-  const arrived = board.sides[side].arrived.find((g) => g.signal_id === signalId);
-  const open = board.sides[side].open.find((g) => g.signal_id === signalId);
-  const gap: JapanGap | undefined = arrived ?? open;
+  const { arrived, gap } = findBoardGap(board, side, signalId);
   if (!gap) throw new Error("清单里找不到其中一条了，刷新一下再选");
   const transfer = transfers.get(transferKey(side, signalId));
+  const v = voices.get(transferKey(side, signalId));
   // 日本这边（中国、美国 → 日本）才有：note 是日文的
-  const phrases = side === "china" ? [] : (voices.get(transferKey(side, signalId))?.queries ?? []);
+  const phrases = side === "china" ? [] : (v?.queries ?? []);
+  const facts = extra.deep?.there?.facts ?? [];
   const sources = [
     ...(gap.url ? [{ title: gap.title, url: gap.url }] : []),
     ...gap.check.basis.map((b) => ({ title: b.title, url: b.url })),
     ...(arrived?.nowCheck?.basis ?? []).map((b) => ({ title: b.title, url: b.url })),
+    ...facts.map((f) => ({ title: f.title, url: f.url })),
+    ...(v?.quotes ?? []).slice(0, 3).map((q) => ({ title: q.title, url: q.url })),
   ];
   return {
     side,
@@ -185,6 +206,10 @@ function buildPick(
     judgment: stanceSentence(stance, gapPlaces(side).here, note),
     url: gap.url,
     ...(phrases.length > 0 ? { searchPhrases: phrases } : {}),
+    ...(facts.length > 0 ? { thereFacts: facts.map((f) => ({ text: f.text, url: f.url, title: f.title })) } : {}),
+    ...(v && v.quotes.length > 0 ? { voices: { pain: v.pain, counts: voiceCounts(v.quotes), quotes: v.quotes.slice(0, 3).map((q) => q.excerpt) } } : {}),
+    ...(extra.benchmark ? { benchmark: extra.benchmark } : {}),
+    ...(extra.kanpo.length > 0 ? { kanpo: extra.kanpo } : {}),
   };
 }
 
@@ -198,13 +223,28 @@ export async function composeAndSaveIssue(
   const stances = input.picks.map((p) => validStance(p.stance));
   if (stances.some((s) => s === null)) throw new Error("每条都先点一下：两年内会不会出现");
   if (input.picks.some((p) => p.note.trim().length > ISSUE_NOTE_MAX)) throw new Error(`补的那句最多 ${ISSUE_NOTE_MAX} 字`);
-  const [board, transfers, candidates, voices] = await Promise.all([
+  const [board, transfers, candidates, voices, deeps, cases] = await Promise.all([
     listGapBoard(userId, tokyoToday()),
     loadGapTransfers(userId),
-    issueCandidates(userId),
+    issueCandidates(userId, input.picks),
     loadGapVoices(userId),
+    loadGapDeeps(userId),
+    listTransferCases(userId).catch(() => "missing-schema" as const),
   ]);
-  const picks = input.picks.map((p, i) => buildPick(board, transfers, voices, p.side, p.signal_id, stances[i]!, p.note));
+  // 一条讲透里攒的料：类别 → 同类基准；对上的官报决算（查不到就少这一样，不拦着写）
+  const extras = await Promise.all(
+    input.picks.map(async (p): Promise<PickExtra> => {
+      const deep = deeps.get(transferKey(p.side, p.signal_id));
+      const { gap } = findBoardGap(board, p.side, p.signal_id);
+      const kanpo = gap ? await gapKanpo(userId, gap, deep ?? null).catch(() => null) : null;
+      const benchmark =
+        deep?.category && cases !== "missing-schema" && gapPlaces(p.side).here === "日本"
+          ? baseSentence(deep.category, categoryBase(countedCases(cases).filter((c) => c.category === deep.category)))
+          : undefined;
+      return { deep, benchmark, kanpo: kanpo ? kanpoLines(kanpo) : [] };
+    })
+  );
+  const picks = input.picks.map((p, i) => buildPick(board, transfers, voices, p.side, p.signal_id, stances[i]!, p.note, extras[i]));
   const bets = candidates.bets.filter((b) => input.betIds.includes(b.id));
   const content = { opening: input.opening.trim(), picks, bets };
 
@@ -221,6 +261,10 @@ export async function composeAndSaveIssue(
         whyNow: p.whyNow,
         funded: p.funded,
         conditions: p.conditions,
+        thereFacts: p.thereFacts,
+        voices: p.voices,
+        benchmark: p.benchmark,
+        kanpo: p.kanpo,
         judgment: p.judgment,
         searchPhrases: p.searchPhrases,
       };

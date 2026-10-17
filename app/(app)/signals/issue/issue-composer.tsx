@@ -167,6 +167,7 @@ export function IssueComposer({
   atlasBases,
   doors,
   issueDoors,
+  preselect,
 }: {
   /** 开着的日文假门（键见 keyOf）：note 版文末放登记页的链接。 */
   doors: Record<string, { token: string; title: string }>;
@@ -179,10 +180,18 @@ export function IssueComposer({
   initial: Issue | null;
   /** 公开对账页的口令（没开为 null，迁移没跑为 "missing-schema"）。 */
   publicToken: string | null | "missing-schema";
+  /** 从一条讲透跳过来的那一条：预选上，带着在那一页点的判断。 */
+  preselect: { side: string; signal_id: string; stance: Partial<PickStance>; note: string; category?: AtlasCategory } | null;
 }) {
-  const [picked, setPicked] = useState<Record<string, PickInput>>(
-    Object.fromEntries((initial?.content.picks ?? []).map((p) => [keyOf(p), { stance: p.stance ?? {}, note: p.note ?? "" }]))
-  );
+  const [picked, setPicked] = useState<Record<string, PickInput>>(() => {
+    const base: Record<string, PickInput> = Object.fromEntries(
+      (initial?.content.picks ?? []).map((p) => [keyOf(p), { stance: p.stance ?? {}, note: p.note ?? "" }])
+    );
+    if (preselect && !(keyOf(preselect) in base) && Object.keys(base).length < ISSUE_MAX_PICKS) {
+      base[keyOf(preselect)] = { stance: preselect.stance, note: preselect.note, category: preselect.category };
+    }
+    return base;
+  });
   const [betIds, setBetIds] = useState<string[]>((initial?.content.bets ?? []).map((b) => b.id));
   const [opening, setOpening] = useState(initial?.content.opening ?? "");
   const [issue, setIssue] = useState<Issue | null>(initial);

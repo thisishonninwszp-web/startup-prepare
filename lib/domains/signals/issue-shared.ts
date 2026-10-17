@@ -1,4 +1,5 @@
 import type { GapRecheck, GapSide } from "./gaps-shared";
+import type { VoiceKind } from "./voices-shared";
 
 /**
  * 周刊里浏览器端也要用的部分：类型、平台、固定的结尾、拼稿。不碰数据库。
@@ -164,6 +165,14 @@ export type IssuePick = {
   url?: string | null;
   /** 日本人为这件麻烦自己会搜的说法（"听一听"时查过才有，只给日本这边）：note 版的标题用上它。 */
   searchPhrases?: string[];
+  /** 「那边查一查」查到的事实（一条讲透里查过才有）。 */
+  thereFacts?: { text: string; url: string; title: string }[];
+  /** 这边有没有人在为这件麻烦头疼（查过才有）：那件麻烦、三种各几句、最多 3 句原话。 */
+  voices?: { pain: string; counts: Record<VoiceKind, number>; quotes: string[] };
+  /** 同类东西以前来日本的结果（他在一条讲透里点了类别才有）。 */
+  benchmark?: string;
+  /** 对上的官报决算，一条一行。 */
+  kanpo?: string[];
 };
 
 /** 公开对账的一条：押过什么、结果。 */

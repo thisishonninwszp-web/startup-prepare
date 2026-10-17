@@ -8,13 +8,15 @@ import { getIssue, issueCandidates, issueCounts, listIssues, weekStartOf } from 
 import { getPublicToken } from "@/lib/domains/signals/public-record";
 import { loadIssueDoors, loadOpenDoorLinks } from "@/lib/domains/signals/fake-door";
 import { ATLAS_CATEGORIES, categoryBase, countedCases, listTransferCases, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas";
+import { loadGapDeep } from "@/lib/domains/signals/deep";
+import type { GapSide } from "@/lib/domains/signals/gaps-shared";
 import { IssueComposer } from "./issue-composer";
 
 export const dynamic = "force-dynamic";
 // 生成四个版本要二三十秒，由这一页的 server action 跑
 export const maxDuration = 60;
 
-export default async function IssuePage() {
+export default async function IssuePage({ searchParams }: { searchParams: { pick?: string } }) {
   const supabase = createClient();
   const {
     data: { user },
@@ -22,15 +24,23 @@ export default async function IssuePage() {
   if (!user) notFound();
 
   const weekStart = weekStartOf(tokyoToday());
-  const [current, candidates, past, publicToken, cases, doors, issueDoors] = await Promise.all([
+  // 从一条讲透点「用这一条写一期」过来：预选那一条，带上在那一页点的判断和类别
+  const [pickSide, pickId] = (searchParams.pick ?? "").split(":");
+  const include =
+    (["japan", "us", "china"] as GapSide[]).includes(pickSide as GapSide) && /^[0-9a-f-]{36}$/i.test(pickId ?? "")
+      ? { side: pickSide as GapSide, signal_id: pickId }
+      : null;
+  const [current, candidates, past, publicToken, cases, doors, issueDoors, pickedDeep] = await Promise.all([
     getIssue(user.id, weekStart),
-    issueCandidates(user.id),
+    issueCandidates(user.id, include ? [include] : []),
     listIssues(user.id),
     getPublicToken(user.id),
     listTransferCases(user.id).catch(() => "missing-schema" as const),
     loadOpenDoorLinks(user.id),
     loadIssueDoors(user.id),
+    include ? loadGapDeep(user.id, include.side, include.signal_id).catch(() => null) : Promise.resolve(null),
   ]);
+  const deepRow = pickedDeep && pickedDeep !== "missing-schema" ? pickedDeep : null;
   // 时差图谱里每一类的基准：点"这属于哪一类"就显示同一类的先例
   const atlasBases =
     cases === "missing-schema" || cases.length === 0
@@ -68,6 +78,16 @@ export default async function IssuePage() {
             atlasBases={atlasBases}
             doors={doors}
             issueDoors={{ zh: issueDoors.zh?.open ? issueDoors.zh.token : null, ja: issueDoors.ja?.open ? issueDoors.ja.token : null }}
+            preselect={
+              include
+                ? {
+                    ...include,
+                    stance: deepRow?.stance?.stance ?? {},
+                    note: deepRow?.stance?.note ?? "",
+                    category: deepRow?.category ?? undefined,
+                  }
+                : null
+            }
           />
           <section className="mt-12 border-t pt-6">
             <h2 className="text-base font-semibold">这份周刊能不能卖</h2>
