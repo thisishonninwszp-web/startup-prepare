@@ -171,3 +171,11 @@ export async function advanceChinaRun(userId: string, id: string): Promise<China
     throw e;
   }
 }
+
+/** 一家都没找到时再找一次：清掉第 2 步的结果、回到"写好搜索词"，结果页会接着跑第 2 步（每次搜到的不太一样）。 */
+export async function retryChinaCompanies(userId: string, id: string): Promise<void> {
+  const run = await getChinaRun(userId, id);
+  if (run === "missing-schema") throw new Error(MISSING_CHINA_MIGRATION);
+  if (!run || run.status !== "none_found") return;
+  await save(userId, id, { companies: null, status: "planned", error: null });
+}
