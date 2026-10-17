@@ -7,6 +7,7 @@ import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import { createMarketBet, recordApplication, setApplicationStatus } from "@/lib/domains/jobs/applications";
 import { confirmEntry, deleteEntry, draftEntry } from "@/lib/domains/jobs/base";
 import { requestFill } from "@/lib/domains/jobs/fill";
+import { createCaseDrill, setCaseStuckStep, submitCaseAnswer, submitFollowupAnswers } from "@/lib/domains/jobs/cases";
 import { createPosting, createPostingFromMaterial, dropCandidate, pickPosting, readJobPage, refreshMatch } from "@/lib/domains/jobs/postings";
 import { saveJobProfile } from "@/lib/domains/jobs/profile";
 import { saveResumeEdit, tailorForPosting } from "@/lib/domains/jobs/resumes";
@@ -276,5 +277,54 @@ export async function requestFillAction(postingId: string): Promise<Result> {
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没交给填表助手") };
+  }
+}
+
+/** 按这个岗位出一道 case（十几秒）。 */
+export async function createCaseDrillAction(postingId: string): Promise<Result<{ id: string }>> {
+  const userId = await requireUserId();
+  try {
+    const id = await createCaseDrill(userId, postingId);
+    revalidatePath(`/jobs/${postingId}`);
+    return { ok: true, id };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没出成题") };
+  }
+}
+
+/** 交结构，生成追问。 */
+export async function submitCaseAnswerAction(id: string, answer: string): Promise<Result> {
+  const userId = await requireUserId();
+  try {
+    await submitCaseAnswer(userId, id, answer);
+    revalidatePath(`/jobs/case/${id}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没交上") };
+  }
+}
+
+/** 回答追问，生成复盘。 */
+export async function submitFollowupAnswersAction(id: string, answers: string[]): Promise<Result> {
+  const userId = await requireUserId();
+  try {
+    await submitFollowupAnswers(userId, id, answers);
+    revalidatePath(`/jobs/case/${id}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "复盘没写成") };
+  }
+}
+
+/** 他点的"卡在哪一步"。 */
+export async function setCaseStuckStepAction(id: string, step: string): Promise<Result> {
+  const userId = await requireUserId();
+  try {
+    await setCaseStuckStep(userId, id, step);
+    revalidatePath(`/jobs/case/${id}`);
+    revalidatePath("/jobs");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
   }
 }
