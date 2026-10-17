@@ -302,6 +302,10 @@ export default async function JapanGapsPage() {
         <Link href="/signals/atlas" className="text-primary underline-offset-4 hover:underline">
           时差图谱：这类东西以前多久到日本 →
         </Link>
+        <span className="mx-2 text-muted-foreground">·</span>
+        <Link href="/signals/kanpo" className="text-primary underline-offset-4 hover:underline">
+          在日本的中国公司：官报上的决算 →
+        </Link>
       </p>
 
       <h2 className="mb-4 text-xl font-semibold">中国有、日本还没有</h2>

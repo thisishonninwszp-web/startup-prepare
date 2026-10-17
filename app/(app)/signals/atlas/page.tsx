@@ -19,13 +19,16 @@ import {
   type AtlasCategory,
   type TransferCase,
 } from "@/lib/domains/signals/atlas";
+import { caseNotices } from "@/lib/domains/signals/kanpo";
+import type { KanpoNotice } from "@/lib/domains/signals/kanpo-shared";
+import { NoticeLine } from "../kanpo/notice-line";
 import { OutcomeEditor, RecheckCaseButton, RejudgeButton, ResearchAtlasButton } from "./atlas-controls";
 
 export const dynamic = "force-dynamic";
 // 查一批要三四十秒，由这一页的 server action 跑
 export const maxDuration = 60;
 
-function CaseRow({ c }: { c: TransferCase }) {
+function CaseRow({ c, notice }: { c: TransferCase; notice: KanpoNotice | undefined }) {
   return (
     <li className="border-b border-border pb-4 last:border-b-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -43,6 +46,21 @@ function CaseRow({ c }: { c: TransferCase }) {
         <span className="text-muted-foreground">日本{c.japan_date ? `（${c.japan_date}）` : ""}：</span>
         {c.japan_event ?? "至今没有"}
       </p>
+      {notice ? (
+        <p className="text-xs leading-6">
+          <span className="text-muted-foreground">官报：</span>
+          <NoticeLine notice={notice} />
+        </p>
+      ) : (
+        <p className="text-xs leading-6">
+          <Link
+            href={`/signals/kanpo?case=${c.id}&note=${encodeURIComponent(`时差图谱：${c.thing}`)}`}
+            className="text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
+          >
+            把带进来的公司加进官报名单，看它在日本的决算 →
+          </Link>
+        </p>
+      )}
       {c.judge_status === "failed" && (
         <p className="text-xs leading-6 text-verdict-learned">不算进统计：{c.judge_note ?? "裁判看来原文证明不了"}。</p>
       )}
@@ -81,12 +99,17 @@ export default async function AtlasPage() {
   if (!user) notFound();
 
   const cases = await listTransferCases(user.id);
+  const notices = await caseNotices(user.id);
 
   return (
     <PageContainer width="narrow">
       <p className="mb-4 text-sm">
         <Link href="/signals/gaps" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
           ← 差距清单
+        </Link>
+        <span className="mx-2 text-muted-foreground">·</span>
+        <Link href="/signals/kanpo" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
+          在日本的中国公司（官报决算）
         </Link>
       </p>
       <PageHeader
@@ -169,7 +192,7 @@ export default async function AtlasPage() {
                       {cases
                         .filter((c) => c.category === k)
                         .map((c) => (
-                          <CaseRow key={c.id} c={c} />
+                          <CaseRow key={c.id} c={c} notice={notices.get(c.id)} />
                         ))}
                     </ul>
                   </section>

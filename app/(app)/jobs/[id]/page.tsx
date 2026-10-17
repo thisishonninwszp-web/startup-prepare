@@ -12,6 +12,8 @@ import { getJobProfile } from "@/lib/domains/jobs/profile";
 import { latestResume } from "@/lib/domains/jobs/resumes";
 import { atsOf, ATS_SITES, boardOf, BOARD_SITES } from "@/lib/domains/jobs/shared";
 import { listCaseDrills, MISSING_CASE_MIGRATION } from "@/lib/domains/jobs/cases";
+import { latestNoticeFor } from "@/lib/domains/signals/kanpo";
+import { NoticeLine } from "../../signals/kanpo/notice-line";
 import { ApplicationPanel } from "./application-panel";
 import { CasePanel } from "./case-panel";
 import { FillPanel } from "./fill-panel";
@@ -35,13 +37,14 @@ export default async function JobPostingPage({ params }: { params: { id: string 
 
   const posting = await getPosting(user.id, params.id);
   if (!posting) notFound();
-  const [profile, entries, resume, application, fill, cases] = await Promise.all([
+  const [profile, entries, resume, application, fill, cases, kanpo] = await Promise.all([
     getJobProfile(user.id),
     listCareerEntries(user.id),
     latestResume(user.id, posting.id),
     getApplicationForPosting(user.id, posting.id),
     getFillState(user.id, posting.id),
     listCaseDrills(user.id, posting.id),
+    latestNoticeFor(posting.company_name),
   ]);
   const confirmed = entries === "missing-schema" ? [] : entries.filter((e) => e.confirmed_at);
   const ats = atsOf(posting.url);
@@ -78,7 +81,16 @@ export default async function JobPostingPage({ params }: { params: { id: string 
         }
       />
       <div className="space-y-10">
-        <PostingFacts posting={posting} profile={profile === "missing-schema" ? null : profile} />
+        <div className="space-y-2">
+          <PostingFacts posting={posting} profile={profile === "missing-schema" ? null : profile} />
+          {kanpo && (
+            <p className="text-xs leading-6">
+              <span className="text-muted-foreground">官报决算：</span>
+              <NoticeLine notice={kanpo} />
+              <span className="ml-1 text-muted-foreground">（只查得到在官报登过、最近抓到的；查不到不代表没登）</span>
+            </p>
+          )}
+        </div>
         <Separator />
         <MatchView posting={posting} entries={confirmed} />
         <Separator />
