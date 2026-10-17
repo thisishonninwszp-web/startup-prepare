@@ -269,6 +269,13 @@ export function IssueComposer({
                   </p>
                   <p className="mt-1 text-sm font-medium leading-7">{g.headline}</p>
                   <p className="text-sm leading-7 text-muted-foreground">{g.hereNow}</p>
+                  <a
+                    href={`/signals/gaps/deep?side=${g.side}&id=${g.signal_id}`}
+                    target="_blank"
+                    className="text-xs text-primary underline-offset-4 hover:underline"
+                  >
+                    一条讲透 ↗
+                  </a>
                   <Button
                     className="mt-2"
                     size="sm"

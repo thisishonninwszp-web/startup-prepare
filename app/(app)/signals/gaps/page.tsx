@@ -151,6 +151,9 @@ function GapList({
               </p>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-4">
+              <Link href={`/signals/gaps/deep?side=${side}&id=${g.signal_id}`} className="text-sm text-primary underline-offset-4 hover:underline">
+                一条讲透 →
+              </Link>
               <GapActions signalId={g.signal_id} observed={g.observed} side={side} />
               {g.url && (
                 <a
@@ -224,6 +227,12 @@ function ArrivedList({ gaps, side }: { gaps: ArrivedGap[]; side: GapSide }) {
                 {t.there}那边的原文 ↗
               </a>
             )}
+            <Link
+              href={`/signals/gaps/deep?side=${side}&id=${g.signal_id}`}
+              className="mt-2 ml-4 inline-block text-sm text-primary underline-offset-4 hover:underline"
+            >
+              一条讲透 →
+            </Link>
           </li>
         ))}
       </ul>
