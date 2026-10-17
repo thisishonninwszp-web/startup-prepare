@@ -2173,7 +2173,7 @@ const VAGUE_CRITERIA = [
 const VAGUE_ABOVE = 0.9;
 
 /** 一个二选一问题里"第二项"（车轱辘那一项）的概率；缺了就当 0，不因为它让整层判档作废。 */
-function secondOption(answer: unknown): number {
+export function secondOption(answer: unknown): number {
   const probs = (answer as { probabilities?: Record<string, unknown> } | undefined)?.probabilities;
   const v = probs?.["1"];
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
@@ -3190,7 +3190,7 @@ const transferJudgePrompt = (here: string) => `你在看一样东西能不能搬
 
 只输出 JSON：{"items":[{"i":0,"here":"…","holds":"no","basis":[{"source":1,"excerpt":"…"}]}],"precedent":null}`;
 
-function verifiedBasis(raw: unknown, sources: SearchSource[]): { url: string; title: string; excerpt: string }[] {
+export function verifiedBasis(raw: unknown, sources: SearchSource[]): { url: string; title: string; excerpt: string }[] {
   const squash = (t: string) => t.replace(/\s+/g, "");
   return (Array.isArray(raw) ? raw : [])
     .filter((b): b is Record<string, unknown> => !!b && typeof b === "object")
