@@ -47,10 +47,18 @@ const KANJI_DIGITS = "〇一二三四五六七八九";
 /** 官报字体把「△」映射到私用区：横排 U+E888，竖排 U+E6F0。 */
 const MINUS = "[△▲−\\-\\uE888\\uE6F0]";
 const DIGIT = "[0-9０-９〇一二三四五六七八九]";
-const NUMBER = `(${MINUS})?\\s*(${DIGIT}(?:${DIGIT}|[,，、])*)`;
+/**
+ * 千位分隔：「,」「，」「、」，有的公告用私用区字符（见过 U+EA75）。分隔后面必须正好三位数，
+ * 这样地址里数字之间的私用区横杠（「16-28」）不会被当成分隔；两个负号 U+E888、U+E6F0 不算分隔。
+ */
+const SEPARATOR = "[,，、\\uE000-\\uE6EF\\uE6F1-\\uE887\\uE889-\\uF8FF]";
+const NUMBER = `(${MINUS})?\\s*(${DIGIT}+(?:${SEPARATOR}${DIGIT}{3})*)`;
 const PERIOD = /第\s*[0-9０-９〇一二三四五六七八九十百]+\s*期/;
 const HEADER = /第\s*[0-9０-９〇一二三四五六七八九十百]+\s*期\s*決算公告|^決算公告$/gm;
-const COMPANY = /(株式会社|有限会社|合同会社|（株）|\(株\))/;
+const COMPANY = /(株式会社|有限会社|合同会社|（株）|\(株\)|特定目的会社|一般社団法人|一般財団法人|社会医療法人|医療法人)/;
+/** 「株式会社」被折行拆开：这一行以「株式/合同/有限」结尾，下一行以「会社」开头。 */
+const SPLIT_SUFFIX = /(株式|合同|有限)$/;
+const REPRESENTATIVE = /代表取締役|代表執行役|取締役|代表社員|代表理事|理事長|清算人/;
 const PREFECTURE = /(東京都|北海道|大阪府|京都府|[^\s\d０-９]{2,3}県)[^\n]*/;
 
 function toInt(sign: string | undefined, token: string): number | null {
@@ -63,7 +71,7 @@ function toInt(sign: string | undefined, token: string): number | null {
       return c;
     })
     .join("")
-    .replace(/[,，、]/g, "");
+    .replace(/[,，、-]/g, "");
   if (!/^\d+$/.test(ascii)) return null;
   const n = Number(ascii);
   return sign ? -n : n;
@@ -91,14 +99,21 @@ export function splitNotices(text: string, alreadySquashed = false): { start: nu
     .filter((n) => n.block.includes("貸借対照表"));
 }
 
-/** 公司名长了会折成两行：上一行以「・」结尾，或者全是英文。 */
+/**
+ * 公司名长了会折成两行：上一行以「・」结尾，或者全是英文；
+ * 也会在「株式会社」中间折开（「…株式」+「会社代表取締役…」），这时只补上「会社」两个字。
+ */
 function companyName(lines: string[]): string | null {
-  const i = lines.findIndex((l) => COMPANY.test(l));
+  const i = lines.findIndex((l, k) => COMPANY.test(l) || (SPLIT_SUFFIX.test(l) && (lines[k + 1] ?? "").startsWith("会社")));
   if (i < 0) return null;
+  // 代表者挤在同一行（「株式会社代表取締役下川康弘」）：从职务那里切掉
+  const line = (COMPANY.test(lines[i]) ? lines[i] : `${lines[i]}会社`).split(REPRESENTATIVE)[0].trim();
   const prev = lines[i - 1] ?? "";
-  if (prev.endsWith("・")) return prev + lines[i];
-  if (/^[A-Za-z][A-Za-z0-9 .,&'-]*$/.test(prev)) return `${prev} ${lines[i]}`;
-  return lines[i];
+  // 切完只剩「株式会社」：公司名的前半在上一行
+  if (/^(株式会社|有限会社|合同会社)$/.test(line) && prev) return prev + line;
+  if (prev.endsWith("・")) return prev + line;
+  if (/^[A-Za-z][A-Za-z0-9 .,&'-]*$/.test(prev)) return `${prev} ${line}`;
+  return line;
 }
 
 export function parseNotice(block: string): ParsedNotice {
@@ -110,7 +125,10 @@ export function parseNotice(block: string): ParsedNotice {
   if (assets === null) assets = numberAfter("合計", bs.slice(Math.max(0, bs.indexOf("資産"))));
   const netAssets = numberAfter("(?<![・び])純資産合計", bs);
   const retained = numberAfter("(?<!その他)利益剰余金", bs);
-  const ni = new RegExp("[(（]うち当期純(利益|損失)(?:金額)?[)）]\\s*[(（]?\\s*" + NUMBER).exec(bs);
+  // 贷借对照表里的「(うち当期純利益)(N)」优先；没有就取损益计算书的「当期純利益 N」（不取「税引前」那一行，可能在表前面）
+  const ni =
+    new RegExp("[(（]うち当期純(利益|損失)(?:金額)?[)）]\\s*[(（]?\\s*" + NUMBER).exec(bs) ??
+    new RegExp("(?<!前)当期純(利益|損失)(?:金額)?\\s*[(（]?\\s*" + NUMBER).exec(block);
   let netIncome = ni ? toInt(ni[2], ni[3]) : null;
   if (ni && ni[1] === "損失" && netIncome !== null) netIncome = -Math.abs(netIncome);
   const company = companyName(lines);
@@ -126,7 +144,8 @@ export function parseNotice(block: string): ParsedNotice {
     net_assets: yen(netAssets),
     retained_earnings: yen(retained),
     net_income: yen(netIncome),
-    complete: Boolean(company && unit && assets !== null && netIncome !== null),
+    // 纯资产比资产合计还大是不可能的：多半抽错了一个数，当没抽全，不显示错的数字
+    complete: Boolean(company && unit && assets !== null && netIncome !== null && !(netAssets !== null && netAssets > assets)),
     raw_text: block,
   };
 }
