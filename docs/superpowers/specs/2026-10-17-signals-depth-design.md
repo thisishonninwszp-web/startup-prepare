@@ -143,3 +143,18 @@ signal_gap_deep
 - `app/(app)/signals/gaps/page.tsx`、`app/(app)/signals/issue/`:入口链接;周刊带上新料、从这一页跳过来时预选这一条。
 - `lib/domains/signals/issue.ts`、`issue-shared.ts`:`IssuePick` 新字段、`buildPick`。
 - `supabase/migrations/083_signal_gap_deep.sql`、`supabase/schema.sql`、`CLAUDE.md`(signals 那一格、Schema 一行)。
+
+## 写计划和做的时候定下的
+
+- **去空话的函数放 `lib/domains/signals/filler.ts`**(纯函数),不放 `lib/ai/signals.ts`:报告、差距清单、核对「那边查一查」的事实都要用。
+- **干跑两周真报告后补的规则**:带数字的、带英文专名的(AI、API、O2O 这类通用词不算)、写着「首次」的、「这意味着……可以/能/无需……」在说能拿它做什么的,不删。
+  第一版删掉过「,这标志着它首次与LG电子和施耐德电气深度合作」和工具那一节讲用途的句子。补完以后:309 条背景里,最后一句是空话的从 65 条降到 28 条,一共删 66 句,逐句看过没有人名、公司、数字。
+- **「那边查一查」的提示词放新文件 `lib/ai/signals-deep.ts`**(signals.ts 已经 4800 多行),要用的 `assertNoBanned` 从 signals.ts 导出。
+- **数字核对只核阿拉伯数字**(全角也认,`numbersIn` 复用 `lib/domains/jobs/provenance-shared.ts`);「两成」这种汉字数字不核,提示词要求照抄原文的阿拉伯数字。
+- **周刊的数字核对只查大于 10 的**(和练 case 同一个规矩):「三个条件」「第 1 条」是计数。
+- **表的主键用 (user_id, signal_id, side)**,和 067 一样,不另加 id。
+- **差距(JapanGap)加 `basis`**:报告里核对过的原文依据,① 里显示。
+- **官报对名单**用「中国那边的名字原样出现在这条文字里」,两个字以下的名字不认。
+- **页面拼料单独放 `deep-page.ts`**:它要读周刊(回应次数),周刊又要读 `deep.ts`(料),分开免得互相引用。
+- **周刊材料里的字段叫 `thereFacts`**:`there` 已经是"那边"的地名。
+- **浏览器验证**:页面要登录,测试账号的密码不在项目文件里,没有代登录;迁移 083 跑完后由他打开一条看。
