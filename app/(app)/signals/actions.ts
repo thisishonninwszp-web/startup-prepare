@@ -27,6 +27,7 @@ import {
 } from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
 import { analyzeGapVoices, type GapVoices } from "@/lib/domains/signals/voices";
+import { runThereCheck, saveDeepCategory, saveDeepStance, type GapThere } from "@/lib/domains/signals/deep";
 import {
   deleteDoorSignup,
   draftFakeDoorContent,
@@ -705,6 +706,50 @@ export async function analyzeGapVoicesAction(
     return { ok: true, analysis: await analyzeGapVoices(userId, signalId, side) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没查成") };
+  }
+}
+
+/** 一条讲透：那边查一查（搜两次、摘事实，三四十秒）。 */
+export async function runThereAction(
+  signalId: string,
+  side: GapSide
+): Promise<{ ok: true; there: GapThere } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, there: await runThereCheck(userId, signalId, side) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没查成") };
+  }
+}
+
+/** 一条讲透：这条属于时差图谱哪一类。 */
+export async function saveDeepCategoryAction(
+  signalId: string,
+  side: GapSide,
+  category: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await saveDeepCategory(userId, signalId, side, category);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没存上") };
+  }
+}
+
+/** 一条讲透：判断三下 + 补的那句（到周刊页还在）。 */
+export async function saveDeepStanceAction(
+  signalId: string,
+  side: GapSide,
+  stance: unknown,
+  note: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await saveDeepStance(userId, signalId, side, stance, note);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没存上") };
   }
 }
 
