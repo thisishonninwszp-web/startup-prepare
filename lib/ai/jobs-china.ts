@@ -1,8 +1,17 @@
 import { executeAiJson, executeJev, type JevQuestion } from "@/lib/ai-gateway";
 import { MODEL } from "./shared";
-import { secondOption, type SearchSource } from "./signals";
-import { quoteIn, unsupported } from "@/lib/domains/jobs/provenance-shared";
-import { assertJapanese, assertNoHype, type ChinaCompany, type ChinaPlan } from "@/lib/domains/jobs/china-shared";
+import { secondOption, verifiedBasis, type SearchSource } from "./signals";
+import { numbersIn, quoteIn, unsupported } from "@/lib/domains/jobs/provenance-shared";
+import {
+  assertJapanese,
+  assertNoHype,
+  type ChinaCompany,
+  type ChinaJapan,
+  type ChinaPlan,
+  type Holds,
+  type JapanCondition,
+  type JapanEntrant,
+} from "@/lib/domains/jobs/china-shared";
 
 // ---------------------------------------------------------------------------
 // 面试演示「御社の商売、中国ではどうなっている？」：面试官说一句生意 → 中文搜中国同行 → 那边做成靠的条件日本有没有。
@@ -12,6 +21,9 @@ import { assertJapanese, assertNoHype, type ChinaCompany, type ChinaPlan } from 
 
 const MAX_COMPANIES = 4;
 const SAME_ABOVE = 0.5;
+const MAX_CONDITIONS = 5;
+const MAX_ENTRANTS = 3;
+const DEFAULT_HERE = "日本側の資料が見つかりませんでした。";
 const KANA = /[぀-ヿ]/;
 const HAN = /[一-鿿]/;
 
@@ -173,4 +185,144 @@ export async function judgeSameBusiness(
     console.error("china lens judge failed", e);
     return { ok: false };
   }
+}
+
+// ---- 第 3 步：日本这边 -------------------------------------------------------------
+
+const JAPAN_PLAN_PROMPT = `下面是在中国做某门生意的几家公司（附资料原文）。想知道：这门生意在中国做成靠的条件，日本有没有。
+很多东西在日本没有，不是因为没人想到，而是它在中国做成靠的条件，日本不具备。
+要特意找日本可能不具备的条件，不要只列对日本有利的。
+
+列 3 到 ${MAX_CONDITIONS} 个条件，每个写：
+- name：条件的短名字，日文（例：「スマホ決済の普及」「人件費の安さ」「規制で認められている」「中小企業がITにお金を払う習慣」）。
+- there_ja：这一条在中国是什么情况，一句日文。不许写任何数字 —— 这句没有出处，面试官会当成事实。
+- query_ja：查"日本现在这一条怎样"的日文搜索词，3 到 8 个词，具体，最好能搜到统计或调查。
+再写 entrant_queries：两个搜索词，查"有没有中国的同行来过日本、结果怎样"：第一个日文（例："中国 勤怠管理 日本進出 撤退"），第二个中文（例："考勤 SaaS 出海 日本"）。
+
+不写空话，不评价好坏，不写"有望""チャンス"这类词。
+
+只输出 JSON：{"conditions":[{"name":"…","there_ja":"…","query_ja":"…"}],"entrant_queries":["…","…"]}`;
+
+export type JapanPlan = {
+  conditions: { name: string; there_ja: string; query_ja: string }[];
+  entrant_queries: string[];
+};
+
+export function parseJapanPlan(value: unknown): JapanPlan {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const conditions = (Array.isArray(v.conditions) ? v.conditions : [])
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+    .map((c) => ({ name: str(c.name, 30), there_ja: str(c.there_ja, 200), query_ja: str(c.query_ja, 120) }))
+    .filter((c) => c.name && c.there_ja && c.query_ja)
+    .slice(0, MAX_CONDITIONS);
+  if (conditions.length < 2) throw new Error("条件不到两个");
+  // 中国那边的说明没有出处，写了数字面试官会当成事实
+  const withNumber = conditions.find((c) => numbersIn(c.there_ja).length > 0);
+  if (withNumber) throw new Error(`中国那边的说明写了数字：${withNumber.there_ja.slice(0, 20)}`);
+  assertJapanese(conditions.map((c) => c.there_ja));
+  assertNoHype(conditions.flatMap((c) => [c.name, c.there_ja]));
+  const entrant_queries = (Array.isArray(v.entrant_queries) ? v.entrant_queries : [])
+    .map((q) => str(q, 80))
+    .filter(Boolean)
+    .slice(0, 2);
+  return { conditions, entrant_queries };
+}
+
+/** 第 3 步前半：那边做成靠的条件、查日本用的日文搜索词、查中国同行来没来过的搜索词。 */
+export async function planJapanConditions(
+  userId: string,
+  zhBusiness: string,
+  companies: Pick<ChinaCompany, "name" | "excerpt">[]
+): Promise<JapanPlan> {
+  const contents = [`这门生意：${zhBusiness}`, ...companies.map((c) => `- ${c.name}：「${c.excerpt}」`)].join("\n");
+  return executeAiJson(
+    { userId, operation: "china_lens_japan_plan", module: "jobs", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验：there_ja 必须是日文、不许写数字，条件至少两个，不许有吹捧的词。" : ""),
+      config: {
+        systemInstruction: JAPAN_PLAN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    parseJapanPlan
+  );
+}
+
+const JAPAN_JUDGE_PROMPT = `你在看一门在中国做成的生意，它靠的条件日本有没有。下面每个条件附了上网搜到的、关于日本现在情况的资料；最后附了"中国同行来没来过日本"的资料。
+
+每个条件输出：
+- i：编号。
+- here_ja：日本现在这一条怎样，一句日文，只写资料里有的。
+- holds："yes"（日本也有）/"no"（日本没有，要做先得解决它）/"unclear"（资料说不清）。
+- basis：支撑 here_ja 的资料原文，逐字照抄（不翻译、不改字，15 到 150 字），附这个条件下面的资料编号 source。资料里没有就给空数组，holds 写 "unclear"。
+here_ja 里的数字和英文词必须在 basis 的原文里。
+
+再写 entrants：资料里写着的、来过日本的中国同行，最多 ${MAX_ENTRANTS} 件，每件
+{"text_ja":"谁、什么时候、结果怎样（退出了、没做起来也照写），一句日文","basis":[{"source":资料编号,"excerpt":"逐字原文"}]}；
+text_ja 里的数字必须在 basis 的原文里。没有就给空数组。
+
+不要打分，不要下"值得做 / 不值得做""有机会"的结论。叙述用日文（basis 照抄原文）。
+
+只输出 JSON：{"items":[{"i":0,"here_ja":"…","holds":"no","basis":[{"source":1,"excerpt":"…"}]}],"entrants":[]}`;
+
+type ConditionInput = { condition: JapanPlan["conditions"][number]; sources: SearchSource[] };
+
+/** 拿不出逐字对得上的原文，或者日文里的数字、英文词原文里没有，就不许说有没有（一律資料なし）；来过日本的同理，对不上就丢。 */
+export function parseJapanJudgment(value: unknown, inputs: ConditionInput[], entrantSources: SearchSource[]): ChinaJapan {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const items = Array.isArray(v.items) ? v.items : [];
+  const conditions = inputs.map(({ condition, sources }, i): JapanCondition => {
+    const it = items.find((r) => r && typeof r === "object" && Number((r as Record<string, unknown>).i) === i) as
+      | Record<string, unknown>
+      | undefined;
+    const basis = verifiedBasis(it?.basis, sources);
+    const here = str(it?.here_ja, 200);
+    if (basis.length === 0 || !here || unsupported(here, basis.map((b) => b.excerpt).join("\n"))) {
+      return { name: condition.name, there_ja: condition.there_ja, here_ja: DEFAULT_HERE, holds: "unclear", basis: [] };
+    }
+    const holds: Holds = it?.holds === "yes" || it?.holds === "no" ? it.holds : "unclear";
+    return { name: condition.name, there_ja: condition.there_ja, here_ja: here, holds, basis };
+  });
+  const entrants: JapanEntrant[] = (Array.isArray(v.entrants) ? v.entrants : [])
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    .map((e) => ({ text_ja: str(e.text_ja, 200), basis: verifiedBasis(e.basis, entrantSources) }))
+    .filter((e) => e.text_ja && e.basis.length > 0 && !unsupported(e.text_ja, e.basis.map((b) => b.excerpt).join("\n")))
+    .slice(0, MAX_ENTRANTS);
+  const texts = [...conditions.map((c) => c.here_ja), ...entrants.map((e) => e.text_ja)];
+  assertJapanese(texts);
+  assertNoHype(texts);
+  return { conditions, entrants };
+}
+
+/** 第 3 步后半：拿日本的资料判每个条件有没有，再看中国同行来没来过。 */
+export async function judgeJapanConditions(userId: string, inputs: ConditionInput[], entrantSources: SearchSource[]): Promise<ChinaJapan> {
+  const block = (sources: SearchSource[]) =>
+    sources.length > 0
+      ? sources.map((s, j) => `  [资料 ${j + 1}] ${s.title}\n  ${s.url}\n  ${s.content.slice(0, 1000)}`).join("\n")
+      : "  （没搜到资料）";
+  const contents = [
+    ...inputs.map(({ condition, sources }, i) => `【${i}】${condition.name}（中国那边：${condition.there_ja}）\n${block(sources)}`),
+    `【中国同行来没来过日本】\n${block(entrantSources)}`,
+  ].join("\n\n");
+  return executeAiJson(
+    { userId, operation: "china_lens_japan_judge", module: "jobs", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验：叙述必须是日文（要有平假名），不许有吹捧的词；basis 逐字照抄那个条件下面资料的原文，source 是资料编号。"
+          : ""),
+      config: {
+        systemInstruction: JAPAN_JUDGE_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    (value) => parseJapanJudgment(value, inputs, entrantSources)
+  );
 }

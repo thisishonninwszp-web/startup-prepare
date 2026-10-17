@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChinaCompanies, parseChinaPlan, parseSameBusiness } from "./jobs-china";
+import { parseChinaCompanies, parseChinaPlan, parseJapanJudgment, parseJapanPlan, parseSameBusiness } from "./jobs-china";
 
 const CN = {
   title: "钉钉发布新版考勤功能",
@@ -76,5 +76,85 @@ describe("裁判：是不是同一门生意", () => {
       c_1: { probabilities: { "0": 0.7, "1": 0.3 } },
     };
     expect(parseSameBusiness(answers, 3)).toEqual([true, false, false]);
+  });
+});
+
+const CONDITIONS = [
+  { name: "スマホ打刻が当たり前", there_ja: "中国では従業員がスマホで出退勤を打刻するのが当たり前になっている。", query_ja: "スマホ 打刻 普及率 中小企業" },
+  { name: "中小企業がITにお金を払う習慣", there_ja: "中国の中小企業は無料の業務アプリを使い慣れている。", query_ja: "中小企業 IT投資 調査" },
+  { name: "勤怠の記録の決まり", there_ja: "中国では勤怠の記録方法に細かい決まりが少ない。", query_ja: "勤怠管理 客観的記録 義務" },
+];
+
+describe("第 3 步：日本这边要查的条件", () => {
+  it("收两到五个条件和两个先例搜索词", () => {
+    const plan = parseJapanPlan({ conditions: CONDITIONS, entrant_queries: ["中国 勤怠管理 日本進出 撤退", "考勤 SaaS 出海 日本"] });
+    expect(plan.conditions).toHaveLength(3);
+    expect(plan.entrant_queries).toHaveLength(2);
+  });
+
+  it("中国那边的说明写了数字就报错（没有出处）", () => {
+    const withNumber = [{ ...CONDITIONS[0], there_ja: "中国では8割の企業がスマホで打刻している。" }, CONDITIONS[1]];
+    expect(() => parseJapanPlan({ conditions: withNumber, entrant_queries: [] })).toThrow(/数字/);
+  });
+
+  it("条件不到两个报错", () => {
+    expect(() => parseJapanPlan({ conditions: [CONDITIONS[0]], entrant_queries: [] })).toThrow(/不到两个/);
+  });
+
+  it("说明写成中文报错", () => {
+    const chinese = [{ ...CONDITIONS[0], there_ja: "中国企业普遍用手机打卡" }, CONDITIONS[1]];
+    expect(() => parseJapanPlan({ conditions: chinese, entrant_queries: [] })).toThrow(/没用日文/);
+  });
+});
+
+const JP = {
+  title: "勤怠管理システムの導入率",
+  url: "https://example.jp/a",
+  content: "中小企業における勤怠管理システムの導入率は約4割にとどまる。紙のタイムカードを使い続ける企業も多い。",
+};
+const ENTRANT = {
+  title: "中国の勤怠SaaSが日本進出",
+  url: "https://example.jp/b",
+  content: "2019年、中国の勤怠管理サービスA社が日本法人を設立した。2022年に日本から撤退した。",
+};
+const inputs = [
+  { condition: CONDITIONS[0], sources: [JP] },
+  { condition: CONDITIONS[1], sources: [] },
+];
+const judged = {
+  i: 0,
+  here_ja: "日本の中小企業では勤怠管理システムの導入は約4割にとどまる。",
+  holds: "no",
+  basis: [{ source: 1, excerpt: "中小企業における勤怠管理システムの導入率は約4割にとどまる" }],
+};
+
+describe("第 3 步：日本这边有没有", () => {
+  it("有原文的照收；没原文的一律資料なし", () => {
+    const out = parseJapanJudgment({ items: [judged, { i: 1, here_ja: "日本でも払う習慣がある。", holds: "yes", basis: [] }], entrants: [] }, inputs, []);
+    expect(out.conditions[0]).toMatchObject({ holds: "no", here_ja: judged.here_ja });
+    expect(out.conditions[0].basis).toHaveLength(1);
+    expect(out.conditions[1]).toMatchObject({ holds: "unclear", here_ja: "日本側の資料が見つかりませんでした。", basis: [] });
+  });
+
+  it("日文里的数字原文里没有，就算資料なし", () => {
+    const out = parseJapanJudgment({ items: [{ ...judged, here_ja: "導入は約5割にとどまる。" }], entrants: [] }, inputs, []);
+    expect(out.conditions[0].holds).toBe("unclear");
+  });
+
+  it("来过日本的：原文对得上才留，数字要在原文里", () => {
+    const entrant = {
+      text_ja: "中国のA社が2019年に日本法人を設立し、2022年に撤退した。",
+      basis: [
+        { source: 1, excerpt: "2019年、中国の勤怠管理サービスA社が日本法人を設立した" },
+        { source: 1, excerpt: "2022年に日本から撤退した" },
+      ],
+    };
+    const out = parseJapanJudgment({ items: [judged], entrants: [entrant, { text_ja: "B社も来ていた。", basis: [] }] }, inputs, [ENTRANT]);
+    expect(out.entrants).toHaveLength(1);
+    expect(out.entrants[0].basis).toHaveLength(2);
+  });
+
+  it("叙述写成中文报错", () => {
+    expect(() => parseJapanJudgment({ items: [{ ...judged, here_ja: "日本中小企业约4割在用考勤系统" }], entrants: [] }, inputs, [])).toThrow(/没用日文/);
   });
 });
