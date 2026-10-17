@@ -19,6 +19,7 @@ import {
 import { webSearch } from "@/lib/web-search";
 import { mergeSources } from "./sources";
 import { fetchArticle } from "./article";
+import { cleanBriefItem } from "./filler";
 import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
 import { balanceBySource, isChinaSource, isGithubSource, isUsSource, kindSourceFilter, newsSourceLabel, type SignalKind } from "./feeds";
@@ -410,7 +411,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   ]);
   const surpriseOf = new Map(surprises.map((s) => [s.index, { expected: s.expected, actual: s.actual, quote: s.quote }]));
 
-  const items: BriefItem[] = picks.map((p) => {
+  const items: BriefItem[] = picks.map((p): BriefItem => {
     const row = rows[p.index];
     return {
       signal_id: row.id as string,
@@ -442,7 +443,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       opportunity: p.opportunity,
       precedent: p.precedent,
     };
-  });
+  }).map(cleanBriefItem);
   // "也值得一看"跟精选存在同一个数组里，用 extra 标出来，不用加列
   for (const m of more) {
     const row = rows[m.index];
