@@ -107,6 +107,8 @@ export type BriefItem = {
   surprise?: { expected: string; actual: string; quote: string };
   /** 这条直接关系到他在追的哪个问题（问题驱动）。问题文字另存一份：问题改名或收起后，旧报告照样看得懂。 */
   related_question?: { id: string; question: string; why: string };
+  /** 代码删掉的空话（「这表明……」「，这意味着……」），留着在信息源体检页查删得对不对。早期数据没有。 */
+  dropped?: string[];
 };
 
 /** 报告认得的问题：最近建的几个没收起的问题，连同现在的看法。 */
