@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseThereFacts, parseThereName, parseThereQueries } from "./signals-deep";
+import { parseThereFacts, parseThereName } from "./signals-deep";
 
 const sources = [{ title: "美团无人机", url: "https://example.cn/a", content: "美团无人机已在深圳、上海等地开通 53 条航线，2021 年开始试运营。" }];
 const excerpt = "美团无人机已在深圳、上海等地开通 53 条航线";
 
 describe("那边查一查", () => {
-  it("搜索词最多两个、去掉空的；一个都没有就重来", () => {
-    expect(parseThereQueries({ queries: [" 美团 无人机 配送 规模 ", "", "美团 无人机 收费", "多余"] })).toEqual(["美团 无人机 配送 规模", "美团 无人机 收费"]);
-    expect(() => parseThereQueries({ queries: [] })).toThrow();
-  });
-
   it("对不上原文的丢掉，对得上的留下；一条都没有不算错", () => {
     const facts = parseThereFacts(
       {

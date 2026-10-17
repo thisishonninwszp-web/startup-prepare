@@ -62,8 +62,11 @@ export type ThereFact = {
 
 export type GapThere = {
   facts: ThereFact[];
-  /** 用了哪两个搜索词（一条没摘到时，页面上请他自己去搜）。 */
+  /** 用了哪几个搜索词（一条没摘到时，页面上请他自己去搜）。 */
   queries: string[];
+  /** AI 写的叫法和属于谁（早期查的没有）。 */
+  name?: string;
+  parent?: string;
   /** 读了几篇（一条都没摘到时，分得清是没搜到还是搜到了对不上）。 */
   searched: { pages: number };
   checked_at: string;

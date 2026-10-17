@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { extractThereFacts, planThereQueries } from "@/lib/ai";
+import { extractThereFacts, planThereName } from "@/lib/ai";
 import { webSearch } from "@/lib/web-search";
-import { mentionedNames, thereLanguage, validCategory, validDeepStance, type GapDeep, type GapThere } from "./deep-shared";
+import { mentionedNames, thereLanguage, thereSearches, validCategory, validDeepStance, type GapDeep, type GapThere } from "./deep-shared";
 import { findJapanGap } from "./gaps";
 import { gapPlaces, transferKey, type GapSide, type JapanGap } from "./gaps-shared";
 import { ISSUE_NOTE_MAX } from "./issue-shared";
@@ -71,17 +71,28 @@ async function upsertDeep(userId: string, side: GapSide, signalId: string, patch
   if (error) throw new Error(isMissingDeep(error.message) ? MISSING_DEEP_MIGRATION : error.message);
 }
 
-/** 那边查一查：AI 写两个那边语言的搜索词 → 上网搜 → AI 摘事实、代码核对原文。一条没摘到也存（页面上写没查到）。 */
+/**
+ * 那边查一查：AI 只写这样东西的叫法和属于谁 → 代码拼搜索词（规模、收钱、母公司的规模只搜商业媒体，再加 AI 写的一个词不限网站）
+ * → 一起搜 → AI 按四格摘事实、代码核对原文。一条没摘到也存（页面上写没查到）。
+ */
 export async function runThereCheck(userId: string, signalId: string, side: GapSide): Promise<GapThere> {
   const gap = await findJapanGap(userId, signalId, side);
   if (!gap) throw new Error("清单里找不到这一条了");
   const input = { there: gapPlaces(side).there, language: thereLanguage(side), headline: gap.headline, background: gap.background };
-  const queries = await planThereQueries(input);
-  const results = await Promise.all(queries.map((q) => webSearch(q, THERE_RESULTS).catch(() => [])));
+  const plan = await planThereName(input);
+  const searches = thereSearches(input.language, plan.name, plan.query, plan.parent);
+  const results = await Promise.all(searches.map((s) => webSearch(s.query, THERE_RESULTS, { domains: s.domains }).catch(() => [])));
   const seen = new Set<string>();
   const sources = results.flat().filter((r) => r.url && !seen.has(r.url) && seen.add(r.url));
-  const facts = sources.length > 0 ? await extractThereFacts(input, sources) : [];
-  const there: GapThere = { facts, queries, searched: { pages: sources.length }, checked_at: new Date().toISOString() };
+  const facts = sources.length > 0 ? await extractThereFacts({ ...input, name: plan.name, parent: plan.parent }, sources) : [];
+  const there: GapThere = {
+    facts,
+    queries: searches.map((s) => s.query),
+    name: plan.name,
+    ...(plan.parent ? { parent: plan.parent } : {}),
+    searched: { pages: sources.length },
+    checked_at: new Date().toISOString(),
+  };
   await upsertDeep(userId, side, signalId, { there });
   return there;
 }

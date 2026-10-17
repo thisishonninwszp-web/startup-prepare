@@ -5,7 +5,8 @@ import { checkThereFacts, THERE_MAX_FACTS, type ThereFact, type ThereLanguage } 
 
 // ---------------------------------------------------------------------------
 // 差距的「一条讲透」：那边查一查。
-// 一条差距在那边到底是什么：谁在做、做到多大、怎么收钱、哪年开始。AI 先写那边语言的搜索词，搜完再摘事实；
+// 一条差距在那边到底是什么：谁在做、做到多大、怎么收钱、哪年开始。AI 只写这样东西的叫法和属于谁，
+// 搜索词由代码拼（deep-shared.ts 的 thereSearches），搜完再按四格摘事实；
 // 每条事实的原文、数字、公司名由代码核对（deep-shared.ts），对不上的丢掉。不写结论、不打分。
 // ---------------------------------------------------------------------------
 
@@ -55,42 +56,6 @@ export async function planThereName(input: ThereInput): Promise<ThereNamePlan> {
       },
     }),
     parseThereName
-  );
-}
-
-const thereQueryPrompt = (input: ThereInput) => `下面是${input.there}已经有的一样东西（一条新闻里讲到的）。想把它在${input.there}的情况查清楚：谁在做、做到多大、怎么收钱、从哪一年开始。
-
-写两个${input.language}搜索词：
-- 第一个查"谁在做、做到多大"（公司名、用户数、门店数、营业额）；
-- 第二个查"怎么收钱、哪一年开始"。
-- 用${input.there}本地人会搜的说法，不要带"日本"，不要写成一句话，3 到 8 个词。
-
-只输出 JSON：{"queries":["…","…"]}`;
-
-export function parseThereQueries(value: unknown): string[] {
-  const raw = (value as { queries?: unknown } | null)?.queries;
-  const queries = (Array.isArray(raw) ? raw : [])
-    .filter((q): q is string => typeof q === "string" && !!q.trim())
-    .map((q) => q.trim().slice(0, 120))
-    .slice(0, 2);
-  if (queries.length === 0) throw new Error("一个搜索词都没写");
-  return queries;
-}
-
-export async function planThereQueries(input: ThereInput): Promise<string[]> {
-  return executeAiJson(
-    { operation: "gap_there_queries", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
-    (attempt) => ({
-      model: MODEL,
-      contents: `${input.headline}\n${input.background}` + (attempt === 1 ? "\n\n上一次输出没通过校验。只输出 JSON，queries 里两个搜索词。" : ""),
-      config: {
-        systemInstruction: thereQueryPrompt(input),
-        responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 0 },
-        maxOutputTokens: 500,
-      },
-    }),
-    parseThereQueries
   );
 }
 
