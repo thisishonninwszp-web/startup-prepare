@@ -266,7 +266,7 @@ const SIGNAL_BANNED = [
   "更全面地理解",
 ];
 
-function assertNoBanned(texts: string[]): void {
+export function assertNoBanned(texts: string[]): void {
   const all = texts.join("\n");
   const hit = SIGNAL_BANNED.find((w) => all.includes(w));
   if (hit) throw new Error(`出现了不该出现的话：${hit}`);
