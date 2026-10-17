@@ -45,7 +45,9 @@
 
 ## 页面
 
-- 地址 `/demo/china`(输入 + 跑过的记录)、`/demo/china/[id]`(一次的结果)。
+- 地址 `/demo/china`(只有输入框)、`/demo/china/[id]`(一次的结果)。
+- **跑过的记录放在 `/jobs`,不放在演示页上**:演示页共享给面试官看,列着的记录会让对方看到他还查过别家的生意。
+  `/jobs` 的入口那一节下面列最近 20 次(那一句 + 日子 + 跑完没有),点开就是那次的结果页。
 - **不带导航壳**:新建路由组 `app/(present)/`,像 `(print)` 那样不挂 AppShell。
   共享屏幕时不会露出侧边栏里"梦想""自我"这些他私人的东西。要登录(middleware 现在就会挡没登录的),
   只有他自己操作,所以符合"陌生人能触发的动作一律不调 AI"。页面右上角一个小链接回 `/jobs`。
@@ -106,7 +108,7 @@ Vercel 一个请求最多 60 秒,整个流程要一分钟多,所以拆成三步�
    - `entrant_queries`:两个搜索词:日文一个(「中国 <业种> 日本進出 撤退」这类,退出的也要)、中文一个(「<业务> 出海 日本」)。
 2. 并行搜:每个条件 `webSearch(query_ja, 3)`,先例两个词各 `webSearch(q, 4)`。
 3. AI 判每个条件:`here_ja`(日本现在怎样,一句)、`holds`(ある / ない / 資料なし)、`basis`(日本资料原文逐字,附编号);
-   先例:`text_ja`(谁、什么时候、结果怎样,一句)+ 原文。
+   来过日本的中国同行:最多 3 件,每件 `text_ja`(谁、什么时候、结果怎样,一句,包括退出的)+ 原文。
 4. 代码核对:拿不出逐字对得上的原文 → 这一条一律「資料なし」,`here_ja` 换成「日本側の資料が見つかりませんでした」;
    先例没有原文 → 当没查到;日文字段的数字必须在对应原文里;同样查平假名和禁用词。
 
@@ -152,7 +154,7 @@ create policy "job_china_runs_owner" on job_china_runs
 - 每一步失败:存 `status='failed'`、`error` 写哪一步,页面保留前面几步的结果,给「もう一度」(从失败的那一步接着跑)。
   失败的是哪一步按哪几列是空的来认(`plan` 空 → 第 1 步,`companies` 空 → 第 2 步,否则第 3 步),不另存一列。
 - 中国的网页常常读不到(要登录、脚本画的):读不到的那篇不算,页脚已经写明。
-- 面试中现场跑不出来:`/demo/china` 下面列着跑过的记录(最近 20 次,那一句 + 日子),点开就是那次的结果。
+- 面试中现场跑不出来:从 `/jobs` 的记录里点开前一晚跑好的那次(先在自己屏幕上点开,再共享)。
 
 ## 宪法
 
@@ -167,13 +169,13 @@ create policy "job_china_runs_owner" on job_china_runs
 
 - `lib/ai/jobs-china.ts`:三步的提示词与解析器(`planChinaQueries`、`extractChinaCompanies`、`planJapanConditions`、
   `judgeJapanConditions`、`judgeSameBusiness`),经 `lib/ai/index.ts` 导出。
-- `lib/ai/signals.ts`:`verifiedBasis` 改成导出(不改行为)。
+- `lib/ai/signals.ts`:`verifiedBasis`、`secondOption` 改成导出(不改行为)。
 - `lib/domains/jobs/china-shared.ts`:类型、禁用词、平假名检查、状态的下一步(纯函数,可测)。
 - `lib/domains/jobs/china.ts`:三步各自的"读上一步 → 跑 → 存"、列出记录、`MISSING_CHINA_MIGRATION`。
 - `app/(present)/layout.tsx`:无壳布局(只有字体和背景)。
 - `app/(present)/demo/china/page.tsx`、`[id]/page.tsx`、`actions.ts`、`run-panel.tsx`(客户端:按状态接着调下一步、显示进行中的那句)、
   `result-view.tsx`。
-- `app/(app)/jobs/page.tsx`:加入口那一行。
+- `app/(app)/jobs/page.tsx`:加入口那一节和跑过的记录。
 - `supabase/migrations/080_job_china_runs.sql`、`supabase/schema.sql`。
 - `CLAUDE.md`:jobs 那一行。
 
