@@ -32,12 +32,17 @@ const MONEY_WORDS: Record<ThereLanguage, string> = { 中文: "商业模式 营�
 
 export type ThereSearch = { query: string; domains: string[] };
 
-/** 三次搜：叫法 + 规模的词、叫法 + 收钱的词（都只搜商业媒体），再加 AI 写的那个词（不限网站，兜底）。 */
-export function thereSearches(language: ThereLanguage, name: string, freeQuery: string): ThereSearch[] {
+/**
+ * 叫法 + 规模的词、叫法 + 收钱的词（都只搜商业媒体），写了属于谁就再搜一次母公司 + 规模的词，最后是 AI 写的那个词（不限网站，兜底）。
+ * 母公司那一次是试出来的：商业媒体讲的常是「淘宝直播 GMV」，不是「点淘」这个名字。
+ */
+export function thereSearches(language: ThereLanguage, name: string, freeQuery: string, parent = ""): ThereSearch[] {
   const n = name.trim();
+  const p = parent.trim();
   return [
     { query: `${n} ${SCALE_WORDS[language]}`, domains: THERE_MEDIA[language] },
     { query: `${n} ${MONEY_WORDS[language]}`, domains: THERE_MEDIA[language] },
+    ...(p && p !== n ? [{ query: `${p} ${SCALE_WORDS[language]}`, domains: THERE_MEDIA[language] }] : []),
     ...(freeQuery.trim() ? [{ query: freeQuery.trim(), domains: [] }] : []),
   ];
 }

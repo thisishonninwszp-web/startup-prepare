@@ -58,6 +58,15 @@ describe("那边查一查：只收对得上原文的事实", () => {
     ]);
     expect(thereSearches("英文", "Alexa+", "")).toHaveLength(2);
   });
+
+  it("写了属于谁，就再搜一次母公司的规模（也只搜商业媒体）；和叫法一样的不重复搜", () => {
+    expect(thereSearches("中文", "点淘", "", "淘宝直播")).toEqual([
+      { query: "点淘 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
+      { query: "点淘 商业模式 营收 融资", domains: THERE_MEDIA["中文"] },
+      { query: "淘宝直播 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
+    ]);
+    expect(thereSearches("中文", "点淘", "", " 点淘 ")).toHaveLength(2);
+  });
 });
 
 describe("官报名单：名字原样出现在这条里才算", () => {
