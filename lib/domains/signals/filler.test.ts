@@ -38,6 +38,19 @@ describe("去掉只给前面下结论的空话", () => {
     for (const s of kept) expect(dropEmptyConclusions(s)).toEqual({ text: s, dropped: [] });
   });
 
+  it("带数字、英文专名、「首次」、在说可以拿它做什么的，不删（两周真报告里碰到的）", () => {
+    const kept = [
+      "该公司发布新款空调，这标志着它首次与LG电子和施耐德电气深度合作。",
+      "新版支持本地运行。这意味着开发者可以在速度和成本之间进行权衡。",
+      "这表明 Workman 通过成本控制提高了盈利能力。",
+      "这意味着营业利润增加了 30%。",
+    ];
+    for (const s of kept) expect(dropEmptyConclusions(s)).toEqual({ text: s, dropped: [] });
+    // 「可能」里的「能」不算"可以做什么"；AI 这类通用词不算专名
+    expect(dropEmptyConclusions("交易所上线新系统。这意味着企业之间的交易可能变得更加高效。").dropped).toHaveLength(1);
+    expect(dropEmptyConclusions("新工具发布。这表明AI技术正进一步渗透到企业职能领域。").dropped).toHaveLength(1);
+  });
+
   it("全是空话就原样返回（交给上游）；删过的再跑一遍不变", () => {
     expect(dropEmptyConclusions("这表明行业在变。")).toEqual({ text: "这表明行业在变。", dropped: [] });
     const once = dropEmptyConclusions("日银加息到 0.75%。这表明货币政策进入新阶段。").text;

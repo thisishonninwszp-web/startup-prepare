@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { EXTERNAL_TAG } from "@/app/(app)/ideas/types";
 import type { AnalogCheck } from "@/lib/ai";
 import type { BriefItem } from "./brief";
+import { cleanBriefItem } from "./filler";
 import {
   applyRechecks,
   collectJapanGaps,
@@ -32,7 +33,7 @@ export async function loadGapBriefs(userId: string): Promise<{ brief_date: strin
     .order("brief_date", { ascending: false })
     .limit(BRIEF_LOOKBACK);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: (r.items as BriefItem[] | null) ?? [] }));
+  return (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: ((r.items as BriefItem[] | null) ?? []).map(cleanBriefItem) }));
 }
 
 /** 重查记录。表还没建（迁移 063 没跑）时返回 null。 */

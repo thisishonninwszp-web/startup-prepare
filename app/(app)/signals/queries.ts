@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { kindSourceFilter, REPORT_SECTION_KINDS, type SignalKind } from "@/lib/domains/signals/feeds";
 import type { BriefItem, BriefPracticeRow } from "@/lib/domains/signals/brief";
+import { cleanBriefItem } from "@/lib/domains/signals/filler";
 import { findEarlierMentions, type EarlierJudgment, type EarlierMention } from "@/lib/domains/signals/followups";
 
 export type NewsItem = {
@@ -113,7 +114,7 @@ export async function getDailyReport(userId: string, date: string): Promise<Dail
     return row
       ? {
           overview: (row.overview as string | null) ?? null,
-          items: row.items as BriefItem[],
+          items: (row.items as BriefItem[]).map(cleanBriefItem),
           practice: (row.practice as BriefPracticeRow | null) ?? null,
         }
       : null;

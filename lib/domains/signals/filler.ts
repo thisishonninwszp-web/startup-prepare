@@ -18,6 +18,22 @@ export function isCommentSentence(sentence: string): boolean {
   return COMMENT_SENTENCE.test(sentence.trim());
 }
 
+/** AI、API 这类通用的英文词不算专有名词。 */
+const GENERIC_LATIN = new Set(["ai", "api", "gpu", "cpu", "it", "dx", "o2o", "sns", "ec", "app", "pc", "ip"]);
+
+/**
+ * 删之前再看一眼：带数字的、带专有名词（英文名）的、写着"首次"的、在说"可以拿它做什么"的，不删。
+ * 真跑两周的报告时碰到过「，这标志着它首次与LG电子和施耐德电气深度合作」「这意味着开发者可以……」。
+ */
+function carriesFact(text: string): boolean {
+  // 先拿掉 AI、O2O 这类通用词（O2O 里的 2 不算数字）
+  const plain = text.normalize("NFKC").replace(/[A-Za-z][A-Za-z0-9.+-]*/g, (w) => (GENERIC_LATIN.has(w.toLowerCase()) ? "" : w));
+  if (/[0-9]/.test(plain) || /[A-Za-z]/.test(plain)) return true;
+  if (/首次|第一次|首家|首个/.test(plain)) return true;
+  // 「可能」「未能」「不能」「功能」「性能」里的「能」不算
+  return /意味着[^，。！？]{0,12}?(?:可以|能够|(?<![可功性未不])能(?![力源])|无需|不必|不用|即可)/.test(plain);
+}
+
 /** 删掉的整句或半句放在 dropped 里。一句都没删就原样返回；全删光也原样返回（交给上游决定要不要重写）。 */
 export function dropEmptyConclusions(text: string): { text: string; dropped: string[] } {
   const sentences = text.match(/[^。！？]+[。！？]?/g) ?? [];
@@ -26,12 +42,12 @@ export function dropEmptyConclusions(text: string): { text: string; dropped: str
   for (const raw of sentences) {
     const s = raw.trim();
     if (!s) continue;
-    if (isCommentSentence(s)) {
+    if (isCommentSentence(s) && !carriesFact(s)) {
       dropped.push(s);
       continue;
     }
     const m = COMMENT_CLAUSE.exec(s);
-    if (m && m.index > 0) {
+    if (m && m.index > 0 && !carriesFact(m[0])) {
       const end = /[。！？]$/.test(s) ? s.slice(-1) : "";
       dropped.push(s.slice(m.index + 1, end ? -1 : undefined).trim());
       kept.push(s.slice(0, m.index) + end);
