@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1116,8 +1116,34 @@ describe("周刊：只搬运、不替他写观点", () => {
 
   it("日文版要真是日文", () => {
     const ja = { jaLong: "今週は中国で始まった三つのことを紹介します。", jaTitles: ["t"] };
-    expect(parseIssueJa(ja).jaLong).toBe(ja.jaLong);
-    expect(() => parseIssueJa({ ...ja, jaLong: "这周看到三件事。" })).toThrow("不是日文");
+    expect(parseIssueJa(ja, input).jaLong).toBe(ja.jaLong);
+    expect(() => parseIssueJa({ ...ja, jaLong: "这周看到三件事。" }, input)).toThrow("不是日文");
+  });
+
+  it("十以上的数字必须在材料里：AI 自己加的不收，计数的小数字不查", () => {
+    expect(() => parseIssueZh({ ...ok, zhLong: ok.zhLong + "\n美团已经送了 450000 单。" }, input)).toThrow("450000");
+    const rich = { ...input, picks: [{ ...input.picks[0], thereFacts: [{ text: "美团无人机累计完成订单超过 45 万单。" }] }] };
+    expect(parseIssueZh({ ...ok, zhLong: ok.zhLong + "\n美团无人机累计完成订单超过 45 万单。" }, rich).zhLong).toContain("45 万单");
+    expect(parseIssueZh({ ...ok, zhLong: ok.zhLong + "\n卡在 3 个条件上。" }, input).zhLong).toContain("3 个条件");
+    expect(() => parseIssueJa({ jaLong: "美団は 450000 件を配送しました。", jaTitles: ["t"] }, input)).toThrow("450000");
+  });
+
+  it("新料写进给 AI 的材料：那边查到的、头疼的原话、同类先例、官报", () => {
+    const text = issueInputText({
+      ...input,
+      picks: [
+        {
+          ...input.picks[0],
+          thereFacts: [{ text: "美团开通 53 条航线。" }],
+          voices: { pain: "药送不到离岛", counts: { complain: 2, seek: 1, workaround: 0 }, quotes: ["離島で薬を買うのが大変"] },
+          benchmark: "图谱里「外卖、餐饮」有 2 件。",
+          kanpo: ["株式会社譚仔日本（2026-10-16 官报，第3期）：总资产 3.2亿円"],
+        },
+      ],
+    });
+    for (const s of ["美团开通 53 条航线。", "药送不到离岛", "離島で薬を買うのが大変", "图谱里「外卖、餐饮」有 2 件。", "株式会社譚仔日本"]) {
+      expect(text).toContain(s);
+    }
   });
 });
 

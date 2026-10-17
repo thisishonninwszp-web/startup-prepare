@@ -3,6 +3,7 @@ import { FIRST_INQUIRY_QUESTION } from "./core";
 import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/lib/ai-gateway";
 import { MODEL, generateContent } from "./shared";
 import { INFERENCE_LENSES, TIER_VALUE, type InferenceBasis, type InferenceLens } from "@/lib/domains/signals/inference-shared";
+import { numbersIn } from "@/lib/domains/jobs/provenance-shared";
 import {
   ATLAS_CARRIERS,
   ATLAS_CATEGORIES,
@@ -2938,6 +2939,14 @@ export type IssueComposeInput = {
     whyNow?: string;
     funded?: { company: string };
     conditions?: { name: string; holds: "yes" | "no" | "unclear"; here: string }[];
+    /** 「那边查一查」查到的事实（一条讲透里查过才有）。字段不叫 there：there 是"那边"的地名。 */
+    thereFacts?: { text: string }[];
+    /** 这边有没有人在头疼：那件麻烦、三种各几句、最多 3 句原话（日文）。 */
+    voices?: { pain: string; counts: { complain: number; seek: number; workaround: number }; quotes: string[] };
+    /** 同类东西以前来日本的结果（时差图谱的一句基准）。 */
+    benchmark?: string;
+    /** 对上的官报决算，一条一行。 */
+    kanpo?: string[];
     judgment: string;
     /** 日本人为这件麻烦自己会搜的说法（只给日文版：标题和小标题用上，有痛的人一搜就能搜到）。 */
     searchPhrases?: string[];
@@ -2956,7 +2965,7 @@ export function issuePhrasesText(input: IssueComposeInput): string {
 const HOLDS_TEXT = { yes: "这边也成立", no: "这边不成立", unclear: "说不清" } as const;
 const OUTCOME_TEXT = { pending: "还在等", hit: "对了", miss: "错了" } as const;
 
-function issueInputText(input: IssueComposeInput): string {
+export function issueInputText(input: IssueComposeInput): string {
   const picks = input.picks.map((p, i) =>
     [
       `【第 ${i + 1} 条】${p.headline}`,
@@ -2967,6 +2976,14 @@ function issueInputText(input: IssueComposeInput): string {
       p.conditions && p.conditions.length > 0
         ? `能不能搬过来（它在${p.there}靠这几条做成，${p.here}这边）：${p.conditions.map((c) => `${c.name}——${HOLDS_TEXT[c.holds]}（${c.here}）`).join("；")}`
         : "",
+      p.thereFacts && p.thereFacts.length > 0 ? `${p.there}那边查到的：${p.thereFacts.map((f) => f.text).join("；")}` : "",
+      p.voices
+        ? `${p.here}这边有没有人在头疼「${p.voices.pain}」：网上的原话里，在抱怨 ${p.voices.counts.complain} 句、在找办法 ${p.voices.counts.seek} 句、已经在花钱花力气绕路 ${p.voices.counts.workaround} 句${
+            p.voices.quotes.length > 0 ? `；例（日文原话，引用时译成中文）：${p.voices.quotes.map((q) => `「${q}」`).join("")}` : ""
+          }。网上抱怨的人不等于会掏钱的人。`
+        : "",
+      p.benchmark ? `以前同类的东西来日本：${p.benchmark}` : "",
+      p.kanpo && p.kanpo.length > 0 ? `官报决算公告：${p.kanpo.join("；")}` : "",
       `【他的判断】${p.judgment}`,
     ]
       .filter(Boolean)
@@ -2984,7 +3001,8 @@ const ISSUE_SHARED_RULES = `你帮他把这一周的"那边有、这边还没有
 - 只用下面给的事实。没给的不要补，不要自己加数字、公司名、日期。
 - 不许写"值得关注""很有潜力""机会巨大""赶紧上车"这类话；不许写投资建议；不许夸他，也不许夸读者。
 - 结尾不要写"欢迎评论""关注我"之类的话（代码会加），也不要写出处链接（代码会加）。
-- 长文的结构：开头一两句说这一期讲什么（他写了开头就用他的）；每条一个小标题，下面依次写那边是什么、这边现在怎样、为什么是现在、能不能搬过来（给了才写），最后一段是他的判断；最后是对账（给了才写）：他押过什么、结果对了 / 错了 / 还在等，照实写，错了也写。`;
+- 长文的结构：开头一两句说这一期讲什么（他写了开头就用他的）；每条一个小标题，下面依次写那边是什么（给了"那边查到的"就用上）、这边现在怎样、为什么是现在、能不能搬过来、这边有没有人在头疼、以前同类的东西来日本的结果、官报决算（这几样给了才写，没给的不提），最后一段是他的判断；最后是对账（给了才写）：他押过什么、结果对了 / 错了 / 还在等，照实写，错了也写。
+- 数字只能用下面材料里出现过的（代码会核对，十以上的数字对不上就作废重写）。`;
 
 const ISSUE_ZH_PROMPT = `${ISSUE_SHARED_RULES}
 
@@ -3057,16 +3075,27 @@ export function parseIssueZh(value: unknown, input: IssueComposeInput): { zhLong
   const aiTexts = [strip(zhLong), ...zhNotes.flatMap((n) => [n.title, strip(n.body)]), ...zhTitles];
   assertNoBanned(aiTexts);
   assertChineseAllowingNames(aiTexts);
+  const bad = unsupportedIssueNumber(aiTexts, issueInputText(input));
+  if (bad) throw new Error(`数字「${bad}」在材料里找不到`);
   return { zhLong, zhNotes, zhTitles };
 }
 
-export function parseIssueJa(value: unknown): { jaLong: string; jaTitles: string[] } {
+/** AI 写的部分里，大于 10 的数字必须在给它的材料里出现过（小数字是"三个条件""第 1 条"这类计数）。返回第一个对不上的。 */
+export function unsupportedIssueNumber(aiTexts: string[], material: string): string | null {
+  const allowed = new Set(numbersIn(material));
+  for (const t of aiTexts) for (const n of numbersIn(t)) if (Number(n) > 10 && !allowed.has(n)) return n;
+  return null;
+}
+
+export function parseIssueJa(value: unknown, input: IssueComposeInput): { jaLong: string; jaTitles: string[] } {
   const v = (value ?? {}) as Record<string, unknown>;
   const jaLong = typeof v.jaLong === "string" ? v.jaLong.trim() : "";
   const jaTitles = titlesOf(v.jaTitles);
   if (!jaLong || jaTitles.length === 0) throw new Error("缺字段");
   // 有平假名才是日文（整篇写成中文的不收）
   if (!/[\u3040-\u309f]/.test(jaLong)) throw new Error("不是日文");
+  const bad = unsupportedIssueNumber([jaLong, ...jaTitles], `${issueInputText(input)}\n${issuePhrasesText(input)}`);
+  if (bad) throw new Error(`数字「${bad}」在材料里找不到`);
   return { jaLong, jaTitles };
 }
 
@@ -3091,8 +3120,13 @@ export async function composeIssue(input: IssueComposeInput): Promise<{
       parse
     );
   const [zh, ja] = await Promise.all([
-    call("signal_issue_zh", ISSUE_ZH_PROMPT, (v) => parseIssueZh(v, input), "他的判断、开头、押的那句必须一字不改；小红书一条一篇、每篇 600 字以内、标题 20 字以内；不许写空话。"),
-    call("signal_issue_ja", ISSUE_JA_PROMPT, parseIssueJa, "要写成日文（です・ます調）。", phrases),
+    call(
+      "signal_issue_zh",
+      ISSUE_ZH_PROMPT,
+      (v) => parseIssueZh(v, input),
+      "他的判断、开头、押的那句必须一字不改；小红书一条一篇、每篇 600 字以内、标题 20 字以内；不许写空话。十以上的数字只能用材料里有的。"
+    ),
+    call("signal_issue_ja", ISSUE_JA_PROMPT, (v) => parseIssueJa(v, input), "要写成日文（です・ます調）。十以上的数字只能用材料里有的。", phrases),
   ]);
   return { ...zh, ...ja };
 }
