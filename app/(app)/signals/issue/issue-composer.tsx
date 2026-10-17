@@ -31,6 +31,7 @@ import {
 import type { IssueCandidate } from "@/lib/domains/signals/issue";
 import { ATLAS_CATEGORIES, baseSentence, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas-shared";
 import { addIssuePublishAction, addIssueResponseAction, composeIssueAction, setPublicRecordAction } from "../actions";
+import { OptionRow } from "./option-row";
 
 const OUTCOME = { pending: "还在等", hit: "对了", miss: "错了" } as const;
 
@@ -56,39 +57,6 @@ function CopyButton({ text, label = "复制" }: { text: string; label?: string }
     >
       {copied ? "已复制" : label}
     </Button>
-  );
-}
-
-/** 一排可以点的选项；required 的点了就不能取消，其余点第二下取消。 */
-function OptionRow<K extends string>({
-  label,
-  options,
-  value,
-  onChange,
-  required = false,
-}: {
-  label: string;
-  options: Record<K, string>;
-  value: K | undefined;
-  onChange: (v: K | undefined) => void;
-  required?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
-      <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(options) as K[]).map((k) => (
-          <Button
-            key={k}
-            size="sm"
-            variant={value === k ? "secondary" : "ghost"}
-            onClick={() => onChange(value === k && !required ? undefined : k)}
-          >
-            {options[k]}
-          </Button>
-        ))}
-      </div>
-    </div>
   );
 }
 
