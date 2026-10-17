@@ -3,6 +3,7 @@ import {
   assertJapanese,
   assertNoHype,
   cleanBusiness,
+  holdsLabel,
   nextChinaStep,
   quoteLang,
   type ChinaCompanies,
@@ -58,6 +59,15 @@ describe("输入那一句", () => {
   it("去掉多余空白，太短的不收", () => {
     expect(cleanBusiness("  中小企業向けの   勤怠管理SaaS ")).toBe("中小企業向けの 勤怠管理SaaS");
     expect(() => cleanBusiness("ab")).toThrow();
+  });
+});
+
+describe("有没有的说法", () => {
+  it("有原文但说不清的，和没原文的分开", () => {
+    const quote = { url: "https://example.jp/a", title: "t", excerpt: "日本の中小企業のクラウド利用率は80.6%だ" };
+    expect(holdsLabel({ holds: "unclear", basis: [quote] })).toBe("はっきりしない");
+    expect(holdsLabel({ holds: "unclear", basis: [] })).toBe("資料なし");
+    expect(holdsLabel({ holds: "no", basis: [quote] })).toBe("ない");
   });
 });
 

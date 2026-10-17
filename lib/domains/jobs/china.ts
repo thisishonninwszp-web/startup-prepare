@@ -4,6 +4,7 @@ import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import {
   extractChinaCompanies,
   judgeJapanConditions,
+  judgeJapanEvidence,
   judgeSameBusiness,
   planChinaQueries,
   planJapanConditions,
@@ -31,7 +32,8 @@ export const MISSING_CHINA_MIGRATION =
   "还差一步：迁移 080 没跑。在 Supabase 的 SQL Editor 里执行 supabase/migrations/080_job_china_runs.sql 之后再来。";
 
 const COMPANY_RESULTS = 6;
-const CONDITION_RESULTS = 3;
+// 3 篇时四条里常常只有一两条查到日本的原文（2026-10-17 试跑）
+const CONDITION_RESULTS = 5;
 const ENTRANT_RESULTS = 4;
 const HISTORY = 20;
 
@@ -60,18 +62,20 @@ export async function findChinaCompanies(userId: string, plan: ChinaPlan): Promi
   return { companies, read: sources.length };
 }
 
-/** 第 3 步：那边做成靠的条件 → 日文搜日本现在怎样 → 判有没有（日本原文核对）；顺带查中国同行来没来过日本。 */
+/** 第 3 步：那边做成靠的条件 → 日文搜日本现在怎样 → 判有没有（日本原文核对）；顺带查中国同行来没来过日本；最后裁判看原文说没说到点子上。 */
 export async function checkJapan(userId: string, plan: ChinaPlan, companies: ChinaCompany[]): Promise<ChinaJapan> {
   const jp = await planJapanConditions(userId, plan.zh_business, companies);
   const [conditionSources, entrantResults] = await Promise.all([
     Promise.all(jp.conditions.map((c) => webSearch(c.query_ja, CONDITION_RESULTS).catch(() => []))),
     Promise.all(jp.entrant_queries.map((q) => webSearch(q, ENTRANT_RESULTS).catch(() => []))),
   ]);
-  return judgeJapanConditions(
+  const judged = await judgeJapanConditions(
     userId,
+    plan.zh_business,
     jp.conditions.map((condition, i) => ({ condition, sources: conditionSources[i] })),
     dedupeByUrl(entrantResults)
   );
+  return judgeJapanEvidence(plan.zh_business, judged);
 }
 
 function toRun(row: Record<string, unknown>): ChinaRun {

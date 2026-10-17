@@ -47,6 +47,12 @@ export type JapanCondition = {
   basis: SourcedQuote[];
 };
 
+/** 有原文但 AI 判"说不清"的，和根本没查到原文的，说法分开（后者才是"資料なし"）。 */
+export function holdsLabel(c: Pick<JapanCondition, "holds" | "basis">): string {
+  if (c.holds === "unclear" && c.basis.length > 0) return "はっきりしない";
+  return HOLDS_LABELS[c.holds];
+}
+
 export type JapanEntrant = { text_ja: string; basis: SourcedQuote[] };
 
 export type ChinaJapan = { conditions: JapanCondition[]; entrants: JapanEntrant[] };

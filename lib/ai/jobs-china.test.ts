@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { parseChinaCompanies, parseChinaPlan, parseJapanJudgment, parseJapanPlan, parseSameBusiness } from "./jobs-china";
+import {
+  applyJapanVerdict,
+  parseChinaCompanies,
+  parseChinaPlan,
+  parseJapanJudgment,
+  parseJapanPlan,
+  parseJapanVerdict,
+  parseSameBusiness,
+} from "./jobs-china";
+import type { ChinaJapan } from "@/lib/domains/jobs/china-shared";
 
 const CN = {
   title: "钉钉发布新版考勤功能",
@@ -41,6 +50,28 @@ describe("第 2 步：中国的公司", () => {
     const out = parseChinaCompanies({ companies: [good] }, [CN]);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ name: "钉钉", url: CN.url, title: CN.title });
+  });
+
+  it("资料编号写成「资料 1」也认得", () => {
+    expect(parseChinaCompanies({ companies: [{ ...good, source: "资料 1" }] }, [CN])).toHaveLength(1);
+  });
+
+  it("拿网页标题当原文也认（标题也在这页上）", () => {
+    const titled = { title: "神策数据｜大数据分析与营销科技解决方案服务商", url: "https://example.cn/s", content: "成立于2015年。" };
+    const pick = {
+      source: 1,
+      name: "神策数据",
+      what_ja: "企業向けにデータ分析のサービスを提供している。",
+      excerpt: titled.title,
+      excerpt_ja: "神策データ｜ビッグデータ分析とマーケティングテクノロジーのソリューションを提供する会社",
+    };
+    expect(parseChinaCompanies({ companies: [pick] }, [titled])).toHaveLength(1);
+  });
+
+  it("括号里加的拼音、英文名删掉再核对，不因此丢掉整家", () => {
+    const out = parseChinaCompanies({ companies: [{ ...good, what_ja: "钉钉（DingTalk）は中小企業向けに勤怠打刻の機能を提供している。" }] }, [CN]);
+    expect(out).toHaveLength(1);
+    expect(out[0].what_ja).toBe("钉钉は中小企業向けに勤怠打刻の機能を提供している。");
   });
 
   it("原文不在资料里的丢掉", () => {
@@ -156,5 +187,35 @@ describe("第 3 步：日本这边有没有", () => {
 
   it("叙述写成中文报错", () => {
     expect(() => parseJapanJudgment({ items: [{ ...judged, here_ja: "日本中小企业约4割在用考勤系统" }], entrants: [] }, inputs, [])).toThrow(/没用日文/);
+  });
+});
+
+describe("裁判：日本那边的原文说没说到点子上", () => {
+  const quote = { url: "https://example.jp/a", title: "t", excerpt: "中小企業における勤怠管理システムの導入率は約4割にとどまる" };
+  const japan: ChinaJapan = {
+    conditions: [
+      { name: "A", there_ja: "中国ではこうなっている。", here_ja: "日本ではこうだ。", holds: "no", basis: [quote] },
+      { name: "B", there_ja: "中国ではこうなっている。", here_ja: "日本側の資料が見つかりませんでした。", holds: "unclear", basis: [] },
+      { name: "C", there_ja: "中国ではこうなっている。", here_ja: "日本ではああだ。", holds: "yes", basis: [quote] },
+    ],
+    entrants: [
+      { text_ja: "X社が来た。", basis: [quote] },
+      { text_ja: "Y社が来た。", basis: [quote] },
+    ],
+  };
+
+  it("没原文的条件不问、算过；问了没答的算没过", () => {
+    const verdict = parseJapanVerdict(
+      { k_0: { probabilities: { "0": 0.1, "1": 0.9 } }, e_1: { probabilities: { "0": 0.2, "1": 0.8 } } },
+      japan
+    );
+    expect(verdict).toEqual({ conditions: [true, true, false], entrants: [false, true] });
+  });
+
+  it("没过的条件改成資料なし，没过的来过日本丢掉", () => {
+    const out = applyJapanVerdict(japan, { conditions: [true, true, false], entrants: [false, true] });
+    expect(out.conditions[0]).toBe(japan.conditions[0]);
+    expect(out.conditions[2]).toMatchObject({ holds: "unclear", here_ja: "日本側の資料が見つかりませんでした。", basis: [] });
+    expect(out.entrants.map((e) => e.text_ja)).toEqual(["Y社が来た。"]);
   });
 });
