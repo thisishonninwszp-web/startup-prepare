@@ -21,6 +21,8 @@ import { listJobProfileUsers } from "@/lib/domains/jobs/profile";
 import { runBigJobSearch } from "@/lib/domains/jobs/search";
 import { tokyoDate } from "@/lib/domains/jobs/shared";
 import { bigSearchedOn, markBigSearched } from "./big-search-state";
+import { runKanpoFetch } from "./kanpo-run";
+import { kanpoFetchedOn, markKanpoFetched } from "./kanpo-state";
 import { patchDns } from "./dns-patch";
 
 const POLL_MS = 5_000;
@@ -141,6 +143,7 @@ async function handle(job: { id: string; userId: string }): Promise<void> {
 
 // 网页上的快搜不算大搜：它每类只搜一个说法、最多留 8 条
 let bigSearching = false;
+let kanpoFetching = false;
 
 /** 助手开着时每天第一次自动大搜一轮（在后台跑，不挡着填表）。 */
 async function maybeBigSearch(): Promise<void> {
@@ -162,6 +165,24 @@ async function maybeBigSearch(): Promise<void> {
   }
 }
 
+/** 助手开着时每天第一次顺手抓一次官报（在后台跑，不挡着填表；第一次要补 90 天，会跑一阵子）。 */
+async function maybeKanpo(): Promise<void> {
+  if (kanpoFetching) return;
+  const today = tokyoDate();
+  if (kanpoFetchedOn() === today) return;
+  kanpoFetching = true;
+  try {
+    console.log("今天还没抓官报，开始抓会社決算公告（不挡着填表）……");
+    const r = await runKanpoFetch(undefined, (line) => console.log(`官报 ${line}`));
+    markKanpoFetched(today);
+    if (r.days > 0) console.log(`官报抓完了：${r.days} 天，决算公告 ${r.notices} 条。去 /signals/kanpo 看。`);
+  } catch (e) {
+    console.error(`官报没抓成：${e instanceof Error ? e.message : String(e)}（过一会儿会再试）`);
+  } finally {
+    kanpoFetching = false;
+  }
+}
+
 async function main(): Promise<void> {
   patchDns();
   console.log(`填表助手开着（用 ${CHANNEL === "chrome" ? "Chrome" : "Edge"}）。网页上点「去填表」的岗位，几秒内会在这里打开。Ctrl+C 退出。`);
@@ -177,6 +198,7 @@ async function main(): Promise<void> {
 
   for (;;) {
     void maybeBigSearch();
+    void maybeKanpo();
     try {
       for (const job of await claimFillRequests()) {
         if (active.has(job.id)) continue;
