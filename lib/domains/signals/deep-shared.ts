@@ -11,9 +11,42 @@ import { ISSUE_NOTE_MAX, validStance, type PickStance } from "./issue-shared";
 
 export const THERE_MAX_FACTS = 6;
 
+/** 那边查一查只摘这四格。页面按格摆，空着的格直说没查到。 */
+export const THERE_KINDS = { who: "谁在做", scale: "做到多大", money: "怎么收钱", since: "哪年开始" } as const;
+export type ThereKind = keyof typeof THERE_KINDS;
+
+export type ThereLanguage = "中文" | "英文" | "日文";
+
+/**
+ * 「做到多大」「怎么收钱」只搜这几家商业媒体（2026-10-17 试过代码读得到：中文、英文的是全文，日文的只有七八十字摘要）。
+ * 不限网站搜，出来的多是产品分析和"能不能赚钱"的博客，没有规模数字。晚点、虎嗅、亿邦、QuestMobile、财新那次一篇没出来，没放进来。
+ */
+export const THERE_MEDIA: Record<ThereLanguage, string[]> = {
+  中文: ["36kr.com", "jiemian.com", "tmtpost.com", "21jingji.com", "thepaper.cn", "yicai.com"],
+  英文: ["techcrunch.com", "businessinsider.com", "geekwire.com"],
+  日文: ["nikkei.com", "itmedia.co.jp", "asahi.com"],
+};
+
+const SCALE_WORDS: Record<ThereLanguage, string> = { 中文: "月活 用户规模 GMV", 英文: "users revenue", 日文: "利用者数 売上" };
+const MONEY_WORDS: Record<ThereLanguage, string> = { 中文: "商业模式 营收 融资", 英文: "business model funding", 日文: "収益 資金調達" };
+
+export type ThereSearch = { query: string; domains: string[] };
+
+/** 三次搜：叫法 + 规模的词、叫法 + 收钱的词（都只搜商业媒体），再加 AI 写的那个词（不限网站，兜底）。 */
+export function thereSearches(language: ThereLanguage, name: string, freeQuery: string): ThereSearch[] {
+  const n = name.trim();
+  return [
+    { query: `${n} ${SCALE_WORDS[language]}`, domains: THERE_MEDIA[language] },
+    { query: `${n} ${MONEY_WORDS[language]}`, domains: THERE_MEDIA[language] },
+    ...(freeQuery.trim() ? [{ query: freeQuery.trim(), domains: [] }] : []),
+  ];
+}
+
 export type ThereFact = {
   /** 一句中文：谁、什么、多少、什么时候。 */
   text: string;
+  /** 四格里的哪一格（早期查的没有）。 */
+  kind?: ThereKind;
   /** 这条讲的是哪家公司（照原文写法）；不是讲某一家的没有。 */
   company?: string;
   /** 原文（代码核对过逐字在那一页上）。 */
@@ -42,7 +75,7 @@ export type GapDeep = {
 };
 
 /** 「那边」用什么语言搜：中国那边中文、美国那边英文、日本那边（反方向）日文。 */
-export function thereLanguage(side: GapSide): "中文" | "英文" | "日文" {
+export function thereLanguage(side: GapSide): ThereLanguage {
   return side === "china" ? "日文" : side === "us" ? "英文" : "中文";
 }
 
@@ -70,7 +103,8 @@ export function checkThereFacts(raw: unknown, sources: { title: string; url: str
     if (numbersIn(text).some((n) => !allowed.has(n))) continue;
     if (company && !squash(excerpt).includes(squash(company))) continue;
     if (out.some((f) => squash(f.excerpt) === squash(excerpt))) continue;
-    out.push({ text, ...(company ? { company } : {}), excerpt: excerpt.slice(0, 300), url: src.url, title: src.title });
+    const kind = typeof v.kind === "string" && Object.hasOwn(THERE_KINDS, v.kind) ? (v.kind as ThereKind) : undefined;
+    out.push({ text, ...(kind ? { kind } : {}), ...(company ? { company } : {}), excerpt: excerpt.slice(0, 300), url: src.url, title: src.title });
   }
   return out;
 }

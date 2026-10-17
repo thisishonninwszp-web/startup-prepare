@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkThereFacts, mentionedNames, missingSteps, thereLanguage, validCategory, validDeepStance } from "./deep-shared";
+import { checkThereFacts, mentionedNames, missingSteps, THERE_MEDIA, thereLanguage, thereSearches, validCategory, validDeepStance } from "./deep-shared";
 
 const page = {
   title: "美团无人机配送",
@@ -37,6 +37,26 @@ describe("那边查一查：只收对得上原文的事实", () => {
 
   it("那边用什么语言搜", () => {
     expect([thereLanguage("japan"), thereLanguage("us"), thereLanguage("china")]).toEqual(["中文", "英文", "日文"]);
+  });
+
+  it("四格：kind 认得的留下，认不得的当没分格", () => {
+    const facts = checkThereFacts(
+      [
+        { source: 1, fact: "美团无人机开通了 53 条航线。", excerpt, kind: "scale" },
+        { source: 1, fact: "美团无人机 2021 年开始试运营。", excerpt: "2021 年开始试运营，累计完成订单超过 45 万单", kind: "weird" },
+      ],
+      [page]
+    );
+    expect(facts.map((f) => f.kind)).toEqual(["scale", undefined]);
+  });
+
+  it("搜索词由代码拼：做到多大、怎么收钱两次只搜商业媒体，AI 写的那个词不限网站", () => {
+    expect(thereSearches("中文", " 点淘 ", "点淘 直播 短剧")).toEqual([
+      { query: "点淘 月活 用户规模 GMV", domains: THERE_MEDIA["中文"] },
+      { query: "点淘 商业模式 营收 融资", domains: THERE_MEDIA["中文"] },
+      { query: "点淘 直播 短剧", domains: [] },
+    ]);
+    expect(thereSearches("英文", "Alexa+", "")).toHaveLength(2);
   });
 });
 
