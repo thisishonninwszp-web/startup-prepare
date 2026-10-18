@@ -28,6 +28,7 @@ import {
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
 import { analyzeGapVoices, type GapVoices } from "@/lib/domains/signals/voices";
 import { runThereCheck, saveDeepCategory, saveDeepStance, type GapThere } from "@/lib/domains/signals/deep";
+import { drawGapImage, gapImagePrompt, type GapImage } from "@/lib/domains/signals/images";
 import {
   deleteDoorSignup,
   draftFakeDoorContent,
@@ -750,6 +751,20 @@ export async function saveDeepStanceAction(
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没存上") };
+  }
+}
+
+/** 差距的一条：出一张示意图（十秒左右）。出不来就把提示词给他，自己贴进网页版 GPT。 */
+export async function drawGapImageAction(
+  signalId: string,
+  side: GapSide
+): Promise<{ ok: true; image: GapImage } | { ok: false; message: string; prompt?: string }> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, image: await drawGapImage(userId, side, signalId) };
+  } catch (error) {
+    const prompt = await gapImagePrompt(userId, side, signalId).catch(() => undefined);
+    return { ok: false, message: errorMessage(error, "这次没出成"), prompt };
   }
 }
 
