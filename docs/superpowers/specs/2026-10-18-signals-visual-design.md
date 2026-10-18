@@ -102,3 +102,15 @@
 - `supabase/migrations/085_signal_images.sql`(写计划时再确认编号没被占)、`supabase/schema.sql`:表和 bucket。
 - `app/(app)/signals/gaps/deep/`、`app/(app)/signals/issue/`:「出一张配图」按钮和显示。
 - `CLAUDE.md`:signals 那一格、Schema 一行。
+
+## 写计划和做的时候定下的
+
+- **Gemini 出图能用**:`gemini-2.5-flash-image`,用现在的 key,8 秒一张,PNG 约 1.9MB。提示词说了不要任何文字,它还是画了一个「BUY」——
+  图下面固定标明「AI 生成的示意图」,并提醒"冒出了字或 logo 就重出一张"。
+- **`next/og` 在本机用 tsx 直接跑会坏**(Windows 下找自带字体时路径拼坏),所以邮件的 PNG 不在定时任务里画,放进 Edge 路由 `/api/flow-card`
+  (和封面图同一套),定时任务签好名去取。本机起 dev server 试过:200、43KB 的 PNG,中文没方块;签名不对返回 403。
+- **签名用 CRON_SECRET**(HMAC-SHA256),中间件要放行 `/api/flow-card`(否则没登录的请求会被跳到 /login)。本机 `.env.local` 没有 CRON_SECRET,
+  测试时只在 worktree 副本里加了一个本机用的值。
+- **画图字体挪成共用函数** `lib/og-font.ts`,封面图和一图看懂共用。
+- **这个目录另一个会话在跑**,所以在独立的 git worktree(`D:\projects\startup-prepare-visual`,分支 `feat/signals-visual`)里做,迁移用 085。
+- 四个框的核对放宽到每框 24 个字(提示词要 18 个字),免得多两个字就整张丢掉。
