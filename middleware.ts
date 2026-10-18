@@ -9,8 +9,9 @@ import { createServerClient } from "@supabase/ssr";
 /**
  * 不靠登录态、自己验口令的接口：定时任务（CRON_SECRET）、手机分享（SHARE_TOKEN）、公开对账页和假门测试页（地址里的随机口令）。
  * 它们没有登录 cookie，不放行就会被跳到 /login —— 定时任务就是这样一直没跑起来的。
+ * 一图看懂的卡片（/api/flow-card）靠 CRON_SECRET 签名，发邮件时由服务器去取，也没有登录 cookie。
  */
-const TOKEN_AUTH_PREFIXES = ["/api/cron/", "/api/share", "/record/", "/soon/"];
+const TOKEN_AUTH_PREFIXES = ["/api/cron/", "/api/share", "/api/flow-card", "/record/", "/soon/"];
 
 export async function middleware(request: NextRequest) {
   if (TOKEN_AUTH_PREFIXES.some((p) => request.nextUrl.pathname.startsWith(p))) return NextResponse.next();
