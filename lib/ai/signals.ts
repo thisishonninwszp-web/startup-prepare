@@ -4,6 +4,7 @@ import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/l
 import { MODEL, generateContent } from "./shared";
 import { INFERENCE_LENSES, TIER_VALUE, type InferenceBasis, type InferenceLens } from "@/lib/domains/signals/inference-shared";
 import { numbersIn } from "@/lib/domains/jobs/provenance-shared";
+import { checkFlow, FLOW_PROMPT_CHARS, type ItemFlow } from "@/lib/domains/signals/flow-shared";
 import {
   ATLAS_CARRIERS,
   ATLAS_CATEGORIES,
@@ -3642,6 +3643,8 @@ export type GroundedPick = {
   forYou: string;
   /** 代码核对过、确实在正文里的原文依据。 */
   basis: string[];
+  /** 一图看懂的四个框（过了核对才有）。 */
+  flow?: ItemFlow;
 };
 
 const GROUND_PROMPT = `你在改写一份每日报告。之前只看了标题和一两句简介就起了草稿，现在给你这几条的正文。
@@ -3652,12 +3655,15 @@ const GROUND_PROMPT = `你在改写一份每日报告。之前只看了标题和
   正文没写的不要补，草稿里有、正文里没有的事实要删掉。可以用一两句常识帮人看懂，但不要编具体数字和日期。
 - forYou：照草稿的意思写（主要影响谁 / 可以找谁聊 / 可以拿它试什么），一到两句，有正文依据更好。
 - basis：1 到 3 句正文原文，逐字照抄（不翻译、不改字，每句 15 到 120 字），是 background 里事实的出处。
+- flow：一图看懂的四个框，每框一句、${FLOW_PROMPT_CHARS} 个字以内：
+  cause（起因：为什么会发生）、event（发生了什么）、affected（谁受影响，具体到哪类人或企业）、watch（接下来盯什么：一件看得见的事，谁、做什么、什么时候）。
+  框里的数字必须是正文里写了的；不许写"值得关注""持续观察"这类话，不许下结论。写不出来就不写 flow。
 
 另外按重写后的内容写 overview：开头的一段总述，3 到 5 句，第一句直接说最重要的那件事，只用这几条里出现过的事实。
 
 ${SIGNAL_SHARED_RULES}
 
-只输出 JSON：{"overview":"…","items":[{"index":序号,"headline":"…","background":"…","forYou":"…","basis":["…"]}]}`;
+只输出 JSON：{"overview":"…","items":[{"index":序号,"headline":"…","background":"…","forYou":"…","basis":["…"],"flow":{"cause":"…","event":"…","affected":"…","watch":"…"}}]}`;
 
 /** 只收正文里真有依据的；没有一句依据对得上的条目丢掉（调用方保留草稿并标注）。 */
 export function parseGroundedBrief(
@@ -3684,12 +3690,14 @@ export function parseGroundedBrief(
       .filter((b) => squash(b).length >= 8 && body.includes(squash(b)))
       .slice(0, 3);
     if (basis.length === 0) continue;
+    const flow = checkFlow(it.flow, input.body);
     items.push({
       index,
       headline: requireString(it, "headline"),
       background: requireString(it, "background"),
       forYou: requireString(it, "forYou"),
       basis: basis.map((b) => b.slice(0, 200)),
+      ...(flow ? { flow } : {}),
     });
   }
   const texts = [overview, ...items.flatMap((i) => [i.headline, i.background, i.forYou])];

@@ -20,6 +20,7 @@ import { webSearch } from "@/lib/web-search";
 import { mergeSources } from "./sources";
 import { fetchArticle } from "./article";
 import { cleanBriefItem } from "./filler";
+import type { ItemFlow } from "./flow-shared";
 import { fetchReadme } from "./github";
 import { fetchDailyNews } from "./daily-news";
 import { balanceBySource, isChinaSource, isGithubSource, isUsSource, kindSourceFilter, newsSourceLabel, type SignalKind } from "./feeds";
@@ -110,6 +111,8 @@ export type BriefItem = {
   related_question?: { id: string; question: string; why: string };
   /** 代码删掉的空话（「这表明……」「，这意味着……」），留着在信息源体检页查删得对不对。早期数据没有。 */
   dropped?: string[];
+  /** 一图看懂的四个框（读到正文、四个框都过了核对才有）。早期数据没有。 */
+  flow?: ItemFlow;
 };
 
 /** 报告认得的问题：最近建的几个没收起的问题，连同现在的看法。 */
@@ -356,7 +359,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   );
   const bodies = articles.map((a) => a.body);
   const resolvedUrl = new Map(draft.picks.map((p, i) => [p.index, articles[i].url]));
-  const grounded = new Map<number, { headline: string; background: string; forYou: string; basis: string[] }>();
+  const grounded = new Map<number, { headline: string; background: string; forYou: string; basis: string[]; flow?: ItemFlow }>();
   let overview = draft.overview;
   try {
     const result = await groundBrief(
@@ -427,6 +430,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       event: p.event,
       grounded: grounded.has(p.index),
       basis: grounded.get(p.index)?.basis,
+      flow: grounded.get(p.index)?.flow,
       origin: candidates[p.index].china ? "china" : candidates[p.index].us ? "us" : undefined,
       japan: japan.get(p.index)?.japan,
       japan_check: japan.get(p.index)?.check,
