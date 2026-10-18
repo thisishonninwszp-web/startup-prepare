@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { createClient } from "@/lib/supabase/server";
+import { loadOgFont } from "@/lib/og-font";
 import { coverItems, coverSingle, coverTopLabel, type IssueContent, type IssueDrafts } from "@/lib/domains/signals/issue-shared";
 
 // 周刊的小红书封面（3:4，1080×1440）。小红书是看图的平台，没有图的帖子很难被刷到。
@@ -22,21 +23,6 @@ const COLOR = {
 };
 
 const FOOTER = "每周一期 · 出处都核实过";
-
-/** 只下这张图用到的那几个字（Google Fonts 按 text 参数切子集），中文字体整包太大。 */
-async function loadFont(weight: 400 | 700, text: string): Promise<ArrayBuffer | null> {
-  try {
-    const css = await (
-      await fetch(`https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@${weight}&text=${encodeURIComponent(text)}`)
-    ).text();
-    const url = css.match(/src: url\((.+?)\) format\('(opentype|truetype)'\)/)?.[1];
-    if (!url) return null;
-    const res = await fetch(url);
-    return res.ok ? await res.arrayBuffer() : null;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -65,7 +51,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   const items = coverItems(content.picks);
 
   const text = [title, top, FOOTER, week, ...items.flatMap((i) => [i.headline, i.stance]), "0123456789…"].join("");
-  const [regular, bold] = await Promise.all([loadFont(400, text), loadFont(700, text)]);
+  const [regular, bold] = await Promise.all([loadOgFont(400, text), loadOgFont(700, text)]);
   // 字体没拿到就别出一张全是方块的图
   if (!regular || !bold) return new Response("字体没下载下来，刷新再试一次", { status: 503 });
 
@@ -134,7 +120,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 /** 一篇笔记一张：方向、笔记标题（大）、新闻标题、他押的是什么（朱砂色，一眼看得到立场）。 */
 async function singleCard(card: { top: string; title: string; headline: string; stance: string }, week: string) {
   const text = [card.top, card.title, card.headline, card.stance, FOOTER, week, "0123456789…"].join("");
-  const [regular, bold] = await Promise.all([loadFont(400, text), loadFont(700, text)]);
+  const [regular, bold] = await Promise.all([loadOgFont(400, text), loadOgFont(700, text)]);
   if (!regular || !bold) return new Response("字体没下载下来，刷新再试一次", { status: 503 });
   return new ImageResponse(
     (
