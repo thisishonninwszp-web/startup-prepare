@@ -8,6 +8,7 @@ import { createMarketBet, recordApplication, setApplicationStatus } from "@/lib/
 import { confirmEntry, deleteEntry, draftEntry } from "@/lib/domains/jobs/base";
 import { requestFill } from "@/lib/domains/jobs/fill";
 import { createCaseDrill, setCaseStuckStep, submitCaseAnswer, submitFollowupAnswers } from "@/lib/domains/jobs/cases";
+import { generateHiringContext, pickHiringNeed } from "@/lib/domains/jobs/hiring";
 import { createPosting, createPostingFromMaterial, dropCandidate, pickPosting, readJobPage, refreshMatch } from "@/lib/domains/jobs/postings";
 import { saveJobProfile } from "@/lib/domains/jobs/profile";
 import { saveResumeEdit, tailorForPosting } from "@/lib/domains/jobs/resumes";
@@ -323,6 +324,30 @@ export async function setCaseStuckStepAction(id: string, step: string): Promise<
     await setCaseStuckStep(userId, id, step);
     revalidatePath(`/jobs/case/${id}`);
     revalidatePath("/jobs");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
+  }
+}
+
+/** 「这家为什么现在招」：查一遍、推测（二三十秒）。 */
+export async function generateHiringAction(postingId: string): Promise<Result> {
+  const userId = await requireUserId();
+  try {
+    await generateHiringContext(userId, postingId);
+    revalidatePath(`/jobs/${postingId}`);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没查成") };
+  }
+}
+
+/** 认同哪一条推测（null = 取消）。 */
+export async function pickHiringAction(postingId: string, index: number | null): Promise<Result> {
+  const userId = await requireUserId();
+  try {
+    await pickHiringNeed(userId, postingId, index);
+    revalidatePath(`/jobs/${postingId}`);
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没记上") };

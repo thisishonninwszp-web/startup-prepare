@@ -610,12 +610,24 @@ export function marketRows(apps: MarketApp[], categories: JobCategory[], today: 
 // 对照、简历
 // ---------------------------------------------------------------------------
 
-/** 必须条件和加分条件各有几条对得上、几条缺。 */
+/**
+ * 招聘页写着「下記いずれか」这类话：必须条件里满足一条就够。
+ * 富士通那种一口气列 11 条经验、其实是"有一条就行"，按"缺 10 条"去数就把人吓退了。
+ * 从招聘页原文判断，不靠 AI 记不记得标（之前存的岗位也能对上）。
+ */
+export function requiredAnyOf(body: string): boolean {
+  return /(下記|以下|次)の?(いずれか|何れか|どれか|どちらか)|(いずれか|何れか)(に|の)(該当|当てはま)|(いずれか|何れか)(\d|一|１)?つ以上|(いずれか|何れか)の(ご)?(経験|スキル|経歴|ご経験)/.test(
+    body
+  );
+}
+
+/** 必须条件和加分条件各有几条对得上、几条缺。anyOf：必须条件满足其中一条就够。 */
 export function matchCounts(
   conditions: PostingCondition[],
-  match: PostingMatch
-): { required: { have: number; missing: number }; bonus: { have: number; missing: number } } {
-  const out = { required: { have: 0, missing: 0 }, bonus: { have: 0, missing: 0 } };
+  match: PostingMatch,
+  anyOf = false
+): { required: { have: number; missing: number }; bonus: { have: number; missing: number }; anyOf: boolean } {
+  const out = { required: { have: 0, missing: 0 }, bonus: { have: 0, missing: 0 }, anyOf };
   conditions.forEach((c, i) => {
     const bucket = c.required ? out.required : out.bonus;
     if ((match.entry_ids[i] ?? []).length > 0) bucket.have += 1;

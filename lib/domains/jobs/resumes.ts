@@ -2,6 +2,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { tailorResume } from "@/lib/ai";
 import { listConfirmedEntries } from "./base";
 import { getPosting } from "./postings";
+import { getHiringContext } from "./hiring";
+import { hiringFocus } from "./hiring-shared";
 import { MISSING_MIGRATION, isMissingJobTables } from "./profile";
 import type { JobResume, ResumeProbe, ResumeSection, ResumeSectionKey, TailoredResume } from "./shared";
 
@@ -48,9 +50,12 @@ export async function tailorForPosting(userId: string, postingId: string): Promi
   if (!posting) throw new Error("找不到这个岗位");
   const entries = await listConfirmedEntries(userId);
   if (entries.length === 0) throw new Error("底稿里还没有确认过的经历。先去「底稿」写几条、点确认，再来改简历。");
+  // 他认同了「这家为什么现在招」的哪一条，就按它挑经历、排顺序（084 没跑就当没选）
+  const hiring = await getHiringContext(userId, postingId).catch(() => null);
+  const focus = hiringFocus(hiring === "missing-schema" ? null : hiring);
   const tailored = await tailorResume(
     userId,
-    { company: posting.company_name, title: posting.title, conditions: posting.facts.conditions, body: posting.body },
+    { company: posting.company_name, title: posting.title, conditions: posting.facts.conditions, body: posting.body, focus },
     entries
   );
   return insertVersion(userId, postingId, tailored);

@@ -6,6 +6,7 @@ export * from "./demand";
 export * from "./jobs";
 export * from "./jobs-china";
 export * from "./jobs-case";
+export * from "./jobs-hiring";
 export * from "./reality";
 export * from "./materials";
 export * from "./customer";

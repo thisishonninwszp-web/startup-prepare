@@ -9,6 +9,7 @@ import {
   CANDIDATE_TTL_DAYS,
   normalizeUrl,
   postingKey,
+  requiredAnyOf,
   tokyoDate,
   type JobPosting,
   type PostingCategory,
@@ -224,7 +225,7 @@ export async function refreshMatch(userId: string, id: string): Promise<PostingM
   if (!posting) throw new Error("找不到这个岗位");
   const entries = await listConfirmedEntries(userId);
   if (entries.length === 0) return "no-entries";
-  const match = await matchPosting(userId, posting.facts.conditions, entries);
+  const match = await matchPosting(userId, posting.facts.conditions, entries, requiredAnyOf(posting.body));
   const { error } = await supabaseAdmin
     .from("job_postings")
     .update({ match, updated_at: new Date().toISOString() })

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { matchCounts, type CareerEntry, type JobPosting } from "@/lib/domains/jobs/shared";
+import { matchCounts, requiredAnyOf, type CareerEntry, type JobPosting } from "@/lib/domains/jobs/shared";
 import { refreshMatchAction } from "../actions";
 
 /** 每条条件：底稿里哪条对得上，或者"没有"。只数有几条、缺几条，不算百分比。 */
@@ -25,7 +25,8 @@ export function MatchView({ posting, entries }: { posting: JobPosting; entries: 
       else router.refresh();
     });
 
-  const counts = match ? matchCounts(conditions, match) : null;
+  const anyOf = requiredAnyOf(posting.body);
+  const counts = match ? matchCounts(conditions, match, anyOf) : null;
 
   return (
     <section className="space-y-4 text-sm leading-7">
@@ -50,12 +51,19 @@ export function MatchView({ posting, entries }: { posting: JobPosting; entries: 
         </p>
       ) : (
         <>
-          {counts && (
-            <p>
-              必须条件：有 {counts.required.have} 条，缺 {counts.required.missing} 条；加分条件：有 {counts.bonus.have} 条，缺{" "}
-              {counts.bonus.missing} 条。
-            </p>
-          )}
+          {counts &&
+            (counts.anyOf ? (
+              <p>
+                必须条件写的是「下面几条满足一条就行」：对得上 {counts.required.have} 条
+                {counts.required.have > 0 ? "，这一关过了。" : "，一条都没对上。"}
+                加分条件：有 {counts.bonus.have} 条，缺 {counts.bonus.missing} 条。
+              </p>
+            ) : (
+              <p>
+                必须条件：有 {counts.required.have} 条，缺 {counts.required.missing} 条；加分条件：有 {counts.bonus.have} 条，缺{" "}
+                {counts.bonus.missing} 条。
+              </p>
+            ))}
           <p className="rounded-md border border-border bg-card p-3">
             <span className="font-medium">最可能卡你的：</span>
             {match.blocker.text}
@@ -65,7 +73,7 @@ export function MatchView({ posting, entries }: { posting: JobPosting; entries: 
               const ids = match.entry_ids[i] ?? [];
               return (
                 <li key={c.quote}>
-                  <span className="text-xs text-muted-foreground">{c.required ? "必须" : "加分"}</span> {c.text}
+                  <span className="text-xs text-muted-foreground">{c.required ? (anyOf ? "必须（其一）" : "必须") : "加分"}</span> {c.text}
                   <p className="text-xs text-muted-foreground">原话：「{c.quote}」</p>
                   <p className="text-xs">
                     {ids.length === 0 ? "底稿里没有" : `对得上：${ids.map((id) => byId.get(id)?.org || "（一条底稿）").join("、")}`}

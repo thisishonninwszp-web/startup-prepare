@@ -245,6 +245,7 @@ describe("对照", () => {
     expect(matchCounts(conditions, { entry_ids: [["e1"], [], []], blocker: { index: 2, text: "x" } })).toEqual({
       required: { have: 1, missing: 1 },
       bonus: { have: 0, missing: 1 },
+      anyOf: false,
     });
   });
 });

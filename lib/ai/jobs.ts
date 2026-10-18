@@ -1,6 +1,7 @@
 import { executeAiJson } from "@/lib/ai-gateway";
 import { MODEL } from "./shared";
 import { checkDraft, checkSentences, entrySourceText, numbersIn, quoteIn } from "@/lib/domains/jobs/provenance-shared";
+import { isDiagnosis } from "@/lib/domains/jobs/hiring-shared";
 import { FILL_KEYS, isConsentField, isFillKey, type FillKey, type FormField } from "@/lib/domains/jobs/fill-shared";
 import {
   CAREER_TOPICS,
@@ -201,8 +202,9 @@ function aliasEntries(entries: CareerEntry[]): { toId: Map<string, string>; sour
   return { toId, sources, block: lines.join("\n\n") };
 }
 
-function conditionsBlock(conditions: PostingCondition[]): string {
-  return conditions.map((c, i) => `[${i + 1}]（${c.required ? "必须" : "加分"}）${c.text} —— 原话：「${c.quote}」`).join("\n");
+function conditionsBlock(conditions: PostingCondition[], anyOf = false): string {
+  const lines = conditions.map((c, i) => `[${i + 1}]（${c.required ? "必须" : "加分"}）${c.text} —— 原话：「${c.quote}」`);
+  return (anyOf ? ["（招聘页写的是「下面几条满足其中一条就行」：标「必须」的这几条，满足一条就够。）", ...lines] : lines).join("\n");
 }
 
 // ---- 对照 -------------------------------------------------------------------
@@ -235,7 +237,12 @@ export function parseMatch(value: unknown, conditionCount: number, aliases: Set<
 }
 
 /** 每条条件对得上底稿哪几条，以及最可能卡他的一条。 */
-export async function matchPosting(userId: string, conditions: PostingCondition[], entries: CareerEntry[]): Promise<PostingMatch> {
+export async function matchPosting(
+  userId: string,
+  conditions: PostingCondition[],
+  entries: CareerEntry[],
+  anyOf = false
+): Promise<PostingMatch> {
   if (conditions.length === 0) {
     return { entry_ids: [], blocker: { index: 0, text: "招聘页上没抽到应募条件，对照不了。打开原页面自己看一眼。" } };
   }
@@ -245,7 +252,7 @@ export async function matchPosting(userId: string, conditions: PostingCondition[
     (attempt) => ({
       model: MODEL,
       contents:
-        `应募条件：\n${conditionsBlock(conditions)}\n\n底稿：\n${block}` +
+        `应募条件：\n${conditionsBlock(conditions, anyOf)}\n\n底稿：\n${block}` +
         (attempt === 1 ? "\n\n上一次输出没通过校验：blocker.text 必须写，不许夸他。" : ""),
       config: {
         systemInstruction: MATCH_PROMPT,
@@ -328,19 +335,30 @@ const TAILOR_PROMPT = `他要投下面这个岗位。给你岗位信息（公司
 - 数字、工具名、公司名只能用底稿里写着的，一个字不改；底稿里没有的不许补，"約""以上""大幅"这类他没说的修饰也不许加。
 - 朝这个岗位的条件去挑底稿、排顺序，但不许把他没做过的事写成做过。
 - 志望動機可以提到这家招聘页上写的工作内容。
+- 如果给了「这家现在可能在意的事」（他自己认同的推测，不是事实）：按它挑底稿、排顺序，把最能对上的经历放前面；
+  志望動機第一句可以引用依据里的公开事实（名称照依据原话写），再接他的经历。
+  不许因为它新增他没做过的事，也不许替对方诊断问题（"御社の課題は""貴社の問題"这类不写）。
 
 再写 probes：面试官看到这份简历最可能追问的 3 句（照抄你写的原句），每句配一个他可能会问的问题（中文）。挑最容易被问穿的，不要挑好回答的。
 
 只输出 JSON：{"summary":[{"text":"…","entry_ids":["E1"]}],"history":[],"skills":[],"pr":[],"motivation":[],"probes":[{"sentence":"…","question":"…"}]}`;
 
-/** 每段各自核对出处；志望動機可以用招聘页上的词。entry_ids 是编号，由调用方换回 id。 */
-export function parseTailored(value: unknown, sources: Map<string, string>, postingBody: string): TailoredResume {
+/**
+ * 每段各自核对出处；志望動機可以用招聘页上的词，以及他认同的那条推测的依据原话（focusText）。
+ * 志望動機里替对方诊断问题的句子丢掉。entry_ids 是编号，由调用方换回 id。
+ */
+export function parseTailored(value: unknown, sources: Map<string, string>, postingBody: string, focusText = ""): TailoredResume {
   const v = (value ?? {}) as Record<string, unknown>;
   const sections = {} as Record<ResumeSectionKey, ResumeSection>;
   const dropped: TailoredResume["dropped"] = [];
   for (const key of RESUME_SECTION_KEYS) {
-    const checked = checkSentences(v[key], sources, key === "motivation" ? postingBody : "");
-    sections[key] = { sentences: checked.kept };
+    const checked = checkSentences(v[key], sources, key === "motivation" ? [postingBody, focusText].join("\n") : "");
+    let kept = checked.kept;
+    if (key === "motivation") {
+      for (const s of kept.filter((s) => isDiagnosis(s.text))) dropped.push({ text: s.text, reason: "替对方诊断问题（御社の課題…），书类里不写", section: key });
+      kept = kept.filter((s) => !isDiagnosis(s.text));
+    }
+    sections[key] = { sentences: kept };
     dropped.push(...checked.dropped.map((d) => ({ ...d, section: key })));
   }
   if (sections.summary.sentences.length === 0 && sections.history.sentences.length === 0) {
@@ -360,14 +378,25 @@ export function parseTailored(value: unknown, sources: Map<string, string>, post
 
 export async function tailorResume(
   userId: string,
-  posting: { company: string; title: string; conditions: PostingCondition[]; body: string },
+  posting: {
+    company: string;
+    title: string;
+    conditions: PostingCondition[];
+    body: string;
+    /** 他认同的「这家为什么现在招」那一条，和依据原话。 */
+    focus?: { need: string; quotes: string[] } | null;
+  },
   entries: CareerEntry[]
 ): Promise<TailoredResume> {
   const { toId, sources, block } = aliasEntries(entries);
+  const focusText = posting.focus ? posting.focus.quotes.join("\n") : "";
   const contents = [
     `岗位：${posting.company}｜${posting.title}`,
     `条件：\n${conditionsBlock(posting.conditions) || "（没抽到）"}`,
     `招聘页节选：\n${posting.body.slice(0, 4000)}`,
+    ...(posting.focus
+      ? [`这家现在可能在意的事（他认同的推测，不是事实）：${posting.focus.need}\n依据原话：\n${posting.focus.quotes.map((q) => `「${q}」`).join("\n")}`]
+      : []),
     `底稿：\n${block}`,
   ].join("\n\n");
   const result = await executeAiJson(
@@ -384,7 +413,7 @@ export async function tailorResume(
         maxOutputTokens: 4000,
       },
     }),
-    (value) => parseTailored(value, sources, posting.body)
+    (value) => parseTailored(value, sources, posting.body, focusText)
   );
   const sections = Object.fromEntries(
     RESUME_SECTION_KEYS.map((key) => [

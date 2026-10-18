@@ -12,11 +12,13 @@ import { getJobProfile } from "@/lib/domains/jobs/profile";
 import { latestResume } from "@/lib/domains/jobs/resumes";
 import { atsOf, ATS_SITES, boardOf, BOARD_SITES } from "@/lib/domains/jobs/shared";
 import { listCaseDrills, MISSING_CASE_MIGRATION } from "@/lib/domains/jobs/cases";
+import { getHiringContext, MISSING_HIRING_MIGRATION } from "@/lib/domains/jobs/hiring";
 import { latestNoticeFor } from "@/lib/domains/signals/kanpo";
 import { NoticeLine } from "../../signals/kanpo/notice-line";
 import { ApplicationPanel } from "./application-panel";
 import { CasePanel } from "./case-panel";
 import { FillPanel } from "./fill-panel";
+import { HiringPanel } from "./hiring-panel";
 import { MatchView } from "./match-view";
 import { PostingFacts } from "./posting-facts";
 import { ResumePanel } from "./resume-panel";
@@ -37,7 +39,7 @@ export default async function JobPostingPage({ params }: { params: { id: string 
 
   const posting = await getPosting(user.id, params.id);
   if (!posting) notFound();
-  const [profile, entries, resume, application, fill, cases, kanpo] = await Promise.all([
+  const [profile, entries, resume, application, fill, cases, kanpo, hiring] = await Promise.all([
     getJobProfile(user.id),
     listCareerEntries(user.id),
     latestResume(user.id, posting.id),
@@ -45,6 +47,7 @@ export default async function JobPostingPage({ params }: { params: { id: string 
     getFillState(user.id, posting.id),
     listCaseDrills(user.id, posting.id),
     latestNoticeFor(posting.company_name),
+    getHiringContext(user.id, posting.id).catch(() => null),
   ]);
   const confirmed = entries === "missing-schema" ? [] : entries.filter((e) => e.confirmed_at);
   const ats = atsOf(posting.url);
@@ -91,6 +94,12 @@ export default async function JobPostingPage({ params }: { params: { id: string 
             </p>
           )}
         </div>
+        <Separator />
+        <HiringPanel
+          postingId={posting.id}
+          context={hiring === "missing-schema" ? null : hiring}
+          missingMigration={hiring === "missing-schema" ? MISSING_HIRING_MIGRATION : null}
+        />
         <Separator />
         <MatchView posting={posting} entries={confirmed} />
         <Separator />

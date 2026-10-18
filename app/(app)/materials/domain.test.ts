@@ -183,7 +183,8 @@ describe("分享进来的网址", () => {
     const { pickUrl } = await import("./ingest");
     expect(pickUrl("年俸2800万円でも争奪戦 https://www.itmedia.co.jp/a/b.html")).toBe("https://www.itmedia.co.jp/a/b.html");
     expect(pickUrl("没有网址的一段话")).toBeNull();
-  });
+    // ingest 连带加载数据库和 AI 模块，全量并行跑时偶尔超过默认的 5 秒
+  }, 20_000);
 
   it("内网、本机、元数据地址算内网", async () => {
     const { isPrivateAddress } = await import("./fetch-page");
