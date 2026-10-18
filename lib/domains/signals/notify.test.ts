@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDailyEmail, emailConfig, isFriday, isMonday } from "./notify";
+import { buildDailyEmail, buildDailyEmailHtml, emailConfig, firstSentence, isFriday, isMonday } from "./notify";
 
 describe("早上的提醒邮件", () => {
   it("没配就说缺什么；收信地址不填就发给自己", () => {
@@ -49,5 +49,48 @@ describe("周五提醒周刊", () => {
     expect(buildDailyEmail({ ...base, issueReminder: "unpublished" }).text).toContain("还没发出去");
     expect(buildDailyEmail({ ...base, issueReminder: "unwritten" }).text).toContain("https://app.example/signals/issue");
     expect(buildDailyEmail({ ...base, issueReminder: null }).text).not.toContain("周刊");
+  });
+});
+
+describe("邮件更丰富：最值得点开的几条带背景，各条带一句话", () => {
+  const input = {
+    date: "2026-10-13",
+    digest: "今天最重要的是日银加息。",
+    top: [
+      {
+        signal_id: "s1",
+        headline: "日银加息到0.75%",
+        background: "日本银行决定把政策利率提高到0.75%。地方银行下周跟进。",
+        flow: { cause: "物价连续上涨", event: "日银加息到0.75%", affected: "中小企业", watch: "地方银行下周的贷款利率" },
+      },
+    ],
+    practice: null,
+    overview: null,
+    sections: [{ title: "今天的世界", items: [{ headline: "物流业招外国司机", background: "人手不足越来越严重。好几家公司开始招外国司机。" }] }],
+    dueCount: 0,
+    freshQuestions: [],
+    url: "https://app.example",
+  };
+
+  it("纯文字版：总览之后是最值得点开的几条（带背景），各条下面一句话", () => {
+    const { text } = buildDailyEmail(input);
+    expect(text.indexOf("最值得点开的几条")).toBeGreaterThan(text.indexOf("今天最重要的是日银加息"));
+    expect(text).toContain("日本银行决定把政策利率提高到0.75%。地方银行下周跟进。");
+    expect(text).toContain("  人手不足越来越严重。");
+    expect(text).not.toContain("好几家公司开始招外国司机");
+  });
+
+  it("HTML 版：有图的嵌 cid 图片，没图只有文字；正文里的尖括号转义", () => {
+    const html = buildDailyEmailHtml({ ...input, digest: "A<B" }, { s1: "flow-s1@ideaos" });
+    expect(html).toContain('src="cid:flow-s1@ideaos"');
+    expect(html).toContain("日银加息到0.75%");
+    expect(html).toContain("A&lt;B");
+    expect(buildDailyEmailHtml(input, {})).not.toContain("cid:");
+    expect(html).toContain("https://app.example/signals");
+  });
+
+  it("一句话就是第一句", () => {
+    expect(firstSentence("第一句。第二句。")).toBe("第一句。");
+    expect(firstSentence("没有句号")).toBe("没有句号");
   });
 });
