@@ -16,6 +16,7 @@ import { VoicesView } from "../voices-view";
 import { CategoryPicker, DeepJudgment } from "./deep-judgment";
 import { FillMissing } from "./fill-missing";
 import { ThereView } from "./there-view";
+import { Illustration } from "../illustration";
 
 export const dynamic = "force-dynamic";
 // 「那边查一查」「把缺的都查一遍」由这一页的 server action 跑，每步三四十秒
@@ -23,6 +24,7 @@ export const maxDuration = 60;
 
 const SIDES: GapSide[] = ["japan", "us", "china"];
 const MISSING_083 = "还差一步：迁移 083 没跑。执行 supabase/migrations/083_signal_gap_deep.sql 之后，这一格才能用。";
+const MISSING_085 = "还差一步：迁移 085 没跑。执行 supabase/migrations/085_signal_images.sql 之后才能出图。";
 
 function Section({ n, title, children }: { n: string; title: string; children: ReactNode }) {
   return (
@@ -105,6 +107,12 @@ export default async function DeepGapPage({ searchParams }: { searchParams: { si
             there={page.there}
             initial={deep?.there ?? null}
             disabled={page.deep === "missing-schema" ? MISSING_083 : undefined}
+          />
+          <Illustration
+            signalId={signalId}
+            side={side}
+            initial={page.image === "missing-schema" ? null : page.image}
+            disabled={page.image === "missing-schema" ? MISSING_085 : undefined}
           />
         </Section>
 

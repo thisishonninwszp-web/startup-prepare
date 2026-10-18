@@ -6,6 +6,10 @@ import { tokyoToday } from "./brief";
 import { formatReportDate } from "./format";
 import { dueJudgments, listJudgments } from "./practice";
 import { weekStartOf } from "./issue-shared";
+import type { ItemFlow } from "./flow-shared";
+import type { DigestPick } from "./digest";
+import { cleanBriefItem } from "./filler";
+import { signFlowCard } from "./flow-card-shared";
 
 /**
  * 每天早上的提醒邮件：报告好了以后发一封到他的邮箱，带上今天的练习题。
@@ -39,8 +43,10 @@ export type DailyEmailInput = {
   digest?: string;
   practice: { question: string; headline: string } | null;
   overview: string | null;
-  /** 每一节的精选（只要标题和两种提示）。 */
-  sections: { title: string; items: Pick<BriefItem, "headline" | "related_question" | "surprise">[] }[];
+  /** 今日总览挑的最值得点开的几条（最多 3 条）：标题、背景、一图看懂。 */
+  top?: { signal_id: string; headline: string; background: string; flow?: ItemFlow }[];
+  /** 每一节的精选：标题、背景（邮件里只放第一句）、两种提示。 */
+  sections: { title: string; items: (Pick<BriefItem, "headline" | "related_question" | "surprise"> & { background?: string })[] }[];
   dueCount: number;
   freshQuestions: { question: string; freshCount: number }[];
   /** 这一周动得不寻常的快变量（已经写成一句话）。 */
@@ -68,6 +74,11 @@ const SECTION_TITLES: Record<string, string> = {
   tools: "新工具和新可能",
 };
 
+/** 一段话的第一句（邮件里各条只放一句）。 */
+export function firstSentence(text: string): string {
+  return text.match(/^[^。！？]+[。！？]?/)?.[0] ?? text;
+}
+
 /** 邮件正文（纯文本）。像一张便条：先说今天要做的一件事，再列标题，点进去看。 */
 export function buildDailyEmail(input: DailyEmailInput): { subject: string; text: string } {
   const date = formatReportDate(input.date);
@@ -76,6 +87,11 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     : `${date}的报告好了`;
   const lines: string[] = [];
   if (input.digest) lines.push(input.digest, "");
+  if (input.top && input.top.length > 0) {
+    lines.push("最值得点开的几条");
+    for (const t of input.top) lines.push(`· ${t.headline}`, `  ${t.background}`);
+    lines.push("");
+  }
   if (input.practice) {
     lines.push("今天的练习", `读这一条：${input.practice.headline}`, `问题：${input.practice.question}`, "先写下你的判断，再看 AI 怎么拆。", "");
   }
@@ -91,6 +107,7 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     lines.push(`【${s.title}】`);
     for (const item of s.items) {
       lines.push(`· ${item.headline}`);
+      if (item.background) lines.push(`  ${firstSentence(item.background)}`);
       if (item.surprise) lines.push(`  ↳ 意外：原本以为${item.surprise.expected}，结果${item.surprise.actual}。为什么？`);
       if (item.related_question) lines.push(`  ↳ 跟你在追的「${item.related_question.question}」有关`);
     }
@@ -114,6 +131,69 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
   }
   if (input.url) lines.push(`打开今天的报告：${input.url}/signals`);
   return { subject, text: lines.join("\n").trim() };
+}
+
+/** 邮件颜色：由 app/globals.css 的语义 token 换算成 hex（邮件客户端不一定认 hsl() 和 CSS 变量）。 */
+const EMAIL_COLOR = { paper: "#faf9f7", card: "#ffffff", ink: "#211f1c", accent: "#dd4913", muted: "#706b66", rule: "#e1dfdb" };
+
+function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * HTML 版邮件：最值得点开的几条带背景和一图看懂（images：signal_id → 附件的 cid，没有的就不放图），各节每条标题 + 一句话。
+ * 只用行内样式（邮件客户端不认外部样式和 flex）。和纯文字版同一个顺序 —— 改一个记得改另一个。
+ */
+export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<string, string>): string {
+  const C = EMAIL_COLOR;
+  const para = (text: string, style = "") => `<p style="margin:0 0 12px;font-size:15px;line-height:1.75;color:${C.ink};${style}">${esc(text)}</p>`;
+  const head = (text: string) => `<p style="margin:28px 0 8px;font-size:13px;color:${C.muted};">${esc(text)}</p>`;
+  const link = (href: string, text: string) => `<p style="margin:0 0 12px;font-size:14px;"><a href="${esc(href)}" style="color:${C.accent};">${esc(text)}</a></p>`;
+  const parts: string[] = [];
+  if (input.digest) parts.push(para(input.digest));
+  if (input.top && input.top.length > 0) {
+    parts.push(head("最值得点开的几条"));
+    for (const t of input.top) {
+      parts.push(`<div style="margin:0 0 20px;padding:14px 16px;border:1px solid ${C.rule};border-radius:8px;background:${C.card};">`);
+      parts.push(para(t.headline, "font-weight:600;"), para(t.background));
+      const cid = images[t.signal_id];
+      if (cid) parts.push(`<img src="cid:${esc(cid)}" alt="一图看懂" width="560" style="display:block;width:100%;max-width:560px;height:auto;border-radius:6px;" />`);
+      parts.push("</div>");
+    }
+  }
+  if (input.practice) {
+    parts.push(head("今天的练习"), para(`读这一条：${input.practice.headline}`), para(`问题：${input.practice.question}`), para("先写下你的判断，再看 AI 怎么拆。", `color:${C.muted};`));
+  }
+  if (input.fastAlerts && input.fastAlerts.length > 0) parts.push(head("这一周动得不寻常的"), ...input.fastAlerts.map((a) => para(`· ${a}`)));
+  if (input.dueCount > 0) parts.push(para(`有 ${input.dueCount} 条判断到期了，去对一下账。`));
+  for (const q of input.freshQuestions) parts.push(para(`你在追的「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`));
+  if (input.overview) parts.push(para(input.overview));
+  for (const s of input.sections) {
+    if (s.items.length === 0) continue;
+    parts.push(head(`【${s.title}】`));
+    for (const item of s.items) {
+      parts.push(para(`· ${item.headline}`, "margin-bottom:2px;"));
+      if (item.background) parts.push(para(firstSentence(item.background), `font-size:14px;color:${C.muted};`));
+      if (item.surprise) parts.push(para(`↳ 意外：原本以为${item.surprise.expected}，结果${item.surprise.actual}。为什么？`, "font-size:14px;"));
+      if (item.related_question) parts.push(para(`↳ 跟你在追的「${item.related_question.question}」有关`, "font-size:14px;"));
+    }
+  }
+  if (input.issueReminder) {
+    parts.push(
+      para(
+        input.issueReminder === "unwritten"
+          ? "今天周五，这周的周刊还没写。挑一两条、每条点三下就是判断，十分钟的事。"
+          : "今天周五，这周的周刊写好了，还没发出去。"
+      )
+    );
+    if (input.url) parts.push(link(`${input.url}/signals/issue`, "去写周刊"));
+  }
+  if (isMonday(input.date)) {
+    parts.push(para("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。"));
+    if (input.url) parts.push(link(`${input.url}/signals/slow`, "慢变量"), link(`${input.url}/signals/week`, "上一周的周报"));
+  }
+  if (input.url) parts.push(link(`${input.url}/signals`, "打开今天的报告"));
+  return `<!doctype html><html><body style="margin:0;padding:24px 16px;background:${C.paper};font-family:-apple-system,'PingFang SC','Hiragino Sans','Noto Sans SC',sans-serif;"><div style="max-width:600px;margin:0 auto;">${parts.join("")}</div></body></html>`;
 }
 
 /** 这周的周刊写了没、发了没。表还没建（071 没跑）就不提。 */
@@ -143,6 +223,15 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   const practiceRow = (news?.practice as BriefPracticeRow | null) ?? null;
   const newsItems = ((news?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra);
   const practiceItem = practiceRow ? newsItems.find((i) => i.signal_id === practiceRow.signal_id) : undefined;
+  // 今日总览挑的那几条：标题、背景、一图看懂（练习题那一条不剧透）
+  const allItems = ["news", "calendar", "voices", "money", "tools"].flatMap((k) =>
+    ((byKind.get(k)?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra).map(cleanBriefItem)
+  );
+  const top = ((byKind.get("digest")?.items as DigestPick[] | null) ?? []).slice(0, 3).flatMap((p) => {
+    const item = allItems.find((i) => i.signal_id === p.signal_id);
+    if (!item || item.signal_id === practiceRow?.signal_id) return [];
+    return [{ signal_id: item.signal_id, headline: item.headline, background: item.background, ...(item.flow ? { flow: item.flow } : {}) }];
+  });
 
   const [judgments, questions, fast, issueReminder] = await Promise.all([
     listJudgments(userId).catch(() => []),
@@ -160,6 +249,7 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   return {
     date,
     digest,
+    top,
     practice: practiceRow ? { question: practiceRow.question, headline: practiceItem?.headline ?? "" } : null,
     overview: (news?.overview as string | null) ?? null,
     sections: ["news", "calendar", "voices", "money", "tools"].map((kind) => ({
@@ -167,7 +257,8 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
       items: ((byKind.get(kind)?.items as BriefItem[] | null) ?? [])
         .filter((i) => !i.extra)
         // 练习题那一条不在列表里剧透
-        .filter((i) => i.signal_id !== practiceRow?.signal_id),
+        .filter((i) => i.signal_id !== practiceRow?.signal_id)
+        .map(cleanBriefItem),
     })),
     dueCount: dueJudgments(judgments).length,
     freshQuestions,
@@ -179,6 +270,29 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
 
 export type SendOutcome = { sent: true; to: string } | { sent: false; reason: string };
 
+/**
+ * 最值得点开的几条里有一图看懂的，签好名去 Edge 路由取 PNG，当附件嵌进邮件（cid）。
+ * 网址或 CRON_SECRET 没配、路由取不到、超过 10 秒，就只发文字 —— 不拦着发邮件。
+ */
+async function flowCardAttachments(input: DailyEmailInput): Promise<{ signalId: string; filename: string; content: Buffer; cid: string }[]> {
+  const secret = process.env.CRON_SECRET;
+  if (!input.url || !secret) return [];
+  const results = await Promise.all(
+    (input.top ?? []).map(async (t) => {
+      if (!t.flow) return null;
+      try {
+        const { d, s } = await signFlowCard({ headline: t.headline, flow: t.flow }, secret);
+        const res = await fetch(`${input.url}/api/flow-card?d=${d}&s=${s}`, { signal: AbortSignal.timeout(10_000) });
+        if (!res.ok) return null;
+        return { signalId: t.signal_id, filename: `flow-${t.signal_id}.png`, content: Buffer.from(await res.arrayBuffer()), cid: `flow-${t.signal_id}@ideaos` };
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
 /** 把今天的报告发到他的邮箱。没配、或者今天还没有报告，就不发并说明原因。 */
 export async function sendDailyEmail(userId: string, date = tokyoToday()): Promise<SendOutcome> {
   const config = emailConfig();
@@ -186,10 +300,19 @@ export async function sendDailyEmail(userId: string, date = tokyoToday()): Promi
   const input = await loadEmailInput(userId, date);
   if (!input) return { sent: false, reason: "今天的报告还没生成" };
   const { subject, text } = buildDailyEmail(input);
+  const attachments = await flowCardAttachments(input);
+  const html = buildDailyEmailHtml(input, Object.fromEntries(attachments.map((a) => [a.signalId, a.cid])));
   const transport = nodemailer.createTransport({
     service: "gmail",
     auth: { user: config.from, pass: process.env.GMAIL_APP_PASSWORD },
   });
-  await transport.sendMail({ from: `IdeaOS <${config.from}>`, to: config.to, subject, text });
+  await transport.sendMail({
+    from: `IdeaOS <${config.from}>`,
+    to: config.to,
+    subject,
+    text,
+    html,
+    attachments: attachments.map((a) => ({ filename: a.filename, content: a.content, cid: a.cid })),
+  });
   return { sent: true, to: config.to };
 }

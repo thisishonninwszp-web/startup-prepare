@@ -32,6 +32,8 @@ import type { IssueCandidate } from "@/lib/domains/signals/issue";
 import { ATLAS_CATEGORIES, baseSentence, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas-shared";
 import { addIssuePublishAction, addIssueResponseAction, composeIssueAction, setPublicRecordAction } from "../actions";
 import { OptionRow } from "./option-row";
+import type { GapImage } from "@/lib/domains/signals/images";
+import { Illustration } from "../gaps/illustration";
 
 const OUTCOME = { pending: "还在等", hit: "对了", miss: "错了" } as const;
 
@@ -168,7 +170,10 @@ export function IssueComposer({
   doors,
   issueDoors,
   preselect,
+  images,
 }: {
+  /** 每条已经出过的示意图（键见 keyOf）。 */
+  images: Record<string, GapImage>;
   /** 开着的日文假门（键见 keyOf）：note 版文末放登记页的链接。 */
   doors: Record<string, { token: string; title: string }>;
   /** 周刊付费版的登记页（开着的才有口令）：中文长文、note 版文末各放一句。 */
@@ -339,6 +344,7 @@ export function IssueComposer({
                         onChange={(e) => update(k, { note: e.target.value })}
                         placeholder="想多说一句？（可以不写）"
                       />
+                      <Illustration signalId={g.signal_id} side={g.side} initial={images[k] ?? null} />
                       {picked[k].stance.will && (
                         <p className="text-sm leading-7">
                           <span className="text-muted-foreground">发出去的是：</span>

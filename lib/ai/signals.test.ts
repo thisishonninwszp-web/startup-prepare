@@ -1368,3 +1368,33 @@ describe("周刊日文版：日本人自己搜的说法", () => {
     expect(issuePhrasesText({ opening: "", bets: [], picks: [pick(), pick([])] })).toBe("");
   });
 });
+
+describe("一图看懂：读正文重写时顺手写四个框", () => {
+  const body = "日本银行10月30日决定把政策利率提高到0.75%。地方银行表示下周起上调贷款利率，中小企业的利息负担会加重。";
+  const inputs = [{ index: 0, title: "t", summary: "s", body, draft: { headline: "h", background: "b", forYou: "f" } }];
+  const item = (flow: unknown) => ({
+    index: 0,
+    headline: "日银加息到0.75%",
+    background: "日本银行10月30日决定把政策利率提高到0.75%。",
+    forYou: "中小企业的利息负担会加重。",
+    basis: ["日本银行10月30日决定把政策利率提高到0.75%。"],
+    flow,
+  });
+
+  it("四个框合格的留下", () => {
+    const r = parseGroundedBrief(
+      { overview: "日银加息。", items: [item({ cause: "物价连续上涨", event: "日银加息到0.75%", affected: "靠借款周转的中小企业", watch: "地方银行下周的贷款利率" })] },
+      inputs
+    );
+    expect(r.items[0].flow?.event).toBe("日银加息到0.75%");
+  });
+
+  it("数字对不上就不画，条目照留", () => {
+    const r = parseGroundedBrief(
+      { overview: "日银加息。", items: [item({ cause: "物价连续上涨", event: "日银加息到1%", affected: "中小企业", watch: "地方银行下周的贷款利率" })] },
+      inputs
+    );
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].flow).toBeUndefined();
+  });
+});

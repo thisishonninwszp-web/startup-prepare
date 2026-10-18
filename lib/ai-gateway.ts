@@ -138,11 +138,39 @@ export async function executeAiGroundedSearch(
   });
 }
 
+type InlineImage = { mimeType: string; data: string };
+
+function firstImage(response: unknown): InlineImage | null {
+  const parts =
+    (response as { candidates?: { content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] } }[] }).candidates?.[0]?.content
+      ?.parts ?? [];
+  const hit = parts.find((p) => p.inlineData?.data);
+  return hit?.inlineData?.data ? { mimeType: hit.inlineData.mimeType ?? "image/png", data: hit.inlineData.data } : null;
+}
+
+/** 出图（Gemini 的图片模型）：返回第一张图的字节。日志里只记"一张图、多大"，不存图本身。 */
+export async function executeAiImage(context: AiCallContext, request: AiGenerateContentRequest): Promise<{ mimeType: string; data: Buffer }> {
+  return executeAiCall(
+    context,
+    request,
+    (response) => {
+      const image = firstImage(response)!;
+      return { mimeType: image.mimeType, data: Buffer.from(image.data, "base64") };
+    },
+    (response) => {
+      const image = firstImage(response);
+      return image ? `[image ${image.mimeType} ${Math.round((image.data.length * 3) / 4)} bytes]` : "";
+    }
+  );
+}
+
 /** 一次 AI 调用：记日志、处理空输出和错误；read 从原始响应里取调用方要的东西。 */
 async function executeAiCall<T>(
   context: AiCallContext,
   request: AiGenerateContentRequest,
-  read: (response: unknown, text: string) => T
+  read: (response: unknown, text: string) => T,
+  /** 从响应里取"有没有输出"的那段文字（记日志用、空了就当失败）；出图时是一句"一张图、多大"。 */
+  output: (response: unknown) => string = (response) => ((response as { text?: string }).text ?? "").trim()
 ): Promise<T> {
   const startedAt = Date.now();
   const requestId = cryptoRandomId();
@@ -168,7 +196,7 @@ async function executeAiCall<T>(
       ...request,
       model,
     } as never);
-    const text = (response.text ?? "").trim();
+    const text = output(response);
     await safeCreateAiAttempt({
       callId,
       attemptNo: 1,

@@ -2,6 +2,7 @@
 export * from "./core";
 export * from "./signals";
 export * from "./signals-deep";
+export * from "./signals-image";
 export * from "./demand";
 export * from "./jobs";
 export * from "./jobs-china";
