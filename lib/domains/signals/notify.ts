@@ -7,6 +7,9 @@ import { formatReportDate } from "./format";
 import { dueJudgments, listJudgments } from "./practice";
 import { weekStartOf } from "./issue-shared";
 import type { ItemFlow } from "./flow-shared";
+import type { DigestPick } from "./digest";
+import { cleanBriefItem } from "./filler";
+import { signFlowCard } from "./flow-card-shared";
 
 /**
  * 每天早上的提醒邮件：报告好了以后发一封到他的邮箱，带上今天的练习题。
@@ -220,6 +223,15 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   const practiceRow = (news?.practice as BriefPracticeRow | null) ?? null;
   const newsItems = ((news?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra);
   const practiceItem = practiceRow ? newsItems.find((i) => i.signal_id === practiceRow.signal_id) : undefined;
+  // 今日总览挑的那几条：标题、背景、一图看懂（练习题那一条不剧透）
+  const allItems = ["news", "calendar", "voices", "money", "tools"].flatMap((k) =>
+    ((byKind.get(k)?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra).map(cleanBriefItem)
+  );
+  const top = ((byKind.get("digest")?.items as DigestPick[] | null) ?? []).slice(0, 3).flatMap((p) => {
+    const item = allItems.find((i) => i.signal_id === p.signal_id);
+    if (!item || item.signal_id === practiceRow?.signal_id) return [];
+    return [{ signal_id: item.signal_id, headline: item.headline, background: item.background, ...(item.flow ? { flow: item.flow } : {}) }];
+  });
 
   const [judgments, questions, fast, issueReminder] = await Promise.all([
     listJudgments(userId).catch(() => []),
@@ -237,6 +249,7 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   return {
     date,
     digest,
+    top,
     practice: practiceRow ? { question: practiceRow.question, headline: practiceItem?.headline ?? "" } : null,
     overview: (news?.overview as string | null) ?? null,
     sections: ["news", "calendar", "voices", "money", "tools"].map((kind) => ({
@@ -244,7 +257,8 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
       items: ((byKind.get(kind)?.items as BriefItem[] | null) ?? [])
         .filter((i) => !i.extra)
         // 练习题那一条不在列表里剧透
-        .filter((i) => i.signal_id !== practiceRow?.signal_id),
+        .filter((i) => i.signal_id !== practiceRow?.signal_id)
+        .map(cleanBriefItem),
     })),
     dueCount: dueJudgments(judgments).length,
     freshQuestions,
@@ -256,6 +270,29 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
 
 export type SendOutcome = { sent: true; to: string } | { sent: false; reason: string };
 
+/**
+ * 最值得点开的几条里有一图看懂的，签好名去 Edge 路由取 PNG，当附件嵌进邮件（cid）。
+ * 网址或 CRON_SECRET 没配、路由取不到、超过 10 秒，就只发文字 —— 不拦着发邮件。
+ */
+async function flowCardAttachments(input: DailyEmailInput): Promise<{ signalId: string; filename: string; content: Buffer; cid: string }[]> {
+  const secret = process.env.CRON_SECRET;
+  if (!input.url || !secret) return [];
+  const results = await Promise.all(
+    (input.top ?? []).map(async (t) => {
+      if (!t.flow) return null;
+      try {
+        const { d, s } = await signFlowCard({ headline: t.headline, flow: t.flow }, secret);
+        const res = await fetch(`${input.url}/api/flow-card?d=${d}&s=${s}`, { signal: AbortSignal.timeout(10_000) });
+        if (!res.ok) return null;
+        return { signalId: t.signal_id, filename: `flow-${t.signal_id}.png`, content: Buffer.from(await res.arrayBuffer()), cid: `flow-${t.signal_id}@ideaos` };
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
 /** 把今天的报告发到他的邮箱。没配、或者今天还没有报告，就不发并说明原因。 */
 export async function sendDailyEmail(userId: string, date = tokyoToday()): Promise<SendOutcome> {
   const config = emailConfig();
@@ -263,10 +300,19 @@ export async function sendDailyEmail(userId: string, date = tokyoToday()): Promi
   const input = await loadEmailInput(userId, date);
   if (!input) return { sent: false, reason: "今天的报告还没生成" };
   const { subject, text } = buildDailyEmail(input);
+  const attachments = await flowCardAttachments(input);
+  const html = buildDailyEmailHtml(input, Object.fromEntries(attachments.map((a) => [a.signalId, a.cid])));
   const transport = nodemailer.createTransport({
     service: "gmail",
     auth: { user: config.from, pass: process.env.GMAIL_APP_PASSWORD },
   });
-  await transport.sendMail({ from: `IdeaOS <${config.from}>`, to: config.to, subject, text });
+  await transport.sendMail({
+    from: `IdeaOS <${config.from}>`,
+    to: config.to,
+    subject,
+    text,
+    html,
+    attachments: attachments.map((a) => ({ filename: a.filename, content: a.content, cid: a.cid })),
+  });
   return { sent: true, to: config.to };
 }
