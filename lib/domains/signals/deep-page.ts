@@ -10,6 +10,7 @@ import { gapDemand, listIssues, type GapDemand } from "./issue";
 import { caseNotices } from "./kanpo";
 import type { KanpoNotice } from "./kanpo-shared";
 import { loadGapVoices, type GapVoices } from "./voices";
+import { latestGapImage, type GapImage } from "./images";
 
 export type DeepPage = {
   side: GapSide;
@@ -31,12 +32,14 @@ export type DeepPage = {
   kanpo: GapKanpo;
   door: FakeDoorStats | null;
   demand: GapDemand | null;
+  /** 最新的一张 AI 示意图（迁移 085 没跑为 "missing-schema"）。 */
+  image: GapImage | null | "missing-schema";
 };
 
 /** 一条讲透那一页要的全部料；这条在清单里找不到了返回 null。 */
 export async function loadDeepPage(userId: string, side: GapSide, signalId: string): Promise<DeepPage | null> {
   const key = transferKey(side, signalId);
-  const [board, rechecks, deep, transfers, voices, cases, notices, doors, issues] = await Promise.all([
+  const [board, rechecks, deep, transfers, voices, cases, notices, doors, issues, image] = await Promise.all([
     listGapBoard(userId, tokyoToday()),
     loadGapRechecks(userId),
     loadGapDeep(userId, side, signalId),
@@ -46,6 +49,7 @@ export async function loadDeepPage(userId: string, side: GapSide, signalId: stri
     caseNotices(userId).catch(() => new Map<string, KanpoNotice>()),
     loadFakeDoorStats(userId),
     listIssues(userId).catch(() => []),
+    latestGapImage(userId, side, signalId).catch(() => null),
   ]);
   const open = board.sides[side].open.find((g) => g.signal_id === signalId) ?? null;
   const arrived = board.sides[side].arrived.find((g) => g.signal_id === signalId) ?? null;
@@ -65,5 +69,6 @@ export async function loadDeepPage(userId: string, side: GapSide, signalId: stri
     kanpo: await gapKanpo(userId, gap, deep === "missing-schema" ? null : deep),
     door: doors.get(key) ?? null,
     demand: gapDemand(issues).get(key) ?? null,
+    image,
   };
 }
