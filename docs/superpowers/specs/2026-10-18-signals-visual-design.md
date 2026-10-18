@@ -65,7 +65,7 @@
 - **提示词由代码拼**:那边是什么(headline、这一类东西的叫法),画成一张示意插画;
   固定的要求由代码加:不写任何字、不放数字、不画真实公司的 logo 和产品界面、不画真人的脸、3:4 竖图。
 - **存下来**:图存进 Supabase Storage(新 bucket `signal-images`,不公开,页面用服务器签的临时链接显示);
-  记录存新表 `signal_images`(迁移 084):user_id、side、signal_id、storage_path、prompt、model、created_at。
+  记录存新表 `signal_images`(迁移 085;084 已被求职那边的 job_hiring_contexts 占用):user_id、side、signal_id、storage_path、prompt、model、created_at。
   同一条可以重出,旧的留着,页面显示最新一张,可以下载(给小红书用)。
 - **标注**:图下面固定写「AI 生成的示意图,不是实拍、不是产品截图」;他自己看过才拿去用。
 - **出不来时**:模型调不通、这个 key 用不了图片模型 —— 按钮改成「复制出图提示词」,他贴进网页版 GPT 自己出。
@@ -99,6 +99,6 @@
 - `lib/domains/signals/notify.ts`:HTML 邮件、`cid:` 附件,纯文字版保留。
 - `lib/ai-gateway.ts`:出图入口;`lib/ai/signals-image.ts`(新):拼出图提示词。
 - `lib/domains/signals/images.ts`(新):出图、存 Storage、签链接、读最新一张。
-- `supabase/migrations/084_signal_images.sql`、`supabase/schema.sql`:表和 bucket。
+- `supabase/migrations/085_signal_images.sql`(写计划时再确认编号没被占)、`supabase/schema.sql`:表和 bucket。
 - `app/(app)/signals/gaps/deep/`、`app/(app)/signals/issue/`:「出一张配图」按钮和显示。
 - `CLAUDE.md`:signals 那一格、Schema 一行。
