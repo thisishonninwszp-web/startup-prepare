@@ -32,6 +32,7 @@ import { SectionFeedback } from "./section-feedback";
 import { getFeedback } from "@/lib/domains/signals/feedback";
 import { describeMove, unusualFastMoves } from "@/lib/domains/signals/fast";
 import { Badge } from "@/components/ui/badge";
+import { FlowView } from "./flow-view";
 
 export const dynamic = "force-dynamic";
 // 「现在生成」「写下判断」的 server action 跟着页面的时长上限走，默认 10 秒不够。
@@ -209,6 +210,7 @@ function ReportItem({
             </p>
           ) : (
             <>
+              {item.flow && <FlowView flow={item.flow} />}
               <p className="mt-2 text-base leading-8">{item.background}</p>
               {item.grounded === false && (
                 <p className="mt-1 text-xs text-muted-foreground">
