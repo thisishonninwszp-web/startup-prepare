@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeOver, parseEstat, parseFx, parseWorldBank, SLOW_VARIABLES } from "./slow";
+import { changeOver, changeText, parseEstat, parseFx, parseWorldBank, slowSummary, SLOW_VARIABLES } from "./slow";
 
 describe("慢变量", () => {
   it("世界银行：去掉空值，从旧到新", () => {
@@ -34,5 +34,25 @@ describe("e-Stat", () => {
     ] } } } };
     expect(parseEstat(json, 0.1).map((p) => [p.date, Math.round(p.value * 10) / 10])).toEqual([["2026-08", 389.6], ["2026-09", 391.7]]);
     expect(parseEstat(null)).toEqual([]);
+  });
+});
+
+describe("慢变量：给往下推用的那句数字", () => {
+  const variable = SLOW_VARIABLES.find((v) => v.key === "unemployment")!;
+  const monthly = (values: number[]) => ({
+    variable,
+    sourceLabel: "x",
+    sourceUrl: "",
+    points: values.map((value, i) => ({ date: `${2020 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`, value })),
+  });
+
+  it("slowSummary：现在多少、比一年前、比五年前；点不够的那一段不写", () => {
+    const series = monthly(Array.from({ length: 13 }, (_, i) => (i === 12 ? 2.6 : 2.4)));
+    expect(slowSummary(series)).toBe("现在 2.6 %（2021-01）；比一年前（2020-01）+0.2 个百分点");
+    expect(slowSummary(monthly([]))).toBeNull();
+  });
+
+  it("changeText：四舍五入后是 0 的说几乎没变", () => {
+    expect(changeText(monthly([2.41, 2.44]), 1, "比上个月")).toBe("比上个月（2020-01）几乎没变");
   });
 });

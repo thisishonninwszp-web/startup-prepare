@@ -6204,3 +6204,22 @@ on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
+
+-- ============================================================================
+-- 086：慢变量 · 知道这个之后呢（signal_slow_thens）
+-- ============================================================================
+
+create table if not exists signal_slow_thens (
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  week_start  date not null,
+  key         text not null,
+  analysis    jsonb not null,
+  created_at  timestamptz not null default now(),
+  primary key (user_id, week_start, key)
+);
+
+alter table signal_slow_thens enable row level security;
+
+drop policy if exists "signal_slow_thens_owner" on signal_slow_thens;
+create policy "signal_slow_thens_owner" on signal_slow_thens
+  for all using (auth.uid() = user_id);

@@ -248,3 +248,32 @@ export function changeOver(points: SlowPoint[], back: number): { from: SlowPoint
   const from = points[points.length - 1 - back];
   return { from, delta: points[points.length - 1].value - from.value };
 }
+
+function fmtNumber(v: number, digits: number): string {
+  return v.toLocaleString("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+/** "比一年前（2025-08）-55 万人"；点不够返回 null。四舍五入后是 0 的说"几乎没变"。 */
+export function changeText(series: SlowSeries, back: number, label: string): string | null {
+  const c = changeOver(series.points, back);
+  if (!c) return null;
+  const { digits, unit } = series.variable;
+  const when = `${label}（${c.from.date.slice(0, 7)}）`;
+  if (Number(c.delta.toFixed(digits)) === 0) return `${when}几乎没变`;
+  return `${when}${c.delta > 0 ? "+" : ""}${fmtNumber(c.delta, digits)}${unit === "%" ? " 个百分点" : ` ${unit}`}`;
+}
+
+/** 给 AI 往下推用的一句话：现在多少、比一年前、比五年前（年度的是十年前）。数字全由代码算。没数据返回 null。 */
+export function slowSummary(series: SlowSeries): string | null {
+  const last = series.points[series.points.length - 1];
+  if (!last) return null;
+  const yearly = !isMonthly(series);
+  const { digits, unit } = series.variable;
+  return [
+    `现在 ${fmtNumber(last.value, digits)} ${unit}（${yearly ? `${last.date} 年` : last.date}）`,
+    changeText(series, yearly ? 1 : 12, "比一年前"),
+    changeText(series, yearly ? 10 : 59, yearly ? "比十年前" : "比五年前"),
+  ]
+    .filter(Boolean)
+    .join("；");
+}

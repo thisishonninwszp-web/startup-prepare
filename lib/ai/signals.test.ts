@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseSlowThen, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1396,5 +1396,47 @@ describe("一图看懂：读正文重写时顺手写四个框", () => {
     );
     expect(r.items).toHaveLength(1);
     expect(r.items[0].flow).toBeUndefined();
+  });
+});
+
+describe("慢变量：知道这个之后呢", () => {
+  const input = {
+    label: "劳动年龄人口（15–64 岁）占比",
+    why: "人手不足的根。",
+    summary: "现在 58.9 %（2025 年）；比一年前（2024）-0.2 个百分点；比十年前（2015）-1.9 个百分点",
+    news: ["物流2024年問題でドライバー不足が深刻化", "セルフレジ導入店舗が急増"],
+    gaps: ["无人配送车在中国城市铺开", "共享充电宝"],
+  };
+  const chain = (over: Record<string, unknown> = {}) => ({
+    steps: ["劳动年龄人口占比一年少 0.2 个百分点", "能招到的司机、店员越来越少", "按人力算的服务涨价或缩短营业时间"],
+    meaning: "物流、零售、餐饮的人工成本先涨，能省人的设备和外包有新需求。",
+    watch: "有效求人倍率、便利店缩短营业时间的新闻。",
+    breaks: "外国劳动者大量进来，或者老年人、女性就业继续增加。",
+    ...over,
+  });
+
+  it("两条以上完整的链才收；表面和清单按编号 + 照抄的标题核对，对不上的丢掉", () => {
+    const out = parseSlowThen(
+      {
+        chains: [chain(), chain({ steps: ["劳动年龄人口占比下降", "企业更愿意花钱买自动化", "自助收银、无人配送的采购增加"] })],
+        surfaces: [
+          { i: 0, title: "物流2024年問題でドライバー不足が深刻化", how: "人手不足落在物流上" },
+          { i: 1, title: "完全不同的标题", how: "对不上" },
+          { i: 5, title: "越界", how: "越界" },
+        ],
+        gaps: [{ i: 0, headline: "无人配送车在中国城市铺开", how: "人越少，无人配送越有理由" }],
+      },
+      input
+    );
+    expect(out.chains).toHaveLength(2);
+    expect(out.surfaces).toEqual([{ i: 0, how: "人手不足落在物流上" }]);
+    expect(out.gaps).toEqual([{ i: 0, how: "人越少，无人配送越有理由" }]);
+  });
+
+  it("只有一条、缺了「会断在哪」、写了可能性数字、编了材料里没有的数字：作废", () => {
+    expect(() => parseSlowThen({ chains: [chain()] }, input)).toThrow();
+    expect(() => parseSlowThen({ chains: [chain(), chain({ breaks: "" })] }, input)).toThrow();
+    expect(() => parseSlowThen({ chains: [chain(), chain({ meaning: "有 70% 的可能人工成本上涨。" })] }, input)).toThrow();
+    expect(() => parseSlowThen({ chains: [chain(), chain({ meaning: "到 2040 年会缺 1100 万人。" })] }, input)).toThrow();
   });
 });

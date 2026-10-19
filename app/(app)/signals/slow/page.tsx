@@ -15,6 +15,8 @@ import {
   type SlowPoint,
   type SlowSeries,
 } from "@/lib/domains/signals/slow";
+import { loadSlowThens } from "@/lib/domains/signals/slow-then";
+import { SlowThenView } from "./slow-then-view";
 
 export const dynamic = "force-dynamic";
 // 世界银行的接口一次要十秒上下；取到的数据缓存一天
@@ -73,10 +75,11 @@ export default async function SlowVariablesPage() {
   if (!user) notFound();
 
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
-  const [all, week, fast] = await Promise.all([
+  const [all, week, fast, thens] = await Promise.all([
     Promise.all(SLOW_VARIABLES.map((v) => fetchSlowSeries(v))),
     supabaseAdmin.from("signal_briefs").select("items").eq("user_id", user.id).gte("brief_date", weekAgo),
     fetchFastMoves(),
+    loadSlowThens(user.id),
   ]);
   const coverage = pestleCoverage((week.data ?? []).flatMap((r) => (r.items as BriefItem[] | null) ?? []));
   const tagged = coverage.reduce((n, c) => n + c.count, 0);
@@ -119,6 +122,7 @@ export default async function SlowVariablesPage() {
                 <p className="mt-1 text-sm text-muted-foreground">这次没取到数据，晚点再来看。</p>
               )}
               <p className="mt-2 text-sm leading-7">{s.variable.why}</p>
+              {last && <SlowThenView variableKey={s.variable.key} initial={thens[s.variable.key] ?? null} />}
               <a
                 href={s.sourceUrl}
                 target="_blank"

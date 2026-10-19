@@ -4880,3 +4880,131 @@ export async function writeDigestDetail(items: DetailItemInput[]): Promise<Diges
     (value) => parseDigestDetail(value, ids)
   );
 }
+
+// ── 慢变量：知道这个之后呢（and then?） ─────────────────────────────────────
+
+export type SlowThenChain = { steps: string[]; meaning: string; watch: string; breaks: string };
+
+/** 推出来的：链 + 这一周报告里它的表面（编号）+ 清单里靠它撑着的（编号）。编号由调用方换回 id。 */
+export type SlowThenDraft = {
+  chains: SlowThenChain[];
+  surfaces: { i: number; how: string }[];
+  gaps: { i: number; how: string }[];
+};
+
+export type SlowThenInput = {
+  label: string;
+  why: string;
+  /** 代码算好的数字和走势（一段话）。 */
+  summary: string;
+  /** 这一周报告里的新闻原标题。 */
+  news: string[];
+  /** 他的差距清单（"那边有、日本还没有"）的标题。 */
+  gaps: string[];
+};
+
+const SLOW_THEN_PROMPT = `下面是一个慢变量现在的数字和走势（数字由代码算好，照用）。他想知道："知道这个之后呢？"——
+它接下来会推着哪些事发生、对做生意意味着什么、去哪看是不是真的在发生。
+
+写：
+- chains：2 到 3 条"如果这个势头继续"的链，每条 3 到 4 步，一步一句短话（40 字以内）。
+  第一步从这个数字的变化说起；后一步必须是前一步直接推出来的（不跳步、不绕回前面、不换个说法重复）。几条链要往不同的方向推。
+  每条再写：
+  - meaning：对做生意意味着什么 —— 谁的成本会涨、谁的客人会少、哪种新需求会冒出来，具体到行业或人群（80 字以内）。
+  - watch：去哪看这条链是不是真的在走：一个具体的指标、一类新闻或一个现象（60 字以内）。
+  - breaks：什么情况下这条链会断：反过来的力量（60 字以内）。
+- surfaces：这一周的报告里，哪几条新闻是这个慢变量的表面（最多 3 条，宁缺毋滥）：i 是编号，title 照抄原标题，how 一句话说它是哪一面（40 字以内）。没有就空数组。
+- gaps：他的"那边有、日本还没有"清单里，哪几条是靠这个慢变量撑着的（这个势头变了，那一条的机会也跟着变；最多 3 条）：i 是编号，headline 照抄，how 一句话说怎么撑着（40 字以内）。没有就空数组。
+
+铁律：
+- 只说"如果继续，会推着什么"，不预测这个数字会不会继续，不写可能性的数字或百分比。
+- 数字只能用下面给的（代码会核对，十以上的数字对不上就作废重写）。
+- 不写"值得关注""机会巨大"之类的空话。用中文写（日本的公司、服务名可以照写）。
+
+只输出 JSON：{"chains":[{"steps":["…","…","…"],"meaning":"…","watch":"…","breaks":"…"}],"surfaces":[{"i":0,"title":"…","how":"…"}],"gaps":[{"i":0,"headline":"…","how":"…"}]}`;
+
+function slowThenMaterial(input: SlowThenInput): string {
+  return [
+    `慢变量：${input.label}`,
+    `为什么盯它：${input.why}`,
+    `现在的数字和走势：${input.summary}`,
+    "",
+    "这一周报告里的新闻：",
+    input.news.length > 0 ? input.news.map((t, i) => `[${i}] ${t}`).join("\n") : "（这一周还没有报告）",
+    "",
+    "他的「那边有、日本还没有」清单：",
+    input.gaps.length > 0 ? input.gaps.map((t, i) => `[${i}] ${t}`).join("\n") : "（清单还空着）",
+  ].join("\n");
+}
+
+/**
+ * 链：2–3 条、每条 3–4 步、四样都要写、不写可能性数字、十以上的数字要在材料里；
+ * 表面和清单：编号对得上、照抄的标题对得上才留（标题对不上的丢掉，不按编号硬配）。
+ */
+export function parseSlowThen(value: unknown, input: SlowThenInput): SlowThenDraft {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const str = (r: Record<string, unknown>, k: string) => (typeof r[k] === "string" ? (r[k] as string).trim() : "");
+  const chains = (Array.isArray(v.chains) ? v.chains : [])
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+    .map((c) => ({
+      steps: (Array.isArray(c.steps) ? c.steps : [])
+        .filter((s): s is string => typeof s === "string" && !!s.trim())
+        .map((s) => s.trim()),
+      meaning: str(c, "meaning"),
+      watch: str(c, "watch"),
+      breaks: str(c, "breaks"),
+    }))
+    .filter((c) => c.steps.length >= 3 && c.meaning && c.watch && c.breaks)
+    .slice(0, 3)
+    .map((c) => ({ ...c, steps: c.steps.slice(0, 4) }));
+  if (chains.length < 2) throw new Error("链不够两条，或者有一条缺了几样");
+  if (chains.some((c) => c.steps.some((s) => s.length > 60) || c.meaning.length > 120 || c.watch.length > 90 || c.breaks.length > 90)) {
+    throw new Error("有一句太长");
+  }
+  const picks = (raw: unknown, key: "title" | "headline", list: string[]) => {
+    const seen = new Set<number>();
+    return (Array.isArray(raw) ? raw : [])
+      .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+      .flatMap((r) => {
+        const i = typeof r.i === "number" ? r.i : Number(r.i);
+        const how = str(r, "how").slice(0, 80);
+        if (!Number.isInteger(i) || !list[i] || seen.has(i) || !how || !titleEchoMatches(str(r, key), list[i])) return [];
+        seen.add(i);
+        return [{ i, how }];
+      })
+      .slice(0, 3);
+  };
+  const surfaces = picks(v.surfaces, "title", input.news);
+  const gaps = picks(v.gaps, "headline", input.gaps);
+
+  const aiTexts = [...chains.flatMap((c) => [...c.steps, c.meaning, c.watch, c.breaks]), ...surfaces.map((s) => s.how), ...gaps.map((g) => g.how)];
+  assertNoBanned(aiTexts);
+  assertChineseAllowingNames(aiTexts);
+  if (aiTexts.some(mentionsNumericLikelihood)) throw new Error("写了可能性的数字");
+  const bad = unsupportedIssueNumber(aiTexts, slowThenMaterial(input));
+  if (bad) throw new Error(`数字「${bad}」在材料里找不到`);
+  return { chains, surfaces, gaps };
+}
+
+/** 知道这个慢变量之后呢：两三条"如果继续"的链、这一周它的表面、清单里靠它撑着的。 */
+export async function thinkSlowThen(input: SlowThenInput): Promise<SlowThenDraft> {
+  const contents = slowThenMaterial(input);
+  return executeAiJson(
+    { operation: "slow_then", module: "unknown", outputMode: "json", timeoutMs: 40_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验：两到三条链、每条三到四步、四样都写；不写可能性数字；十以上的数字只能用上面有的；标题照抄。"
+          : ""),
+      config: {
+        systemInstruction: SLOW_THEN_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 3000,
+      },
+    }),
+    (value) => parseSlowThen(value, input)
+  );
+}
