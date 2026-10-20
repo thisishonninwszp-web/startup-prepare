@@ -92,8 +92,9 @@ async function youtube(topic: string): Promise<Attention["youtube"]> {
 }
 
 /**
- * 楽天市场商品搜索（2026-05 起的新接口：openapi.rakuten.co.jp，applicationId + accessKey，必须带 Referer）。
- * Referer 要和楽天那边登记的网址一致：读 RAKUTEN_REFERER，没填用 APP_URL，再没有用线上地址。
+ * 楽天市场商品搜索（官方文档 webservice.rakuten.co.jp/documentation/ichiba-item-search，版本 2026-07-01）：
+ * openapi.rakuten.co.jp，applicationId + accessKey（旧的 app.rakuten.co.jp 2026-05 停了，旧应用 ID 不能用）。
+ * 另外带上 Referer（有开发者实测不带会被拒），要和楽天那边登记的网址一致：读 RAKUTEN_REFERER，没填用 APP_URL，再没有用线上地址。
  */
 async function rakuten(topic: string): Promise<Attention["rakuten"]> {
   const id = process.env.RAKUTEN_APPLICATION_ID;
@@ -109,7 +110,7 @@ async function rakuten(topic: string): Promise<Attention["rakuten"]> {
     hits: "30",
     sort: "-reviewCount",
   });
-  const json = await get(`https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${params}`, "json", { Referer: referer });
+  const json = await get(`https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701?${params}`, "json", { Referer: referer });
   return parseRakuten(json);
 }
 

@@ -3,6 +3,10 @@ import { MonthLine } from "@/components/ui/month-line";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
+/** 楽天要求原样使用的署名（webservice.rakuten.co.jp/guide/credit 的文字版，改了 HTML 可能被停用接口）。 */
+const RAKUTEN_CREDIT =
+  '<!-- Rakuten Web Services Attribution Snippet FROM HERE --><a href="https://developers.rakuten.com/" target="_blank">Supported by Rakuten Developers</a><!-- Rakuten Web Services Attribution Snippet TO HERE -->';
+
 /** 最近 12 个月、再往前 12 个月各加起来多少（只数，不算涨了百分之几）。 */
 function yearSums(values: number[]): { last: number; prev: number | null } {
   const last = values.slice(-12).reduce((a, b) => a + b, 0);
@@ -185,11 +189,8 @@ export function AttentionView({ attention }: { attention: Attention }) {
           ) : null
         )}
       {a.rakuten && a.rakuten !== "no-key" && (
-        <p className="mt-2 text-muted-foreground">
-          <a href="https://developers.rakuten.com/" target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline">
-            Supported by Rakuten Developers
-          </a>
-        </p>
+        // 署名必须照楽天给的 HTML 原样放，不能加 class / rel，所以用固定字符串插进去（内容是写死的常量，不是外来数据）
+        <p className="mt-2 text-muted-foreground" dangerouslySetInnerHTML={{ __html: RAKUTEN_CREDIT }} />
       )}
       <p className="mt-2 text-muted-foreground">
         程序自动查的，不花钱，只数次数。说明有多少人在查、在找、在看这件事，不说明愿不愿付钱；两个数比着看（这件事 vs 另一件、今年 vs 去年）比一个绝对数有用。
