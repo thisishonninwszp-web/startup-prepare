@@ -15,8 +15,10 @@ import {
   type SlowPoint,
   type SlowSeries,
 } from "@/lib/domains/signals/slow";
-import { loadSlowThens } from "@/lib/domains/signals/slow-then";
+import { loadSlowThens, loadSlowWind } from "@/lib/domains/signals/slow-then";
 import { SlowThenView } from "./slow-then-view";
+import { WindButton } from "./wind-button";
+import { WindList } from "./wind-line";
 
 export const dynamic = "force-dynamic";
 // 世界银行的接口一次要十秒上下；取到的数据缓存一天
@@ -75,11 +77,12 @@ export default async function SlowVariablesPage() {
   if (!user) notFound();
 
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
-  const [all, week, fast, thens] = await Promise.all([
+  const [all, week, fast, thens, wind] = await Promise.all([
     Promise.all(SLOW_VARIABLES.map((v) => fetchSlowSeries(v))),
     supabaseAdmin.from("signal_briefs").select("items").eq("user_id", user.id).gte("brief_date", weekAgo),
     fetchFastMoves(),
     loadSlowThens(user.id),
+    loadSlowWind(user.id),
   ]);
   const coverage = pestleCoverage((week.data ?? []).flatMap((r) => (r.items as BriefItem[] | null) ?? []));
   const tagged = coverage.reduce((n, c) => n + c.count, 0);
@@ -96,6 +99,17 @@ export default async function SlowVariablesPage() {
         title="慢变量"
         description="每天几乎不动、从不上头条，但决定未来十年的几个数字。每天新闻里的倒产潮、外国司机、自助收银机，常常是同一个慢变量的不同表面。一周看一次就够。"
       />
+
+      <section className="mb-8 rounded-lg border border-border bg-card p-4 text-sm leading-7">
+        <h2 className="text-base font-semibold">这些数字有什么用</h2>
+        <p className="mt-1 text-muted-foreground">
+          慢变量自己不会让你做任何事，它是你做三类决定时的底：挑方向时看顺风还是逆风；看时机时问「为什么是现在、五年前为什么不行」；
+          押「两年内会不会出现」时多一个理由或反理由。点下面这个，看看你差距清单和想法库里的东西，各顺着、逆着哪几个数字。
+        </p>
+        <div className="mt-3">
+          <WindButton lastAt={wind?.created_at ?? null} />
+        </div>
+      </section>
 
       <ul className="space-y-6">
         {all.map((s) => {
@@ -122,6 +136,7 @@ export default async function SlowVariablesPage() {
                 <p className="mt-1 text-sm text-muted-foreground">这次没取到数据，晚点再来看。</p>
               )}
               <p className="mt-2 text-sm leading-7">{s.variable.why}</p>
+              {wind && <WindList links={wind.links.filter((l) => l.key === s.variable.key)} />}
               {last && <SlowThenView variableKey={s.variable.key} initial={thens[s.variable.key] ?? null} />}
               <a
                 href={s.sourceUrl}

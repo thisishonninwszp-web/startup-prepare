@@ -26,6 +26,8 @@ import {
   type IdeaEvidenceSnapshot,
 } from "@/lib/domains/concepts/queries";
 import { PageContainer } from "@/components/ui/page-container";
+import { loadSlowWind, windFor } from "@/lib/domains/signals/slow-then";
+import { WindLine } from "@/app/(app)/signals/slow/wind-line";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +111,9 @@ export default async function IdeaDetailPage({
       getConceptSchemaStatus(),
     ]);
 
+  // 慢变量：这个想法顺着、逆着哪几个（在慢变量页看过才有）
+  const wind = await loadSlowWind(userId).catch(() => null);
+
   const evidenceSnapshot: IdeaEvidenceSnapshot | null = conceptAvailable
     ? await getIdeaEvidenceSnapshot(params.id, userId)
     : null;
@@ -131,6 +136,7 @@ export default async function IdeaDetailPage({
         >
           在决策工作台打开
         </Link>
+        <WindLine links={windFor(wind, "idea", idea.id)} />
         <IdeaDetail
           idea={ideaCore}
           hypothesis={(idea.hypothesis ?? {}) as Hypothesis}

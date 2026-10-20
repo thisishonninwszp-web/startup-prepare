@@ -5008,3 +5008,96 @@ export async function thinkSlowThen(input: SlowThenInput): Promise<SlowThenDraft
     (value) => parseSlowThen(value, input)
   );
 }
+
+// ── 慢变量：你手上的东西是顺风还是逆风 ──────────────────────────────────────
+
+export type WindInput = {
+  /** 慢变量：key、名字、代码算好的那句数字。 */
+  variables: { key: string; label: string; summary: string }[];
+  /** 他手上的东西：差距清单的条目、想法库的想法。text 是给 AI 看的补充（不用照抄）。 */
+  items: { title: string; text: string }[];
+};
+
+export type WindDraftLink = { key: string; item: number; dir: "tail" | "head"; why: string };
+
+const WIND_PROMPT = `下面是几个慢变量（每天几乎不动、但决定未来十年的数字，数字和走势由代码算好）和他手上的东西（差距清单里的条目、想法库里的想法）。
+他想知道：这些数字对他手上的东西有什么用 —— 哪些东西是顺着某个慢变量走的（这个数字照现在的方向继续走，它就越来越有戏），哪些是逆着的（越来越难）。
+
+写 links，每条：
+- v：慢变量的 key
+- item：东西的编号；title 照抄它的标题
+- dir：tail（顺风）/ head（逆风）
+- why：一句话，说这个数字怎么推着它或压着它（50 字以内），要具体到这样东西靠的是什么（客人、人手、成本、价格……）
+
+规矩：
+- 只写直接、说得清的关系；沾一点边的不写。宁缺毋滥，一个慢变量顺风、逆风各最多 4 条。
+- 同一样东西可以同时顺着一个、逆着另一个。
+- 只说"照现在的方向继续"会怎样，不预测数字会不会继续，不写可能性的数字。
+- 数字只能用下面给的（代码会核对，十以上的数字对不上就作废重写）。不写"值得关注""机会巨大"。用中文写。
+
+只输出 JSON：{"links":[{"v":"working_age","item":0,"title":"…","dir":"tail","why":"…"}]}`;
+
+function windMaterial(input: WindInput): string {
+  return [
+    "慢变量：",
+    ...input.variables.map((v) => `- ${v.key}｜${v.label}：${v.summary}`),
+    "",
+    "他手上的东西：",
+    ...input.items.map((it, i) => `[${i}] ${it.title}${it.text ? `（${it.text}）` : ""}`),
+  ].join("\n");
+}
+
+/** 认得的慢变量、编号和照抄的标题对得上、方向认得、写了为什么；同一对只留一条；每个慢变量每个方向最多 4 条。 */
+export function parseSlowWind(value: unknown, input: WindInput): WindDraftLink[] {
+  const raw = (value as { links?: unknown } | null)?.links;
+  if (!Array.isArray(raw)) throw new Error("缺少 links");
+  const keys = new Set(input.variables.map((v) => v.key));
+  const seen = new Set<string>();
+  const perBucket = new Map<string, number>();
+  const out: WindDraftLink[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const v = r as Record<string, unknown>;
+    const key = typeof v.v === "string" ? v.v : "";
+    const item = typeof v.item === "number" ? v.item : Number(v.item);
+    const dir = v.dir === "tail" || v.dir === "head" ? v.dir : null;
+    const why = typeof v.why === "string" ? v.why.trim() : "";
+    const echo = typeof v.title === "string" ? v.title : "";
+    if (!keys.has(key) || !Number.isInteger(item) || !input.items[item] || !dir || !why || why.length > 80) continue;
+    if (!titleEchoMatches(echo, input.items[item].title)) continue;
+    const pair = `${key}:${item}`;
+    const bucket = `${key}:${dir}`;
+    if (seen.has(pair) || (perBucket.get(bucket) ?? 0) >= 4) continue;
+    seen.add(pair);
+    perBucket.set(bucket, (perBucket.get(bucket) ?? 0) + 1);
+    out.push({ key, item, dir, why });
+  }
+  const whys = out.map((l) => l.why);
+  assertNoBanned(whys);
+  assertChineseAllowingNames(whys);
+  if (whys.some(mentionsNumericLikelihood)) throw new Error("写了可能性的数字");
+  const bad = unsupportedIssueNumber(whys, windMaterial(input));
+  if (bad) throw new Error(`数字「${bad}」在材料里找不到`);
+  return out;
+}
+
+/** 他手上的东西，各顺着、逆着哪几个慢变量（一次看完所有慢变量）。 */
+export async function windSlowVariables(input: WindInput): Promise<WindDraftLink[]> {
+  if (input.items.length === 0) return [];
+  return executeAiJson(
+    { operation: "slow_wind", module: "unknown", outputMode: "json", timeoutMs: 50_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        windMaterial(input) +
+        (attempt === 1 ? "\n\n上一次输出没通过校验：标题照抄、v 用给的 key、dir 只能 tail / head；不写可能性数字；十以上的数字只能用上面有的。" : ""),
+      config: {
+        systemInstruction: WIND_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 1024 },
+        maxOutputTokens: 4000,
+      },
+    }),
+    (value) => parseSlowWind(value, input)
+  );
+}

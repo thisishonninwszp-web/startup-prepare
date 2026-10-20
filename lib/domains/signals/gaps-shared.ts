@@ -111,11 +111,16 @@ export function gapObservationText(gap: JapanGap, note: string, side: GapSide = 
  * 查过"能不能搬过来"、有一条这边不成立（查到出处）的，填成最关键假设），
  * 目标用户、痛点、愿付多少留给他自己写 —— 那几格才是要去验证的。状态是"观察"，不跳级。
  */
+/** 差距变成的想法叫什么（本周行动、慢变量要按它认出"这条已经变成想法了"）。 */
+export function gapIdeaTitle(headline: string, side: GapSide = "japan"): string {
+  return `${gapPlaces(side).here}版：${headline}`.slice(0, 60);
+}
+
 export function gapIdeaDraft(gap: JapanGap, side: GapSide = "japan", transfer?: GapTransfer | null) {
   const { there, here } = gapPlaces(side);
   const blocker = transfer?.conditions.find((c) => c.holds === "no" && c.basis.length > 0);
   return {
-    title: `${here}版：${gap.headline}`.slice(0, 60),
+    title: gapIdeaTitle(gap.headline, side),
     hypothesis: {
       alternative: `${here}这边：${gap.japan}`,
       solution: `把${there}已经跑通的做法带到${here}：${gap.headline}`,

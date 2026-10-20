@@ -1,11 +1,12 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { thinkSlowThen } from "@/lib/ai";
+import { thinkSlowThen, windSlowVariables } from "@/lib/ai";
 import type { BriefItem } from "./brief";
 import { tokyoToday } from "./brief";
 import { listGapBoard } from "./gaps";
 import { weekStartOf } from "./issue-shared";
 import { fetchSlowSeries, SLOW_VARIABLES, slowSummary } from "./slow";
-import type { SlowThen } from "./slow-then-shared";
+import { WIND_KEY, type SlowThen, type SlowWind, type WindLink } from "./slow-then-shared";
+import type { GapSide } from "./gaps-shared";
 
 export * from "./slow-then-shared";
 
@@ -32,7 +33,7 @@ export async function loadSlowThens(userId: string, weekStart = weekStartOf(toky
     if (missing(error)) return {};
     throw new Error(error.message);
   }
-  return Object.fromEntries((data ?? []).map((r) => [r.key as string, r.analysis as SlowThen]));
+  return Object.fromEntries((data ?? []).filter((r) => r.key !== WIND_KEY).map((r) => [r.key as string, r.analysis as SlowThen]));
 }
 
 /** 这一周报告里的新闻（新的在前，同一条只留一次；"也值得一看"那一行不算）。 */
@@ -92,3 +93,81 @@ export async function thinkSlowVariable(userId: string, key: string): Promise<Sl
   }
   return analysis;
 }
+
+// ── 你手上的东西：顺风还是逆风 ─────────────────────────────────────────────
+
+/** 给 AI 看的东西最多几样（清单 + 想法）。 */
+const MAX_WIND_GAPS = 30;
+const MAX_WIND_IDEAS = 20;
+
+/** 最近一次看的结果（不限这一周：页面上写明是哪天看的）。表还没建、没看过返回 null。 */
+export async function loadSlowWind(userId: string): Promise<SlowWind | null> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_slow_thens")
+    .select("analysis")
+    .eq("user_id", userId)
+    .eq("key", WIND_KEY)
+    .order("week_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (missing(error)) return null;
+    throw new Error(error.message);
+  }
+  return (data?.analysis as SlowWind | undefined) ?? null;
+}
+
+/**
+ * 一次看完所有慢变量：差距清单（三个方向，还开着的）和想法库（没归档的）里，哪些顺着、哪些逆着哪个数字走。
+ * 编号加照抄的标题由代码核对，对不上的丢掉。存成这一周 key = "_wind" 的那一行。
+ */
+export async function computeSlowWind(userId: string): Promise<SlowWind> {
+  const today = tokyoToday();
+  const [series, board, ideas] = await Promise.all([
+    Promise.all(SLOW_VARIABLES.map((v) => fetchSlowSeries(v))),
+    listGapBoard(userId, today),
+    supabaseAdmin
+      .from("ideas")
+      .select("id, title, hypothesis, status")
+      .eq("user_id", userId)
+      .neq("status", "归档")
+      .order("last_activity_at", { ascending: false })
+      .limit(MAX_WIND_IDEAS),
+  ]);
+  if (ideas.error) throw new Error(ideas.error.message);
+  const variables = series.flatMap((s) => {
+    const summary = slowSummary(s);
+    return summary ? [{ key: s.variable.key, label: s.variable.label, summary }] : [];
+  });
+  if (variables.length === 0) throw new Error("这次一个慢变量的数字都没取到，晚点再来");
+
+  type Item = { kind: WindLink["kind"]; ref: string; side?: GapSide; title: string; text: string };
+  const gapItems: Item[] = (["japan", "us", "china"] as GapSide[])
+    .flatMap((side) => board.sides[side].open.map((g) => ({ kind: "gap" as const, ref: g.signal_id, side, title: g.headline, text: g.japan })))
+    .slice(0, MAX_WIND_GAPS);
+  const ideaItems: Item[] = (ideas.data ?? [])
+    .filter((i) => typeof i.title === "string" && i.title.trim())
+    .map((i) => {
+      const h = (i.hypothesis ?? {}) as { solution?: string };
+      return { kind: "idea" as const, ref: i.id as string, title: (i.title as string).trim(), text: `想法库里的想法${h.solution ? `：${h.solution.slice(0, 80)}` : ""}` };
+    });
+  const items = [...gapItems, ...ideaItems];
+
+  const draft = await windSlowVariables({ variables, items: items.map((it) => ({ title: it.title, text: it.text })) });
+  const wind: SlowWind = {
+    links: draft.map((l) => {
+      const it = items[l.item];
+      return { key: l.key, dir: l.dir, kind: it.kind, ref: it.ref, ...(it.side ? { side: it.side } : {}), title: it.title, why: l.why };
+    }),
+    created_at: new Date().toISOString(),
+  };
+  const { error } = await supabaseAdmin
+    .from("signal_slow_thens")
+    .upsert({ user_id: userId, week_start: weekStartOf(today), key: WIND_KEY, analysis: wind }, { onConflict: "user_id,week_start,key" });
+  if (error) {
+    if (missing(error)) throw new Error(MISSING_MIGRATION);
+    throw new Error(error.message);
+  }
+  return wind;
+}
+

@@ -27,7 +27,7 @@ import {
 } from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
 import { analyzeGapVoices, type GapVoices } from "@/lib/domains/signals/voices";
-import { thinkSlowVariable, type SlowThen } from "@/lib/domains/signals/slow-then";
+import { computeSlowWind, thinkSlowVariable, type SlowThen } from "@/lib/domains/signals/slow-then";
 import { runThereCheck, saveDeepCategory, saveDeepStance, type GapThere } from "@/lib/domains/signals/deep";
 import { drawGapImage, gapImagePrompt, type GapImage } from "@/lib/domains/signals/images";
 import {
@@ -824,6 +824,19 @@ export async function deleteDoorSignupAction(signupId: string): Promise<{ ok: tr
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没删掉") };
+  }
+}
+
+/** 慢变量：你手上的东西（差距清单、想法库）各顺着、逆着哪几个慢变量（三四十秒）。 */
+export async function computeSlowWindAction(): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await computeSlowWind(userId);
+    revalidatePath("/signals/slow");
+    revalidatePath("/signals/gaps");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没看成") };
   }
 }
 

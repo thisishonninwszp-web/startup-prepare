@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseSlowThen, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseSlowThen, parseSlowWind, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1438,5 +1438,46 @@ describe("慢变量：知道这个之后呢", () => {
     expect(() => parseSlowThen({ chains: [chain(), chain({ breaks: "" })] }, input)).toThrow();
     expect(() => parseSlowThen({ chains: [chain(), chain({ meaning: "有 70% 的可能人工成本上涨。" })] }, input)).toThrow();
     expect(() => parseSlowThen({ chains: [chain(), chain({ meaning: "到 2040 年会缺 1100 万人。" })] }, input)).toThrow();
+  });
+});
+
+describe("慢变量：你手上的东西顺风还是逆风", () => {
+  const input = {
+    variables: [
+      { key: "working_age", label: "劳动年龄人口占比", summary: "现在 58.9 %（2025 年）；比十年前（2015）-1.9 个百分点" },
+      { key: "usdjpy", label: "1 美元兑日元", summary: "现在 152.3 日元（2026-10）；比五年前（2021-11）+38.7 日元" },
+    ],
+    items: [
+      { title: "无人配送车在中国城市铺开", text: "日本只在少数地方试点" },
+      { title: "日本版：直播带货", text: "想法库里的想法" },
+    ],
+  };
+
+  it("v、编号、照抄的标题、方向都对才收；同一对只留一条", () => {
+    const out = parseSlowWind(
+      {
+        links: [
+          { v: "working_age", item: 0, title: "无人配送车在中国城市铺开", dir: "tail", why: "送货的人越来越难招，不用人送的越来越划算" },
+          { v: "working_age", item: 0, title: "无人配送车在中国城市铺开", dir: "head", why: "重复的一对" },
+          { v: "usdjpy", item: 1, title: "日本版：直播带货", dir: "head", why: "日元弱，从海外进货卖的成本变高" },
+          { v: "population", item: 0, title: "无人配送车在中国城市铺开", dir: "tail", why: "不认识的慢变量" },
+          { v: "usdjpy", item: 1, title: "别的标题", dir: "tail", why: "标题对不上" },
+          { v: "usdjpy", item: 7, title: "越界", dir: "tail", why: "越界" },
+          { v: "usdjpy", item: 0, title: "无人配送车在中国城市铺开", dir: "sideways", why: "方向不认识" },
+        ],
+      },
+      input
+    );
+    expect(out.map((l) => [l.key, l.item, l.dir])).toEqual([
+      ["working_age", 0, "tail"],
+      ["usdjpy", 1, "head"],
+    ]);
+  });
+
+  it("编了材料里没有的数字、写了可能性：作废", () => {
+    const link = (why: string) => ({ links: [{ v: "working_age", item: 0, title: "无人配送车在中国城市铺开", dir: "tail", why }] });
+    expect(() => parseSlowWind(link("到 2040 年会缺 1100 万人"), input)).toThrow();
+    expect(() => parseSlowWind(link("有 80% 的可能更划算"), input)).toThrow();
+    expect(() => parseSlowWind({}, input)).toThrow();
   });
 });
