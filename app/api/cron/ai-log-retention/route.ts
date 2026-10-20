@@ -3,10 +3,10 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { runDailyQuestionResearch } from "@/lib/domains/signals/questions";
 import { EARLY_KINDS, fetchAllSignals, generateBriefsForRecentUsers } from "@/lib/domains/signals/brief";
 
-// Vercel 免费版最多两个定时任务，这一个顺便承担外部信号的两件事（日本时间早上 6:30）：
+// Vercel 免费版最多两个定时任务，这一个顺便承担外部信号的两件事（日本时间早上 5:30；免费版只保证在那个小时里跑）：
 // ① 先把新闻、GitHub、中国 App 榜抓好，接着生成"谁在掏钱"一节
-//    （7 点那个任务生成另外四节再发邮件；五节一起会逼近 60 秒上限）；
-// ② 给在追的问题查一轮，7 点的报告就能用上新查到的证据。两件同时跑，各三四十秒。
+//    （6 点那个任务生成另外四节再发邮件；五节一起会逼近 60 秒上限）；
+// ② 给在追的问题查一轮，6 点的报告就能用上新查到的证据。两件同时跑，各三四十秒。
 export const maxDuration = 60;
 
 export async function GET(request: Request) {

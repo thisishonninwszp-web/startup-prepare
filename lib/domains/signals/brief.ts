@@ -207,7 +207,7 @@ export async function compareAndCheckJapan(
   return result;
 }
 
-/** 日本时间的今天（YYYY-MM-DD）。cron 在 UTC 22 点跑，正好是日本早上 7 点。 */
+/** 日本时间的今天（YYYY-MM-DD）。cron 在 UTC 21 点跑（日本早上 6 点；免费版只保证在那个小时里，邮件 7 点前到）。 */
 export function tokyoToday(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(now);
 }
@@ -502,7 +502,7 @@ export type DailySignalsOutcome = {
  * cron 每天跑一次：抓新闻、抓 GitHub，然后给最近一个月用过报告的人各生成四份。
  * 第一次要在页面上手动生成一次，之后每天早上自动出。
  */
-/** 抓新闻和 GitHub。6:30 的定时任务先抓好，7 点生成报告时就不用再抓（cron 只有 60 秒）。 */
+/** 抓新闻和 GitHub。5:30 的定时任务先抓好，6 点生成报告时就不用再抓（cron 只有 60 秒）。 */
 export async function fetchAllSignals(): Promise<{ news: number; tools: number; failed: string[] }> {
   const failed: string[] = [];
   const [news, tools, apps] = await Promise.allSettled([fetchDailyNews(), fetchGithubTools(), fetchCnAppChart()]);
@@ -530,10 +530,10 @@ async function fetchedRecently(): Promise<boolean> {
 
 /**
  * 五节分两个定时任务生成（Vercel 免费版每个任务 60 秒，五节一起要四五十秒，太险）：
- * 6:30 那个任务抓完新闻接着生成"谁在掏钱"，7 点这个生成另外四节再发邮件（实测各三四十秒，留出余量）。
+ * 5:30 那个任务抓完新闻接着生成"谁在掏钱"，6 点这个生成另外四节再发邮件（实测各三四十秒，留出余量）。
  */
 export const EARLY_KINDS = ["money"] as const;
-/** 7 点的任务跑到这个时间以内，才顺手写今日总览（60 秒上限，留出发邮件的余量）。 */
+/** 6 点的任务跑到这个时间以内，才顺手写今日总览（60 秒上限，留出发邮件的余量）。 */
 const DIGEST_TIME_BUDGET_MS = 45_000;
 const MORNING_KINDS = ["news", "calendar", "voices", "tools"] as const;
 
@@ -567,7 +567,7 @@ export async function generateBriefsForRecentUsers(
 export async function runDailySignals(): Promise<DailySignalsOutcome> {
   const startedAt = Date.now();
   const failed: string[] = [];
-  // 6:30 那个定时任务已经抓过的话直接生成；没抓过（它失败了、或者手动触发）才在这里抓
+  // 5:30 那个定时任务已经抓过的话直接生成；没抓过（它失败了、或者手动触发）才在这里抓
   const fetched = (await fetchedRecently()) ? { news: 0, tools: 0, failed: [] as string[] } : await fetchAllSignals();
   failed.push(...fetched.failed);
 

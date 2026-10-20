@@ -89,7 +89,7 @@ export function SignalList({ items }: { items: NewsItem[] }) {
     return (
       <EmptyState
         title="这里空着。"
-        description="还没抓，或者你已经全看完了。点右上角「现在抓一次」，或者等明早 7 点。"
+        description="还没抓，或者你已经全看完了。点右上角「现在抓一次」，或者等明早 7 点前。"
       />
     );
   }

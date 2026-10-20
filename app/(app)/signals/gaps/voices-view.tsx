@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import type { GapSide } from "@/lib/domains/signals/gaps-shared";
 import { VOICE_KINDS, voiceCounts, type GapVoices, type VoiceKind } from "@/lib/domains/signals/voices-shared";
+import { askLinks } from "@/lib/domains/ideas/info-gaps-shared";
 import { analyzeGapVoicesAction } from "../actions";
 
 /**
@@ -75,6 +76,29 @@ export function VoicesView({ signalId, side, here, initial }: { signalId: string
           ))}
           <span className="text-muted-foreground"> —— 不用问任何人就能看到的「已经有多少人在用」的痕迹。</span>
         </p>
+      )}
+      {voices.queries && voices.queries.length > 0 && (
+        <details className="mt-3 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">自己去数一数：有多少人在问（不花钱）</summary>
+          <ul className="mt-2 space-y-2">
+            {voices.queries.map((q) => (
+              <li key={q}>
+                <span className="font-medium">「{q}」</span>
+                <span className="ml-1 flex flex-wrap gap-x-3">
+                  {askLinks(q, here === "中国" ? "中国" : "日本").map((l) => (
+                    <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                      {l.label} ↗
+                    </a>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 leading-6 text-muted-foreground">
+            是他们自己在问，不受你怎么问的影响 —— 多少人在问、这两年多了还是少了，本身就是数据。看几个数比一个绝对值有用（这个麻烦 vs 另一个麻烦、今年 vs 去年）。
+            它说明有多少人在发愁、在找办法，不说明愿不愿付钱。程序不替你去抓（知恵袋不许抓搜索页），点开自己看一眼。
+          </p>
+        </details>
       )}
       <p className="mt-3 text-xs leading-6 text-muted-foreground">
         翻了 {voices.searched.pages} 篇网页、{voices.searched.reviews} 条 App 差评。

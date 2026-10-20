@@ -10,13 +10,37 @@
 export const ROUTE_KINDS = {
   contact: "找真人",
   trace: "已经有人在花钱的痕迹",
+  asks: "有多少人在问",
   voices: "网上的原话",
   outside: "外部视角",
 } as const;
 export type RouteKind = keyof typeof ROUTE_KINDS;
 
 /** 可信度从高到低（页面上按这个顺序排）。 */
-export const ROUTE_ORDER: RouteKind[] = ["contact", "trace", "voices", "outside"];
+export const ROUTE_ORDER: RouteKind[] = ["contact", "trace", "asks", "voices", "outside"];
+
+/**
+ * 自己去数一数"有多少人在问"（不花钱）：把搜索词拼成几个网站的搜索链接，他点开自己看数字。
+ * 不让程序去抓 —— 知恵袋的 robots.txt 不许抓搜索页，Google 的搜索联想也不许批量去取；人自己看没问题。
+ * 没人主动问起、是他们自己在问，所以不受"你怎么问"的影响；但只说明有多少人在为这件事发愁、在找办法，不说明愿不愿付钱。
+ */
+export function askLinks(phrase: string, here: "日本" | "中国" = "日本"): { label: string; url: string }[] {
+  const q = encodeURIComponent(phrase.trim());
+  if (!q) return [];
+  if (here === "中国") {
+    return [
+      { label: "知乎", url: `https://www.zhihu.com/search?type=content&q=${q}` },
+      { label: "小红书", url: `https://www.xiaohongshu.com/search_result?keyword=${q}` },
+      { label: "百度", url: `https://www.baidu.com/s?wd=${q}` },
+    ];
+  }
+  return [
+    { label: "知恵袋（问题有几件）", url: `https://chiebukuro.yahoo.co.jp/search?p=${q}` },
+    { label: "Google 趋势（近 5 年，日本）", url: `https://trends.google.co.jp/trends/explore?geo=JP&date=today%205-y&q=${q}` },
+    { label: "Yahoo! 实时搜索（X 上这几天有多少人在说）", url: `https://search.yahoo.co.jp/realtime/search?p=${q}` },
+    { label: "ココナラ（有多少人在卖、卖了几单）", url: `https://coconala.com/search?keyword=${q}` },
+  ];
+}
 
 export const GAP_STATUS = { open: "还缺", got: "拿到了", none: "拿不到" } as const;
 export type GapStatus = keyof typeof GAP_STATUS;

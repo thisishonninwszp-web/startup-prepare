@@ -6,7 +6,7 @@ import { REPORT_SECTION_KINDS } from "./feeds";
 /**
  * 今日总览：看完五节以后，像一个懂行的人跟他讲几句今天世界上发生了什么，再挑最值得点开的三条。
  * 存在 signal_briefs 里 kind = digest 的那一行：overview 是总览正文，items 是挑出来的几条。
- * 7 点的定时任务有余量时顺手生成；没生成的话，第一次打开报告页时生成。
+ * 6 点的定时任务有余量时顺手生成；没生成的话，第一次打开报告页时生成。
  */
 
 export type DigestPick = { signal_id: string; headline: string; why: string };

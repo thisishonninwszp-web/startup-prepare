@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  askLinks,
   FOUNDER_FACTS_MAX,
   GAP_STATUS,
   ROUTE_KINDS,
@@ -60,6 +61,7 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState(gap.note ?? "");
   const [own, setOwn] = useState("");
+  const [phrase, setPhrase] = useState("");
   const [ownUrl, setOwnUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const overdue = gap.status === "open" && gap.due_on <= today;
@@ -173,6 +175,20 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
             >
               补进去
             </Button>
+          </div>
+          <div className="space-y-1 border-t pt-2">
+            <p className="text-muted-foreground">数一数有多少人在问（不花钱）：写一句普通人会搜的话</p>
+            <Input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="例：家事代行 中国語" maxLength={60} />
+            {phrase.trim() && (
+              <p className="flex flex-wrap gap-x-3">
+                {askLinks(phrase).map((l) => (
+                  <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                    {l.label} ↗
+                  </a>
+                ))}
+              </p>
+            )}
+            <p className="text-muted-foreground">看到的数用上面「自己补一条」记下来（例：知恵袋上「家事代行 中国語」有 120 件问题，近两年的占一半）。</p>
           </div>
           <p className="text-muted-foreground">外部信号里看到有用的，也可以在那条新闻的详情页「补进想法的缺口」。</p>
         </div>
