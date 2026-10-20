@@ -45,7 +45,13 @@ export function AttentionView({ attention }: { attention: Attention }) {
         </li>
         <li>
           <span className="text-muted-foreground">Google 搜索联想（人们在后面最常接着搜什么）：</span>
-          {a.suggest.length > 0 ? a.suggest.map((s) => `「${s}」`).join("") : <span className="text-muted-foreground">这次没取到</span>}
+          {a.suggest === null ? (
+            <span className="text-muted-foreground">这次没取到</span>
+          ) : a.suggest.length > 0 ? (
+            a.suggest.map((s) => `「${s}」`).join("")
+          ) : (
+            <span className="text-muted-foreground">这个词后面没有常见的联想（搜的人少，或者叫法不对）</span>
+          )}
         </li>
         <li>
           <span className="text-muted-foreground">はてなブックマーク：</span>
@@ -144,6 +150,12 @@ export function AttentionView({ attention }: { attention: Attention }) {
             <span className="text-muted-foreground">没配 e-Stat 的 ESTAT_APP_ID（免费申请）</span>
           ) : a.kakei && a.kakei.items.length > 0 ? (
             <ul className="ml-4 mt-1 space-y-0.5">
+              {a.kakei.revision && (
+                <li className="text-muted-foreground">
+                  用的是 {a.kakei.revision} 年改定的品目分类
+                  {a.kakei.joined ? `；前面的月份用 ${a.kakei.joined} 年改定里同名的那一项补上（改定时定义可能有变）` : ""}
+                </li>
+              )}
               {a.kakei.items.map((k) => {
                 const sums = yearSums(k.months.map((m) => m.value));
                 return (

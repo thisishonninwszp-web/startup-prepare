@@ -83,10 +83,13 @@ describe("慢变量：手填的那几个", () => {
     expect(timeOf("2024-01-15")).toBe(2024);
   });
 
-  it("needsUpdate：手填的最近一年过了一年多还没填才提醒；接口取的不提醒", async () => {
+  it("needsUpdate：手填的最近一年过了一年多还没填才提醒；接口取的、故意停在某一年的不提醒", async () => {
+    const wage = await fetchSlowSeries(SLOW_VARIABLES.find((v) => v.key === "min_wage")!);
+    expect(needsUpdate(wage, new Date("2026-06-01"))).toBe(false);
+    expect(needsUpdate(wage, new Date("2027-10-20"))).toBe(true);
+    // 无现金比例 2025 年换了算法、故意只填到 2024：不提醒
     const cashless = await fetchSlowSeries(SLOW_VARIABLES.find((v) => v.key === "cashless")!);
-    expect(needsUpdate(cashless, new Date("2025-06-01"))).toBe(false);
-    expect(needsUpdate(cashless, new Date("2026-10-20"))).toBe(true);
+    expect(needsUpdate(cashless, new Date("2026-10-20"))).toBe(false);
     const usd = { variable: SLOW_VARIABLES.find((v) => v.key === "usdjpy")!, points: [{ date: "2020-01-31", value: 1 }], sourceLabel: "", sourceUrl: "" };
     expect(needsUpdate(usd, new Date("2026-10-20"))).toBe(false);
   });

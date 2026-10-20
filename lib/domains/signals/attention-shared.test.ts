@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPlaceSuggestion, kakeiFilters, kakeiItemNames, parseEstatMeta, parseHatenaRss, parsePageviews, parseRakuten, parseSuggest, parseYoutube, pickWikiTitle, wikiYears } from "./attention-shared";
+import { isPlaceSuggestion, kakeiFilters, kakeiItemNames, mergeMonths, parseEstatMeta, pickKakeiTables, parseHatenaRss, parsePageviews, parseRakuten, parseSuggest, parseYoutube, pickWikiTitle, wikiYears } from "./attention-shared";
 
 describe("有多少人在关注", () => {
   it("pickWikiTitle：先要包含整个词的；不退成更宽的词条；对不上不拿别的充数", () => {
@@ -85,6 +85,48 @@ describe("家计调查", () => {
     ]);
     expect(kakeiFilters(classes)).toEqual({ cdTab: "01", cdCat02: "03", cdArea: "00000" });
     expect(parseEstatMeta(null)).toEqual([]);
+  });
+});
+
+describe("家计调查：找改定年份最新的那张表", () => {
+  const table = (id: string, title: string, stat = "家計調査 家計収支編 二人以上の世帯", cycle = "月次") => ({
+    "@id": id,
+    TITLE: { "@no": "1", $: title },
+    STATISTICS_NAME: stat,
+    CYCLE: cycle,
+  });
+  it("pickKakeiTables：只要二人以上的世帯、月次、品目分類（総数：金額），按改定年份新的在前", () => {
+    const json = {
+      GET_STATS_LIST: {
+        DATALIST_INF: {
+          TABLE_INF: [
+            table("A", "[品目分類]品目分類（2020年改定）（総数：金額）"),
+            table("B", "[品目分類]品目分類（2025年改定）（総数：金額）"),
+            table("C", "[品目分類]品目分類（2025年改定）（総数：数量）"),
+            table("D", "[品目分類]品目分類（平成27年改定）（総数：金額）"),
+            table("E", "[品目分類]品目分類（2025年改定）（総数：金額）", "家計調査 家計収支編 総世帯"),
+            table("F", "[品目分類]品目分類（2025年改定）（総数：金額）", "家計調査 家計収支編 二人以上の世帯", "年次"),
+          ],
+        },
+      },
+    };
+    expect(pickKakeiTables(json)).toEqual([
+      { id: "B", revision: 2025 },
+      { id: "A", revision: 2020 },
+      { id: "D", revision: 2015 },
+    ]);
+    expect(pickKakeiTables(null)).toEqual([]);
+  });
+
+  it("mergeMonths：新表的月份接在旧表后面，同一个月用新表的", () => {
+    const older = [{ month: "2024-11", value: 1 }, { month: "2024-12", value: 2 }, { month: "2025-01", value: 99 }];
+    const newer = [{ month: "2025-01", value: 3 }, { month: "2025-02", value: 4 }];
+    expect(mergeMonths(older, newer).map((m) => [m.month, m.value])).toEqual([
+      ["2024-11", 1],
+      ["2024-12", 2],
+      ["2025-01", 3],
+      ["2025-02", 4],
+    ]);
   });
 });
 

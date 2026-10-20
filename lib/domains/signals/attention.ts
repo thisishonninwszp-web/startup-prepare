@@ -2,6 +2,9 @@ import { pickKakeiItems } from "@/lib/ai";
 import {
   KAKEI_STATS_ID,
   kakeiFilters,
+  mergeMonths,
+  pickKakeiTables,
+  type KakeiTable,
   kakeiItemNames,
   parseEstatMeta,
   parseHatenaRss,
@@ -65,12 +68,13 @@ async function wiki(topic: string, now: Date): Promise<Attention["wiki"]> {
   return months.length > 0 ? { title, url: `https://ja.wikipedia.org/wiki/${page}`, months } : null;
 }
 
-async function suggest(topic: string): Promise<string[]> {
+async function suggest(topic: string): Promise<string[] | null> {
   const json = await get(
     `https://suggestqueries.google.com/complete/search?client=firefox&hl=ja&gl=jp&q=${encodeURIComponent(`${topic} `)}`,
     "json"
   );
-  return parseSuggest(json, topic);
+  // 取不到（被拦、超时）是 null；取到了但没有联想是空数组 —— 页面上要分开说
+  return Array.isArray(json) ? parseSuggest(json, topic) : null;
 }
 
 async function hatena(topic: string): Promise<Attention["hatena"]> {
@@ -120,26 +124,57 @@ const WEEK = 7 * 86_400;
  * 家计调查（总务省，经 e-Stat）：先取这张表的品目清单（缓存一周），AI 从清单里挑一两项（照抄、代码核对），
  * 再取这几项最近两年每月每户花多少钱（二人以上的家庭、全国）。
  */
+const ESTAT = "https://api.e-stat.go.jp/rest/3.0/app/json";
+
+/** 家计调查的品目表，改定年份新的在前（找不到就退回已知的 2020 年改定那张）。缓存一周。 */
+async function kakeiTables(appId: string): Promise<KakeiTable[]> {
+  const params = new URLSearchParams({ appId, lang: "J", statsCode: "00200561", searchWord: "品目分類", limit: "200" });
+  const found = pickKakeiTables(await get(`${ESTAT}/getStatsList?${params}`, "json", {}, WEEK));
+  return found.length > 0 ? found : [{ id: KAKEI_STATS_ID, revision: 2020 }];
+}
+
+/** 一张表里某一项（按名字）每月花多少。名字在这张表的清单里对不上就是空的。 */
+async function kakeiSeries(appId: string, tableId: string, name: string): Promise<{ month: string; value: number }[]> {
+  const meta = parseEstatMeta(await get(`${ESTAT}/getMetaInfo?appId=${appId}&statsDataId=${tableId}`, "json", {}, WEEK));
+  const code = kakeiItemNames(meta).find((i) => i.name === name)?.code;
+  if (!code) return [];
+  const params = new URLSearchParams({ appId, statsDataId: tableId, cdCat01: code, metaGetFlg: "N", cntGetFlg: "N", ...kakeiFilters(meta) });
+  return parseEstat(await get(`${ESTAT}/getStatsData?${params}`, "json", {}, WEEK)).map((p) => ({ month: p.date, value: p.value }));
+}
+
+/**
+ * 家计调查（总务省，经 e-Stat）：找改定年份最新的品目表，取它的品目清单，AI 从清单里挑一两项（照抄、代码核对），
+ * 再取这几项每月每户花多少（二人以上的家庭、全国）。新表的月份不到两年，前面用上一次改定里同名的那一项补上。
+ */
 async function kakei(topic: string, pain: string): Promise<Attention["kakei"]> {
   const appId = process.env.ESTAT_APP_ID;
   if (!appId) return "no-key";
-  const base = "https://api.e-stat.go.jp/rest/3.0/app/json";
-  const meta = parseEstatMeta(await get(`${base}/getMetaInfo?appId=${appId}&statsDataId=${KAKEI_STATS_ID}`, "json", {}, WEEK));
+  const tables = await kakeiTables(appId);
+  const [latest, previous] = tables;
+  const meta = parseEstatMeta(await get(`${ESTAT}/getMetaInfo?appId=${appId}&statsDataId=${latest.id}`, "json", {}, WEEK));
   const items = kakeiItemNames(meta);
   if (items.length === 0) return null;
   const picked = await pickKakeiItems({ topic, pain, names: items.map((i) => i.name) }).catch(() => []);
-  if (picked.length === 0) return { items: [] };
-  const filters = kakeiFilters(meta);
+  if (picked.length === 0) return { items: [], revision: latest.revision };
+  let joined = false;
   const series = await Promise.all(
     picked.map(async (name) => {
-      const code = items.find((i) => i.name === name)?.code;
-      if (!code) return null;
-      const params = new URLSearchParams({ appId, statsDataId: KAKEI_STATS_ID, cdCat01: code, metaGetFlg: "N", cntGetFlg: "N", ...filters });
-      const points = parseEstat(await get(`${base}/getStatsData?${params}`, "json", {}, WEEK));
-      return points.length > 0 ? { name, months: points.slice(-24).map((p) => ({ month: p.date, value: p.value })) } : null;
+      let months = await kakeiSeries(appId, latest.id, name);
+      if (months.length < 24 && previous) {
+        const older = await kakeiSeries(appId, previous.id, name);
+        if (older.length > 0) {
+          months = mergeMonths(older, months);
+          joined = true;
+        }
+      }
+      return months.length > 0 ? { name, months: months.slice(-24) } : null;
     })
   );
-  return { items: series.filter((x): x is NonNullable<typeof x> => x !== null) };
+  return {
+    items: series.filter((x): x is NonNullable<typeof x> => x !== null),
+    revision: latest.revision,
+    ...(joined && previous ? { joined: previous.revision } : {}),
+  };
 }
 
 export async function fetchAttention(topic: string, pain = "", now = new Date()): Promise<Attention | null> {

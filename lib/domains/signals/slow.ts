@@ -34,6 +34,8 @@ export type SlowVariable = {
   fallback?: SlowSource;
   /** 看这个数要知道的一句（口径变了、哪几年空着）。 */
   note?: string;
+  /** 手填的这一组故意停在某一年（口径变了接不上），不提醒"该更新了"。 */
+  frozen?: boolean;
 };
 
 const y = (date: string, value: number): SlowPoint => ({ date, value });
@@ -110,6 +112,7 @@ export const SLOW_VARIABLES: SlowVariable[] = [
       points: [y("2018", 24.1), y("2019", 26.8), y("2020", 29.7), y("2021", 32.5), y("2022", 36.0), y("2023", 39.3), y("2024", 42.8)],
     },
     note: "2025 年起经产省改用「国内指标」（2025 年是 58.0%），算法不同，接不到这条线上，所以只填到 2024 年。",
+    frozen: true,
   },
   {
     key: "population",
@@ -372,7 +375,7 @@ export function timeOf(date: string): number {
 
 /** 手填的年度数：最近一年过了一年多还没填新的，就该更新了。 */
 export function needsUpdate(series: SlowSeries, now = new Date()): boolean {
-  if (series.variable.source.type !== "table") return false;
+  if (series.variable.source.type !== "table" || series.variable.frozen) return false;
   const last = series.points[series.points.length - 1];
   return !!last && timeOf(last.date) < now.getUTCFullYear() - 1;
 }

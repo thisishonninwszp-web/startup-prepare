@@ -17,8 +17,8 @@ export type AttentionYoutube = { total: number | null; videos: { title: string; 
 export type Attention = {
   topic: string;
   wiki: AttentionWiki | null;
-  /** Google 搜索联想：在 topic 后面加一个空格时给的那几个（去掉了 topic 本身）。 */
-  suggest: string[];
+  /** Google 搜索联想：在 topic 后面加一个空格时给的那几个（去掉了 topic 本身）；null = 这次没取到（和"没有联想"分开）。 */
+  suggest: string[] | null;
   hatena: AttentionHatena | null;
   /** "no-key"：没配 YOUTUBE_API_KEY。 */
   youtube: AttentionYoutube | "no-key" | null;
@@ -185,11 +185,51 @@ export function parseRakuten(json: unknown): AttentionRakuten | null {
 
 // ── 家计调查：日本家庭每月在这一类东西上花多少钱（总务省，最硬的"已经在花钱"） ───────
 
-/** 家計調査 家計収支編 二人以上の世帯 月次 [品目分類]（2020年改定）（総数：金額）。 */
+/**
+ * 家計調査 家計収支編 二人以上の世帯 月次 [品目分類]（2020年改定）（総数：金額）。
+ * 品目分类原则上五年改一次，改了就换一张新表（旧表不再更新）：先用 getStatsList 找改定年份最新的那张，找不到才用这张。
+ */
 export const KAKEI_STATS_ID = "0003343671";
+
+/** 家计调查的品目表：哪张、哪一年改定的。 */
+export type KakeiTable = { id: string; revision: number };
+
+/**
+ * e-Stat getStatsList 的返回里，挑出"家計収支編 二人以上の世帯、月次、[品目分類]…（総数：金額）"的几张，
+ * 按改定年份从新到旧排（「（2025年改定）」「（平成27年改定）」都认）。
+ */
+export function pickKakeiTables(json: unknown): KakeiTable[] {
+  const raw = (json as { GET_STATS_LIST?: { DATALIST_INF?: { TABLE_INF?: unknown } } } | null)?.GET_STATS_LIST?.DATALIST_INF?.TABLE_INF;
+  const list = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Record<string, unknown>[];
+  const text = (v: unknown): string =>
+    typeof v === "string" ? v : v && typeof v === "object" ? String((v as Record<string, unknown>)["$"] ?? "") : "";
+  const out: KakeiTable[] = [];
+  for (const t of list) {
+    const title = text(t.TITLE);
+    const stat = text(t.STATISTICS_NAME);
+    const cycle = text(t.CYCLE);
+    if (!stat.includes("二人以上の世帯") || !stat.includes("家計収支編") || (cycle && cycle !== "月次")) continue;
+    if (!title.includes("品目分類") || !title.includes("金額") || !title.includes("総数")) continue;
+    const y = title.match(/（(\d{4})年改定）/);
+    const h = title.match(/（平成(\d+)年改定）/);
+    const revision = y ? Number(y[1]) : h ? 1988 + Number(h[1]) : 0;
+    const id = String(t["@id"] ?? "");
+    if (id && revision) out.push({ id, revision });
+  }
+  return out.sort((a, b) => b.revision - a.revision);
+}
+
+/** 新表的月份接在旧表后面（同一个月两边都有就用新表的），从旧到新。 */
+export function mergeMonths(older: { month: string; value: number }[], newer: { month: string; value: number }[]) {
+  const have = new Set(newer.map((m) => m.month));
+  return [...older.filter((m) => !have.has(m.month)), ...newer].sort((a, b) => a.month.localeCompare(b.month));
+}
 
 export type AttentionKakei = {
   items: { name: string; months: { month: string; value: number }[] }[];
+  /** 用的是哪一年改定的分类；前面的月份用上一次改定里同名那一项补的话，写在 joined 里。 */
+  revision?: number;
+  joined?: number;
 };
 
 export type EstatClass = { id: string; codes: { code: string; name: string; level: string }[] };
