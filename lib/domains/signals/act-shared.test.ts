@@ -3,7 +3,7 @@ import { actFunnel, movedGaps, nextSteps, type ActGap, type ActState } from "./a
 
 const gap = (over: Partial<ActGap> = {}): ActGap => ({ side: "japan", signal_id: "s1", headline: "无人配送", quotes: null, door: null, idea: null, ...over });
 const door = (over: Partial<NonNullable<ActGap["door"]>> = {}) => ({ open: true, views: 0, signups: 0, contacted: 0, created_at: "2026-10-01", title: "近所の配送", ...over });
-const state = (over: Partial<ActState> = {}): ActState => ({ today: "2026-10-20", gaps: [gap()], uncontacted: [], dueJudgments: 0, issue: "published", ...over });
+const state = (over: Partial<ActState> = {}): ActState => ({ today: "2026-10-20", gaps: [gap()], uncontacted: [], dueJudgments: 0, issue: "published", infoGaps: [], ...over });
 
 describe("本周行动：这周最该做的一件事", () => {
   it("有人留了邮箱没联系，排第一（离真实接触最近）", () => {
@@ -53,5 +53,20 @@ describe("本周行动：漏斗和动过的几条", () => {
   });
   it("movedGaps：一格都没动过的不列，走得远的在前", () => {
     expect(movedGaps(gaps).map((g) => g.signal_id)).toEqual(["c", "b"]);
+  });
+});
+
+describe("本周行动：想法还缺的信息", () => {
+  const ig = (due_on: string) => ({ id: "g1", idea_id: "i1", idea_title: "在日华人家政", question: "有没有人在花钱请人代办", due_on });
+  it("三天内截止或已经过了的，排在对账前面", () => {
+    const steps = nextSteps(state({ dueJudgments: 1, infoGaps: [ig("2026-10-22")] }));
+    expect(steps.map((s) => s.key).slice(0, 2)).toEqual(["info-gap", "judgments"]);
+    expect(steps[0].href).toBe("/ideas/i1#gaps");
+    expect(nextSteps(state({ infoGaps: [ig("2026-10-19")] }))[0].text).toContain("已经过了截止");
+  });
+  it("还早的不抢先；但什么都没卡住时，给离截止最近的那个", () => {
+    const steps = nextSteps(state({ gaps: [gap({ quotes: 1 })], infoGaps: [ig("2026-11-10")] }));
+    expect(steps.map((s) => s.key)).toEqual(["info-gap"]);
+    expect(steps[0].text).toContain("2026-11-10 截止");
   });
 });

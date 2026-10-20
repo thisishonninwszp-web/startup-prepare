@@ -13,6 +13,8 @@ import {
   type Prediction,
   type Validation,
   visibleTags,
+  isAiLocked,
+  type IdeaStatus,
 } from "../types";
 import {
   getBayesianBeliefsForIdea,
@@ -28,6 +30,9 @@ import {
 import { PageContainer } from "@/components/ui/page-container";
 import { loadSlowWind, windFor } from "@/lib/domains/signals/slow-then";
 import { WindLine } from "@/app/(app)/signals/slow/wind-line";
+import { dueGaps, getFounderFacts, loadIdeaGaps } from "@/lib/domains/ideas/info-gaps";
+import { tokyoToday } from "@/lib/domains/signals/brief";
+import { InfoGapsPanel } from "./info-gaps-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -111,8 +116,13 @@ export default async function IdeaDetailPage({
       getConceptSchemaStatus(),
     ]);
 
-  // 慢变量：这个想法顺着、逆着哪几个（在慢变量页看过才有）
-  const wind = await loadSlowWind(userId).catch(() => null);
+  // 慢变量：这个想法顺着、逆着哪几个（在慢变量页看过才有）；信息缺口和他写的约束优势
+  const [wind, infoGaps, founderFacts] = await Promise.all([
+    loadSlowWind(userId).catch(() => null),
+    loadIdeaGaps(userId, params.id),
+    getFounderFacts(userId),
+  ]);
+  const today = tokyoToday();
 
   const evidenceSnapshot: IdeaEvidenceSnapshot | null = conceptAvailable
     ? await getIdeaEvidenceSnapshot(params.id, userId)
@@ -137,6 +147,17 @@ export default async function IdeaDetailPage({
           在决策工作台打开
         </Link>
         <WindLine links={windFor(wind, "idea", idea.id)} />
+        {infoGaps !== "missing-schema" && (
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            <a href="#gaps" className="underline-offset-4 hover:text-foreground hover:underline">
+              {infoGaps.gaps.length === 0
+                ? "信息缺口：还没列 —— 继续还是 Kill 还缺什么信息？↓"
+                : `信息缺口：还缺 ${infoGaps.gaps.filter((g) => g.status === "open").length} 个${
+                    dueGaps(infoGaps.gaps, today) > 0 ? `（${dueGaps(infoGaps.gaps, today)} 个该拿了）` : ""
+                  } ↓`}
+            </a>
+          </p>
+        )}
         <IdeaDetail
           idea={ideaCore}
           hypothesis={(idea.hypothesis ?? {}) as Hypothesis}
@@ -151,6 +172,16 @@ export default async function IdeaDetailPage({
           conceptAvailable={conceptAvailable}
           evidenceSnapshot={evidenceSnapshot}
         />
+        <section id="gaps" className="mt-12 border-t pt-6">
+          <h2 className="mb-3 text-lg font-semibold">信息缺口</h2>
+          <InfoGapsPanel
+            ideaId={idea.id}
+            initial={infoGaps}
+            founderFacts={founderFacts}
+            today={today}
+            locked={isAiLocked(idea.status as IdeaStatus, idea.last_activity_at as string)}
+          />
+        </section>
       </PageContainer>
     </>
   );

@@ -6229,3 +6229,54 @@ create policy "signal_slow_thens_owner" on signal_slow_thens
 -- ============================================================================
 
 alter table signal_fake_door_signups add column if not exists contacted_at timestamptz;
+
+-- ============================================================================
+-- 088：想法的信息缺口 · 是不是你的机会（founder_facts / idea_info_gaps / idea_fits）
+-- ============================================================================
+
+create table if not exists founder_facts (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  text        text not null,
+  updated_at  timestamptz not null default now()
+);
+
+alter table founder_facts enable row level security;
+drop policy if exists "founder_facts_owner" on founder_facts;
+create policy "founder_facts_owner" on founder_facts
+  for all using (auth.uid() = user_id);
+
+create table if not exists idea_info_gaps (
+  id          uuid primary key default gen_random_uuid(),
+  idea_id     uuid not null references ideas (id) on delete cascade,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  question    text not null,
+  matters     text not null,
+  disconfirm  text not null,
+  routes      jsonb not null,
+  due_on      date not null,
+  status      text not null default 'open' check (status in ('open', 'got', 'none')),
+  evidence    jsonb not null default '[]'::jsonb,
+  note        text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists idea_info_gaps_idea_idx on idea_info_gaps (idea_id, created_at);
+create index if not exists idea_info_gaps_user_idx on idea_info_gaps (user_id, status, due_on);
+
+alter table idea_info_gaps enable row level security;
+drop policy if exists "idea_info_gaps_owner" on idea_info_gaps;
+create policy "idea_info_gaps_owner" on idea_info_gaps
+  for all using (auth.uid() = user_id);
+
+create table if not exists idea_fits (
+  idea_id     uuid primary key references ideas (id) on delete cascade,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  analysis    jsonb not null,
+  created_at  timestamptz not null default now()
+);
+
+alter table idea_fits enable row level security;
+drop policy if exists "idea_fits_owner" on idea_fits;
+create policy "idea_fits_owner" on idea_fits
+  for all using (auth.uid() = user_id);

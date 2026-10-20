@@ -7,6 +7,7 @@ import { getIssue } from "./issue";
 import { listJudgments } from "./practice";
 import { dueJudgments } from "./practice-shared";
 import { loadGapVoices } from "./voices";
+import { listOpenGapsForAct } from "@/lib/domains/ideas/info-gaps";
 import type { ActGap, ActSignup, ActState } from "./act-shared";
 
 export * from "./act-shared";
@@ -18,7 +19,7 @@ export * from "./act-shared";
  */
 export async function loadActState(userId: string): Promise<ActState> {
   const today = tokyoToday();
-  const [board, voices, doors, signups, ideas, judgments, issue] = await Promise.all([
+  const [board, voices, doors, signups, ideas, judgments, issue, infoGaps] = await Promise.all([
     listGapBoard(userId, today),
     loadGapVoices(userId),
     loadFakeDoorStats(userId),
@@ -26,6 +27,7 @@ export async function loadActState(userId: string): Promise<ActState> {
     supabaseAdmin.from("ideas").select("id, title").eq("user_id", userId).neq("status", "归档"),
     listJudgments(userId).catch(() => []),
     getIssue(userId).catch(() => null),
+    listOpenGapsForAct(userId).catch(() => []),
   ]);
   if (ideas.error) throw new Error(ideas.error.message);
 
@@ -92,5 +94,6 @@ export async function loadActState(userId: string): Promise<ActState> {
     uncontacted,
     dueJudgments: dueJudgments(judgments).length,
     issue: !issue || issue === "missing-schema" ? "none" : issue.published.length > 0 ? "published" : "draft",
+    infoGaps,
   };
 }

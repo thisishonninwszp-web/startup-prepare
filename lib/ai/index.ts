@@ -4,6 +4,7 @@ export * from "./signals";
 export * from "./signals-deep";
 export * from "./signals-image";
 export * from "./demand";
+export * from "./info-gaps";
 export * from "./jobs";
 export * from "./jobs-china";
 export * from "./jobs-case";

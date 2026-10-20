@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tallyFeedback } from "@/lib/domains/signals/feedback";
-import { DROPPED_DAYS, droppedSentences, HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
+import { decisionCounts, DROPPED_DAYS, droppedSentences, HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
 import { tavilyUsage } from "@/lib/external";
 import { googleSearchCount } from "@/lib/web-search";
 
@@ -18,9 +18,10 @@ const SECTION_NAMES: Record<string, string> = {
   tools: "新工具和新可能",
 };
 
-function verdict(r: SourceHealth): string {
+function verdict(r: SourceHealth, decided: number): string {
   if (r.fetched === 0) return "两周一条都没抓到，多半是源坏了";
   if (r.picked === 0) return "抓了不少，一次也没被挑中";
+  if (decided === 0) return "被挑进报告了，但一条都没进你的决定";
   return "";
 }
 
@@ -31,12 +32,13 @@ export default async function SourcesPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [feedback, health, google, tavily, dropped] = await Promise.all([
+  const [feedback, health, google, tavily, dropped, decided] = await Promise.all([
     tallyFeedback(user.id, HEALTH_DAYS),
     sourceHealth(user.id),
     googleSearchCount().catch(() => null),
     tavilyUsage(),
     droppedSentences(user.id).catch(() => []),
+    decisionCounts(user.id).catch(() => new Map<string, number>()),
   ]);
   const anyFeedback = feedback.some((f) => f.useful + f.useless > 0);
 
@@ -135,15 +137,19 @@ export default async function SourcesPage() {
                   <span className="ml-2 text-xs text-muted-foreground">{SECTION_NAMES[r.kind]}</span>
                 </span>
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  抓到 {r.fetched} · 挑中 {r.picked}
+                  抓到 {r.fetched} · 挑中 {r.picked} · 进了决定 {decided.get(r.source) ?? 0}
                 </span>
               </div>
-              {verdict(r) && <p className="mt-1 text-xs text-muted-foreground">{verdict(r)}</p>}
+              {verdict(r, decided.get(r.source) ?? 0) && (
+                <p className="mt-1 text-xs text-muted-foreground">{verdict(r, decided.get(r.source) ?? 0)}</p>
+              )}
             </li>
           ))}
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">
           挑中的数只算精选，不算「也值得一看」。没被挑中不一定是源不好，也可能是那一节每天名额太少。
+          「进了决定」数的是真的被你用上的：记成了观察、押过判断、补进了想法的缺口、在差距清单里听过原话或开过假门。
+          信息只有改变一个决定时才有用 —— 两周下来一条都进不了决定的源，读得再多也是噪音。
         </p>
       </section>
 

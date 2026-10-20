@@ -15,6 +15,8 @@ import { HistoryPanel } from "../history-panel";
 import { InferenceTree } from "../inference-tree";
 import { ContactPlanButton } from "../contact-plan-button";
 import { getInference } from "@/lib/domains/signals/inference";
+import { listOpenGapOptions } from "@/lib/domains/ideas/info-gaps";
+import { RouteToGap } from "../route-to-gap";
 
 export const dynamic = "force-dynamic";
 // 第一次打开时要读原文 + 调 AI 写深读，默认 10 秒不够。
@@ -73,7 +75,7 @@ export default async function SignalDetailPage({
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [detail, judgment, inference, nodeBets] = await Promise.all([
+  const [detail, judgment, inference, nodeBets, gapOptions] = await Promise.all([
     getSignalDetail(params.id),
     // 迁移 055 没跑时没有判断练习，详情页照旧直接显示报告
     getJudgmentForSignal(user.id, params.id).catch((e: Error) => {
@@ -82,6 +84,7 @@ export default async function SignalDetailPage({
     }),
     getInference(params.id),
     listNodeBets(user.id, params.id).catch(() => []),
+    listOpenGapOptions(user.id).catch(() => []),
   ]);
   const bets = Object.fromEntries(
     nodeBets.map((b) => [b.question.slice(NODE_BET_PREFIX.length), formatDueDate(b.due_at)])
@@ -195,12 +198,21 @@ export default async function SignalDetailPage({
             </section>
           )}
 
-          {detail.status === "pending" && (
-            <section className="mt-10 border-t pt-6">
-              <p className="mb-3 text-sm text-muted-foreground">这条让你多看了一眼吗？</p>
-              <SignalActions id={detail.id} />
-            </section>
-          )}
+          <section className="mt-10 border-t pt-6">
+            <h2 className="text-base font-semibold">这条去哪</h2>
+            <p className="mb-3 mt-1 text-xs leading-6 text-muted-foreground">
+              信息只有改变一个决定时才有用。看完选一个去处：补进某个想法还缺的那一格、记成观察、或者只是知道了就放下。
+              押一个判断在上面「写判断」或往下推的某一步上。
+            </p>
+            <p className="mb-2 text-sm font-medium">补进想法的缺口</p>
+            <RouteToGap signalId={detail.id} options={gapOptions} />
+            {detail.status === "pending" && (
+              <div className="mt-6">
+                <p className="mb-3 text-sm text-muted-foreground">记成观察，或者只是知道了（不看了）：</p>
+                <SignalActions id={detail.id} />
+              </div>
+            )}
+          </section>
         </article>
       )}
     </PageContainer>

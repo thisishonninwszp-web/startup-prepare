@@ -61,6 +61,21 @@ export function VoicesView({ signalId, side, here, initial }: { signalId: string
           </ul>
         </>
       )}
+      {voices.apps && voices.apps.length > 0 && (
+        <p className="mt-3 text-xs leading-6">
+          <span className="text-muted-foreground">{here}的人现在拿来对付这件事的 App：</span>
+          {voices.apps.map((a, i) => (
+            <span key={a.url}>
+              {i > 0 ? "、" : ""}
+              <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                {a.name}
+              </a>
+              <span className="font-mono text-muted-foreground">（{a.ratings.toLocaleString("ja-JP")} 人评过分）</span>
+            </span>
+          ))}
+          <span className="text-muted-foreground"> —— 不用问任何人就能看到的「已经有多少人在用」的痕迹。</span>
+        </p>
+      )}
       <p className="mt-3 text-xs leading-6 text-muted-foreground">
         翻了 {voices.searched.pages} 篇网页、{voices.searched.reviews} 条 App 差评。
         {voices.judged ? "每句都请另一个模型看过是不是真人在说这件事。" : "这次裁判没调通，分类是找原话的那个 AI 自己分的。"}

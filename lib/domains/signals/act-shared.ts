@@ -40,7 +40,12 @@ export type ActState = {
   dueJudgments: number;
   /** 这周的周刊：没写 / 写了没发 / 发了。 */
   issue: "none" | "draft" | "published";
+  /** 没归档的想法里还缺的信息（截止早的在前）。 */
+  infoGaps: { id: string; idea_id: string; idea_title: string; question: string; due_on: string }[];
 };
+
+/** 信息缺口离截止还有几天以内，就排进这周要做的事。 */
+export const GAP_DUE_SOON_DAYS = 3;
 
 export type ActStep = { key: string; text: string; why: string; href: string; cta: string };
 
@@ -56,6 +61,16 @@ function daysBetween(from: string, to: string): number {
 
 function doorHref(g: Pick<ActGap, "side" | "signal_id">): string {
   return `/signals/gaps/door?side=${g.side}&signal=${g.signal_id}`;
+}
+
+function gapStep(g: ActState["infoGaps"][number], today: string): ActStep {
+  return {
+    key: "info-gap",
+    text: `想法「${g.idea_title}」还缺：${g.question}（${g.due_on <= today ? "已经过了截止" : `${g.due_on} 截止`}）`,
+    why: "这一样拿到了，才知道该继续还是 Kill。先找真人；找不到就看有没有人已经在花钱的痕迹；真的拿不到，标「拿不到」也是一个结论。",
+    href: `/ideas/${g.idea_id}#gaps`,
+    cta: "去拿",
+  };
 }
 
 /** 按优先级排好的几件事（第一件就是这周最该做的）。 */
@@ -95,6 +110,12 @@ export function nextSteps(state: ActState): ActStep[] {
       href: "/signals/gaps",
       cta: "去差距清单",
     });
+  }
+
+  // 2.5 想法还缺的信息快到截止（或已经过了）：拿到它才知道继续还是 Kill
+  const soon = state.infoGaps.find((g) => daysBetween(state.today, g.due_on) <= GAP_DUE_SOON_DAYS);
+  if (soon) {
+    steps.push(gapStep(soon, state.today));
   }
 
   // 3. 到期的判断还没对账
@@ -158,6 +179,9 @@ export function nextSteps(state: ActState): ActStep[] {
     });
   }
 
+  if (steps.length === 0 && state.infoGaps[0]) {
+    steps.push(gapStep(state.infoGaps[0], state.today));
+  }
   if (steps.length === 0) {
     steps.push({
       key: "idle",

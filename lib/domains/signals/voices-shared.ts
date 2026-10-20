@@ -35,6 +35,11 @@ export type GapVoices = {
   searched: { pages: number; reviews: number };
   /** 这些原话请 Jev 看过没有（没调通时照收 AI 分的类、页面上标出来）。 */
   judged: boolean;
+  /**
+   * 这边的人现在拿来对付这件事的 App，各有多少人评过分（App Store 给的数）：
+   * 不用跟任何人说话就能看到的"已经有多少人在用"的痕迹。早期查过的没有。
+   */
+  apps?: { name: string; ratings: number; url: string }[];
   created_at: string;
 };
 

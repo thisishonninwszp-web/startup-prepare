@@ -33,28 +33,31 @@ async function fetchJson(url: string): Promise<unknown> {
 }
 
 /** 这边的人现在拿来对付这件事的 App，最新的差评（三星以下）。拿不到就是空的，不耽误网页那一路。 */
-async function appStoreReviews(term: string, country: "jp" | "cn"): Promise<ReviewSource[]> {
-  if (!term) return [];
+async function appStoreReviews(
+  term: string,
+  country: "jp" | "cn"
+): Promise<{ reviews: ReviewSource[]; apps: NonNullable<GapVoices["apps"]> }> {
+  if (!term) return { reviews: [], apps: [] };
   try {
     const search = (await fetchJson(
       `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&country=${country}&entity=software&limit=${APPS}`
-    )) as { results?: { trackId?: number; trackName?: string; trackViewUrl?: string }[] } | null;
+    )) as { results?: { trackId?: number; trackName?: string; trackViewUrl?: string; userRatingCount?: number }[] } | null;
     const apps = (search?.results ?? []).filter((a) => a.trackId && a.trackName).slice(0, APPS);
+    const appUrl = (a: (typeof apps)[number]) => a.trackViewUrl ?? `https://apps.apple.com/${country}/app/id${a.trackId}`;
     const feeds = await Promise.all(
       apps.map((a) =>
         fetchJson(`https://itunes.apple.com/${country}/rss/customerreviews/page=1/id=${a.trackId}/sortby=mostrecent/json`).catch(() => null)
       )
     );
-    return feeds.flatMap((feed, i) =>
-      parseReviewEntries(
-        feed,
-        { name: apps[i].trackName as string, url: apps[i].trackViewUrl ?? `https://apps.apple.com/${country}/app/id${apps[i].trackId}` },
-        REVIEWS_PER_APP
-      )
-    );
+    return {
+      reviews: feeds.flatMap((feed, i) => parseReviewEntries(feed, { name: apps[i].trackName as string, url: appUrl(apps[i]) }, REVIEWS_PER_APP)),
+      apps: apps
+        .filter((a) => typeof a.userRatingCount === "number")
+        .map((a) => ({ name: a.trackName as string, ratings: a.userRatingCount as number, url: appUrl(a) })),
+    };
   } catch (e) {
     console.error("app store reviews failed", term, e);
-    return [];
+    return { reviews: [], apps: [] };
   }
 }
 
@@ -63,10 +66,11 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
   if (!gap) throw new Error("清单里找不到这一条了");
   const { there, here } = gapPlaces(side);
   const plan = await planVoiceSearch({ headline: gap.headline, background: gap.background, hereNow: gap.japan, there, here });
-  const [found, reviews] = await Promise.all([
+  const [found, store] = await Promise.all([
     Promise.all(plan.queries.map((q) => webSearch(q, RESULTS_PER_QUERY).catch(() => []))),
     appStoreReviews(plan.appTerm, side === "china" ? "cn" : "jp"),
   ]);
+  const { reviews, apps } = store;
   const pages = mergeSources(found, RESULTS_PER_QUERY * plan.queries.length);
   // 评论不按网址去重（同一个 App 的评论网址一样）
   const sources: (SearchSource & Partial<Pick<ReviewSource, "date" | "rating">>)[] = [...pages, ...reviews];
@@ -100,6 +104,7 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
     quotes,
     searched: { pages: pages.length, reviews: reviews.length },
     judged: judged.ok,
+    ...(apps.length > 0 ? { apps } : {}),
     created_at: new Date().toISOString(),
   };
   const { error } = await supabaseAdmin

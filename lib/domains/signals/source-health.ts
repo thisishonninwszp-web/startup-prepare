@@ -77,3 +77,48 @@ export async function droppedSentences(userId: string): Promise<DroppedLine[]> {
     (data ?? []).map((r) => ({ brief_date: r.brief_date as string, kind: r.kind as string, items: (r.items as BriefItem[] | null) ?? null }))
   );
 }
+
+/**
+ * 每个源最近两周抓进来的东西里，有几条真的进了一个决定（不只是"读过了"）：
+ * 记成了观察、押过判断、补进了想法的缺口、在差距清单里听过原话或开过假门。
+ * 抓得多、挑得多但一条都进不了决定的源，是噪音。只数次数。
+ */
+export async function decisionCounts(userId: string): Promise<Map<string, number>> {
+  const sinceIso = new Date(Date.now() - HEALTH_DAYS * 86_400_000).toISOString();
+  const [{ listJudgments }, { routedSignalIds }, { loadGapVoices }, { loadFakeDoorStats }] = await Promise.all([
+    import("./practice"),
+    import("@/lib/domains/ideas/info-gaps"),
+    import("./voices"),
+    import("./fake-door"),
+  ]);
+  const [promoted, judgments, routed, voices, doors] = await Promise.all([
+    supabaseAdmin.from("external_signals").select("id").eq("status", "promoted").gte("fetched_at", sinceIso),
+    listJudgments(userId).catch(() => []),
+    routedSignalIds(userId).catch(() => new Set<string>()),
+    loadGapVoices(userId).catch(() => new Map()),
+    loadFakeDoorStats(userId).catch(() => new Map()),
+  ]);
+  const keyId = (key: string) => key.slice(key.indexOf(":") + 1);
+  const ids = new Set<string>([
+    ...((promoted.data ?? []) as { id: string }[]).map((r) => r.id),
+    ...judgments.flatMap((j) => (j.signal_id ? [j.signal_id] : [])),
+    ...routed,
+    ...Array.from(voices.keys()).map(keyId),
+    ...Array.from(doors.keys()).map(keyId),
+  ]);
+  const out = new Map<string, number>();
+  if (ids.size === 0) return out;
+  const list = Array.from(ids);
+  // 一次查太多 id 会超过请求长度，分批
+  for (let i = 0; i < list.length; i += 200) {
+    const { data, error } = await supabaseAdmin
+      .from("external_signals")
+      .select("id, source")
+      .in("id", list.slice(i, i + 200))
+      .gte("fetched_at", sinceIso);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) out.set(r.source as string, (out.get(r.source as string) ?? 0) + 1);
+  }
+  return out;
+}
+
