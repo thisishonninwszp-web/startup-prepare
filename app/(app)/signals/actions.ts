@@ -26,7 +26,7 @@ import {
   type DrillFlag,
 } from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
-import { analyzeGapVoices, type GapVoices } from "@/lib/domains/signals/voices";
+import { analyzeGapVoices, remeasureGapAttention, type GapVoices } from "@/lib/domains/signals/voices";
 import { touchIdeaForGap } from "@/lib/domains/ideas/touch";
 import { computeSlowWind, thinkSlowVariable, type SlowThen } from "@/lib/domains/signals/slow-then";
 import { runThereCheck, saveDeepCategory, saveDeepStance, type GapThere } from "@/lib/domains/signals/deep";
@@ -728,6 +728,19 @@ export async function analyzeGapVoicesAction(
     return { ok: true, analysis: await analyzeGapVoices(userId, signalId, side) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "这次没查成") };
+  }
+}
+
+/** 「听一听」之后只再量一次那几个数（十几秒，不调 AI），上一次的挪进历史。 */
+export async function remeasureGapAttentionAction(
+  signalId: string,
+  side: GapSide
+): Promise<{ ok: true; analysis: GapVoices } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    return { ok: true, analysis: await remeasureGapAttention(userId, signalId, side) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "这次没量成") };
   }
 }
 

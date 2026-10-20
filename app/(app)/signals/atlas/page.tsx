@@ -7,10 +7,12 @@ import {
   ATLAS_CARRIERS,
   ATLAS_CATEGORIES,
   ATLAS_OUTCOMES,
+  atlasTimeline,
   baseSentence,
   categoryBase,
   CLAIM_LABELS,
   countedCases,
+  lagBuckets,
   lagLabel,
   listTransferCases,
   missingSeeds,
@@ -23,6 +25,9 @@ import { caseNotices } from "@/lib/domains/signals/kanpo";
 import type { KanpoNotice } from "@/lib/domains/signals/kanpo-shared";
 import { NoticeLine } from "../kanpo/notice-line";
 import { OutcomeEditor, RecheckCaseButton, RejudgeButton, ResearchAtlasButton } from "./atlas-controls";
+import { AtlasTimeline } from "./atlas-timeline";
+import { BarList } from "@/components/ui/bar-list";
+import { tokyoToday } from "@/lib/domains/signals/brief";
 
 export const dynamic = "force-dynamic";
 // 查一批要三四十秒，由这一页的 server action 跑
@@ -139,6 +144,24 @@ export default async function AtlasPage() {
 
           {cases.length > 0 && (
             <>
+              {(() => {
+                const timeline = atlasTimeline(cases, tokyoToday());
+                return (
+                  <section className="mb-10 space-y-6">
+                    <BarList
+                      title={`从那边有了到日本有了，隔了多久（算进统计的 ${countedCases(cases).length} 件）`}
+                      items={lagBuckets(countedCases(cases))}
+                      unit=" 件"
+                    />
+                    {timeline && <AtlasTimeline timeline={timeline} />}
+                    <p className="text-xs leading-6 text-muted-foreground">
+                      周刊上押「两年内这边会不会出现」之前，先看这张图：同一类的线大多多长、有几条是虚线一直拖到今天。
+                      线短不等于结果好 —— 进来又退出的也算「到了」，结果写在每行末尾。
+                    </p>
+                  </section>
+                );
+              })()}
+
               <section className="mb-10">
                 <h2 className="text-base font-semibold">
                   按类别（算进统计的 {countedCases(cases).length} 件

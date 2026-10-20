@@ -7,7 +7,8 @@ import { VOICE_KINDS, voiceCounts, type GapVoices, type VoiceKind } from "@/lib/
 import { askLinks } from "@/lib/domains/ideas/info-gaps-shared";
 import { AttentionView } from "./attention-view";
 import { BarList } from "@/components/ui/bar-list";
-import { analyzeGapVoicesAction } from "../actions";
+import { MeasureHistory } from "./measure-history";
+import { analyzeGapVoicesAction, remeasureGapAttentionAction } from "../actions";
 
 /**
  * 这边有没有人在为这件事头疼：点了才查（三四十秒）。问答网站的提问、吐槽、App Store 差评里的真人原话，
@@ -16,7 +17,16 @@ import { analyzeGapVoicesAction } from "../actions";
 export function VoicesView({ signalId, side, here, initial }: { signalId: string; side: GapSide; here: string; initial: GapVoices | null }) {
   const [voices, setVoices] = useState<GapVoices | null>(initial);
   const [pending, startTransition] = useTransition();
+  const [measuring, startMeasuring] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const remeasure = () =>
+    startMeasuring(async () => {
+      setError(null);
+      const result = await remeasureGapAttentionAction(signalId, side);
+      if (result.ok) setVoices(result.analysis);
+      else setError(result.message);
+    });
 
   const run = () =>
     startTransition(async () => {
@@ -84,6 +94,7 @@ export function VoicesView({ signalId, side, here, initial }: { signalId: string
         </p>
       )}
       {voices.attention && <AttentionView attention={voices.attention} />}
+      {voices.attention && side !== "china" && <MeasureHistory voices={voices} pending={measuring || pending} onRemeasure={remeasure} />}
       {voices.queries && voices.queries.length > 0 && (
         <details className="mt-3 text-xs">
           <summary className="cursor-pointer text-muted-foreground">自己去数一数：有多少人在问（不花钱）</summary>
@@ -112,7 +123,7 @@ export function VoicesView({ signalId, side, here, initial }: { signalId: string
         {voices.judged ? "每句都请另一个模型看过是不是真人在说这件事。" : "这次裁判没调通，分类是找原话的那个 AI 自己分的。"}
         网上抱怨的人不等于会掏钱的人：这些只算「有痛」的弱证据，不算「愿付钱」。只数次数。
       </p>
-      <Button variant="ghost" size="sm" className="mt-1 h-8 px-2 text-xs" disabled={pending} onClick={run}>
+      <Button variant="ghost" size="sm" className="mt-1 h-8 px-2 text-xs" disabled={pending || measuring} onClick={run}>
         {pending ? "在重新找……三四十秒" : "换一批再找"}
       </Button>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}

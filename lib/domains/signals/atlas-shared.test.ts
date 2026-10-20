@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseSentence, categoryBase, countedCases, lagLabel, lagMonths, monthIndex, noUpgrade, unprovenClaims } from "./atlas-shared";
+import { atlasTimeline, baseSentence, categoryBase, countedCases, lagBuckets, lagLabel, lagMonths, monthIndex, noUpgrade, unprovenClaims } from "./atlas-shared";
 
 describe("时差图谱", () => {
   it("monthIndex / lagMonths：年、年月、年月日都认；日本更早、认不出、没到的不算", () => {
@@ -53,5 +53,53 @@ describe("裁判过没过", () => {
   it("countedCases：没过裁判的不算，没判过、裁判不可用的照算", () => {
     const cases = [{ judge_status: "passed" as const }, { judge_status: "failed" as const }, { judge_status: null }, { judge_status: "unavailable" as const }];
     expect(countedCases(cases)).toHaveLength(3);
+  });
+});
+
+describe("lagBuckets", () => {
+  it("counts each bucket and puts not-arrived last", () => {
+    const out = lagBuckets([{ lag_months: 6 }, { lag_months: 12 }, { lag_months: 30 }, { lag_months: 61 }, { lag_months: null }]);
+    expect(out.map((b) => b.value)).toEqual([2, 1, 0, 1, 1]);
+    expect(out[out.length - 1].label).toBe("至今没到");
+  });
+});
+
+describe("atlasTimeline", () => {
+  const base = { outcome: "partial" as const, judge_status: "passed" as const };
+  it("places rows on a year axis and draws not-arrived cases to today", () => {
+    const t = atlasTimeline(
+      [
+        { ...base, id: "b", thing: "扫码支付", origin: "china", origin_date: "2014-01", japan_date: "2016-01", lag_months: 24 },
+        { ...base, id: "a", thing: "共享单车", origin: "china", origin_date: "2016", japan_date: null, lag_months: null, outcome: "absent" },
+      ],
+      "2026-10-21"
+    )!;
+    expect(t.rows.map((r) => r.id)).toEqual(["b", "a"]);
+    expect(t.rows[0].from).toBe(0);
+    expect(t.rows[0].arrived).toBe(true);
+    expect(t.rows[1].arrived).toBe(false);
+    expect(t.rows[1].to).toBe(t.today);
+    expect(t.ticks[0]).toEqual({ year: 2014, at: 0 });
+    expect(t.ticks[t.ticks.length - 1].year).toBe(2026);
+    expect(t.today).toBeGreaterThan(t.ticks[t.ticks.length - 1].at);
+    expect(t.ticks.every((x) => x.year % 2 === 0)).toBe(true);
+  });
+
+  it("skips unreadable dates and Japan-earlier cases, dims judge failures", () => {
+    const t = atlasTimeline(
+      [
+        { ...base, id: "x", thing: "x", origin: "us", origin_date: "某年", japan_date: null, lag_months: null },
+        { ...base, id: "y", thing: "y", origin: "us", origin_date: "2020-05", japan_date: "2019-01", lag_months: null },
+        { ...base, id: "z", thing: "z", origin: "us", origin_date: "2020-05", japan_date: "2021-05", lag_months: 12, judge_status: "failed" },
+      ],
+      "2026-10-21"
+    )!;
+    expect(t.rows.map((r) => r.id)).toEqual(["z"]);
+    expect(t.rows[0].counted).toBe(false);
+    expect(t.rows[0].text).toContain("不算进统计");
+  });
+
+  it("returns null when nothing can be drawn", () => {
+    expect(atlasTimeline([], "2026-10-21")).toBeNull();
   });
 });

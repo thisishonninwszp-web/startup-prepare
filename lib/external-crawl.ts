@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { rakutenItemSearch } from "@/lib/rakuten";
 import { translateQuery, type QueryTranslations } from "@/lib/ai";
 
 /**
@@ -276,7 +277,7 @@ async function fetchLobsters(query: string): Promise<StagingRow[]> {
 /**
  * Yahoo! 知恵袋：日本最大 Q&A，消费者真实提问，免费 App ID。
  * 注册：https://e.developer.yahoo.co.jp/register → 拿 Client ID 填 YAHOO_JAPAN_APP_ID。
- * 未配置则静默跳过。
+ * 未配置则静默跳过。注意：2026-10 实测这个接口（和旧的 /Chiebukuro/V1/questionSearch）都 404，看起来已经停了。
  */
 async function fetchChiebukuro(query: string): Promise<StagingRow[]> {
   const appId = process.env.YAHOO_JAPAN_APP_ID;
@@ -394,29 +395,21 @@ async function fetchZhihu(query: string): Promise<StagingRow[]> {
 
 /**
  * 楽天市場：日本电商商品描述 + 标题——反映消费者在意的功能与痛点。
- * 注册：https://webservice.rakuten.co.jp → 拿 applicationId 填 RAKUTEN_APP_ID。
- * 未配置则静默跳过。
+ * 走全站共用的 lib/rakuten.ts（2026-05 起的新接口；旧的 app.rakuten.co.jp 已停）。未配置则静默跳过。
  */
 async function fetchRakuten(query: string): Promise<StagingRow[]> {
-  const appId = process.env.RAKUTEN_APP_ID;
-  if (!appId) return [];
-  const params = new URLSearchParams({
-    applicationId: appId,
-    keyword: query,
-    hits: String(PER_SOURCE_LIMIT),
-    format: "json",
-  });
-  const res = await fetch(
-    `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?${params.toString()}`,
-    { headers: { "User-Agent": "ideaos-crawler/0.1" } }
-  );
-  if (!res.ok) throw new Error(`楽天 ${res.status}`);
-  const data = (await res.json()) as {
-    Items?: ({ Item?: { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string } } | { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string })[];
-  };
-  return (data.Items ?? [])
+  const data = await rakutenItemSearch({ keyword: query, hits: String(PER_SOURCE_LIMIT) });
+  if (data === "no-key") return [];
+  if (data && typeof data === "object" && "error" in (data as Record<string, unknown>) && !("Items" in (data as Record<string, unknown>))) {
+    throw new Error(String((data as { error: unknown }).error));
+  }
+  const items = ((data as { Items?: unknown[] } | null)?.Items ?? []) as (
+    | { Item?: { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string } }
+    | { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string }
+  )[];
+  return items
     .map((raw): StagingRow | null => {
-      const it = ("Item" in raw && raw.Item) ? raw.Item : (raw as { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string });
+      const it = "Item" in raw && raw.Item ? raw.Item : (raw as { itemName?: string; itemCaption?: string; itemUrl?: string; itemCode?: string });
       const text = (it.itemCaption ?? it.itemName ?? "").trim();
       if (!it.itemCode || !text) return null;
       return {

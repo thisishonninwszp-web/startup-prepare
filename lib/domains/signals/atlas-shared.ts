@@ -169,3 +169,93 @@ export function baseSentence(category: AtlasCategory, base: CategoryBase): strin
   const exited = base.outcomes.exited ? `；进来又退出的 ${base.outcomes.exited} 件` : "";
   return `${parts.join("，")}${exited}。`;
 }
+
+/** 时间差分几段（只数次数）。至今没到的单列一段。 */
+export const LAG_BUCKETS = [
+  { label: "1 年以内", max: 12 },
+  { label: "1–3 年", max: 36 },
+  { label: "3–5 年", max: 60 },
+  { label: "5 年以上", max: Infinity },
+] as const;
+export const NOT_ARRIVED_LABEL = "至今没到";
+
+/** 每一段几件（只收算进统计的那几件由调用方挑）。 */
+export function lagBuckets(cases: Pick<TransferCase, "lag_months">[]): { label: string; value: number }[] {
+  const out: { label: string; value: number }[] = LAG_BUCKETS.map((b) => ({ label: b.label, value: 0 }));
+  let notYet = 0;
+  for (const c of cases) {
+    if (c.lag_months === null) {
+      notYet += 1;
+      continue;
+    }
+    const i = LAG_BUCKETS.findIndex((b) => (c.lag_months as number) <= b.max);
+    out[i].value += 1;
+  }
+  return [...out, { label: NOT_ARRIVED_LABEL, value: notYet }];
+}
+
+export type TimelineRow = {
+  id: string;
+  thing: string;
+  /** 横轴上的位置（0–100）：那边有了、日本有了（没到的画到今天）。 */
+  from: number;
+  to: number;
+  arrived: boolean;
+  /** 没过裁判的画淡一点，不算进统计。 */
+  counted: boolean;
+  /** 行末的小字：隔了多久 · 结果。 */
+  label: string;
+  /** 悬停 / 读屏的整句。 */
+  text: string;
+};
+
+export type Timeline = { rows: TimelineRow[]; ticks: { year: number; at: number }[]; today: number };
+
+/**
+ * 时间轴：每件一行，从那边有了的那个月画到日本有了的那个月，没到的画到今天（虚线）。
+ * 横轴从最早那件的那一年年初到明年年初；年份刻度按跨度隔一年、两年或五年。日子认不出、或日本比那边早的不画。
+ */
+export function atlasTimeline(
+  cases: Pick<TransferCase, "id" | "thing" | "origin" | "origin_date" | "japan_date" | "outcome" | "lag_months" | "judge_status">[],
+  today: string
+): Timeline | null {
+  const now = monthIndex(today.slice(0, 10));
+  if (now === null) return null;
+  const parsed = cases.flatMap((c) => {
+    const start = monthIndex(c.origin_date);
+    if (start === null || start > now) return [];
+    const end = c.japan_date ? monthIndex(c.japan_date) : null;
+    if (c.japan_date && (end === null || end < start)) return [];
+    return [{ c, start, end }];
+  });
+  if (parsed.length === 0) return null;
+  const loYear = Math.floor(Math.min(...parsed.map((p) => p.start)) / 12);
+  const hiYear = Math.floor(now / 12) + 1;
+  const lo = loYear * 12;
+  const hi = hiYear * 12;
+  const at = (m: number) => Math.round(((m - lo) / (hi - lo)) * 1000) / 10;
+  const span = hiYear - loYear;
+  const step = span <= 8 ? 1 : span <= 16 ? 2 : 5;
+  const ticks: Timeline["ticks"] = [];
+  for (let y = loYear; y <= hiYear; y += 1) if (y % step === 0) ticks.push({ year: y, at: at(y * 12) });
+
+  const rows = parsed
+    .sort((a, b) => a.start - b.start || a.c.thing.localeCompare(b.c.thing))
+    .map(({ c, start, end }): TimelineRow => {
+      const arrived = end !== null;
+      const lag = arrived ? lagLabel(c.lag_months ?? end - start) : NOT_ARRIVED_LABEL;
+      const counted = c.judge_status !== "failed";
+      const place = c.origin === "china" ? "中国" : "美国";
+      return {
+        id: c.id,
+        thing: c.thing,
+        from: at(start),
+        to: at(arrived ? end : now),
+        arrived,
+        counted,
+        label: `${lag} · ${ATLAS_OUTCOMES[c.outcome]}`,
+        text: `${c.thing}：${place} ${c.origin_date} → 日本 ${c.japan_date ?? "至今没有"}，${lag}，${ATLAS_OUTCOMES[c.outcome]}${counted ? "" : "（没过裁判，不算进统计）"}`,
+      };
+    });
+  return { rows, ticks, today: at(now) };
+}

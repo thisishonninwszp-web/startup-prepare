@@ -5,7 +5,7 @@ import { findJapanGap } from "./gaps";
 import { gapPlaces, transferKey, type GapSide } from "./gaps-shared";
 import { mergeSources } from "./sources";
 import { fetchAttention } from "./attention";
-import { parseReviewEntries, REVIEWS_PER_APP, type GapVoices, type ReviewSource, type VoiceQuote } from "./voices-shared";
+import { carryHistory, parseReviewEntries, REVIEWS_PER_APP, type GapVoices, type ReviewSource, type VoiceQuote } from "./voices-shared";
 
 export * from "./voices-shared";
 
@@ -62,9 +62,72 @@ async function appStoreReviews(
   }
 }
 
+/** 那几个 App 现在各有多少人评过分（iTunes lookup，按上次存的网址里的 id 查）。取不到返回 null。 */
+async function lookupApps(apps: NonNullable<GapVoices["apps"]>, country: "jp" | "cn"): Promise<NonNullable<GapVoices["apps"]> | null> {
+  const ids = apps.map((a) => a.url.match(/\/id(\d+)/)?.[1]).filter((id): id is string => Boolean(id));
+  if (ids.length === 0) return null;
+  try {
+    const json = (await fetchJson(`https://itunes.apple.com/lookup?id=${ids.join(",")}&country=${country}`)) as {
+      results?: { trackId?: number; trackName?: string; trackViewUrl?: string; userRatingCount?: number }[];
+    } | null;
+    const found = (json?.results ?? []).filter((a) => a.trackId && a.trackName && typeof a.userRatingCount === "number");
+    return found.length > 0
+      ? found.map((a) => ({ name: a.trackName as string, ratings: a.userRatingCount as number, url: a.trackViewUrl ?? `https://apps.apple.com/${country}/app/id${a.trackId}` }))
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadOneGapVoices(userId: string, signalId: string, side: GapSide): Promise<GapVoices | null> {
+  const { data, error } = await supabaseAdmin
+    .from("signal_gap_voices")
+    .select("analysis")
+    .eq("user_id", userId)
+    .eq("signal_id", signalId)
+    .eq("side", side)
+    .maybeSingle();
+  if (error) {
+    if (/signal_gap_voices/.test(error.message)) throw new Error(MISSING_MIGRATION);
+    throw new Error(error.message);
+  }
+  return (data?.analysis as GapVoices | undefined) ?? null;
+}
+
+async function saveGapVoices(userId: string, signalId: string, side: GapSide, analysis: GapVoices): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("signal_gap_voices")
+    .upsert({ user_id: userId, signal_id: signalId, side, analysis }, { onConflict: "user_id,signal_id,side" });
+  if (error) {
+    if (/signal_gap_voices/.test(error.message)) throw new Error(MISSING_MIGRATION);
+    throw new Error(error.message);
+  }
+}
+
+/**
+ * 只再量一次那几个数（维基、はてな、YouTube、楽天、家计调查、App 评分人数），不重新找原话、不调 AI（家计调查沿用上次挑的品目）。
+ * 上一次的总数挪进历史 —— 这几样没有现成的历史，隔一个月量一次，攒起来才看得出是在变多还是变少。
+ */
+export async function remeasureGapAttention(userId: string, signalId: string, side: GapSide): Promise<GapVoices> {
+  if (side === "china") throw new Error("中国那边不查这几个数（中国大陆不用 Google、YouTube）");
+  const prev = await loadOneGapVoices(userId, signalId, side);
+  if (!prev?.attention) throw new Error("先「听一听」一次，才知道该量哪个词");
+  const kakeiNames = prev.attention.kakei && prev.attention.kakei !== "no-key" ? prev.attention.kakei.items.map((k) => k.name) : undefined;
+  const [attention, apps] = await Promise.all([
+    fetchAttention(prev.attention.topic, prev.pain, new Date(), { kakeiNames }),
+    prev.apps && prev.apps.length > 0 ? lookupApps(prev.apps, "jp") : Promise.resolve(null),
+  ]);
+  if (!attention) throw new Error("这次一样都没量到，过一会儿再试");
+  const analysis: GapVoices = { ...prev, attention, ...(apps ? { apps } : {}), history: carryHistory(prev) };
+  await saveGapVoices(userId, signalId, side, analysis);
+  return analysis;
+}
+
 export async function analyzeGapVoices(userId: string, signalId: string, side: GapSide): Promise<GapVoices> {
   const gap = await findJapanGap(userId, signalId, side);
   if (!gap) throw new Error("清单里找不到这一条了");
+  // 上一次量到的几个总数留着（换一批再找也不丢）
+  const history = carryHistory(await loadOneGapVoices(userId, signalId, side).catch(() => null));
   const { there, here } = gapPlaces(side);
   const plan = await planVoiceSearch({ headline: gap.headline, background: gap.background, hereNow: gap.japan, there, here });
   const [found, store, attention] = await Promise.all([
@@ -109,15 +172,10 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
     judged: judged.ok,
     ...(apps.length > 0 ? { apps } : {}),
     ...(attention ? { attention } : {}),
+    ...(history.length > 0 ? { history } : {}),
     created_at: new Date().toISOString(),
   };
-  const { error } = await supabaseAdmin
-    .from("signal_gap_voices")
-    .upsert({ user_id: userId, signal_id: signalId, side, analysis }, { onConflict: "user_id,signal_id,side" });
-  if (error) {
-    if (/signal_gap_voices/.test(error.message)) throw new Error(MISSING_MIGRATION);
-    throw new Error(error.message);
-  }
+  await saveGapVoices(userId, signalId, side, analysis);
   return analysis;
 }
 

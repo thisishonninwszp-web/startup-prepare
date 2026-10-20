@@ -47,6 +47,10 @@ export function MonthLine({
   const area = `${line} L${x(points.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`;
   const last = points[points.length - 1];
   const h = hover !== null ? points[hover] : null;
+  // 长的线（两年半以上）在每年一月标年份，最多六个；离头尾两个月份太近的不标，免得字叠在一起
+  const januaries = points.length > 30 ? points.flatMap((p, i) => (p.month.endsWith("-01") ? [{ i, year: Number(p.month.slice(0, 4)) }] : [])) : [];
+  const every = Math.max(1, Math.ceil(januaries.length / 6));
+  const yearTicks = januaries.filter((t) => t.year % every === 0 && x(t.i) - x(0) > 66 && x(points.length - 1) - x(t.i) > 66);
 
   const pick = (clientX: number, rect: DOMRect) => {
     const px = ((clientX - rect.left) / rect.width) * W;
@@ -90,6 +94,11 @@ export function MonthLine({
           <text x={x(points.length - 1) + 8} y={y(last.value) + 4} className="fill-foreground" fontSize={12}>
             {compact(last.value)}
           </text>
+          {yearTicks.map((t) => (
+            <text key={t.year} x={x(t.i)} y={H - 6} textAnchor="middle" className="fill-muted-foreground" fontSize={12}>
+              {t.year}
+            </text>
+          ))}
           {/* 横轴：头、尾两个月 */}
           <text x={x(0)} y={H - 6} className="fill-muted-foreground" fontSize={12}>
             {points[0].month}

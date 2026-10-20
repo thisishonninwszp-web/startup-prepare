@@ -44,8 +44,91 @@ export type GapVoices = {
   apps?: { name: string; ratings: number; url: string }[];
   /** 有多少人在关注（维基浏览量、搜索联想、はてな、YouTube）。只有日本这边；早期查过的没有。 */
   attention?: Attention;
+  /** 以前量过的几次（旧的在前，不含这一次）：每次重新听、再量一次，上一次的几个总数挪进来，攒成随时间的线。 */
+  history?: AttentionPoint[];
   created_at: string;
 };
+
+/** 量过的一次：只留几个总数（这几样没有现成的历史，只能自己隔一阵量一次攒起来）。 */
+export type AttentionPoint = {
+  at: string;
+  /** 维基上一个完整月的浏览量。 */
+  wiki?: number;
+  /** はてな标题里有这个词的文章几篇。 */
+  hatena?: number;
+  /** YouTube 上这个叫法的视频几条（YouTube 给的估计数）。 */
+  youtube?: number;
+  /** 楽天市场相关商品几件、前 30 件一共多少条评价。 */
+  rakutenItems?: number;
+  rakutenReviews?: number;
+  /** 这边的人在用的那几个 App 一共多少人评过分。 */
+  appRatings?: number;
+};
+
+/**
+ * label 是全称，short 是表头。grows：只会越攒越多的总数（评价、评分人数）——
+ * 总数的线几乎是平的，看的是每次比上一次多了几条，所以画"多了几条"。
+ */
+export const POINT_LABELS: { key: Exclude<keyof AttentionPoint, "at">; label: string; short: string; unit: string; grows: boolean }[] = [
+  { key: "appRatings", label: "那几个 App 评过分的人", short: "App 评分人数", unit: "人", grows: true },
+  { key: "rakutenReviews", label: "楽天前 30 件的评价", short: "楽天评价", unit: "条", grows: true },
+  { key: "rakutenItems", label: "楽天相关商品", short: "楽天商品", unit: "件", grows: false },
+  { key: "youtube", label: "YouTube 视频", short: "YouTube", unit: "条", grows: false },
+  { key: "hatena", label: "はてな标题里有这个词的文章", short: "はてな", unit: "篇", grows: false },
+  { key: "wiki", label: "维基上个月浏览", short: "维基上月", unit: "次", grows: false },
+];
+
+/** 隔几天以上再量一次才多一个有用的点。 */
+export const REMEASURE_DAYS = 28;
+/** 最多留几次（三年的月度）。 */
+export const HISTORY_MAX = 36;
+
+/** 这一次量到的几个总数；一样都没有返回 null。 */
+export function attentionPoint(v: Pick<GapVoices, "attention" | "apps" | "created_at">): AttentionPoint | null {
+  const a = v.attention;
+  const p: AttentionPoint = { at: a?.checked_at ?? v.created_at };
+  const lastWiki = a?.wiki?.months[a.wiki.months.length - 1];
+  if (lastWiki) p.wiki = lastWiki.views;
+  if (a?.hatena) p.hatena = a.hatena.matched;
+  if (a?.youtube && a.youtube !== "no-key" && typeof a.youtube.total === "number") p.youtube = a.youtube.total;
+  if (a?.rakuten && a.rakuten !== "no-key" && !("error" in a.rakuten)) {
+    if (typeof a.rakuten.count === "number") p.rakutenItems = a.rakuten.count;
+    p.rakutenReviews = a.rakuten.reviews;
+  }
+  if (v.apps && v.apps.length > 0) p.appRatings = v.apps.reduce((n, x) => n + x.ratings, 0);
+  return Object.keys(p).length > 1 ? p : null;
+}
+
+/** 重新量之前：把上一次的几个总数挪进历史（旧的在前，最多 HISTORY_MAX 次）。 */
+export function carryHistory(prev: GapVoices | null): AttentionPoint[] {
+  if (!prev) return [];
+  const point = attentionPoint(prev);
+  return [...(prev.history ?? []), ...(point ? [point] : [])].slice(-HISTORY_MAX);
+}
+
+/** 连同这一次，量过的每一次（旧的在前）。 */
+export function attentionSeries(v: GapVoices): AttentionPoint[] {
+  const now = attentionPoint(v);
+  return [...(v.history ?? []), ...(now ? [now] : [])];
+}
+
+/** 某一样每个月一个数（同一个月量了几次取最后一次），画线用。 */
+export function monthlyPoints(series: AttentionPoint[], key: Exclude<keyof AttentionPoint, "at">): { month: string; value: number }[] {
+  const byMonth = new Map<string, number>();
+  for (const p of series) {
+    const v = p[key];
+    if (typeof v === "number") byMonth.set(p.at.slice(0, 7), v);
+  }
+  return Array.from(byMonth, ([month, value]) => ({ month, value })).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/**
+ * 每个月比上一次量多了几条（第一次没有"上一次"，不算）。变少的（楽天前 30 件换了几件）记成 0，
+ * 由调用方在页面上写明。
+ */
+export function monthlyGrowth(points: { month: string; value: number }[]): { month: string; value: number }[] {
+  return points.slice(1).map((p, i) => ({ month: p.month, value: Math.max(0, p.value - points[i].value) }));
+}
 
 /** 每种几句（只数次数）。 */
 export function voiceCounts(quotes: Pick<VoiceQuote, "kind">[]): Record<VoiceKind, number> {

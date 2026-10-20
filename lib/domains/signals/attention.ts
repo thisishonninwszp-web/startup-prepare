@@ -16,6 +16,7 @@ import {
   type Attention,
 } from "./attention-shared";
 import { parseEstat } from "./slow";
+import { rakutenItemSearch } from "@/lib/rakuten";
 
 export * from "./attention-shared";
 
@@ -58,7 +59,8 @@ async function wiki(topic: string, now: Date): Promise<Attention["wiki"]> {
   const title = pickWikiTitle(search, topic);
   if (!title) return null;
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)); // 上个月最后一天
-  const start = new Date(Date.UTC(end.getUTCFullYear() - 2, end.getUTCMonth() + 1, 1));
+  // Wikimedia 从 2015-07 开始有按月的数：一次全取，看十年的走势
+  const start = new Date(Date.UTC(2015, 6, 1));
   const page = encodeURIComponent(title.replace(/ /g, "_"));
   const views = await get(
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/ja.wikipedia/all-access/user/${page}/monthly/${yyyymmdd(start)}00/${yyyymmdd(end)}00`,
@@ -95,26 +97,13 @@ async function youtube(topic: string): Promise<Attention["youtube"]> {
   return parseYoutube(search, videos);
 }
 
-/**
- * 楽天市场商品搜索（官方文档 webservice.rakuten.co.jp/documentation/ichiba-item-search，版本 2026-07-01）：
- * openapi.rakuten.co.jp，applicationId + accessKey（旧的 app.rakuten.co.jp 2026-05 停了，旧应用 ID 不能用）。
- * 另外带上 Referer（有开发者实测不带会被拒），要和楽天那边登记的网址一致：读 RAKUTEN_REFERER，没填用 APP_URL，再没有用线上地址。
- */
+/** 楽天市场：相关商品几件、评价最多的几件（全站共用 lib/rakuten.ts）。接口出错时把原因带给页面。 */
 async function rakuten(topic: string): Promise<Attention["rakuten"]> {
-  const id = process.env.RAKUTEN_APPLICATION_ID;
-  const key = process.env.RAKUTEN_ACCESS_KEY;
-  if (!id || !key) return "no-key";
-  const referer = process.env.RAKUTEN_REFERER || process.env.APP_URL || "https://startup-prepare.vercel.app/";
-  const params = new URLSearchParams({
-    applicationId: id,
-    accessKey: key,
-    keyword: topic,
-    format: "json",
-    formatVersion: "2",
-    hits: "30",
-    sort: "-reviewCount",
-  });
-  const json = await get(`https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701?${params}`, "json", { Referer: referer });
+  const json = await rakutenItemSearch({ keyword: topic, hits: "30", sort: "-reviewCount" });
+  if (json === "no-key") return "no-key";
+  if (json && typeof json === "object" && "error" in (json as Record<string, unknown>) && !("Items" in (json as Record<string, unknown>))) {
+    return { error: String((json as { error: unknown }).error) };
+  }
   return parseRakuten(json);
 }
 
@@ -146,7 +135,7 @@ async function kakeiSeries(appId: string, tableId: string, name: string): Promis
  * 家计调查（总务省，经 e-Stat）：找改定年份最新的品目表，取它的品目清单，AI 从清单里挑一两项（照抄、代码核对），
  * 再取这几项每月每户花多少（二人以上的家庭、全国）。新表的月份不到两年，前面用上一次改定里同名的那一项补上。
  */
-async function kakei(topic: string, pain: string): Promise<Attention["kakei"]> {
+async function kakei(topic: string, pain: string, reuse?: string[]): Promise<Attention["kakei"]> {
   const appId = process.env.ESTAT_APP_ID;
   if (!appId) return "no-key";
   const tables = await kakeiTables(appId);
@@ -154,7 +143,10 @@ async function kakei(topic: string, pain: string): Promise<Attention["kakei"]> {
   const meta = parseEstatMeta(await get(`${ESTAT}/getMetaInfo?appId=${appId}&statsDataId=${latest.id}`, "json", {}, WEEK));
   const items = kakeiItemNames(meta);
   if (items.length === 0) return null;
-  const picked = await pickKakeiItems({ topic, pain, names: items.map((i) => i.name) }).catch(() => []);
+  // 再量一次时沿用上次挑的那几项（还在清单里的），不再调 AI
+  const picked = reuse
+    ? reuse.filter((name) => items.some((i) => i.name === name))
+    : await pickKakeiItems({ topic, pain, names: items.map((i) => i.name) }).catch(() => []);
   if (picked.length === 0) return { items: [], revision: latest.revision };
   let joined = false;
   const series = await Promise.all(
@@ -177,7 +169,13 @@ async function kakei(topic: string, pain: string): Promise<Attention["kakei"]> {
   };
 }
 
-export async function fetchAttention(topic: string, pain = "", now = new Date()): Promise<Attention | null> {
+/** opts.kakeiNames：再量一次时沿用上次挑的家计调查品目（不调 AI）。 */
+export async function fetchAttention(
+  topic: string,
+  pain = "",
+  now = new Date(),
+  opts: { kakeiNames?: string[] } = {}
+): Promise<Attention | null> {
   const t = topic.trim();
   if (!t) return null;
   const [w, s, h, y, r, k] = await Promise.all([
@@ -186,7 +184,7 @@ export async function fetchAttention(topic: string, pain = "", now = new Date())
     hatena(t),
     youtube(t),
     rakuten(t),
-    kakei(t, pain).catch(() => null),
+    kakei(t, pain, opts.kakeiNames).catch(() => null),
   ]);
   return { topic: t, wiki: w, suggest: s, hatena: h, youtube: y, rakuten: r, kakei: k, checked_at: now.toISOString() };
 }

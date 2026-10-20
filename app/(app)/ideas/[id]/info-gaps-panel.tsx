@@ -17,6 +17,7 @@ import {
   type InfoGap,
 } from "@/lib/domains/ideas/info-gaps-shared";
 import { addOwnGapEvidenceAction, generateIdeaGapsAction, saveFounderFactsAction, setGapStatusAction } from "../info-gap-actions";
+import { TrendsChart } from "@/components/trends-chart";
 
 /** 他自己写的约束和优势（只写事实）。所有想法共用一份。 */
 function FounderFacts({ initial }: { initial: string }) {
@@ -180,13 +181,16 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
             <p className="text-muted-foreground">数一数有多少人在问（不花钱）：写一句普通人会搜的话</p>
             <Input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="例：家事代行 中国語" maxLength={60} />
             {phrase.trim() && (
-              <p className="flex flex-wrap gap-x-3">
-                {askLinks(phrase).map((l) => (
-                  <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
-                    {l.label} ↗
-                  </a>
-                ))}
-              </p>
+              <>
+                <p className="flex flex-wrap gap-x-3">
+                  {askLinks(phrase).map((l) => (
+                    <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                      {l.label} ↗
+                    </a>
+                  ))}
+                </p>
+                <TrendsChart key={phrase.trim()} words={[phrase]} label={`就在这里看「${phrase.trim()}」这五年在 Google 上的搜索走势`} />
+              </>
             )}
             <p className="text-muted-foreground">看到的数用上面「自己补一条」记下来（例：知恵袋上「家事代行 中国語」有 120 件问题，近两年的占一半）。</p>
           </div>

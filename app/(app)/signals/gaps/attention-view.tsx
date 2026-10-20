@@ -1,5 +1,6 @@
 import { wikiYears, type Attention } from "@/lib/domains/signals/attention-shared";
 import { MonthLine } from "@/components/ui/month-line";
+import { TrendsChart } from "@/components/trends-chart";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
@@ -111,6 +112,8 @@ export function AttentionView({ attention }: { attention: Attention }) {
             <span className="text-muted-foreground">这条是早先查的，换一批再找就有</span>
           ) : a.rakuten === "no-key" ? (
             <span className="text-muted-foreground">没配楽天的 Key（RAKUTEN_APPLICATION_ID / RAKUTEN_ACCESS_KEY，免费申请）</span>
+          ) : a.rakuten && "error" in a.rakuten ? (
+            <span className="text-muted-foreground">这次没取到（{a.rakuten.error}）</span>
           ) : a.rakuten ? (
             <>
               {a.rakuten.count !== null && (
@@ -180,13 +183,16 @@ export function AttentionView({ attention }: { attention: Attention }) {
       {a.wiki && a.wiki.months.length >= 2 && (
         <div className="mt-3">
           <MonthLine
-            title={`维基百科「${a.wiki.title}」每个月被看了几次`}
+            title={`维基百科「${a.wiki.title}」每个月被看了几次（${a.wiki.months[0].month} 起）`}
             points={a.wiki.months.map((m) => ({ month: m.month, value: m.views }))}
             unit="次"
             split={a.wiki.months.length > 12 ? a.wiki.months.length - 12 : undefined}
           />
         </div>
       )}
+      <div className="mt-3">
+        <TrendsChart words={[a.topic]} />
+      </div>
       {a.kakei && a.kakei !== "no-key" &&
         a.kakei.items.map((k) =>
           k.months.length >= 2 ? (
@@ -200,7 +206,7 @@ export function AttentionView({ attention }: { attention: Attention }) {
             </div>
           ) : null
         )}
-      {a.rakuten && a.rakuten !== "no-key" && (
+      {a.rakuten && a.rakuten !== "no-key" && !("error" in a.rakuten) && (
         // 署名必须照楽天给的 HTML 原样放，不能加 class / rel，所以用固定字符串插进去（内容是写死的常量，不是外来数据）
         <p className="mt-2 text-muted-foreground" dangerouslySetInnerHTML={{ __html: RAKUTEN_CREDIT }} />
       )}

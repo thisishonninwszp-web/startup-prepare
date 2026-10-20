@@ -22,8 +22,8 @@ export type Attention = {
   hatena: AttentionHatena | null;
   /** "no-key"：没配 YOUTUBE_API_KEY。 */
   youtube: AttentionYoutube | "no-key" | null;
-  /** 楽天市场；"no-key"：没配 RAKUTEN_APPLICATION_ID / RAKUTEN_ACCESS_KEY。早期查过的没有。 */
-  rakuten?: AttentionRakuten | "no-key" | null;
+  /** 楽天市场；"no-key"：没配 RAKUTEN_APPLICATION_ID / RAKUTEN_ACCESS_KEY；{ error }：接口返回了错误。早期查过的没有。 */
+  rakuten?: AttentionRakuten | "no-key" | { error: string } | null;
   /** 家计调查；"no-key"：没配 ESTAT_APP_ID。早期查过的没有。 */
   kakei?: AttentionKakei | "no-key" | null;
   checked_at: string;

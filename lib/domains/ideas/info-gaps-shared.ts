@@ -1,3 +1,5 @@
+import { trendsExploreUrl } from "@/lib/trends";
+
 /**
  * 想法的信息缺口：浏览器端也要用的部分（叫法、类型、退路）。不碰数据库、不碰 AI。
  *
@@ -36,7 +38,7 @@ export function askLinks(phrase: string, here: "日本" | "中国" = "日本"): 
   }
   return [
     { label: "知恵袋（问题有几件）", url: `https://chiebukuro.yahoo.co.jp/search?p=${q}` },
-    { label: "Google 趋势（近 5 年，日本）", url: `https://trends.google.co.jp/trends/explore?geo=JP&date=today%205-y&q=${q}` },
+    { label: "Google 趋势（近 5 年，日本）", url: trendsExploreUrl([phrase]) },
     { label: "Yahoo! 实时搜索（X 上这几天有多少人在说）", url: `https://search.yahoo.co.jp/realtime/search?p=${q}` },
     { label: "ココナラ（有多少人在卖、卖了几单）", url: `https://coconala.com/search?keyword=${q}` },
   ];

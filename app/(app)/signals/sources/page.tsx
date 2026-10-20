@@ -8,6 +8,8 @@ import { tallyFeedback } from "@/lib/domains/signals/feedback";
 import { decisionCounts, DROPPED_DAYS, droppedSentences, HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
 import { tavilyUsage } from "@/lib/external";
 import { googleSearchCount } from "@/lib/web-search";
+import { envStatus } from "@/lib/domains/signals/env-status";
+import { rakutenReferer } from "@/lib/rakuten";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,8 @@ export default async function SourcesPage() {
     decisionCounts(user.id).catch(() => new Map<string, number>()),
   ]);
   const anyFeedback = feedback.some((f) => f.useful + f.useless > 0);
+  const keys = envStatus(process.env);
+  const referer = rakutenReferer();
 
   return (
     <PageContainer width="narrow">
@@ -124,6 +128,39 @@ export default async function SourcesPage() {
         <p className="mt-2 text-xs leading-6 text-muted-foreground">
           Google 这边免费层一天 500 次、付费层一天 1500 次不收钱（按 Google 的日子算，不是日本时间）。往下推每推一层大约搜 9 次，
           差距清单每天扫一轮大约 8 次。
+        </p>
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-base font-semibold">外部接口的 Key 配好了没有</h2>
+        <ul className="space-y-2 text-sm leading-7">
+          {keys.map((k) => (
+            <li key={k.label}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <span>
+                  {k.label}
+                  <span className="ml-2 text-xs text-muted-foreground">{k.use}</span>
+                </span>
+                <span className={`shrink-0 font-mono text-xs ${k.ok ? "text-muted-foreground" : "text-destructive"}`}>{k.ok ? "配了" : "没配"}</span>
+              </div>
+              <p className="font-mono text-xs text-muted-foreground">
+                {k.slots.map((s, i) => (
+                  <span key={i} className="mr-3">
+                    {s.using ? `${s.using} ✓` : `${s.names.join(" 或 ")} ✗`}
+                  </span>
+                ))}
+              </p>
+              {!k.ok && <p className="text-xs text-muted-foreground">免费拿：{k.how}</p>}
+              {k.label === "楽天市场" && (
+                <p className="text-xs text-muted-foreground">
+                  发给楽天的来源网址：<span className="font-mono">{referer}</span>（要和楽天那边 Allowed websites 填的域名一样）
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs leading-6 text-muted-foreground">
+          只看线上这一次部署读不读得到，不显示值。在 Vercel 里加了或改了变量，要 Redeploy 一次才生效；变量要勾 Production。
         </p>
       </section>
 
