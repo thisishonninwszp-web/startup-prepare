@@ -21,6 +21,9 @@ import {
   withIssueDoorLink,
   ISSUE_DOOR_LINE,
   phraseHits,
+  validMetric,
+  upsertMetric,
+  gapReach,
 } from "./issue-shared";
 
 const pick = (over: Partial<IssuePick> = {}): IssuePick => ({
@@ -238,3 +241,33 @@ describe("note 标题用上日本人自己搜的说法", () => {
     expect(phraseHits(["知恵袋で見つけた話"], ["知恵袋"])).toEqual([]);
   });
 });
+
+describe("周刊每一篇的数据", () => {
+  it("validMetric：篇数、平台、整数都要对，至少填一个；空的为 null", () => {
+    expect(validMetric({ pick: 1, platform: "小红书", views: "120", saves: "8", likes: "", comments: null }, 3)).toEqual({
+      pick: 1,
+      platform: "小红书",
+      views: 120,
+      likes: null,
+      saves: 8,
+      comments: null,
+    });
+    expect(validMetric({ pick: 3, platform: "小红书", views: 1 }, 3)).toMatch(/没有这一篇/);
+    expect(validMetric({ pick: 0, platform: "微博", views: 1 }, 3)).toMatch(/平台/);
+    expect(validMetric({ pick: 0, platform: "note", views: "1.5" }, 3)).toMatch(/整数/);
+    expect(validMetric({ pick: 0, platform: "note" }, 3)).toMatch(/至少/);
+  });
+
+  it("upsertMetric：同一篇同一个平台只留最新的；gapReach：按差距加起来", () => {
+    const m = (pick: number, platform: "小红书" | "note", views: number, saves: number | null = null) => ({ pick, platform, views, likes: null, saves, comments: null, at: "2026-10-20" });
+    const list = upsertMetric(upsertMetric([m(0, "小红书", 100)], m(0, "小红书", 300, 12)), m(0, "note", 50));
+    expect(list.map((x) => [x.platform, x.views])).toEqual([
+      ["小红书", 300],
+      ["note", 50],
+    ]);
+    const issue = { id: "x", content: { opening: "", bets: [], picks: [{ side: "japan", signal_id: "s1" }] } } as never;
+    const reach = gapReach([issue], new Map([["x", list]]));
+    expect(reach.get("japan:s1")).toEqual({ posts: 2, views: 350, likes: 0, saves: 12, comments: 0 });
+  });
+});
+

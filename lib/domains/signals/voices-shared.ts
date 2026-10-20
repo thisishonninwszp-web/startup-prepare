@@ -1,3 +1,5 @@
+import type { Attention } from "./attention-shared";
+
 /**
  * 差距清单 · 这边有人在为这个头疼吗：浏览器端也要用的部分。不碰数据库、不碰 AI。
  *
@@ -40,6 +42,8 @@ export type GapVoices = {
    * 不用跟任何人说话就能看到的"已经有多少人在用"的痕迹。早期查过的没有。
    */
   apps?: { name: string; ratings: number; url: string }[];
+  /** 有多少人在关注（维基浏览量、搜索联想、はてな、YouTube）。只有日本这边；早期查过的没有。 */
+  attention?: Attention;
   created_at: string;
 };
 

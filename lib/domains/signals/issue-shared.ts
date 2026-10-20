@@ -337,6 +337,67 @@ export function phraseHits(titles: string[], phrases: string[]): string[] {
   });
 }
 
+// ── 每一篇的数据 ───────────────────────────────────────────────────────────
+
+/** 一篇在一个平台上的数据（他过几天回来看一眼填的）。没填的为 null。 */
+export type IssueMetric = {
+  pick: number;
+  platform: IssuePlatform;
+  views: number | null;
+  likes: number | null;
+  saves: number | null;
+  comments: number | null;
+  at: string;
+};
+
+export type GapReach = { posts: number; views: number; likes: number; saves: number; comments: number };
+
+/** 浏览器传来的一条先查形状：第几篇要在这一期里、平台认得、数是非负整数（空的为 null）、至少填了一个。 */
+export function validMetric(raw: unknown, picks: number): Omit<IssueMetric, "at"> | string {
+  const v = (raw ?? {}) as Record<string, unknown>;
+  const pick = Number(v.pick);
+  if (!Number.isInteger(pick) || pick < 0 || pick >= picks) return "这一期没有这一篇";
+  if (typeof v.platform !== "string" || !(ISSUE_PLATFORMS as readonly string[]).includes(v.platform)) return "不认识这个平台";
+  const num = (k: string): number | null | "bad" => {
+    const x = v[k];
+    if (x === null || x === undefined || x === "") return null;
+    const n = Number(x);
+    return Number.isInteger(n) && n >= 0 && n < 1e9 ? n : "bad";
+  };
+  const views = num("views");
+  const likes = num("likes");
+  const saves = num("saves");
+  const comments = num("comments");
+  if ([views, likes, saves, comments].includes("bad")) return "数要填整数";
+  if ([views, likes, saves, comments].every((x) => x === null)) return "至少填一个数";
+  return { pick, platform: v.platform as IssuePlatform, views: views as number | null, likes: likes as number | null, saves: saves as number | null, comments: comments as number | null };
+}
+
+/** 同一篇同一个平台只留最新的一次。 */
+export function upsertMetric(list: IssueMetric[], m: IssueMetric): IssueMetric[] {
+  return [...list.filter((x) => !(x.pick === m.pick && x.platform === m.platform)), m];
+}
+
+/** 每条差距在周刊上被看了多少、收藏了多少（几期、几个平台加起来；键是 "side:signal_id"）。只数次数。 */
+export function gapReach(issues: Pick<Issue, "id" | "content">[], metrics: Map<string, IssueMetric[]>): Map<string, GapReach> {
+  const out = new Map<string, GapReach>();
+  for (const issue of issues) {
+    for (const m of metrics.get(issue.id) ?? []) {
+      const pick = issue.content.picks[m.pick];
+      if (!pick) continue;
+      const key = `${pick.side}:${pick.signal_id}`;
+      const r = out.get(key) ?? { posts: 0, views: 0, likes: 0, saves: 0, comments: 0 };
+      r.posts += 1;
+      r.views += m.views ?? 0;
+      r.likes += m.likes ?? 0;
+      r.saves += m.saves ?? 0;
+      r.comments += m.comments ?? 0;
+      out.set(key, r);
+    }
+  }
+  return out;
+}
+
 /** 发了几处、回应几条、几个人想聊。只数次数。 */
 export function issueCounts(issue: Pick<Issue, "published" | "responses">): { published: number; responses: number; wantsTalk: number } {
   return {

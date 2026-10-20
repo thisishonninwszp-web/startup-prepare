@@ -27,6 +27,9 @@ import {
   type PickStance,
   type ResponseSignal,
   RESPONSE_SIGNALS,
+  upsertMetric,
+  validMetric,
+  type IssueMetric,
 } from "./issue-shared";
 
 export * from "./issue-shared";
@@ -128,6 +131,34 @@ function toIssue(r: Record<string, unknown>): Issue {
 }
 
 const ISSUE_COLUMNS = "id, week_start, updated_at, content, drafts, published, responses";
+
+const MISSING_089 = "迁移 089 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/089_signal_issue_metrics.sql。";
+
+/** 每一期每一篇的数据（键是 issue id）。089 没跑、表没建都返回空。 */
+export async function loadIssueMetrics(userId: string): Promise<Map<string, IssueMetric[]>> {
+  const { data, error } = await supabaseAdmin.from("signal_issues").select("id, metrics").eq("user_id", userId);
+  if (error) {
+    if (/metrics|signal_issues/.test(error.message)) return new Map();
+    throw new Error(error.message);
+  }
+  return new Map((data ?? []).map((r) => [r.id as string, ((r.metrics as IssueMetric[] | null) ?? [])]));
+}
+
+/** 记一篇在一个平台上的数据（同一篇同一个平台覆盖上一次）。 */
+export async function saveIssueMetric(userId: string, issueId: string, raw: unknown): Promise<IssueMetric[]> {
+  const issue = await loadOwnIssue(userId, issueId);
+  const m = validMetric(raw, issue.content.picks.length);
+  if (typeof m === "string") throw new Error(m);
+  const { data, error } = await supabaseAdmin.from("signal_issues").select("metrics").eq("id", issueId).eq("user_id", userId).maybeSingle();
+  if (error) {
+    if (/metrics/.test(error.message)) throw new Error(MISSING_089);
+    throw new Error(error.message);
+  }
+  const metrics = upsertMetric(((data?.metrics as IssueMetric[] | null) ?? []), { ...m, at: new Date().toISOString() });
+  const { error: updateError } = await supabaseAdmin.from("signal_issues").update({ metrics }).eq("id", issueId).eq("user_id", userId);
+  if (updateError) throw new Error(updateError.message);
+  return metrics;
+}
 
 /** 这一周的那一期（还没写为 null）；表还没建返回 "missing-schema"。 */
 export async function getIssue(userId: string, weekStart = weekStartOf(tokyoToday())): Promise<Issue | null | "missing-schema"> {

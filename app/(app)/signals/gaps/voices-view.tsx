@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { GapSide } from "@/lib/domains/signals/gaps-shared";
 import { VOICE_KINDS, voiceCounts, type GapVoices, type VoiceKind } from "@/lib/domains/signals/voices-shared";
 import { askLinks } from "@/lib/domains/ideas/info-gaps-shared";
+import { AttentionView } from "./attention-view";
 import { analyzeGapVoicesAction } from "../actions";
 
 /**
@@ -77,6 +78,7 @@ export function VoicesView({ signalId, side, here, initial }: { signalId: string
           <span className="text-muted-foreground"> —— 不用问任何人就能看到的「已经有多少人在用」的痕迹。</span>
         </p>
       )}
+      {voices.attention && <AttentionView attention={voices.attention} />}
       {voices.queries && voices.queries.length > 0 && (
         <details className="mt-3 text-xs">
           <summary className="cursor-pointer text-muted-foreground">自己去数一数：有多少人在问（不花钱）</summary>

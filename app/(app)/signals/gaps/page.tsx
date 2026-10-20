@@ -14,7 +14,7 @@ import { loadGapVoices, type GapVoices } from "@/lib/domains/signals/voices";
 import { loadFakeDoorStats, type FakeDoorStats } from "@/lib/domains/signals/fake-door";
 import { loadSlowWind, windFor, type SlowWind } from "@/lib/domains/signals/slow-then";
 import { WindLine } from "../slow/wind-line";
-import { gapDemand, listIssues, type GapDemand } from "@/lib/domains/signals/issue";
+import { gapDemand, gapReach, listIssues, loadIssueMetrics, type GapDemand, type GapReach } from "@/lib/domains/signals/issue";
 import { SourceCheckView } from "../check-view";
 import { GapActions } from "./gap-actions";
 import { GapScanLoader } from "./gap-scan-loader";
@@ -52,6 +52,7 @@ function GapList({
   voices,
   doors,
   wind,
+  reach,
 }: {
   gaps: JapanGapRow[];
   side: GapSide;
@@ -64,6 +65,8 @@ function GapList({
   doors: Map<string, FakeDoorStats>;
   /** 慢变量：这一条顺着、逆着哪几个。 */
   wind: SlowWind | null;
+  /** 周刊上每一篇的数据加起来（浏览、收藏……）。 */
+  reach: Map<string, GapReach>;
 }) {
   const t = SIDE_TEXT[side];
   if (gaps.length === 0) return <EmptyState title="这里空着。" description={t.empty} />;
@@ -120,9 +123,13 @@ function GapList({
             </div>
             {(() => {
               const d = demand.get(transferKey(side, g.signal_id));
-              return d ? (
+              const r = reach.get(transferKey(side, g.signal_id));
+              return d || r ? (
                 <p className="mt-2 font-mono text-xs text-muted-foreground">
-                  周刊上：说想要 {d.pain} · 问哪里买 {d.pay} · 想聊 {d.wantsTalk}
+                  周刊上：
+                  {r ? `浏览 ${r.views} · 收藏 ${r.saves} · 点赞 ${r.likes} · 评论 ${r.comments}（${r.posts} 篇次）` : ""}
+                  {r && d ? " ｜ " : ""}
+                  {d ? `说想要 ${d.pain} · 问哪里买 ${d.pay} · 想聊 ${d.wantsTalk}` : ""}
                 </p>
               ) : null;
             })()}
@@ -284,7 +291,7 @@ export default async function JapanGapsPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [board, scanned, transfers, issues, voices, doors, wind] = await Promise.all([
+  const [board, scanned, transfers, issues, voices, doors, wind, metrics] = await Promise.all([
     listGapBoard(user.id, tokyoToday()),
     todayGapScan(user.id),
     loadGapTransfers(user.id),
@@ -292,8 +299,10 @@ export default async function JapanGapsPage() {
     loadGapVoices(user.id),
     loadFakeDoorStats(user.id),
     loadSlowWind(user.id),
+    loadIssueMetrics(user.id).catch(() => new Map()),
   ]);
   const demand = gapDemand(issues);
+  const reach = gapReach(issues, metrics);
   const { japan: toJapan, us: fromUs, china: toChina } = board.sides;
 
   return (
@@ -321,7 +330,7 @@ export default async function JapanGapsPage() {
 
       <h2 className="mb-4 text-xl font-semibold">中国有、日本还没有</h2>
       <ArrivedList gaps={toJapan.arrived} side="japan" />
-      <GapList gaps={toJapan.open} side="japan" transfers={transfers} demand={demand} voices={voices} doors={doors} wind={wind} />
+      <GapList gaps={toJapan.open} side="japan" transfers={transfers} demand={demand} voices={voices} doors={doors} wind={wind} reach={reach} />
 
       <section className="mt-12 border-t pt-6">
         <h2 className="text-xl font-semibold">美国有、日本还没有</h2>
@@ -329,7 +338,7 @@ export default async function JapanGapsPage() {
           美国先出现的产品和做法，日本常常晚几年。只收讲产品、服务、生意做法的，纯技术讨论不收。
         </p>
         <ArrivedList gaps={fromUs.arrived} side="us" />
-        <GapList gaps={fromUs.open} side="us" transfers={transfers} demand={demand} voices={voices} doors={doors} wind={wind} />
+        <GapList gaps={fromUs.open} side="us" transfers={transfers} demand={demand} voices={voices} doors={doors} wind={wind} reach={reach} />
       </section>
 
       <section className="mt-12 border-t pt-6">
@@ -338,7 +347,7 @@ export default async function JapanGapsPage() {
           日本做成、中国还没有的东西，可能适合跨境电商卖给中国人，或者把这种做法带去中国。
         </p>
         <ArrivedList gaps={toChina.arrived} side="china" />
-        <GapList gaps={toChina.open} side="china" transfers={transfers} demand={demand} voices={voices} doors={doors} wind={wind} />
+        <GapList gaps={toChina.open} side="china" transfers={transfers} demand={demand} voices={voices} doors={doors} wind={wind} reach={reach} />
       </section>
     </PageContainer>
   );

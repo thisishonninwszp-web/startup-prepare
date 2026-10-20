@@ -6280,3 +6280,9 @@ alter table idea_fits enable row level security;
 drop policy if exists "idea_fits_owner" on idea_fits;
 create policy "idea_fits_owner" on idea_fits
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 089：周刊每一篇的数据（signal_issues.metrics）
+-- ============================================================================
+
+alter table signal_issues add column if not exists metrics jsonb not null default '[]'::jsonb;

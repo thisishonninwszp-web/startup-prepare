@@ -3,7 +3,7 @@ import { tokyoToday } from "./brief";
 import { listAllSignups, loadFakeDoorStats } from "./fake-door";
 import { listGapBoard } from "./gaps";
 import { gapIdeaTitle, transferKey, type GapSide } from "./gaps-shared";
-import { getIssue } from "./issue";
+import { getIssue, loadIssueMetrics } from "./issue";
 import { listJudgments } from "./practice";
 import { dueJudgments } from "./practice-shared";
 import { loadGapVoices } from "./voices";
@@ -19,7 +19,7 @@ export * from "./act-shared";
  */
 export async function loadActState(userId: string): Promise<ActState> {
   const today = tokyoToday();
-  const [board, voices, doors, signups, ideas, judgments, issue, infoGaps] = await Promise.all([
+  const [board, voices, doors, signups, ideas, judgments, issue, infoGaps, metrics] = await Promise.all([
     listGapBoard(userId, today),
     loadGapVoices(userId),
     loadFakeDoorStats(userId),
@@ -28,6 +28,7 @@ export async function loadActState(userId: string): Promise<ActState> {
     listJudgments(userId).catch(() => []),
     getIssue(userId).catch(() => null),
     listOpenGapsForAct(userId).catch(() => []),
+    loadIssueMetrics(userId).catch(() => new Map()),
   ]);
   if (ideas.error) throw new Error(ideas.error.message);
 
@@ -95,5 +96,7 @@ export async function loadActState(userId: string): Promise<ActState> {
     dueJudgments: dueJudgments(judgments).length,
     issue: !issue || issue === "missing-schema" ? "none" : issue.published.length > 0 ? "published" : "draft",
     infoGaps,
+    issuePublishedOn: issue && issue !== "missing-schema" && issue.published.length > 0 ? issue.published[0].at.slice(0, 10) : null,
+    issueMetrics: issue && issue !== "missing-schema" ? (metrics.get(issue.id) ?? []).length : 0,
   };
 }

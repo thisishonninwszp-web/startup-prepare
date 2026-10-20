@@ -47,6 +47,8 @@ import {
   composeAndSaveIssue,
   describeResponse,
   loadOwnIssue,
+  saveIssueMetric,
+  type IssueMetric,
   type Issue,
   type IssuePlatform,
   type ResponseSignal,
@@ -673,6 +675,19 @@ export async function addIssueResponseAction(
     const p = pick !== undefined ? issue.content.picks[pick] : undefined;
     if (p) await touchIdeaForGap(userId, p.headline, p.side).catch(() => undefined);
     return { ok: true, issue: await addIssueResponse(userId, issueId, observation.id, wantsTalk, pick, signal) };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
+  }
+}
+
+/** 周刊：记一篇在一个平台上的数据（浏览、点赞、收藏、评论）。 */
+export async function saveIssueMetricAction(issueId: string, metric: unknown): Promise<{ ok: true; metrics: IssueMetric[] } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    const metrics = await saveIssueMetric(userId, issueId, metric);
+    revalidatePath("/signals/gaps");
+    revalidatePath("/signals/act");
+    return { ok: true, metrics };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没记上") };
   }

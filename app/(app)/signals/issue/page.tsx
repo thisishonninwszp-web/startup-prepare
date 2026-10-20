@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { getIssue, issueCandidates, issueCounts, listIssues, weekStartOf } from "@/lib/domains/signals/issue";
+import { getIssue, issueCandidates, issueCounts, listIssues, loadIssueMetrics, weekStartOf } from "@/lib/domains/signals/issue";
+import { IssueMetrics } from "./issue-metrics";
 import { getPublicToken } from "@/lib/domains/signals/public-record";
 import { loadIssueDoors, loadOpenDoorLinks } from "@/lib/domains/signals/fake-door";
 import { ATLAS_CATEGORIES, categoryBase, countedCases, listTransferCases, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas";
@@ -31,7 +32,7 @@ export default async function IssuePage({ searchParams }: { searchParams: { pick
     (["japan", "us", "china"] as GapSide[]).includes(pickSide as GapSide) && /^[0-9a-f-]{36}$/i.test(pickId ?? "")
       ? { side: pickSide as GapSide, signal_id: pickId }
       : null;
-  const [current, candidates, past, publicToken, cases, doors, issueDoors, pickedDeep] = await Promise.all([
+  const [current, candidates, past, publicToken, cases, doors, issueDoors, pickedDeep, metrics] = await Promise.all([
     getIssue(user.id, weekStart),
     issueCandidates(user.id, include ? [include] : []),
     listIssues(user.id),
@@ -40,6 +41,7 @@ export default async function IssuePage({ searchParams }: { searchParams: { pick
     loadOpenDoorLinks(user.id),
     loadIssueDoors(user.id),
     include ? loadGapDeep(user.id, include.side, include.signal_id).catch(() => null) : Promise.resolve(null),
+    loadIssueMetrics(user.id).catch(() => new Map()),
   ]);
   const deepRow = pickedDeep && pickedDeep !== "missing-schema" ? pickedDeep : null;
   // 挑条时每条已经出过的示意图（没出过、迁移没跑的不放）
@@ -94,6 +96,13 @@ export default async function IssuePage({ searchParams }: { searchParams: { pick
             }
             images={images}
           />
+          {current && current.published.length > 0 && current.content.picks.length > 0 && (
+            <IssueMetrics
+              issueId={current.id}
+              picks={current.content.picks.map((p) => ({ headline: p.headline }))}
+              initial={metrics.get(current.id) ?? []}
+            />
+          )}
           <section className="mt-12 border-t pt-6">
             <h2 className="text-base font-semibold">这份周刊能不能卖</h2>
             <p className="mt-1 text-sm leading-7 text-muted-foreground">

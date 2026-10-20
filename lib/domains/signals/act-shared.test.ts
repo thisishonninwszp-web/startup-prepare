@@ -70,3 +70,13 @@ describe("本周行动：想法还缺的信息", () => {
     expect(steps[0].text).toContain("2026-11-10 截止");
   });
 });
+
+describe("本周行动：周刊每一篇的数据", () => {
+  it("发出去三天以上、一条数据都没记：提醒去记；记过了就不提醒", () => {
+    const base = { gaps: [gap({ quotes: 1 })], issue: "published" as const, issuePublishedOn: "2026-10-16" };
+    expect(nextSteps(state({ ...base, issueMetrics: 0 }))[0]).toMatchObject({ key: "metrics", href: "/signals/issue" });
+    expect(nextSteps(state({ ...base, issueMetrics: 2 }))[0].key).toBe("idle");
+    expect(nextSteps(state({ ...base, issuePublishedOn: "2026-10-19", issueMetrics: 0 }))[0].key).toBe("idle");
+  });
+});
+

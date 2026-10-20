@@ -4,6 +4,7 @@ import { webSearch } from "@/lib/web-search";
 import { findJapanGap } from "./gaps";
 import { gapPlaces, transferKey, type GapSide } from "./gaps-shared";
 import { mergeSources } from "./sources";
+import { fetchAttention } from "./attention";
 import { parseReviewEntries, REVIEWS_PER_APP, type GapVoices, type ReviewSource, type VoiceQuote } from "./voices-shared";
 
 export * from "./voices-shared";
@@ -66,9 +67,11 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
   if (!gap) throw new Error("清单里找不到这一条了");
   const { there, here } = gapPlaces(side);
   const plan = await planVoiceSearch({ headline: gap.headline, background: gap.background, hereNow: gap.japan, there, here });
-  const [found, store] = await Promise.all([
+  const [found, store, attention] = await Promise.all([
     Promise.all(plan.queries.map((q) => webSearch(q, RESULTS_PER_QUERY).catch(() => []))),
     appStoreReviews(plan.appTerm, side === "china" ? "cn" : "jp"),
+    // 有多少人在关注：日本这边才查（中国大陆不用 Google、YouTube，维基也不是那边的人在看）
+    side === "china" ? Promise.resolve(null) : fetchAttention(plan.topic || plan.appTerm).catch(() => null),
   ]);
   const { reviews, apps } = store;
   const pages = mergeSources(found, RESULTS_PER_QUERY * plan.queries.length);
@@ -105,6 +108,7 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
     searched: { pages: pages.length, reviews: reviews.length },
     judged: judged.ok,
     ...(apps.length > 0 ? { apps } : {}),
+    ...(attention ? { attention } : {}),
     created_at: new Date().toISOString(),
   };
   const { error } = await supabaseAdmin

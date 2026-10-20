@@ -42,7 +42,14 @@ export type ActState = {
   issue: "none" | "draft" | "published";
   /** 没归档的想法里还缺的信息（截止早的在前）。 */
   infoGaps: { id: string; idea_id: string; idea_title: string; question: string; due_on: string }[];
+  /** 这一期周刊第一次发出去的日子；还没发为 null。 */
+  issuePublishedOn?: string | null;
+  /** 这一期记过几条每篇的数据。 */
+  issueMetrics?: number;
 };
+
+/** 周刊发出去几天以后，该回来看一眼每篇的数据。 */
+export const METRICS_AFTER_DAYS = 3;
 
 /** 信息缺口离截止还有几天以内，就排进这周要做的事。 */
 export const GAP_DUE_SOON_DAYS = 3;
@@ -137,6 +144,22 @@ export function nextSteps(state: ActState): ActStep[] {
       why: "朋友圈小，陌生人只会从你写出去的东西里找上门；假门的链接也跟着周刊出去。",
       href: "/signals/issue",
       cta: state.issue === "draft" ? "去发" : "去写",
+    });
+  }
+
+  // 4.5 周刊发出去几天了，还没记每篇的数据：哪一篇被看得多、收藏得多，就是哪件事有人要
+  if (
+    state.issue === "published" &&
+    state.issuePublishedOn &&
+    (state.issueMetrics ?? 0) === 0 &&
+    daysBetween(state.issuePublishedOn, state.today) >= METRICS_AFTER_DAYS
+  ) {
+    steps.push({
+      key: "metrics",
+      text: `这期周刊发出去 ${daysBetween(state.issuePublishedOn, state.today)} 天了，去记一下每篇的浏览和收藏`,
+      why: "一篇只讲一件事：哪一篇被看得多、收藏得多，就是真实的人对哪件事更感兴趣。这是只有你有的数据，不花钱。",
+      href: "/signals/issue",
+      cta: "去记",
     });
   }
 

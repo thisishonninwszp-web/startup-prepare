@@ -9,7 +9,13 @@ import { DOOR_LIMITS, ISSUE_DOOR_AUDIENCE, type DoorLang, type FakeDoorDraft } f
 // 差距清单只问过"这边有没有这个东西"（供给方）；这里问"这边的人有没有这个麻烦"。
 // ---------------------------------------------------------------------------
 
-export type VoicePlan = { pain: string; queries: string[]; appTerm: string };
+export type VoicePlan = {
+  pain: string;
+  queries: string[];
+  appTerm: string;
+  /** 这件事在这边普通人嘴里叫什么（一个名词）：拿去查维基百科、搜索联想、はてな、YouTube 看有多少人在关注。 */
+  topic: string;
+};
 
 const voicePlanPrompt = (there: string, here: string) => {
   const ja = here === "日本";
@@ -19,8 +25,9 @@ const voicePlanPrompt = (there: string, here: string) => {
 - pain：它要解决的那件麻烦，从用的人那一边说，一句中文，具体（例："叫外卖要等一个多小时""一个人生病在家时没人帮忙买药"）。不写那边的产品名。
 - queries：3 个搜索词，用${ja ? "日语" : "中文"}，找${here}的人自己说出这件麻烦的地方：问答网站上的提问（${ja ? "知恵袋、教えて!goo" : "知乎、小红书、豆瓣"}）、吐槽、"有没有人知道怎么办"。用普通人会说的话（${ja ? "「〇〇 困る」「〇〇 面倒」「〇〇 どうしてる」" : "「〇〇 好麻烦」「〇〇 怎么办」「〇〇 吐槽」"}），不用行业术语，不用那边的产品名。
 - appTerm：${here}的人现在拿来对付这件事的 App 是哪一类，写一个 App Store 搜索词（${ja ? "日语" : "中文"}，2 到 4 个词）；跟 App 不沾边就写空字符串。
+- topic：这件事（或者现在对付它的那类服务）在${here}普通人嘴里叫什么，一个名词，${ja ? "日语" : "中文"}，2 到 10 个字（例：${ja ? "「家事代行」「置き配」「フードデリバリー」" : "「上门家政」「社区团购」"}）。拿去查维基百科、搜索联想，看有多少人在关注，所以要用最常见的叫法。
 
-只输出 JSON：{"pain":"…","queries":["…","…","…"],"appTerm":"…"}`;
+只输出 JSON：{"pain":"…","queries":["…","…","…"],"appTerm":"…","topic":"…"}`;
 };
 
 export function parseVoicePlan(value: unknown): VoicePlan {
@@ -34,7 +41,8 @@ export function parseVoicePlan(value: unknown): VoicePlan {
     .slice(0, 3);
   if (queries.length < 2) throw new Error("搜索词太少");
   const appTerm = typeof v.appTerm === "string" ? v.appTerm.trim().slice(0, 40) : "";
-  return { pain, queries, appTerm };
+  const topic = typeof v.topic === "string" ? v.topic.trim().replace(/[「」"]/g, "").slice(0, 20) : "";
+  return { pain, queries, appTerm, topic };
 }
 
 /** 它要解决的那件麻烦（从用的人那边说）、去哪搜真人原话、这边的人现在用哪类 App。 */
