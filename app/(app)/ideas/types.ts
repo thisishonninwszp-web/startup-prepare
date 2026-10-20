@@ -226,8 +226,9 @@ export function daysUntilLock(lastActivityAt: string): number {
 }
 
 /**
- * 强制出口机制：处于"验证中"且超过 3 天没有新活动（新 validation 会刷新
- * last_activity_at）的想法，锁定 AI 质疑——必须先去做一次真实接触。
+ * 强制出口机制：处于"验证中"且超过 3 天没有新活动的想法，锁定 AI 质疑——必须先去碰一次现实。
+ * 刷新 last_activity_at 的：新 validation（真实对话），以及间接碰到现实（经用户同意，2026-10-20）：
+ * 信息缺口标了「拿到了」且补进过信息、假门有人留了邮箱、记了一条读者回应（lib/domains/ideas/touch.ts）。
  */
 export function isAiLocked(
   status: IdeaStatus,
@@ -239,7 +240,7 @@ export function isAiLocked(
 }
 
 export const AI_LOCK_MESSAGE =
-  "你已经分析这个想法 3 天了。在记录一次真实对话之前，AI 质疑功能暂停。";
+  "你已经分析这个想法 3 天了。先去碰一次现实 —— 记一次真实对话，或者把一个信息缺口标成「拿到了」（看真人的行为和原话也算）—— AI 质疑才会恢复。";
 
 /** Go / Pivot / Kill / Hold 决策（与 DB 的 decision_verdict 枚举一致）。 */
 export const VERDICTS = [

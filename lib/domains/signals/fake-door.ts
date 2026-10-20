@@ -5,6 +5,7 @@ import { draftFakeDoor, draftIssueDoor } from "@/lib/ai";
 import { findJapanGap } from "./gaps";
 import { gapPlaces, transferKey, type GapSide } from "./gaps-shared";
 import { loadGapVoices } from "./voices";
+import { touchIdeaForGap } from "@/lib/domains/ideas/touch";
 import { listIssues } from "./issue";
 import {
   DOOR_NOTE_MAX,
@@ -354,7 +355,7 @@ export async function signupToDoor(token: string, rawEmail: string, rawNote: str
   if (!TOKEN_RE.test(token)) return { ok: false, reason: "failed" };
   const { data: door, error } = await supabaseAdmin
     .from("signal_fake_doors")
-    .select("id, user_id, open, content")
+    .select("id, user_id, open, content, signal_id, side")
     .eq("token", token)
     .maybeSingle();
   if (error || !door) return { ok: false, reason: "failed" };
@@ -393,6 +394,15 @@ export async function signupToDoor(token: string, rawEmail: string, rawNote: str
     .select("id")
     .single();
   if (observation) await supabaseAdmin.from("signal_fake_door_signups").update({ observation_id: observation.id }).eq("id", signup.id);
+  // 陌生人留了邮箱，是碰到了现实：这一条差距变成的想法，强制出口机制重新计时（不写验证记录）
+  if (door.signal_id && door.side) {
+    try {
+      const gap = await findJapanGap(door.user_id as string, door.signal_id as string, door.side as GapSide);
+      if (gap) await touchIdeaForGap(door.user_id as string, gap.headline, door.side as GapSide);
+    } catch (e) {
+      console.error("door signup touch failed", e);
+    }
+  }
   return { ok: true, cancelToken };
 }
 

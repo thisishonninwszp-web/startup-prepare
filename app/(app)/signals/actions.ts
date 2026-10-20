@@ -27,6 +27,7 @@ import {
 } from "@/lib/domains/signals/drills";
 import { analyzeGapTransfer, loadGapTransfers } from "@/lib/domains/signals/gap-transfer";
 import { analyzeGapVoices, type GapVoices } from "@/lib/domains/signals/voices";
+import { touchIdeaForGap } from "@/lib/domains/ideas/touch";
 import { computeSlowWind, thinkSlowVariable, type SlowThen } from "@/lib/domains/signals/slow-then";
 import { runThereCheck, saveDeepCategory, saveDeepStance, type GapThere } from "@/lib/domains/signals/deep";
 import { drawGapImage, gapImagePrompt, type GapImage } from "@/lib/domains/signals/images";
@@ -668,6 +669,9 @@ export async function addIssueResponseAction(
     ]);
     revalidatePath("/capture");
     revalidatePath("/signals/gaps");
+    // 读者回应也是碰到了现实：回应的那一篇对应的差距变成了想法的话，强制出口机制重新计时（不写验证记录）
+    const p = pick !== undefined ? issue.content.picks[pick] : undefined;
+    if (p) await touchIdeaForGap(userId, p.headline, p.side).catch(() => undefined);
     return { ok: true, issue: await addIssueResponse(userId, issueId, observation.id, wantsTalk, pick, signal) };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没记上") };

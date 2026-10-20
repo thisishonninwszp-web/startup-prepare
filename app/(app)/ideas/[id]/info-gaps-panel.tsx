@@ -207,14 +207,11 @@ export function InfoGapsPanel({
   initial,
   founderFacts,
   today,
-  locked,
 }: {
   ideaId: string;
   initial: { gaps: InfoGap[]; fit: IdeaFit | null } | "missing-schema";
   founderFacts: string;
   today: string;
-  /** 强制出口机制锁着：AI 暂停，先去做一次真实接触。 */
-  locked: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -271,27 +268,26 @@ export function InfoGapsPanel({
         </div>
       )}
 
-      {locked ? (
-        <p className="text-sm leading-7 text-muted-foreground">这个想法验证中已经超过 3 天没有真实接触，AI 暂停 —— 先去记一次真实对话，再回来列缺口。</p>
-      ) : (
-        <div>
-          <Button
-            variant={gaps.length > 0 ? "outline" : "default"}
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                setError(null);
-                const r = await generateIdeaGapsAction(ideaId);
-                if (r.ok) router.refresh();
-                else setError(r.message);
-              })
-            }
-          >
-            {pending ? "在列……二三十秒" : gaps.length > 0 ? "重列（拿到了的、拿不到的、补进过信息的留着）" : "列出这个想法还缺什么信息"}
-          </Button>
-          {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-        </div>
-      )}
+      <div>
+        <Button
+          variant={gaps.length > 0 ? "outline" : "default"}
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              setError(null);
+              const r = await generateIdeaGapsAction(ideaId);
+              if (r.ok) router.refresh();
+              else setError(r.message);
+            })
+          }
+        >
+          {pending ? "在列……二三十秒" : gaps.length > 0 ? "重列（拿到了的、拿不到的、补进过信息的留着）" : "列出这个想法还缺什么信息"}
+        </Button>
+        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      </div>
+      <p className="text-xs leading-6 text-muted-foreground">
+        标了「拿到了」、而且补进过至少一条信息的，算碰到了现实 —— 和记一次真实对话一样，AI 质疑的 3 天重新计时。
+      </p>
 
       {sorted.length > 0 && (
         <ul className="space-y-3">

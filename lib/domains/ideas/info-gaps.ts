@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { planInfoGaps } from "@/lib/ai";
-import { AI_LOCK_MESSAGE, HYPOTHESIS_FIELDS, isAiLocked, type Hypothesis, type IdeaStatus } from "@/app/(app)/ideas/types";
+import { HYPOTHESIS_FIELDS, type Hypothesis, type IdeaStatus } from "@/app/(app)/ideas/types";
+import { touchIdea } from "./touch";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { FOUNDER_FACTS_MAX, type GapEvidence, type GapStatus, type IdeaFit, type InfoGap } from "./info-gaps-shared";
 
@@ -75,8 +76,7 @@ async function ownIdea(userId: string, ideaId: string) {
  */
 export async function generateIdeaGaps(userId: string, ideaId: string): Promise<{ gaps: InfoGap[]; fit: IdeaFit | null }> {
   const idea = await ownIdea(userId, ideaId);
-  // 强制出口机制：验证中超过 3 天没有真实接触，AI 一律暂停 —— 列缺口也是 AI，不能拿来继续坐在桌前查
-  if (isAiLocked(idea.status, idea.last_activity_at)) throw new Error(AI_LOCK_MESSAGE);
+  // 列缺口不受强制出口机制的锁：它列出来的是"去哪拿现实的数据"，是把人推出椅子的工具（经用户同意，2026-10-20）
   const [exits, validations, facts, existing] = await Promise.all([
     supabaseAdmin.from("idea_exit_criteria").select("criterion").eq("idea_id", ideaId).eq("user_id", userId),
     supabaseAdmin.from("validations").select("id", { count: "exact", head: true }).eq("idea_id", ideaId),
@@ -132,14 +132,22 @@ export async function generateIdeaGaps(userId: string, ideaId: string): Promise<
   return fresh;
 }
 
-/** 标"拿到了 / 拿不到 / 还缺"，可以带一句（拿到了什么、为什么拿不到）。 */
+/**
+ * 标"拿到了 / 拿不到 / 还缺"，可以带一句（拿到了什么、为什么拿不到）。
+ * 标了拿到了、而且补进过至少一条信息的，算间接碰到了现实：刷新想法的"最近活动"，AI 质疑跟着恢复。
+ */
 export async function setGapStatus(userId: string, gapId: string, status: GapStatus, note: string): Promise<void> {
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("idea_info_gaps")
     .update({ status, note: note.trim().slice(0, 300) || null, updated_at: new Date().toISOString() })
     .eq("id", gapId)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("idea_id, evidence")
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  if (status === "got" && data && ((data.evidence as GapEvidence[] | null) ?? []).length > 0) {
+    await touchIdea(userId, data.idea_id as string);
+  }
 }
 
 /** 补进一条信息（从外部信号的某一条，或者他自己记的）。只追加。 */

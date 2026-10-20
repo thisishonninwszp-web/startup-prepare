@@ -13,8 +13,6 @@ import {
   type Prediction,
   type Validation,
   visibleTags,
-  isAiLocked,
-  type IdeaStatus,
 } from "../types";
 import {
   getBayesianBeliefsForIdea,
@@ -179,7 +177,6 @@ export default async function IdeaDetailPage({
             initial={infoGaps}
             founderFacts={founderFacts}
             today={today}
-            locked={isAiLocked(idea.status as IdeaStatus, idea.last_activity_at as string)}
           />
         </section>
       </PageContainer>
