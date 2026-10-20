@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeOver, changeText, parseEstat, parseFx, parseWorldBank, slowSummary, SLOW_VARIABLES } from "./slow";
+import { changeOver, changeText, fetchSlowSeries, needsUpdate, parseEstat, parseFx, parseWorldBank, slowSummary, SLOW_VARIABLES, timeOf } from "./slow";
 
 describe("慢变量", () => {
   it("世界银行：去掉空值，从旧到新", () => {
@@ -54,5 +54,40 @@ describe("慢变量：给往下推用的那句数字", () => {
 
   it("changeText：四舍五入后是 0 的说几乎没变", () => {
     expect(changeText(monthly([2.41, 2.44]), 1, "比上个月")).toBe("比上个月（2020-01）几乎没变");
+  });
+});
+
+describe("慢变量：手填的那几个", () => {
+  const tables = SLOW_VARIABLES.filter((v) => v.source.type === "table");
+
+  it("手填的每一组：年份不重复、从旧到新、数都是正的", () => {
+    expect(tables.map((v) => v.key)).toEqual(["visitors", "visitors_cn", "cn_residents", "min_wage", "cashless"]);
+    for (const v of tables) {
+      if (v.source.type !== "table") continue;
+      const dates = v.source.points.map((p) => p.date);
+      expect(new Set(dates).size).toBe(dates.length);
+      expect([...dates].sort()).toEqual(dates);
+      expect(v.source.points.every((p) => p.value > 0)).toBe(true);
+    }
+  });
+
+  it("手填的不用上网，按年份排好；没核对到的年份空着", async () => {
+    const cn = await fetchSlowSeries(SLOW_VARIABLES.find((v) => v.key === "visitors_cn")!);
+    expect(cn.points.map((p) => p.date)).toEqual(["2019", "2022", "2023", "2024", "2025"]);
+    expect(slowSummary(cn)).toBe("现在 909.6 万人（2025 年）；比一年前（2024）+211.5 万人");
+  });
+
+  it("timeOf：年份和年月都换成年份上的位置", () => {
+    expect(timeOf("2024")).toBe(2024);
+    expect(timeOf("2024-07")).toBe(2024.5);
+    expect(timeOf("2024-01-15")).toBe(2024);
+  });
+
+  it("needsUpdate：手填的最近一年过了一年多还没填才提醒；接口取的不提醒", async () => {
+    const cashless = await fetchSlowSeries(SLOW_VARIABLES.find((v) => v.key === "cashless")!);
+    expect(needsUpdate(cashless, new Date("2025-06-01"))).toBe(false);
+    expect(needsUpdate(cashless, new Date("2026-10-20"))).toBe(true);
+    const usd = { variable: SLOW_VARIABLES.find((v) => v.key === "usdjpy")!, points: [{ date: "2020-01-31", value: 1 }], sourceLabel: "", sourceUrl: "" };
+    expect(needsUpdate(usd, new Date("2026-10-20"))).toBe(false);
   });
 });

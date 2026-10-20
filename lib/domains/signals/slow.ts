@@ -7,13 +7,19 @@
  * 数据源：日本政府统计 e-Stat（每月，要 ESTAT_APP_ID）、世界银行（每年）、欧洲央行的汇率（每天，经 frankfurter）。
  * 有 e-Stat 的指标在没配 appId、或者 e-Stat 取失败时，退回世界银行的年度数据。
  * 有效求人倍率、实际工资取不到：职业安定业务统计在 e-Stat 的 API 里查不到，毎月勤労統計在 API 上停在 2021 年。
+ *
+ * 2026-10 起加了几个离生意更近的数（访日游客、访日中国游客、在日中国人、最低工资、无现金支付比例）：
+ * 它们没有能直接读的接口，是从官方公布值手填的（type: "table"），每个数都对过出处；对不上的年份空着，不凭印象补。
+ * 每年要手动加一行 —— 最近一年的数过了一年还没填，页面上会提醒。
  */
 
 export type SlowSource =
   | { type: "worldbank"; indicator: string }
   | { type: "fx"; base: string; symbol: string }
   /** e-Stat 的统计表 + 筛选条件（cdTab、cdCat01… 这类参数）。scale：取到的数乘以它换成显示单位。 */
-  | { type: "estat"; statsDataId: string; params: Record<string, string>; scale?: number; label: string };
+  | { type: "estat"; statsDataId: string; params: Record<string, string>; scale?: number; label: string }
+  /** 没有接口的：从官方公布值手填（每个数都对过出处，对不上的年份空着）。 */
+  | { type: "table"; label: string; url: string; points: SlowPoint[] };
 
 export type SlowVariable = {
   key: string;
@@ -26,9 +32,85 @@ export type SlowVariable = {
   source: SlowSource;
   /** source 取不到时退回的数据源（e-Stat 没配 appId 时用世界银行）。 */
   fallback?: SlowSource;
+  /** 看这个数要知道的一句（口径变了、哪几年空着）。 */
+  note?: string;
 };
 
+const y = (date: string, value: number): SlowPoint => ({ date, value });
+
 export const SLOW_VARIABLES: SlowVariable[] = [
+  {
+    key: "visitors",
+    label: "访日外国游客（全年）",
+    why: "游客生意（住宿、免税、体验、支付、翻译、行李寄存）的客人池有多大、回来了多少。",
+    unit: "万人",
+    digits: 0,
+    source: {
+      type: "table",
+      label: "日本政府观光局（JNTO）访日外客数：2023 年以前取观光厅资料里的万人值，2024、2025 年取 JNTO 公布值",
+      url: "https://www.jnto.go.jp/statistics/data/visitors-statistics/",
+      points: [
+        y("2013", 1036), y("2014", 1341), y("2015", 1974), y("2016", 2404), y("2017", 2869), y("2018", 3119), y("2019", 3188),
+        y("2020", 412), y("2021", 25), y("2022", 383), y("2023", 2507), y("2024", 3687), y("2025", 4268),
+      ],
+    },
+    note: "2025 年是 JNTO 的推计值。",
+  },
+  {
+    key: "visitors_cn",
+    label: "访日中国游客（全年）",
+    why: "你最直接的一群客人：中国游客的支付、语言、消费习惯和日本本地人不一样。中日关系一变，这个数最先动。",
+    unit: "万人",
+    digits: 1,
+    source: {
+      type: "table",
+      label: "日本政府观光局（JNTO）访日外客数（中国）",
+      url: "https://www.jnto.go.jp/statistics/data/visitors-statistics/",
+      points: [y("2019", 959.4), y("2022", 18.9), y("2023", 242.5), y("2024", 698.1), y("2025", 909.6)],
+    },
+    note: "2020、2021 年的数没核对到出处，空着；2024、2025 年是推计值。",
+  },
+  {
+    key: "cn_residents",
+    label: "在日中国人（年末）",
+    why: "在日本生活的中国人：汇款、租房、中文服务、家乡食品、孩子教育的客户池，也是你最容易先接触到的人。",
+    unit: "万人",
+    digits: 1,
+    source: {
+      type: "table",
+      label: "出入国在留管理厅 在留外国人统计（国籍：中国，各年末）",
+      url: "https://www.moj.go.jp/isa/policies/statistics/toukei_ichiran_touroku.html",
+      points: [y("2019", 81.4), y("2020", 77.8), y("2021", 71.7), y("2022", 76.2), y("2023", 82.2), y("2024", 87.3), y("2025", 93.0)],
+    },
+  },
+  {
+    key: "min_wage",
+    label: "最低工资（全国加权平均，每小时）",
+    why: "人手成本的地板：它涨得越快，靠大量兼职的生意越难做，帮人省人手的东西回本越快。",
+    unit: "日元",
+    digits: 0,
+    source: {
+      type: "table",
+      label: "厚生劳动省 地域别最低工资（全国加权平均，按年度，每年 10 月前后生效）",
+      url: "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/koyou_roudou/roudoukijun/minimumichiran/",
+      points: [y("2020", 902), y("2021", 930), y("2022", 961), y("2023", 1004), y("2024", 1055), y("2025", 1121)],
+    },
+    note: "按年度算（2025 年度 = 2025 年 10 月前后生效的那一次）；2020 年度以前的没核对，没填。",
+  },
+  {
+    key: "cashless",
+    label: "无现金支付比例",
+    why: "扫码、App、线上预约这类服务推不推得开，看日本人有多少钱已经不用现金付。",
+    unit: "%",
+    digits: 1,
+    source: {
+      type: "table",
+      label: "经济产业省 キャッシュレス決済比率",
+      url: "https://www.meti.go.jp/policy/mono_info_service/cashless/",
+      points: [y("2018", 24.1), y("2019", 26.8), y("2020", 29.7), y("2021", 32.5), y("2022", 36.0), y("2023", 39.3), y("2024", 42.8)],
+    },
+    note: "2025 年起经产省改用「国内指标」（2025 年是 58.0%），算法不同，接不到这条线上，所以只填到 2024 年。",
+  },
   {
     key: "population",
     label: "日本总人口",
@@ -191,6 +273,9 @@ export function parseEstat(json: unknown, scale = 1): SlowPoint[] {
 }
 
 async function fetchFrom(variable: SlowVariable, s: SlowSource, now: Date): Promise<SlowSeries> {
+  if (s.type === "table") {
+    return { variable, points: [...s.points].sort((a, b) => a.date.localeCompare(b.date)), sourceLabel: s.label, sourceUrl: s.url };
+  }
   if (s.type === "estat") {
     const appId = process.env.ESTAT_APP_ID;
     if (!appId) return { variable, points: [], sourceLabel: s.label, sourceUrl: "" };
@@ -277,3 +362,18 @@ export function slowSummary(series: SlowSeries): string | null {
     .filter(Boolean)
     .join("；");
 }
+
+/** 日子换成年份上的位置（"2024" → 2024，"2024-07" → 2024.5）：折线按时间摆，空着的年份看得出来是空的。 */
+export function timeOf(date: string): number {
+  const m = date.match(/^(\d{4})(?:-(\d{2}))?/);
+  if (!m) return 0;
+  return Number(m[1]) + (m[2] ? (Number(m[2]) - 1) / 12 : 0);
+}
+
+/** 手填的年度数：最近一年过了一年多还没填新的，就该更新了。 */
+export function needsUpdate(series: SlowSeries, now = new Date()): boolean {
+  if (series.variable.source.type !== "table") return false;
+  const last = series.points[series.points.length - 1];
+  return !!last && timeOf(last.date) < now.getUTCFullYear() - 1;
+}
+

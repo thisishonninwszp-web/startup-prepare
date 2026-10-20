@@ -10,7 +10,9 @@ import {
   changeOver,
   fetchSlowSeries,
   isMonthly,
+  needsUpdate,
   SLOW_VARIABLES,
+  timeOf,
   type SlowPoint,
   type SlowSeries,
 } from "@/lib/domains/signals/slow";
@@ -32,8 +34,14 @@ function Sparkline({ points }: { points: SlowPoint[] }) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
+  // 按时间摆点：中间空着的年份（没核对到的）不会被挤成相邻
+  const t0 = timeOf(points[0].date);
+  const tSpan = timeOf(points[points.length - 1].date) - t0 || 1;
   const d = points
-    .map((p, i) => `${i === 0 ? "M" : "L"}${((i / (points.length - 1)) * w).toFixed(1)},${(h - ((p.value - min) / span) * h).toFixed(1)}`)
+    .map(
+      (p, i) =>
+        `${i === 0 ? "M" : "L"}${(((timeOf(p.date) - t0) / tSpan) * w).toFixed(1)},${(h - ((p.value - min) / span) * h).toFixed(1)}`
+    )
     .join(" ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-12 w-60 text-primary" aria-hidden>
@@ -130,6 +138,10 @@ export default async function SlowVariablesPage() {
                 <p className="mt-1 text-sm text-muted-foreground">这次没取到数据，晚点再来看。</p>
               )}
               <p className="mt-2 text-sm leading-7">{s.variable.why}</p>
+              {s.variable.note && <p className="text-xs leading-6 text-muted-foreground">{s.variable.note}</p>}
+              {needsUpdate(s) && (
+                <p className="text-xs leading-6 text-primary">这组数是从官方公布值手填的，最近一年的还没填进来 —— 告诉 Claude 更新一下。</p>
+              )}
               {wind && <WindList links={wind.links.filter((l) => l.key === s.variable.key)} />}
               {last && <SlowThenView variableKey={s.variable.key} initial={thens[s.variable.key] ?? null} />}
               <a
@@ -184,7 +196,8 @@ export default async function SlowVariablesPage() {
       </section>
 
       <p className="mt-8 text-xs leading-6 text-muted-foreground">
-        这张单子可以加：想盯别的数字（比如跨境电商规模、访日游客数），告诉 Claude 指标名，有公开数据源的就能加一行。
+        这张单子可以加：想盯别的数字（比如跨境电商规模），告诉 Claude 指标名，有公开数据源的就能加一行。
+        访日游客、访日中国游客、在日中国人、最低工资、无现金支付比例没有能直接读的接口，是从官方公布值手填的，每个数都对过出处，对不上的年份空着；每年要更新一次。
         有效求人倍率和实际工资暂时加不了：前者在 e-Stat 的接口里查不到，后者在接口上停在 2021 年，只能去厚生劳动省的网站看。
       </p>
     </PageContainer>
