@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { BarList } from "@/components/ui/bar-list";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { actFunnel, movedGaps, nextSteps, type ActGap, type ActState } from "@/lib/domains/signals/act-shared";
@@ -60,14 +61,9 @@ export function ActView({ state }: { state: ActState }) {
         <p className="mt-1 text-xs leading-6 text-muted-foreground">
           每一格有几条走到了，只数次数。越往右越接近真实接触 —— 到「记过验证」才进了想法的 Go / Kill。
         </p>
-        <ol className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {funnel.map((f) => (
-            <li key={f.label} className="rounded-md border border-border p-3">
-              <p className="font-mono text-xl">{f.count}</p>
-              <p className="text-xs text-muted-foreground">{f.label}</p>
-            </li>
-          ))}
-        </ol>
+        <div className="mt-3">
+          <BarList title="走到每一格的有几条" items={funnel.map((f) => ({ label: f.label, value: f.count }))} unit=" 条" />
+        </div>
       </section>
 
       <section className="mt-10 border-t pt-6">

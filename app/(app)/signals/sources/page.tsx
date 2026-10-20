@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
+import { BarList } from "@/components/ui/bar-list";
 import { tallyFeedback } from "@/lib/domains/signals/feedback";
 import { decisionCounts, DROPPED_DAYS, droppedSentences, HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
 import { tavilyUsage } from "@/lib/external";
@@ -124,6 +125,18 @@ export default async function SourcesPage() {
           Google 这边免费层一天 500 次、付费层一天 1500 次不收钱（按 Google 的日子算，不是日本时间）。往下推每推一层大约搜 9 次，
           差距清单每天扫一轮大约 8 次。
         </p>
+      </section>
+
+      <section className="mb-10">
+        <BarList
+          title={`最近 ${HEALTH_DAYS} 天，每个源有几条进了你的决定`}
+          items={health
+            .filter((r) => r.picked > 0 || (decided.get(r.source) ?? 0) > 0)
+            .map((r) => ({ label: r.label, value: decided.get(r.source) ?? 0 }))
+            .sort((a, b) => b.value - a.value)}
+          unit=" 条"
+          empty="两周里还没有一条进了决定：记成观察、押判断、补进想法的缺口、听一听、开假门，做过一次就会出现在这里。"
+        />
       </section>
 
       <section>

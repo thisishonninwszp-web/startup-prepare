@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BarList } from "@/components/ui/bar-list";
 import { ISSUE_PLATFORMS, type IssueMetric, type IssuePlatform } from "@/lib/domains/signals/issue-shared";
 import { saveIssueMetricAction } from "../actions";
 
@@ -78,6 +79,22 @@ export function IssueMetrics({ issueId, picks, initial }: { issueId: string; pic
       </Button>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
 
+      {metrics.length > 0 && (
+        <div className="mt-4 grid gap-6 sm:grid-cols-2">
+          {(["views", "saves"] as const).map((key) => (
+            <BarList
+              key={key}
+              title={key === "views" ? "每一篇被看了几次（各平台加起来）" : "每一篇被收藏了几次（各平台加起来）"}
+              items={picks.map((p, i) => ({
+                label: `第 ${i + 1} 篇 · ${p.headline}`,
+                value: metrics.filter((m) => m.pick === i).reduce((n, m) => n + (m[key] ?? 0), 0),
+              }))}
+              unit=" 次"
+              empty="还没填这一项。"
+            />
+          ))}
+        </div>
+      )}
       {metrics.length > 0 && (
         <ul className="mt-3 space-y-1 font-mono text-xs text-muted-foreground">
           {[...metrics]

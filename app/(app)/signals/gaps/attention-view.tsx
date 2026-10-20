@@ -1,4 +1,5 @@
 import { wikiYears, type Attention } from "@/lib/domains/signals/attention-shared";
+import { MonthLine } from "@/components/ui/month-line";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
@@ -88,6 +89,16 @@ export function AttentionView({ attention }: { attention: Attention }) {
           )}
         </li>
       </ul>
+      {a.wiki && a.wiki.months.length >= 2 && (
+        <div className="mt-3">
+          <MonthLine
+            title={`维基百科「${a.wiki.title}」每个月被看了几次`}
+            points={a.wiki.months.map((m) => ({ month: m.month, value: m.views }))}
+            unit="次"
+            split={a.wiki.months.length > 12 ? a.wiki.months.length - 12 : undefined}
+          />
+        </div>
+      )}
       <p className="mt-2 text-muted-foreground">
         程序自动查的，不花钱，只数次数。说明有多少人在查、在找、在看这件事，不说明愿不愿付钱；两个数比着看（这件事 vs 另一件、今年 vs 去年）比一个绝对数有用。
         搜索联想会按 Google 猜的所在地带上地名，大的已经去掉了。

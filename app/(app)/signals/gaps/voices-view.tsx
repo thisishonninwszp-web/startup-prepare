@@ -6,6 +6,7 @@ import type { GapSide } from "@/lib/domains/signals/gaps-shared";
 import { VOICE_KINDS, voiceCounts, type GapVoices, type VoiceKind } from "@/lib/domains/signals/voices-shared";
 import { askLinks } from "@/lib/domains/ideas/info-gaps-shared";
 import { AttentionView } from "./attention-view";
+import { BarList } from "@/components/ui/bar-list";
 import { analyzeGapVoicesAction } from "../actions";
 
 /**
@@ -47,9 +48,13 @@ export function VoicesView({ signalId, side, here, initial }: { signalId: string
         </p>
       ) : (
         <>
-          <p className="mt-2 font-mono text-xs">
-            {(Object.keys(VOICE_KINDS) as VoiceKind[]).map((k) => `${VOICE_KINDS[k]} ${counts[k]}`).join(" · ")}
-          </p>
+          <div className="mt-2">
+            <BarList
+              title="三种原话各几句"
+              items={(Object.keys(VOICE_KINDS) as VoiceKind[]).map((k) => ({ label: VOICE_KINDS[k], value: counts[k] }))}
+              unit=" 句"
+            />
+          </div>
           <ul className="mt-2 space-y-2">
             {voices.quotes.map((q, i) => (
               <li key={i} className="text-sm">
