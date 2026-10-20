@@ -322,3 +322,41 @@ export async function draftIssueDoor(input: { lang: DoorLang; recent: string[] }
     (value) => parseFakeDoorDraft(value, input.lang)
   );
 }
+
+// ── 家计调查：这件事对应官方品目清单里的哪一两项 ───────────────────────────────
+
+const KAKEI_PICK_PROMPT = `下面是总务省「家计调查」的品目清单（日本家庭每月在每一项上花多少钱），还有一件事。
+从清单里挑出和这件事最直接相关的 1 到 2 项 —— 这件事要是做起来，客人现在的钱就花在这几项上（或者它会替代这几项）。
+只能从清单里照抄名字，不许自己编；清单里没有直接相关的就给空数组（宁缺毋滥：「食料」「その他の消費支出」这种大类不算）。
+
+只输出 JSON：{"items":["…"]}`;
+
+/** 照抄的名字必须在清单里；最多 2 项。 */
+export function parseKakeiPick(value: unknown, names: string[]): string[] {
+  const raw = (value as { items?: unknown } | null)?.items;
+  const set = new Set(names);
+  return (Array.isArray(raw) ? raw : [])
+    .filter((x): x is string => typeof x === "string")
+    .map((x) => x.trim())
+    .filter((x, i, a) => set.has(x) && a.indexOf(x) === i)
+    .slice(0, 2);
+}
+
+/** 这件事对应家计调查的哪一两项（从官方清单里挑）。 */
+export async function pickKakeiItems(input: { topic: string; pain: string; names: string[] }): Promise<string[]> {
+  if (input.names.length === 0) return [];
+  return executeAiJson(
+    { operation: "kakei_pick", module: "unknown", outputMode: "json", timeoutMs: 15_000 },
+    () => ({
+      model: MODEL,
+      contents: [`这件事：${input.topic}${input.pain ? `（麻烦：${input.pain}）` : ""}`, "", "品目清单：", input.names.join("、")].join("\n"),
+      config: {
+        systemInstruction: KAKEI_PICK_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 200,
+      },
+    }),
+    (value) => parseKakeiPick(value, input.names)
+  );
+}

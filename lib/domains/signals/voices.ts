@@ -71,7 +71,7 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
     Promise.all(plan.queries.map((q) => webSearch(q, RESULTS_PER_QUERY).catch(() => []))),
     appStoreReviews(plan.appTerm, side === "china" ? "cn" : "jp"),
     // 有多少人在关注：日本这边才查（中国大陆不用 Google、YouTube，维基也不是那边的人在看）
-    side === "china" ? Promise.resolve(null) : fetchAttention(plan.topic || plan.appTerm).catch(() => null),
+    side === "china" ? Promise.resolve(null) : fetchAttention(plan.topic || plan.appTerm, plan.pain).catch(() => null),
   ]);
   const { reviews, apps } = store;
   const pages = mergeSources(found, RESULTS_PER_QUERY * plan.queries.length);

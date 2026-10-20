@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFakeDoorDraft, parseVoiceKinds, parseVoicePlan, parseVoiceQuotes } from "./demand";
+import { parseFakeDoorDraft, parseKakeiPick, parseVoiceKinds, parseVoicePlan, parseVoiceQuotes } from "./demand";
 
 describe("这边有人在为这个头疼吗", () => {
   it("parseVoicePlan：pain 用中文一句；搜索词至少两个、最多三个；appTerm 可以空", () => {
@@ -94,3 +94,18 @@ describe("假门测试：AI 起草的文字", () => {
     expect(() => parseFakeDoorDraft(ja, "zh")).toThrow();
   });
 });
+
+describe("家计调查：从官方品目清单里挑", () => {
+  it("parseKakeiPick：只认清单里照抄的名字，去重，最多两项", () => {
+    const names = ["家事サービス", "家事代行料", "出前", "外食"];
+    expect(parseKakeiPick({ items: ["家事代行料", "家事代行料", "ハウスクリーニング", "家事サービス", "出前"] }, names)).toEqual(["家事代行料", "家事サービス"]);
+    expect(parseKakeiPick({ items: [] }, names)).toEqual([]);
+    expect(parseKakeiPick(null, names)).toEqual([]);
+  });
+
+  it("parseVoicePlan：topic 去掉括号引号；没写也行", () => {
+    expect(parseVoicePlan({ pain: "叫外卖太慢", queries: ["a", "b"], appTerm: "", topic: "「フードデリバリー」" }).topic).toBe("フードデリバリー");
+    expect(parseVoicePlan({ pain: "叫外卖太慢", queries: ["a", "b"] }).topic).toBe("");
+  });
+});
+

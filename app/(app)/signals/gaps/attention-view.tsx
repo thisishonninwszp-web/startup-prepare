@@ -3,6 +3,13 @@ import { MonthLine } from "@/components/ui/month-line";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
+/** 最近 12 个月、再往前 12 个月各加起来多少（只数，不算涨了百分之几）。 */
+function yearSums(values: number[]): { last: number; prev: number | null } {
+  const last = values.slice(-12).reduce((a, b) => a + b, 0);
+  const before = values.slice(-24, -12);
+  return { last, prev: before.length === 12 ? before.reduce((a, b) => a + b, 0) : null };
+}
+
 /**
  * 有多少人在关注这件事（程序自动查的，不花钱）：维基浏览量、搜索联想、はてな收藏、YouTube。
  * 只数次数；只说明有多少人在查、在找、在看，不说明愿不愿付钱。
@@ -88,6 +95,71 @@ export function AttentionView({ attention }: { attention: Attention }) {
             <span className="text-muted-foreground">这次没取到</span>
           )}
         </li>
+        <li>
+          <span className="text-muted-foreground">楽天市场（已经有人在花钱的痕迹）：</span>
+          {a.rakuten === undefined ? (
+            <span className="text-muted-foreground">这条是早先查的，换一批再找就有</span>
+          ) : a.rakuten === "no-key" ? (
+            <span className="text-muted-foreground">没配楽天的 Key（RAKUTEN_APPLICATION_ID / RAKUTEN_ACCESS_KEY，免费申请）</span>
+          ) : a.rakuten ? (
+            <>
+              {a.rakuten.count !== null && (
+                <>
+                  搜「{a.topic}」有 <span className="font-mono">{n(a.rakuten.count)}</span> 件商品；
+                </>
+              )}
+              评价最多的 30 件一共 <span className="font-mono">{n(a.rakuten.reviews)}</span> 条评价
+              {a.rakuten.medianPrice !== null && (
+                <>
+                  ，价格中位数 <span className="font-mono">{n(a.rakuten.medianPrice)}</span> 日元
+                </>
+              )}
+              ：
+              <ul className="ml-4 mt-1 space-y-0.5">
+                {a.rakuten.top.map((t) => (
+                  <li key={t.url}>
+                    <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                      {t.name.slice(0, 50)}
+                    </a>
+                    <span className="ml-1 font-mono text-muted-foreground">
+                      {n(t.price)} 日元 · {n(t.reviews)} 条评价
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <span className="text-muted-foreground">这次没取到</span>
+          )}
+        </li>
+        <li>
+          <span className="text-muted-foreground">家计调查（日本家庭每月在这一类上花多少钱）：</span>
+          {a.kakei === undefined ? (
+            <span className="text-muted-foreground">这条是早先查的，换一批再找就有</span>
+          ) : a.kakei === "no-key" ? (
+            <span className="text-muted-foreground">没配 e-Stat 的 ESTAT_APP_ID（免费申请）</span>
+          ) : a.kakei && a.kakei.items.length > 0 ? (
+            <ul className="ml-4 mt-1 space-y-0.5">
+              {a.kakei.items.map((k) => {
+                const sums = yearSums(k.months.map((m) => m.value));
+                return (
+                  <li key={k.name}>
+                    「{k.name}」：最近 12 个月每户一共 <span className="font-mono">{n(Math.round(sums.last))}</span> 日元
+                    {sums.prev !== null && (
+                      <>
+                        ，再往前 12 个月 <span className="font-mono">{n(Math.round(sums.prev))}</span> 日元
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : a.kakei ? (
+            <span className="text-muted-foreground">家计调查的品目里没有直接对应这件事的</span>
+          ) : (
+            <span className="text-muted-foreground">这次没取到</span>
+          )}
+        </li>
       </ul>
       {a.wiki && a.wiki.months.length >= 2 && (
         <div className="mt-3">
@@ -98,6 +170,26 @@ export function AttentionView({ attention }: { attention: Attention }) {
             split={a.wiki.months.length > 12 ? a.wiki.months.length - 12 : undefined}
           />
         </div>
+      )}
+      {a.kakei && a.kakei !== "no-key" &&
+        a.kakei.items.map((k) =>
+          k.months.length >= 2 ? (
+            <div key={k.name} className="mt-3">
+              <MonthLine
+                title={`家计调查「${k.name}」：二人以上的家庭每户每月花多少（全国平均）`}
+                points={k.months}
+                unit="日元"
+                split={k.months.length > 12 ? k.months.length - 12 : undefined}
+              />
+            </div>
+          ) : null
+        )}
+      {a.rakuten && a.rakuten !== "no-key" && (
+        <p className="mt-2 text-muted-foreground">
+          <a href="https://developers.rakuten.com/" target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline">
+            Supported by Rakuten Developers
+          </a>
+        </p>
       )}
       <p className="mt-2 text-muted-foreground">
         程序自动查的，不花钱，只数次数。说明有多少人在查、在找、在看这件事，不说明愿不愿付钱；两个数比着看（这件事 vs 另一件、今年 vs 去年）比一个绝对数有用。

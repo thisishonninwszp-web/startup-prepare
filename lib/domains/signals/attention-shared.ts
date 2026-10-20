@@ -4,6 +4,8 @@
  * - Google 搜索联想：人们在这个词后面最常接着搜什么（价格？口碑？哪里有？）
  * - はてなブックマーク（搜索结果的 RSS）：讲这件事的文章被多少人收藏
  * - YouTube（官方接口，要免费的 Key）：讲这件事的视频有多少、播放多少
+ * - 楽天市场（官方接口，要免费的 Key）：相关商品有多少件、评价最多的几件 —— 已经有人在花钱的痕迹
+ * - 家计调查（总务省，经 e-Stat，要免费的 appId）：日本家庭每月在这一类东西上花多少钱
  * 只数次数，不算比率。只说明有多少人在关注、在找，不说明愿不愿付钱。
  * 知恵袋的搜索页、Google 趋势 robots.txt 不许程序抓，那两个只给链接、他自己看。
  */
@@ -20,6 +22,10 @@ export type Attention = {
   hatena: AttentionHatena | null;
   /** "no-key"：没配 YOUTUBE_API_KEY。 */
   youtube: AttentionYoutube | "no-key" | null;
+  /** 楽天市场；"no-key"：没配 RAKUTEN_APPLICATION_ID / RAKUTEN_ACCESS_KEY。早期查过的没有。 */
+  rakuten?: AttentionRakuten | "no-key" | null;
+  /** 家计调查；"no-key"：没配 ESTAT_APP_ID。早期查过的没有。 */
+  kakei?: AttentionKakei | "no-key" | null;
   checked_at: string;
 };
 
@@ -140,4 +146,90 @@ export function parseYoutube(search: unknown, videos: unknown): AttentionYoutube
       .sort((a, b) => b.views - a.views)
       .slice(0, 3),
   };
+}
+
+// ── 楽天市場：有多少相关商品、多少人评价过（已经有人在花钱的痕迹） ─────────────
+
+export type AttentionRakuten = {
+  /** 楽天市场上搜这个词有多少件商品。 */
+  count: number | null;
+  /** 评价最多的几件（评价数 ≈ 有多少人买过）。 */
+  top: { name: string; url: string; price: number; reviews: number; shop: string }[];
+  /** 搜到的前 30 件一共多少条评价、价格的中位数。 */
+  reviews: number;
+  medianPrice: number | null;
+};
+
+/** 楽天市场商品搜索的返回（formatVersion=2 时 Items 是扁平的，1 时套一层 Item）。 */
+export function parseRakuten(json: unknown): AttentionRakuten | null {
+  const j = json as { count?: unknown; Items?: unknown[] } | null;
+  if (!j || !Array.isArray(j.Items)) return null;
+  const items = j.Items.map((raw) => {
+    const r = ((raw as { Item?: unknown })?.Item ?? raw) as Record<string, unknown>;
+    return {
+      name: typeof r.itemName === "string" ? r.itemName : "",
+      url: typeof r.itemUrl === "string" ? r.itemUrl : "",
+      price: Number(r.itemPrice) || 0,
+      reviews: Number(r.reviewCount) || 0,
+      shop: typeof r.shopName === "string" ? r.shopName : "",
+    };
+  }).filter((i) => i.name && i.url);
+  const prices = items.map((i) => i.price).filter((p) => p > 0).sort((a, b) => a - b);
+  return {
+    count: typeof j.count === "number" ? j.count : null,
+    top: [...items].sort((a, b) => b.reviews - a.reviews).slice(0, 3),
+    reviews: items.reduce((n, i) => n + i.reviews, 0),
+    medianPrice: prices.length > 0 ? prices[Math.floor(prices.length / 2)] : null,
+  };
+}
+
+// ── 家计调查：日本家庭每月在这一类东西上花多少钱（总务省，最硬的"已经在花钱"） ───────
+
+/** 家計調査 家計収支編 二人以上の世帯 月次 [品目分類]（2020年改定）（総数：金額）。 */
+export const KAKEI_STATS_ID = "0003343671";
+
+export type AttentionKakei = {
+  items: { name: string; months: { month: string; value: number }[] }[];
+};
+
+export type EstatClass = { id: string; codes: { code: string; name: string; level: string }[] };
+
+/** e-Stat getMetaInfo 的分类：每个分类（tab、cat01、area……）有哪些代码和名字。 */
+export function parseEstatMeta(json: unknown): EstatClass[] {
+  const raw = (json as { GET_META_INFO?: { METADATA_INF?: { CLASS_INF?: { CLASS_OBJ?: unknown } } } } | null)?.GET_META_INFO?.METADATA_INF?.CLASS_INF
+    ?.CLASS_OBJ;
+  const objs = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Record<string, unknown>[];
+  return objs.map((o) => {
+    const cls = o.CLASS;
+    const list = (Array.isArray(cls) ? cls : cls ? [cls] : []) as Record<string, unknown>[];
+    return {
+      id: String(o["@id"] ?? ""),
+      codes: list.map((c) => ({ code: String(c["@code"] ?? ""), name: String(c["@name"] ?? ""), level: String(c["@level"] ?? "") })),
+    };
+  });
+}
+
+/** 品目以外的几个分类各取哪一个：全国、二人以上的世帯、金额；都没有就取第一个。时间不筛。 */
+export function kakeiFilters(classes: EstatClass[]): Record<string, string> {
+  const prefer = ["全国", "二人以上の世帯", "金額"];
+  const params: Record<string, string> = {};
+  for (const c of classes) {
+    if (c.id === "cat01" || c.id === "time" || c.codes.length === 0) continue;
+    const hit = c.codes.find((x) => prefer.some((p) => x.name.includes(p))) ?? c.codes[0];
+    const key = `cd${c.id.charAt(0).toUpperCase()}${c.id.slice(1)}`;
+    params[key] = hit.code;
+  }
+  return params;
+}
+
+/** 品目的名字（给 AI 挑用；去掉编号前缀和重复）。 */
+export function kakeiItemNames(classes: EstatClass[]): { code: string; name: string }[] {
+  const cat = classes.find((c) => c.id === "cat01");
+  const seen = new Set<string>();
+  return (cat?.codes ?? []).flatMap((c) => {
+    const name = c.name.replace(/^[\d.]+\s*/, "").trim();
+    if (!name || seen.has(name)) return [];
+    seen.add(name);
+    return [{ code: c.code, name }];
+  });
 }

@@ -1,4 +1,18 @@
-import { parseHatenaRss, parsePageviews, parseSuggest, parseYoutube, pickWikiTitle, type Attention } from "./attention-shared";
+import { pickKakeiItems } from "@/lib/ai";
+import {
+  KAKEI_STATS_ID,
+  kakeiFilters,
+  kakeiItemNames,
+  parseEstatMeta,
+  parseHatenaRss,
+  parsePageviews,
+  parseRakuten,
+  parseSuggest,
+  parseYoutube,
+  pickWikiTitle,
+  type Attention,
+} from "./attention-shared";
+import { parseEstat } from "./slow";
 
 export * from "./attention-shared";
 
@@ -11,11 +25,15 @@ const TIMEOUT_MS = 8_000;
 // Wikimedia 要求写明是谁在调用
 const UA = "IdeaOS/1.0 (https://github.com/thisishonninwszp-web/startup-prepare)";
 
-async function get(url: string, as: "json" | "text"): Promise<unknown> {
+async function get(url: string, as: "json" | "text", headers: Record<string, string> = {}, revalidate?: number): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": UA } });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": UA, ...headers },
+      ...(revalidate ? { next: { revalidate } } : {}),
+    });
     if (!res.ok) return null;
     return as === "json" ? await res.json() : await res.text();
   } catch {
@@ -73,9 +91,66 @@ async function youtube(topic: string): Promise<Attention["youtube"]> {
   return parseYoutube(search, videos);
 }
 
-export async function fetchAttention(topic: string, now = new Date()): Promise<Attention | null> {
+/**
+ * 楽天市场商品搜索（2026-05 起的新接口：openapi.rakuten.co.jp，applicationId + accessKey，必须带 Referer）。
+ * Referer 要和楽天那边登记的网址一致：读 RAKUTEN_REFERER，没填用 APP_URL，再没有用线上地址。
+ */
+async function rakuten(topic: string): Promise<Attention["rakuten"]> {
+  const id = process.env.RAKUTEN_APPLICATION_ID;
+  const key = process.env.RAKUTEN_ACCESS_KEY;
+  if (!id || !key) return "no-key";
+  const referer = process.env.RAKUTEN_REFERER || process.env.APP_URL || "https://startup-prepare.vercel.app/";
+  const params = new URLSearchParams({
+    applicationId: id,
+    accessKey: key,
+    keyword: topic,
+    format: "json",
+    formatVersion: "2",
+    hits: "30",
+    sort: "-reviewCount",
+  });
+  const json = await get(`https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${params}`, "json", { Referer: referer });
+  return parseRakuten(json);
+}
+
+const WEEK = 7 * 86_400;
+
+/**
+ * 家计调查（总务省，经 e-Stat）：先取这张表的品目清单（缓存一周），AI 从清单里挑一两项（照抄、代码核对），
+ * 再取这几项最近两年每月每户花多少钱（二人以上的家庭、全国）。
+ */
+async function kakei(topic: string, pain: string): Promise<Attention["kakei"]> {
+  const appId = process.env.ESTAT_APP_ID;
+  if (!appId) return "no-key";
+  const base = "https://api.e-stat.go.jp/rest/3.0/app/json";
+  const meta = parseEstatMeta(await get(`${base}/getMetaInfo?appId=${appId}&statsDataId=${KAKEI_STATS_ID}`, "json", {}, WEEK));
+  const items = kakeiItemNames(meta);
+  if (items.length === 0) return null;
+  const picked = await pickKakeiItems({ topic, pain, names: items.map((i) => i.name) }).catch(() => []);
+  if (picked.length === 0) return { items: [] };
+  const filters = kakeiFilters(meta);
+  const series = await Promise.all(
+    picked.map(async (name) => {
+      const code = items.find((i) => i.name === name)?.code;
+      if (!code) return null;
+      const params = new URLSearchParams({ appId, statsDataId: KAKEI_STATS_ID, cdCat01: code, metaGetFlg: "N", cntGetFlg: "N", ...filters });
+      const points = parseEstat(await get(`${base}/getStatsData?${params}`, "json", {}, WEEK));
+      return points.length > 0 ? { name, months: points.slice(-24).map((p) => ({ month: p.date, value: p.value })) } : null;
+    })
+  );
+  return { items: series.filter((x): x is NonNullable<typeof x> => x !== null) };
+}
+
+export async function fetchAttention(topic: string, pain = "", now = new Date()): Promise<Attention | null> {
   const t = topic.trim();
   if (!t) return null;
-  const [w, s, h, y] = await Promise.all([wiki(t, now), suggest(t), hatena(t), youtube(t)]);
-  return { topic: t, wiki: w, suggest: s, hatena: h, youtube: y, checked_at: now.toISOString() };
+  const [w, s, h, y, r, k] = await Promise.all([
+    wiki(t, now),
+    suggest(t),
+    hatena(t),
+    youtube(t),
+    rakuten(t),
+    kakei(t, pain).catch(() => null),
+  ]);
+  return { topic: t, wiki: w, suggest: s, hatena: h, youtube: y, rakuten: r, kakei: k, checked_at: now.toISOString() };
 }
