@@ -42,11 +42,6 @@ export default async function SourcesPage() {
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 今日报告
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Sources"
         title="信息源体检"

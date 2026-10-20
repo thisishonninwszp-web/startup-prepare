@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
@@ -39,11 +38,6 @@ export default async function KanpoPage({ searchParams }: { searchParams: { q?: 
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals/atlas" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 时差图谱
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Kanpo"
         title="在日本的中国公司"

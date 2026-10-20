@@ -6223,3 +6223,9 @@ alter table signal_slow_thens enable row level security;
 drop policy if exists "signal_slow_thens_owner" on signal_slow_thens;
 create policy "signal_slow_thens_owner" on signal_slow_thens
   for all using (auth.uid() = user_id);
+
+-- ============================================================================
+-- 087：假门登记的人联系过没有（signal_fake_door_signups.contacted_at）
+-- ============================================================================
+
+alter table signal_fake_door_signups add column if not exists contacted_at timestamptz;

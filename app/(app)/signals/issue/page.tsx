@@ -61,11 +61,6 @@ export default async function IssuePage({ searchParams }: { searchParams: { pick
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals/gaps" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 差距清单
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Weekly"
         title="周刊"

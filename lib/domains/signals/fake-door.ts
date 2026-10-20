@@ -46,7 +46,8 @@ export type FakeDoor = {
   created_at: string;
 };
 
-export type DoorSignup = { id: string; email: string; note: string | null; created_at: string };
+/** contacted_at：他联系过这个人的时候（迁移 087 之前一律是 null）。 */
+export type DoorSignup = { id: string; email: string; note: string | null; created_at: string; contacted_at: string | null };
 
 const DOOR_COLUMNS = "id, signal_id, side, token, lang, content, views, open, created_at";
 
@@ -77,7 +78,7 @@ export async function getFakeDoor(userId: string, target: DoorTarget): Promise<F
 export async function loadFakeDoorStats(userId: string): Promise<Map<string, FakeDoorStats>> {
   const { data, error } = await supabaseAdmin
     .from("signal_fake_doors")
-    .select("id, signal_id, side, views, open, signal_fake_door_signups(count)")
+    .select("id, signal_id, side, views, open, created_at, content, signal_fake_door_signups(count)")
     .eq("user_id", userId)
     .not("signal_id", "is", null);
   if (error) {
@@ -89,7 +90,14 @@ export async function loadFakeDoorStats(userId: string): Promise<Map<string, Fak
       const counted = r.signal_fake_door_signups as unknown as { count: number }[] | null;
       return [
         transferKey(r.side as GapSide, r.signal_id as string),
-        { id: r.id as string, views: r.views as number, signups: counted?.[0]?.count ?? 0, open: r.open as boolean },
+        {
+          id: r.id as string,
+          views: r.views as number,
+          signups: counted?.[0]?.count ?? 0,
+          open: r.open as boolean,
+          created_at: r.created_at as string,
+          title: (r.content as FakeDoorContent).title,
+        },
       ];
     })
   );
@@ -219,14 +227,69 @@ export async function setFakeDoorOpen(userId: string, doorId: string, open: bool
 
 /** 留下的邮箱（只有他自己看得到），新的在前。 */
 export async function listDoorSignups(userId: string, doorId: string): Promise<DoorSignup[]> {
-  const { data, error } = await supabaseAdmin
+  // 087 没跑就不带 contacted_at 再查一次（一律当没联系过）
+  for (const columns of ["id, email, note, created_at, contacted_at", "id, email, note, created_at"]) {
+    const { data, error } = await supabaseAdmin
+      .from("signal_fake_door_signups")
+      .select(columns)
+      .eq("user_id", userId)
+      .eq("door_id", doorId)
+      .order("created_at", { ascending: false });
+    if (!error) return ((data ?? []) as unknown as DoorSignup[]).map((r) => ({ ...r, contacted_at: r.contacted_at ?? null }));
+    if (!/contacted_at/.test(error.message)) throw new Error(error.message);
+  }
+  return [];
+}
+
+/** 记下联系过这个人（或者取消这个记号）。 */
+export async function setSignupContacted(userId: string, signupId: string, contacted: boolean): Promise<void> {
+  const { error } = await supabaseAdmin
     .from("signal_fake_door_signups")
-    .select("id, email, note, created_at")
-    .eq("user_id", userId)
-    .eq("door_id", doorId)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as DoorSignup[];
+    .update({ contacted_at: contacted ? new Date().toISOString() : null })
+    .eq("id", signupId)
+    .eq("user_id", userId);
+  if (error) {
+    if (/contacted_at/.test(error.message)) {
+      throw new Error("迁移 087 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/087_signal_door_contacted.sql。");
+    }
+    throw new Error(error.message);
+  }
+}
+
+/** 本周行动要用的：所有登记（哪一页、联系过没有）。087 没跑就一律当没联系过。表没建返回空。 */
+export async function listAllSignups(userId: string): Promise<
+  { id: string; email: string; created_at: string; contacted_at: string | null; door: { kind: "gap" | "issue"; signal_id: string | null; side: GapSide | null; lang: DoorLang; title: string } }[]
+> {
+  const doorCols = "signal_fake_doors!inner(signal_id, side, lang, content)";
+  for (const [columns, withKind] of [
+    [`id, email, created_at, contacted_at, signal_fake_doors!inner(kind, signal_id, side, lang, content)`, true],
+    [`id, email, created_at, contacted_at, ${doorCols}`, false],
+    [`id, email, created_at, ${doorCols}`, false],
+  ] as const) {
+    const { data, error } = await supabaseAdmin.from("signal_fake_door_signups").select(columns).eq("user_id", userId).order("created_at");
+    if (error) {
+      if (missing(error) && !/contacted_at|kind/.test(error.message)) return [];
+      if (/contacted_at|kind/.test(error.message)) continue;
+      throw new Error(error.message);
+    }
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => {
+      const d = (Array.isArray(r.signal_fake_doors) ? r.signal_fake_doors[0] : r.signal_fake_doors) as Record<string, unknown>;
+      return {
+        id: r.id as string,
+        email: r.email as string,
+        created_at: r.created_at as string,
+        contacted_at: (r.contacted_at as string | null | undefined) ?? null,
+        door: {
+          kind: withKind ? (d.kind as "gap" | "issue") : d.signal_id ? "gap" : "issue",
+          signal_id: (d.signal_id as string | null) ?? null,
+          side: (d.side as GapSide | null) ?? null,
+          lang: d.lang as DoorLang,
+          title: (d.content as FakeDoorContent).title,
+        },
+      };
+    });
+  }
+  return [];
 }
 
 /** 删掉一个登记（连同那条观察）。他自己删、或者登记的人自己取消，都走这里。 */

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
@@ -87,11 +86,6 @@ export default async function SelectionLabPage() {
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals/sources" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 信息源体检
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Lab"
         title="挑法盲测"

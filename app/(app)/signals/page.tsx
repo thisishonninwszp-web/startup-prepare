@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import Link from "next/link";
+import { NextActionLine } from "./next-action";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
@@ -61,20 +63,6 @@ const OPPORTUNITY_LABELS: Record<NonNullable<BriefItem["opportunity"]>, string> 
   perception: "观念在变",
   knowledge: "新知识、新技术",
 };
-
-/** 去别的页面的入口，收成一行文字。 */
-const LINKS: { href: string; label: string }[] = [
-  { href: "/signals/practice", label: "判断账本" },
-  { href: "/signals/drill", label: "历史题" },
-  { href: "/signals/questions", label: "我在追的问题" },
-  { href: "/signals/gaps", label: "那边有、这边没有" },
-  { href: "/signals/atlas", label: "时差图谱" },
-  { href: "/signals/issue", label: "周刊" },
-  { href: "/signals/precedents", label: "先例" },
-  { href: "/signals/slow", label: "慢变量" },
-  { href: "/signals/week", label: "周报" },
-  { href: "/signals/sources", label: "信息源体检" },
-];
 
 /** 这件事之前也上过报告：哪天、那次的标题；那次写过判断的话，把判断和对账情况摆出来。 */
 function EarlierLine({ mention }: { mention: EarlierMention }) {
@@ -721,13 +709,13 @@ export default async function SignalsReportPage({
         description="先看总览，再做一道练习，然后按需往下翻五节。"
       />
 
-      {/* 去别的页面的入口和往期，收成两行文字 */}
+      {isToday && (
+        <Suspense fallback={null}>
+          <NextActionLine userId={user.id} />
+        </Suspense>
+      )}
+      {/* 去别的页面的入口在顶上的导航里；这里只留全部新闻、工具各攒了多少和往期 */}
       <nav className="-mt-4 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-            {l.label}
-          </Link>
-        ))}
         <Link href="/signals/inbox" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
           全部新闻 {newsCount}
         </Link>

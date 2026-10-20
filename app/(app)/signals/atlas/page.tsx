@@ -103,15 +103,6 @@ export default async function AtlasPage() {
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals/gaps" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 差距清单
-        </Link>
-        <span className="mx-2 text-muted-foreground">·</span>
-        <Link href="/signals/kanpo" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          在日本的中国公司（官报决算）
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Atlas"
         title="时差图谱"

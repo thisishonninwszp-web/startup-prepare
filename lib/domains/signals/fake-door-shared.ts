@@ -159,4 +159,12 @@ export function maskEmail(email: string): string {
   return `${name.slice(0, 1)}***@${domain}`;
 }
 
-export type FakeDoorStats = { id: string; views: number; signups: number; open: boolean };
+export type FakeDoorStats = {
+  id: string;
+  views: number;
+  signups: number;
+  open: boolean;
+  /** 哪天开的、页面标题（本周行动看"开了几天没人看"要用）。 */
+  created_at: string;
+  title: string;
+};

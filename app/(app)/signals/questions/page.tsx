@@ -21,11 +21,6 @@ export default async function QuestionsPage() {
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 今日报告
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Questions"
         title="我在追的问题"

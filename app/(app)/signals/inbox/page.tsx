@@ -71,11 +71,6 @@ export default async function SignalsInboxPage({
 
   return (
     <PageContainer>
-      <p className="mb-4 text-sm">
-        <Link href="/signals" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 今日报告
-        </Link>
-      </p>
       <PageHeader
         eyebrow="All signals"
         title="全部条目"

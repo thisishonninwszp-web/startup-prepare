@@ -39,11 +39,6 @@ export default async function WeeklyPage({ searchParams }: { searchParams: { sta
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 今日报告
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Weekly"
         title={`${md(start)} – ${md(end)} 这一周`}

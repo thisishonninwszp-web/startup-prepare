@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
@@ -41,11 +40,6 @@ export default async function DrillPage() {
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals/practice" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 判断账本
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Drill"
         title="历史题"

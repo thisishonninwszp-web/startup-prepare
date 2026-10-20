@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -89,11 +88,6 @@ export default async function SlowVariablesPage() {
 
   return (
     <PageContainer width="narrow">
-      <p className="mb-4 text-sm">
-        <Link href="/signals" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 今日报告
-        </Link>
-      </p>
       <PageHeader
         eyebrow="Slow variables"
         title="慢变量"

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DOOR_LIMITS, targetLang, type DoorTarget, type FakeDoorContent } from "@/lib/domains/signals/fake-door-shared";
 import type { DoorSignup, FakeDoor } from "@/lib/domains/signals/fake-door";
-import { deleteDoorSignupAction, draftFakeDoorAction, saveFakeDoorAction, setFakeDoorOpenAction } from "../../actions";
+import { deleteDoorSignupAction, draftFakeDoorAction, saveFakeDoorAction, setFakeDoorOpenAction, setSignupContactedAction } from "../../actions";
 
 const EMPTY: FakeDoorContent = { title: "", lead: "", points: [], audience: "", price: "", operator: "" };
 
@@ -182,8 +182,26 @@ export function SignupList({ signups }: { signups: DoorSignup[] }) {
             <div>
               <p className="font-mono">{s.email}</p>
               {s.note && <p className="mt-1 leading-7">「{s.note}」</p>}
-              <p className="text-xs text-muted-foreground">{s.created_at.slice(0, 10)}</p>
+              <p className="text-xs text-muted-foreground">
+                {s.created_at.slice(0, 10)} 留的
+                {s.contacted_at ? ` · ${s.contacted_at.slice(0, 10)} 联系过` : " · 还没联系"}
+              </p>
             </div>
+            <Button
+              size="sm"
+              variant={s.contacted_at ? "ghost" : "outline"}
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  setError(null);
+                  const r = await setSignupContactedAction(s.id, !s.contacted_at);
+                  if (r.ok) router.refresh();
+                  else setError(r.message);
+                })
+              }
+            >
+              {s.contacted_at ? "撤销「联系过」" : "联系过了"}
+            </Button>
             <ConfirmButton
               size="sm"
               variant="ghost"

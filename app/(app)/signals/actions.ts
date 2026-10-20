@@ -35,6 +35,7 @@ import {
   draftFakeDoorContent,
   saveFakeDoor,
   setFakeDoorOpen,
+  setSignupContacted,
   validTarget,
   type FakeDoor,
   type FakeDoorDraft,
@@ -810,6 +811,20 @@ export async function setFakeDoorOpenAction(doorId: string, open: boolean): Prom
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没改成") };
+  }
+}
+
+/** 假门测试：记下联系过这个人（本周行动靠它判断下一步）。 */
+export async function setSignupContactedAction(signupId: string, contacted: boolean): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    await setSignupContacted(userId, signupId, contacted);
+    revalidatePath("/signals/gaps/door");
+    revalidatePath("/signals/issue/door");
+    revalidatePath("/signals/act");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没记上") };
   }
 }
 
