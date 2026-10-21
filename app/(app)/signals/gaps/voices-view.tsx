@@ -20,20 +20,29 @@ export function VoicesView({ signalId, side, here, initial }: { signalId: string
   const [measuring, startMeasuring] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // 网络断了时 server action 会直接抛错，接住，不让整页崩
   const remeasure = () =>
     startMeasuring(async () => {
       setError(null);
-      const result = await remeasureGapAttentionAction(signalId, side);
-      if (result.ok) setVoices(result.analysis);
-      else setError(result.message);
+      try {
+        const result = await remeasureGapAttentionAction(signalId, side);
+        if (result.ok) setVoices(result.analysis);
+        else setError(result.message);
+      } catch {
+        setError("没连上服务器（网络断了一下），过一会儿再试。");
+      }
     });
 
   const run = () =>
     startTransition(async () => {
       setError(null);
-      const result = await analyzeGapVoicesAction(signalId, side);
-      if (result.ok) setVoices(result.analysis);
-      else setError(result.message);
+      try {
+        const result = await analyzeGapVoicesAction(signalId, side);
+        if (result.ok) setVoices(result.analysis);
+        else setError(result.message);
+      } catch {
+        setError("没连上服务器（网络断了一下），过一会儿再试。");
+      }
     });
 
   if (!voices) {

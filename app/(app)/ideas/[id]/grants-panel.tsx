@@ -38,9 +38,13 @@ export function GrantsPanel() {
       } catch {
         // 存不了也不要紧
       }
-      const r = await searchGrantsAction(keyword, area);
-      if (r.ok) setGrants(r.grants);
-      else setError(r.message);
+      try {
+        const r = await searchGrantsAction(keyword, area);
+        if (r.ok) setGrants(r.grants);
+        else setError(r.message);
+      } catch {
+        setError("没连上服务器（网络断了一下），过一会儿再试。");
+      }
     });
 
   return (

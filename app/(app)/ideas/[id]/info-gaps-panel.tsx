@@ -209,9 +209,13 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
                   onClick={() =>
                     startCounting(async () => {
                       setError(null);
-                      const r = await countAsksAction(phrase, en);
-                      if (r.ok) setAsks(r.result);
-                      else setError(r.message);
+                      try {
+                        const r = await countAsksAction(phrase, en);
+                        if (r.ok) setAsks(r.result);
+                        else setError(r.message);
+                      } catch {
+                        setError("没连上服务器（网络断了一下），过一会儿再试。");
+                      }
                     })
                   }
                 >
