@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { keepMatching, parseCampfire, parseGirlschannel, parsePrtimes } from "./sites-shared";
+import { keepMatching, parseCampfire, parseGirlschannel, parsePrtimes, prtimesDate } from "./sites-shared";
 
 describe("ガルちゃん", () => {
   it("reads topic, comment count and date", () => {
@@ -8,7 +8,7 @@ describe("ガルちゃん", () => {
         <img data-src="x.png"/>
         <div class="info nn"><p class="comment"><span class="icon-comment"></span><span>1,260コメント</span><span class="datetime">2026/07/02(木) 08:19</span></p></div>
         <p class="title">家事代行やベビーシッター怖くないですか？</p></a></li>
-      <li class="flc"><a href="/topics/1/"><div><p class="comment"><span>3コメント</span><span class="datetime">2019/01/05(土) 01:00</span></p></div><p class="title">洗濯 &amp; 掃除</p></a></li>
+      <li class="flc"><a href="/topics/1/"><div><p class="comment"><span>3コメント</span><span class="datetime">2019/01/05(土) 01:00</span></p></div><p class="title">洗濯 &amp;\u0000 掃除</p></a></li>
     </ul>`;
     const out = parseGirlschannel(html);
     expect(out.total).toBe(74);
@@ -40,11 +40,21 @@ describe("PR TIMES", () => {
   it("reads title, date and company", () => {
     const html = `<span class="_total_eo60q_5">3511<!-- -->件</span>
       <article class="_article_13jbw_1"><a class="_link" href="/main/html/rd/p/000000015.000105769.html"><div><h3 class="_title_13jbw_46">家事代行の調査</h3><span><svg></svg><time>2026年10月2日 15時00分</time></span></div></a><span class="_companyName_13jbw_32"><a href="/c">株式会社ロビー</a></span></article>`;
-    const out = parsePrtimes(html);
+    const out = parsePrtimes(html, "2026-10-21");
     expect(out.total).toBe(3511);
     expect(out.releases).toEqual([
       { url: "https://prtimes.jp/main/html/rd/p/000000015.000105769.html", title: "家事代行の調査", date: "2026-10-02", company: "株式会社ロビー" },
     ]);
+  });
+});
+
+describe("PR TIMES dates", () => {
+  it("reads absolute and relative times", () => {
+    expect(prtimesDate("2026年1月5日 15時00分", "2026-10-21")).toBe("2026-01-05");
+    expect(prtimesDate("1時間前", "2026-10-21")).toBe("2026-10-21");
+    expect(prtimesDate("5分前", "2026-10-21")).toBe("2026-10-21");
+    expect(prtimesDate("3日前", "2026-10-21")).toBe("2026-10-18");
+    expect(prtimesDate("昨日", "2026-10-21")).toBeNull();
   });
 });
 

@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GRANT_AREAS, isGrantArea, type Grant } from "@/lib/domains/ideas/grants-shared";
+import { ANY_AREA, GRANT_AREAS, isGrantArea, type Grant } from "@/lib/domains/ideas/grants-shared";
 import { searchGrantsAction } from "../info-gap-actions";
 
 const STORE_KEY = "ideaos:grants";
@@ -15,7 +15,7 @@ const STORE_KEY = "ideaos:grants";
  */
 export function GrantsPanel() {
   const [keyword, setKeyword] = useState("創業");
-  const [area, setArea] = useState<string>("全国");
+  const [area, setArea] = useState<string>(ANY_AREA);
   const [grants, setGrants] = useState<Grant[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -71,7 +71,7 @@ export function GrantsPanel() {
       {grants !== null &&
         (grants.length === 0 ? (
           <p className="text-muted-foreground">
-            「{keyword.trim()}」{area === "全国" ? "" : `在${area}和全国`}现在没有还在招募的。换个更宽的词（「創業」「中小企業」）再查；补助金多在春天（4–6 月）开新一轮。
+            「{keyword.trim()}」{area === ANY_AREA ? "" : `在${area}（连全国都能申请的）`}现在没有还在招募的。换个词（「開業」「中小企業」「IT導入」）或换个地区再查；补助金多在春天（4–6 月）开新一轮。
           </p>
         ) : (
           <ul className="space-y-2">

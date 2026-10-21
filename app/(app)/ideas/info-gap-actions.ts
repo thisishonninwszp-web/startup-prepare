@@ -14,7 +14,7 @@ import {
 import { supabaseAdmin } from "@/lib/supabase";
 import { fetchAsks } from "@/lib/domains/signals/asks";
 import type { AsksResult } from "@/lib/domains/signals/asks-shared";
-import { isGrantArea, searchGrants, type Grant } from "@/lib/domains/ideas/grants";
+import { ANY_AREA, isGrantArea, searchGrants, type Grant } from "@/lib/domains/ideas/grants";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -48,7 +48,7 @@ export async function searchGrantsAction(keyword: string, area: string): Promise
     await requireUserId();
     const k = keyword.replace(/[\s　]+/g, " ").trim().slice(0, 30);
     if (k.length < 2) return { ok: false, message: "关键词至少写两个字" };
-    const grants = await searchGrants(k, isGrantArea(area) ? area : "全国");
+    const grants = await searchGrants(k, isGrantArea(area) ? area : ANY_AREA);
     if (grants === null) return { ok: false, message: "jGrants 这次没连上，过一会儿再查" };
     return { ok: true, grants };
   } catch (error) {

@@ -27,6 +27,8 @@ function decode(t: string): string {
     .replace(/&#39;|&#x27;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    // 网站原文里偶尔夹着看不见的控制字符（U+0000 之类）
+    .replace(/\p{Cc}/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -78,19 +80,31 @@ export function parseCampfire(html: string): { total: number | null; projects: C
   return { total: totalOf(html, /検索した結果([\d,]+)件/), projects };
 }
 
+/**
+ * PR TIMES 的发布时间：「2026年10月2日 15時00分」，刚发的写成「5分前」「1時間前」「3日前」（按 today 往回算）。认不出返回 null。
+ */
+export function prtimesDate(text: string, today: string): string | null {
+  const abs = text.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  if (abs) return `${abs[1]}-${abs[2].padStart(2, "0")}-${abs[3].padStart(2, "0")}`;
+  if (/\d+\s*(秒|分|時間)前/.test(text)) return today;
+  const days = text.match(/(\d+)\s*日前/);
+  if (days) return new Date(Date.parse(`${today}T00:00:00Z`) - Number(days[1]) * 86_400_000).toISOString().slice(0, 10);
+  return null;
+}
+
 /** PR TIMES 搜索结果一页（新的在前，一页 40 篇）：标题、发布日子、公司。 */
-export function parsePrtimes(html: string): { total: number | null; releases: PrRelease[] } {
+export function parsePrtimes(html: string, today: string): { total: number | null; releases: PrRelease[] } {
   const releases: PrRelease[] = [];
   for (const m of html.matchAll(/<article class="[^"]*">([\s\S]*?)<\/article>/g)) {
     const a = m[1];
     const href = a.match(/href="(\/main\/html\/rd\/p\/[^"]+)"/)?.[1];
     const title = a.match(/<h3 class="_title_[^"]*">([\s\S]*?)<\/h3>/)?.[1];
-    const date = a.match(/<time>(\d{4})年(\d{1,2})月(\d{1,2})日/);
+    const date = prtimesDate(a.match(/<time>([^<]*)<\/time>/)?.[1] ?? "", today);
     if (!href || !title || !date) continue;
     releases.push({
       url: `https://prtimes.jp${href}`,
       title: clip(decode(title)),
-      date: `${date[1]}-${date[2].padStart(2, "0")}-${date[3].padStart(2, "0")}`,
+      date,
       company: decode(a.match(/<span class="_companyName_[^"]*">([\s\S]*?)<\/span>/)?.[1] ?? ""),
     });
   }

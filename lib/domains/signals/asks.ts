@@ -220,7 +220,9 @@ export async function prtimesSample(topic: string): Promise<PrSample | null> {
   if (!t) return null;
   const html = await get(`https://prtimes.jp/main/action.php?run=html&page=searchkey&search_word=${encodeURIComponent(t)}`, "text");
   if (typeof html !== "string") return null;
-  const page = parsePrtimes(html);
+  // 日本时间的今天（刚发的稿子写「1時間前」）
+  const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const page = parsePrtimes(html, today);
   return { total: page.total, seen: page.releases.length, releases: keepMatching([page.releases], t) };
 }
 

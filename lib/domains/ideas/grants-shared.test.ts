@@ -24,6 +24,7 @@ describe("jGrants", () => {
 
   it("knows the area names", () => {
     expect(isGrantArea("東京都")).toBe(true);
+    expect(isGrantArea("不限地区")).toBe(true);
     expect(isGrantArea("Tokyo")).toBe(false);
   });
 });

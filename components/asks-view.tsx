@@ -127,8 +127,8 @@ function Girlschannel({ topic, sample, thisYear }: { topic: string; sample: GcSa
     <div>
       <Title>ガルちゃん上有多少人在聊「{topic}」</Title>
       <p>
-        {sample.total !== null && <>搜出 <span className="font-mono">{sample.total}</span> 个讨论，</>}
-        看了前 {sample.topics.length >= 50 ? "两页" : "一页"}，标题里有「{topic}」的 <span className="font-mono">{sample.topics.length}</span> 个，
+        {sample.total !== null && <>搜出 <span className="font-mono">{sample.total}</span> 个讨论（最多看前 100 个），</>}
+        标题里有「{topic}」的 <span className="font-mono">{sample.topics.length}</span> 个，
         一共 <span className="font-mono">{n(comments)}</span> 条评论。
       </p>
       <div className="mt-2">
