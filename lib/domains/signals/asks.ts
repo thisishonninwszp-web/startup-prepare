@@ -10,6 +10,7 @@ import {
   parseYoutubeYear,
   questionUrl,
   REDDIT_SUBS,
+  redditTerm,
   SUGGEST_KANA,
   type AsksResult,
   type ChiebukuroSample,
@@ -159,7 +160,7 @@ const REDDIT_KEEP = 200;
  * 留标题或正文里有这个说法每个词的帖子。没配 Key 返回 "no-key"。
  */
 export async function redditSample(term: string): Promise<RedditSample | "no-key" | null> {
-  const t = term.trim().toLowerCase();
+  const t = redditTerm(term.trim());
   if (!t) return null;
   const token = await redditToken().catch(() => undefined);
   if (token === null) return "no-key";

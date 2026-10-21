@@ -49,6 +49,16 @@ export type AsksResult = {
   checked_at: string;
 };
 
+/**
+ * Reddit 搜的英文说法里去掉地名（japan、tokyo……）：搜的本来就是在日外国人的版块，帖子里不一定写这个词，
+ * 而算数要每个词都出现，留着地名会漏掉一大半。去完什么都不剩就原样用。
+ */
+export function redditTerm(en: string): string {
+  const words = en.toLowerCase().split(/\s+/).filter(Boolean);
+  const kept = words.filter((w) => !["japan", "japanese", "tokyo", "osaka", "in"].includes(w));
+  return (kept.length > 0 ? kept : words).join(" ");
+}
+
 /** 在日外国人常去的几个 Reddit 版块。 */
 export const REDDIT_SUBS = ["japanlife", "movingtojapan", "japanresidents", "japan", "tokyo", "osaka"];
 

@@ -9,6 +9,7 @@ import {
   parseYoutubeYear,
   questionUrl,
   readTotals,
+  redditTerm,
   titleHasTopic,
 } from "./asks-shared";
 
@@ -133,5 +134,13 @@ describe("reddit listing", () => {
 
   it("handles an empty or broken listing", () => {
     expect(parseRedditListing(null, "x")).toEqual({ posts: [], seen: 0, after: null });
+  });
+});
+
+describe("redditTerm", () => {
+  it("drops place words that posts in Japan boards rarely repeat", () => {
+    expect(redditTerm("affordable gym japan")).toBe("affordable gym");
+    expect(redditTerm("Housekeeping service in Tokyo")).toBe("housekeeping service");
+    expect(redditTerm("japan")).toBe("japan");
   });
 });
