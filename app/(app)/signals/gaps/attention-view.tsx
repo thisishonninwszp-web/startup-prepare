@@ -1,6 +1,7 @@
 import { wikiYears, type Attention } from "@/lib/domains/signals/attention-shared";
 import { MonthLine } from "@/components/ui/month-line";
 import { TrendsChart } from "@/components/trends-chart";
+import { AsksView } from "@/components/asks-view";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
@@ -180,6 +181,9 @@ export function AttentionView({ attention }: { attention: Attention }) {
           )}
         </li>
       </ul>
+      <div className="mt-3 border-t border-border pt-3">
+        <AsksView topic={a.topic} chiebukuro={a.chiebukuro} asked={a.asked} kokkai={a.kokkai} thisYear={Number(a.checked_at.slice(0, 4))} />
+      </div>
       {a.wiki && a.wiki.months.length >= 2 && (
         <div className="mt-3">
           <MonthLine

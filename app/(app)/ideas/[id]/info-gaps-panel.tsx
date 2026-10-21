@@ -16,8 +16,10 @@ import {
   type IdeaFit,
   type InfoGap,
 } from "@/lib/domains/ideas/info-gaps-shared";
-import { addOwnGapEvidenceAction, generateIdeaGapsAction, saveFounderFactsAction, setGapStatusAction } from "../info-gap-actions";
+import { addOwnGapEvidenceAction, countAsksAction, generateIdeaGapsAction, saveFounderFactsAction, setGapStatusAction } from "../info-gap-actions";
 import { TrendsChart } from "@/components/trends-chart";
+import { AsksView } from "@/components/asks-view";
+import type { AsksResult } from "@/lib/domains/signals/asks-shared";
 
 /** 他自己写的约束和优势（只写事实）。所有想法共用一份。 */
 function FounderFacts({ initial }: { initial: string }) {
@@ -65,6 +67,8 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
   const [phrase, setPhrase] = useState("");
   const [ownUrl, setOwnUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [asks, setAsks] = useState<AsksResult | null>(null);
+  const [counting, startCounting] = useTransition();
   const overdue = gap.status === "open" && gap.due_on <= today;
   const routes = [...gap.routes].sort((a, b) => ROUTE_ORDER.indexOf(a.kind) - ROUTE_ORDER.indexOf(b.kind));
 
@@ -190,7 +194,29 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
                   ))}
                 </p>
                 <TrendsChart key={phrase.trim()} words={[phrase]} label={`就在这里看「${phrase.trim()}」这五年在 Google 上的搜索走势`} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-auto min-h-8 whitespace-normal px-2 py-1 text-left text-xs"
+                  disabled={counting}
+                  onClick={() =>
+                    startCounting(async () => {
+                      setError(null);
+                      const r = await countAsksAction(phrase);
+                      if (r.ok) setAsks(r.result);
+                      else setError(r.message);
+                    })
+                  }
+                >
+                  {counting ? "在数……二三十秒" : `让程序数一数：知恵袋上的提问、人们还会搜什么、国会提过几次`}
+                </Button>
               </>
+            )}
+            {asks && (
+              <div className="rounded-md border border-border p-3">
+                <AsksView topic={asks.topic} chiebukuro={asks.chiebukuro} asked={asks.asked} kokkai={asks.kokkai} thisYear={Number(asks.checked_at.slice(0, 4))} />
+                <p className="mt-2 text-muted-foreground">这些不会自己存下来；有用的数，用上面「自己补一条」记一句。</p>
+              </div>
             )}
             <p className="text-muted-foreground">看到的数用上面「自己补一条」记下来（例：知恵袋上「家事代行 中国語」有 120 件问题，近两年的占一半）。</p>
           </div>

@@ -33,6 +33,8 @@ import { tokyoToday } from "@/lib/domains/signals/brief";
 import { InfoGapsPanel } from "./info-gaps-panel";
 
 export const dynamic = "force-dynamic";
+// 列信息缺口（二三十秒）、「数一数」（二三十秒）都由这一页的 server action 跑
+export const maxDuration = 60;
 
 export default async function IdeaDetailPage({
   params,

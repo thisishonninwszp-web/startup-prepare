@@ -10,6 +10,8 @@
  * 知恵袋的搜索页、Google 趋势 robots.txt 不许程序抓，那两个只给链接、他自己看。
  */
 
+import type { ChiebukuroSample, KokkaiYears } from "./asks-shared";
+
 export type AttentionWiki = { title: string; url: string; months: { month: string; views: number }[] };
 export type AttentionHatena = { matched: number; bookmarks: number; top: { title: string; url: string; users: number; date: string }[] };
 export type AttentionYoutube = { total: number | null; videos: { title: string; url: string; views: number; published: string }[] };
@@ -26,6 +28,10 @@ export type Attention = {
   rakuten?: AttentionRakuten | "no-key" | { error: string } | null;
   /** 家计调查；"no-key"：没配 ESTAT_APP_ID。早期查过的没有。 */
   kakei?: AttentionKakei | "no-key" | null;
+  /** 知恵袋上的提问（Google 找页、程序只读提问页）、联想加假名问出来的说法、国会每年提到几次。早期查过的没有。 */
+  chiebukuro?: ChiebukuroSample | null;
+  asked?: string[] | null;
+  kokkai?: KokkaiYears | null;
   checked_at: string;
 };
 

@@ -12,6 +12,8 @@ import {
   type InfoGap,
 } from "@/lib/domains/ideas/info-gaps";
 import { supabaseAdmin } from "@/lib/supabase";
+import { fetchAsks } from "@/lib/domains/signals/asks";
+import type { AsksResult } from "@/lib/domains/signals/asks-shared";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -24,6 +26,18 @@ async function requireUserId(): Promise<string> {
 
 function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+/** 数一数有多少人在问：知恵袋、联想加假名、国会（二三十秒，不存，想留下就自己补一条）。 */
+export async function countAsksAction(phrase: string): Promise<{ ok: true; result: AsksResult } | { ok: false; message: string }> {
+  try {
+    await requireUserId();
+    const p = phrase.replace(/[\s　]+/g, " ").trim().slice(0, 60);
+    if (!p) return { ok: false, message: "先写一句普通人会搜的话" };
+    return { ok: true, result: await fetchAsks(p) };
+  } catch (error) {
+    return { ok: false, message: message(error, "这次没数成") };
+  }
 }
 
 /** 列（或重列）这个想法的信息缺口（二三十秒）。 */

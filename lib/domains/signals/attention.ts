@@ -17,6 +17,7 @@ import {
 } from "./attention-shared";
 import { parseEstat } from "./slow";
 import { rakutenItemSearch } from "@/lib/rakuten";
+import { askedQuestions, chiebukuroSample, kokkaiYears } from "./asks";
 
 export * from "./attention-shared";
 
@@ -178,13 +179,17 @@ export async function fetchAttention(
 ): Promise<Attention | null> {
   const t = topic.trim();
   if (!t) return null;
-  const [w, s, h, y, r, k] = await Promise.all([
+  const [w, s, h, y, r, k, c, ko] = await Promise.all([
     wiki(t, now),
     suggest(t),
     hatena(t),
     youtube(t),
     rakuten(t),
     kakei(t, pain, opts.kakeiNames).catch(() => null),
+    chiebukuroSample(t).catch(() => null),
+    kokkaiYears(t, now).catch(() => null),
   ]);
-  return { topic: t, wiki: w, suggest: s, hatena: h, youtube: y, rakuten: r, kakei: k, checked_at: now.toISOString() };
+  // 加假名的那几轮要先知道普通联想给了什么（不重复），所以排在后面
+  const asked = await askedQuestions(t, s ?? []).catch(() => null);
+  return { topic: t, wiki: w, suggest: s, hatena: h, youtube: y, rakuten: r, kakei: k, chiebukuro: c, asked, kokkai: ko, checked_at: now.toISOString() };
 }
