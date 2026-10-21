@@ -15,6 +15,8 @@ export type VoicePlan = {
   appTerm: string;
   /** 这件事在这边普通人嘴里叫什么（一个名词）：拿去查维基百科、搜索联想、はてな、YouTube 看有多少人在关注。 */
   topic: string;
+  /** 在日本生活的外国人用英语怎么说（拿去 Reddit 上在日外国人的版块搜）；只有日本这边，没写为空。 */
+  en: string;
 };
 
 const voicePlanPrompt = (there: string, here: string) => {
@@ -27,8 +29,9 @@ const voicePlanPrompt = (there: string, here: string) => {
 - appTerm：${here}的人现在拿来对付这件事的 App 是哪一类，写一个 App Store 搜索词（${ja ? "日语" : "中文"}，2 到 4 个词）；跟 App 不沾边就写空字符串。
 - topic：这件事（或者现在对付它的那类服务）在${here}普通人搜索时最常打的那个词，一个名词，${ja ? "日语" : "中文"}，2 到 8 个字，越短越常见越好（例：${ja ? "「家事代行」「置き配」「格安ジム」「パーソナルジム」" : "「上门家政」「社区团购」"}）。
   不要书面词和行政用语（${ja ? "「〇〇サービス」「健康促進」「〇〇支援事業」" : "「〇〇服务」「促进」"}这种普通人不会去搜）。拿去查维基百科、搜索联想、はてな、YouTube、楽天，看有多少人在关注。
+- en：${ja ? "同一件事，在日本生活的外国人用英语会怎么说：2 到 4 个英文词，平时说的话，不用日语罗马字（例：\"housekeeping service\" \"cleaning lady\" \"cheap gym\" \"package delivery\"）。拿去 Reddit 上在日外国人的版块里搜，看有多少人在问。" : "写空字符串。"}
 
-只输出 JSON：{"pain":"…","queries":["…","…","…"],"appTerm":"…","topic":"…"}`;
+只输出 JSON：{"pain":"…","queries":["…","…","…"],"appTerm":"…","topic":"…","en":"…"}`;
 };
 
 export function parseVoicePlan(value: unknown): VoicePlan {
@@ -43,7 +46,10 @@ export function parseVoicePlan(value: unknown): VoicePlan {
   if (queries.length < 2) throw new Error("搜索词太少");
   const appTerm = typeof v.appTerm === "string" ? v.appTerm.trim().slice(0, 40) : "";
   const topic = typeof v.topic === "string" ? v.topic.trim().replace(/[「」"]/g, "").slice(0, 20) : "";
-  return { pain, queries, appTerm, topic };
+  // 只收英文（字母、空格、连字符、撇号），别的当没写
+  const enRaw = typeof v.en === "string" ? v.en.trim().replace(/["“”]/g, "").replace(/\s+/g, " ").toLowerCase() : "";
+  const en = /^[a-z][a-z' -]{1,38}[a-z]$/.test(enRaw) ? enRaw : "";
+  return { pain, queries, appTerm, topic, en };
 }
 
 /** 它要解决的那件麻烦（从用的人那边说）、去哪搜真人原话、这边的人现在用哪类 App。 */

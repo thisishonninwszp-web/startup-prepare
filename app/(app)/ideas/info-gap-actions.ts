@@ -28,13 +28,14 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-/** 数一数有多少人在问：知恵袋、联想加假名、国会（二三十秒，不存，想留下就自己补一条）。 */
-export async function countAsksAction(phrase: string): Promise<{ ok: true; result: AsksResult } | { ok: false; message: string }> {
+/** 数一数有多少人在问：知恵袋、联想加假名、国会、YouTube，给了英文说法再加 Reddit（二三十秒，不存，想留下就自己补一条）。 */
+export async function countAsksAction(phrase: string, en = ""): Promise<{ ok: true; result: AsksResult } | { ok: false; message: string }> {
   try {
     await requireUserId();
     const p = phrase.replace(/[\s　]+/g, " ").trim().slice(0, 60);
     if (!p) return { ok: false, message: "先写一句普通人会搜的话" };
-    return { ok: true, result: await fetchAsks(p) };
+    const e = en.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 40);
+    return { ok: true, result: await fetchAsks(p, new Date(), /^[a-z][a-z' -]*$/.test(e) ? e : "") };
   } catch (error) {
     return { ok: false, message: message(error, "这次没数成") };
   }

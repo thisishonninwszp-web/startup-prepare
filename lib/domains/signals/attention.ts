@@ -17,7 +17,7 @@ import {
 } from "./attention-shared";
 import { parseEstat } from "./slow";
 import { rakutenItemSearch } from "@/lib/rakuten";
-import { askedQuestions, chiebukuroSample, kokkaiYears } from "./asks";
+import { askedQuestions, chiebukuroSample, kokkaiYears, redditSample, youtubeYears } from "./asks";
 
 export * from "./attention-shared";
 
@@ -170,16 +170,20 @@ async function kakei(topic: string, pain: string, reuse?: string[]): Promise<Att
   };
 }
 
-/** opts.kakeiNames：再量一次时沿用上次挑的家计调查品目（不调 AI）。 */
+/**
+ * opts.kakeiNames：再量一次时沿用上次挑的家计调查品目（不调 AI）。
+ * opts.en：在日外国人用英语怎么说，拿去 Reddit 搜；没有就不查 Reddit。
+ */
 export async function fetchAttention(
   topic: string,
   pain = "",
   now = new Date(),
-  opts: { kakeiNames?: string[] } = {}
+  opts: { kakeiNames?: string[]; en?: string } = {}
 ): Promise<Attention | null> {
   const t = topic.trim();
   if (!t) return null;
-  const [w, s, h, y, r, k, c, ko] = await Promise.all([
+  const en = (opts.en ?? "").trim();
+  const [w, s, h, y, r, k, c, ko, yy, rd] = await Promise.all([
     wiki(t, now),
     suggest(t),
     hatena(t),
@@ -188,8 +192,24 @@ export async function fetchAttention(
     kakei(t, pain, opts.kakeiNames).catch(() => null),
     chiebukuroSample(t).catch(() => null),
     kokkaiYears(t, now).catch(() => null),
+    youtubeYears(t, now).catch(() => null),
+    en ? redditSample(en).catch(() => null) : Promise.resolve(undefined),
   ]);
   // 加假名的那几轮要先知道普通联想给了什么（不重复），所以排在后面
   const asked = await askedQuestions(t, s ?? []).catch(() => null);
-  return { topic: t, wiki: w, suggest: s, hatena: h, youtube: y, rakuten: r, kakei: k, chiebukuro: c, asked, kokkai: ko, checked_at: now.toISOString() };
+  return {
+    topic: t,
+    wiki: w,
+    suggest: s,
+    hatena: h,
+    youtube: y,
+    rakuten: r,
+    kakei: k,
+    chiebukuro: c,
+    asked,
+    kokkai: ko,
+    youtubeYears: yy,
+    ...(en ? { en, reddit: rd ?? null } : {}),
+    checked_at: now.toISOString(),
+  };
 }

@@ -30,14 +30,64 @@ export type ChiebukuroSample = {
 
 export type KokkaiYears = { year: number; count: number }[];
 
+/** YouTube：每年新上传、标题里有这个叫法的视频几条；capped = 那一年搜到满 50 条（一页），实际可能更多。 */
+export type YoutubeYears = { year: number; count: number; capped: boolean }[];
+
+export type RedditPost = { url: string; title: string; date: string; comments: number; sub: string };
+/** Reddit：在日外国人的几个版块里，标题或正文里有这个英文说法的帖子（新的在前）。 */
+export type RedditSample = { term: string; subs: string[]; searched: number; posts: RedditPost[] };
+
 /** 信息缺口卡片上「数一数」一次的结果（不存）。 */
 export type AsksResult = {
   topic: string;
   chiebukuro: ChiebukuroSample | null;
   asked: string[] | null;
   kokkai: KokkaiYears | null;
+  youtubeYears: YoutubeYears | "no-key" | null;
+  /** 没给英文说法就不查（undefined）。 */
+  reddit?: RedditSample | "no-key" | null;
   checked_at: string;
 };
+
+/** 在日外国人常去的几个 Reddit 版块。 */
+export const REDDIT_SUBS = ["japanlife", "movingtojapan", "japanresidents", "japan", "tokyo", "osaka"];
+
+/** YouTube search.list（part=snippet）的一页：标题里有这个叫法的几条、这一页是不是满的。 */
+export function parseYoutubeYear(json: unknown, topic: string): { count: number; capped: boolean } | null {
+  const j = json as { items?: { snippet?: { title?: unknown } }[]; nextPageToken?: unknown } | null;
+  if (!j || !Array.isArray(j.items)) return null;
+  const titles = j.items.map((i) => (typeof i.snippet?.title === "string" ? i.snippet.title : ""));
+  return { count: titles.filter((t) => titleHasTopic(decodeEntities(t), topic)).length, capped: titles.length >= 50 && typeof j.nextPageToken === "string" };
+}
+
+/** YouTube 标题里的 &amp; &#39; 这类还原。 */
+function decodeEntities(t: string): string {
+  return t.replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+}
+
+/** Reddit 搜索结果的一页（listing）：标题或正文里有这个英文说法每个词的帖子；after 是下一页的游标。 */
+export function parseRedditListing(json: unknown, term: string): { posts: RedditPost[]; seen: number; after: string | null } {
+  const data = (json as { data?: { children?: { data?: Record<string, unknown> }[]; after?: unknown } } | null)?.data;
+  const children = Array.isArray(data?.children) ? data.children : [];
+  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+  const posts: RedditPost[] = [];
+  for (const c of children) {
+    const d = c.data ?? {};
+    const title = typeof d.title === "string" ? d.title : "";
+    const body = typeof d.selftext === "string" ? d.selftext : "";
+    const text = `${title} ${body}`.toLowerCase();
+    if (!title || typeof d.created_utc !== "number" || typeof d.permalink !== "string") continue;
+    if (words.length === 0 || !words.every((w) => text.includes(w))) continue;
+    posts.push({
+      url: `https://www.reddit.com${d.permalink}`,
+      title: clip(title),
+      date: new Date(d.created_utc * 1000).toISOString().slice(0, 10),
+      comments: typeof d.num_comments === "number" ? d.num_comments : 0,
+      sub: typeof d.subreddit === "string" ? d.subreddit : "",
+    });
+  }
+  return { posts, seen: children.length, after: typeof data?.after === "string" ? data.after : null };
+}
 
 const ASK_TITLE_MAX = 80;
 

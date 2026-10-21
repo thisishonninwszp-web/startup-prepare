@@ -5,6 +5,8 @@ import {
   mergeAsked,
   parseChiebukuroPage,
   parseKokkaiCount,
+  parseRedditListing,
+  parseYoutubeYear,
   questionUrl,
   readTotals,
   titleHasTopic,
@@ -94,5 +96,42 @@ describe("suggest rounds and kokkai", () => {
     expect(parseKokkaiCount({ numberOfRecords: 10 })).toBe(10);
     expect(parseKokkaiCount({ numberOfRecords: "3" })).toBe(3);
     expect(parseKokkaiCount({ message: "error" })).toBeNull();
+  });
+});
+
+describe("youtube per year", () => {
+  it("counts titles with the topic and marks a full page", () => {
+    const items = Array.from({ length: 50 }, (_, i) => ({ snippet: { title: i < 3 ? `家事代行&amp;掃除 ${i}` : "関係ない" } }));
+    expect(parseYoutubeYear({ items, nextPageToken: "x" }, "家事代行")).toEqual({ count: 3, capped: true });
+    expect(parseYoutubeYear({ items: items.slice(0, 10) }, "家事代行")).toEqual({ count: 3, capped: false });
+    expect(parseYoutubeYear({ error: {} }, "家事代行")).toBeNull();
+  });
+});
+
+describe("reddit listing", () => {
+  it("keeps posts mentioning every word, with date and comments", () => {
+    const json = {
+      data: {
+        after: "t3_next",
+        children: [
+          { data: { title: "Housekeeping service in Tokyo?", selftext: "", created_utc: 1700000000, permalink: "/r/japanlife/comments/a/x/", num_comments: 12, subreddit: "japanlife" } },
+          { data: { title: "Cleaning", selftext: "anyone used a housekeeping SERVICE?", created_utc: 1600000000, permalink: "/r/tokyo/comments/b/y/", num_comments: 3, subreddit: "tokyo" } },
+          { data: { title: "Visa question", selftext: "housekeeping only", created_utc: 1600000000, permalink: "/r/japan/comments/c/z/", subreddit: "japan" } },
+          { data: { title: "", selftext: "housekeeping service", created_utc: 1600000000, permalink: "/r/japan/comments/d/w/" } },
+        ],
+      },
+    };
+    const out = parseRedditListing(json, "housekeeping service");
+    expect(out.seen).toBe(4);
+    expect(out.after).toBe("t3_next");
+    expect(out.posts.map((p) => p.url)).toEqual([
+      "https://www.reddit.com/r/japanlife/comments/a/x/",
+      "https://www.reddit.com/r/tokyo/comments/b/y/",
+    ]);
+    expect(out.posts[0]).toMatchObject({ date: "2023-11-14", comments: 12, sub: "japanlife" });
+  });
+
+  it("handles an empty or broken listing", () => {
+    expect(parseRedditListing(null, "x")).toEqual({ posts: [], seen: 0, after: null });
   });
 });

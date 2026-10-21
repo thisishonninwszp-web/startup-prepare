@@ -10,7 +10,7 @@
  * 知恵袋的搜索页、Google 趋势 robots.txt 不许程序抓，那两个只给链接、他自己看。
  */
 
-import type { ChiebukuroSample, KokkaiYears } from "./asks-shared";
+import type { ChiebukuroSample, KokkaiYears, RedditSample, YoutubeYears } from "./asks-shared";
 
 export type AttentionWiki = { title: string; url: string; months: { month: string; views: number }[] };
 export type AttentionHatena = { matched: number; bookmarks: number; top: { title: string; url: string; users: number; date: string }[] };
@@ -32,6 +32,11 @@ export type Attention = {
   chiebukuro?: ChiebukuroSample | null;
   asked?: string[] | null;
   kokkai?: KokkaiYears | null;
+  /** YouTube 每年新上传几条（"no-key"：没配 YOUTUBE_API_KEY）。早期查过的没有。 */
+  youtubeYears?: YoutubeYears | "no-key" | null;
+  /** 在日外国人用英语怎么说（再量一次时沿用）、Reddit 上他们的帖子（"no-key"：没配 REDDIT_CLIENT_ID / SECRET）。 */
+  en?: string;
+  reddit?: RedditSample | "no-key" | null;
   checked_at: string;
 };
 

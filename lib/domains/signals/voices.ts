@@ -114,7 +114,7 @@ export async function remeasureGapAttention(userId: string, signalId: string, si
   if (!prev?.attention) throw new Error("先「听一听」一次，才知道该量哪个词");
   const kakeiNames = prev.attention.kakei && prev.attention.kakei !== "no-key" ? prev.attention.kakei.items.map((k) => k.name) : undefined;
   const [attention, apps] = await Promise.all([
-    fetchAttention(prev.attention.topic, prev.pain, new Date(), { kakeiNames }),
+    fetchAttention(prev.attention.topic, prev.pain, new Date(), { kakeiNames, en: prev.attention.en }),
     prev.apps && prev.apps.length > 0 ? lookupApps(prev.apps, "jp") : Promise.resolve(null),
   ]);
   if (!attention) throw new Error("这次一样都没量到，过一会儿再试");
@@ -134,7 +134,7 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
     Promise.all(plan.queries.map((q) => webSearch(q, RESULTS_PER_QUERY).catch(() => []))),
     appStoreReviews(plan.appTerm, side === "china" ? "cn" : "jp"),
     // 有多少人在关注：日本这边才查（中国大陆不用 Google、YouTube，维基也不是那边的人在看）
-    side === "china" ? Promise.resolve(null) : fetchAttention(plan.topic || plan.appTerm, plan.pain).catch(() => null),
+    side === "china" ? Promise.resolve(null) : fetchAttention(plan.topic || plan.appTerm, plan.pain, new Date(), { en: plan.en }).catch(() => null),
   ]);
   const { reviews, apps } = store;
   const pages = mergeSources(found, RESULTS_PER_QUERY * plan.queries.length);

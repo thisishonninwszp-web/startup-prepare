@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { rakutenItemSearch } from "@/lib/rakuten";
+import { REDDIT_UA, redditToken } from "@/lib/reddit";
 import { translateQuery, type QueryTranslations } from "@/lib/ai";
 
 /**
@@ -70,31 +71,7 @@ async function fetchHackerNews(query: string): Promise<StagingRow[]> {
     .filter((r): r is StagingRow => r !== null);
 }
 
-const REDDIT_UA = "web:ideaos:0.1 (signal crawler)";
-
-/**
- * Reddit 走应用级 OAuth（client_credentials）——免认证端点已被硬封 403。
- * 需配 REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET（reddit.com/prefs/apps 注册 script app）。
- * 未配置则静默跳过（返回空），不报错、不刷屏。
- */
-async function redditToken(): Promise<string | null> {
-  const id = process.env.REDDIT_CLIENT_ID;
-  const secret = process.env.REDDIT_CLIENT_SECRET;
-  if (!id || !secret) return null;
-  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
-    method: "POST",
-    headers: {
-      Authorization:
-        "Basic " + Buffer.from(`${id}:${secret}`).toString("base64"),
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": REDDIT_UA,
-    },
-    body: "grant_type=client_credentials",
-  });
-  if (!res.ok) throw new Error(`Reddit 鉴权失败 ${res.status}`);
-  const data = (await res.json()) as { access_token?: string };
-  return data.access_token ?? null;
-}
+// Reddit 的 OAuth 和材料抓取以外的地方共用：lib/reddit.ts
 
 async function fetchReddit(query: string): Promise<StagingRow[]> {
   const token = await redditToken();

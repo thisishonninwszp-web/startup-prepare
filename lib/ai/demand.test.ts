@@ -11,6 +11,14 @@ describe("这边有人在为这个头疼吗", () => {
     expect(() => parseVoicePlan({ pain: "叫外卖太慢", queries: ["只有一个"] })).toThrow();
   });
 
+  it("parseVoicePlan：en 只收英文的平常说法，别的当没写", () => {
+    const base = { pain: "叫外卖要等一个多小时", queries: ["a", "b"] };
+    expect(parseVoicePlan({ ...base, en: ' "Housekeeping  Service" ' }).en).toBe("housekeeping service");
+    expect(parseVoicePlan({ ...base, en: "kaji daikō 家事代行" }).en).toBe("");
+    expect(parseVoicePlan({ ...base, en: "x" }).en).toBe("");
+    expect(parseVoicePlan(base).en).toBe("");
+  });
+
   it("parseVoiceQuotes：原文逐字对得上（去掉空白比）才留；编号越界、类别不认识、太短、重复的丢掉", () => {
     const sources = [
       { title: "知恵袋", url: "https://example.jp/q", content: "フードデリバリーが毎回 1時間以上かかって本当に困っています。みなさんどうしてますか？" },

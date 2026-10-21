@@ -1,26 +1,39 @@
 import { BarList } from "@/components/ui/bar-list";
-import { asksByYear, readTotals, type ChiebukuroSample, type KokkaiYears } from "@/lib/domains/signals/asks-shared";
+import {
+  asksByYear,
+  readTotals,
+  type ChiebukuroSample,
+  type KokkaiYears,
+  type RedditSample,
+  type YoutubeYears,
+} from "@/lib/domains/signals/asks-shared";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
 /**
- * 有多少人在问（程序自动查的三样）：知恵袋上的提问（按年份数、读过的那几页看过的人数和共感）、
- * 联想加假名问出来的说法、国会每年提到几次。undefined = 早先查的那次还没有这一样，不显示；null = 这次没取到。
+ * 有多少人在问（程序自动查的）：知恵袋上的提问（按年份数、读过的那几页看过的人数和共感）、
+ * 联想加假名问出来的说法、国会每年提到几次、YouTube 每年新上传几条、Reddit 上在日外国人的帖子每年几条。
+ * undefined = 早先查的那次还没有这一样（或这次没要查），不显示；null = 这次没取到。
  */
 export function AsksView({
   topic,
   chiebukuro,
   asked,
   kokkai,
+  youtubeYears,
+  reddit,
   thisYear,
 }: {
   topic: string;
   chiebukuro?: ChiebukuroSample | null;
   asked?: string[] | null;
   kokkai?: KokkaiYears | null;
+  youtubeYears?: YoutubeYears | "no-key" | null;
+  reddit?: RedditSample | "no-key" | null;
   thisYear: number;
 }) {
-  if (chiebukuro === undefined && asked === undefined && kokkai === undefined) return null;
+  if ([chiebukuro, asked, kokkai, youtubeYears, reddit].every((x) => x === undefined)) return null;
+  const redditTop = reddit && reddit !== "no-key" ? [...reddit.posts].sort((a, b) => b.comments - a.comments).slice(0, 5) : [];
   const totals = chiebukuro ? readTotals(chiebukuro.asks) : null;
   const read = chiebukuro ? chiebukuro.asks.filter((a) => a.views !== undefined).sort((a, b) => (b.views ?? 0) - (a.views ?? 0)) : [];
   return (
@@ -102,6 +115,73 @@ export function AsksView({
               <p className="text-muted-foreground">
                 在叫法后面加一个假名（あ、か、さ……）再问一遍 Google 联想，问出来的这些都是真有人在搜的说法 —— 担心什么、想比较什么、卡在哪一步。
                 里面混着书名、动画名这类不相干的，略过就好；挑几个放进 Google 趋势一起比，看哪个担心在变多。
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {youtubeYears !== undefined && (
+        <div>
+          {youtubeYears === "no-key" || youtubeYears === null ? (
+            <>
+              <p className="text-sm font-medium">YouTube 上每年新上传几条讲「{topic}」的视频</p>
+              <p className="text-muted-foreground">{youtubeYears === "no-key" ? "没配 YOUTUBE_API_KEY，这一样不查。" : "这次没取到。"}</p>
+            </>
+          ) : (
+            <>
+              <BarList
+                title={`YouTube 上每年新上传、标题里有「${topic}」的视频`}
+                items={youtubeYears.map((y) => ({ label: `${y.year} 年${y.capped ? "（50+）" : ""}`, value: y.count }))}
+                unit=" 条"
+                empty={`最近 ${youtubeYears.length} 年一条都没有。`}
+              />
+              <p className="mt-1 text-muted-foreground">
+                YouTube 官方接口，每年只看一页（50 条）；标了「50+」的那年搜出来满一页，实际更多。拍视频的人多了，说明有人觉得这件事值得讲、有人看。
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {reddit !== undefined && (
+        <div>
+          <p className="text-sm font-medium">在日外国人在 Reddit 上问「{reddit && reddit !== "no-key" ? reddit.term : "（英文说法）"}」</p>
+          {reddit === "no-key" ? (
+            <p className="text-muted-foreground">没配 Reddit 的 Key（REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET，免费申请），这一样不查。</p>
+          ) : reddit === null ? (
+            <p className="text-muted-foreground">这次没取到。</p>
+          ) : reddit.posts.length === 0 ? (
+            <p className="text-muted-foreground">
+              在 {reddit.subs.map((s) => `r/${s}`).join("、")} 里翻了 {reddit.searched} 条，正文里有这个说法的一条都没有。
+            </p>
+          ) : (
+            <>
+              <p>
+                在 {reddit.subs.map((s) => `r/${s}`).join("、")} 里翻了 <span className="font-mono">{reddit.searched}</span> 条，
+                标题或正文里有「{reddit.term}」的 <span className="font-mono">{reddit.posts.length}</span> 条。
+              </p>
+              <div className="mt-2">
+                <BarList
+                  title="每年几条"
+                  items={asksByYear(reddit.posts, thisYear).map((y) => ({ label: `${y.year} 年`, value: y.count }))}
+                  unit=" 条"
+                />
+              </div>
+              <ul className="mt-2 space-y-1">
+                {redditTop.map((p) => (
+                  <li key={p.url}>
+                    <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                      {p.title}
+                    </a>
+                    <span className="ml-1 font-mono text-muted-foreground">
+                      r/{p.sub} · {p.date} · 评论 {n(p.comments)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-muted-foreground">
+                Reddit 官方接口，从新到旧最多翻 300 条，讨论多的话只覆盖最近几年。这些是在日本生活、用英语的人 —— 你的想法要是给外国人用的，这里就是他们自己说出来的麻烦。
               </p>
             </>
           )}

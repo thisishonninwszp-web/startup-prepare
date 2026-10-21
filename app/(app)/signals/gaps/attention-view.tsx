@@ -182,7 +182,15 @@ export function AttentionView({ attention }: { attention: Attention }) {
         </li>
       </ul>
       <div className="mt-3 border-t border-border pt-3">
-        <AsksView topic={a.topic} chiebukuro={a.chiebukuro} asked={a.asked} kokkai={a.kokkai} thisYear={Number(a.checked_at.slice(0, 4))} />
+        <AsksView
+          topic={a.topic}
+          chiebukuro={a.chiebukuro}
+          asked={a.asked}
+          kokkai={a.kokkai}
+          youtubeYears={a.youtubeYears}
+          reddit={a.reddit}
+          thisYear={Number(a.checked_at.slice(0, 4))}
+        />
       </div>
       {a.wiki && a.wiki.months.length >= 2 && (
         <div className="mt-3">
@@ -195,7 +203,8 @@ export function AttentionView({ attention }: { attention: Attention }) {
         </div>
       )}
       <div className="mt-3">
-        <TrendsChart words={[a.topic]} />
+        {/* key：重新听一听换了叫法时，图跟着换（不然会留着上一次的词） */}
+        <TrendsChart key={a.topic} words={[a.topic]} />
       </div>
       {a.kakei && a.kakei !== "no-key" &&
         a.kakei.items.map((k) =>

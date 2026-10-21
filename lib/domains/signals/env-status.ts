@@ -33,6 +33,12 @@ export const ENV_ITEMS: EnvItem[] = [
     how: "Google Cloud 控制台开 YouTube Data API v3，免费额度一天 1 万单位",
   },
   {
+    label: "Reddit",
+    use: "「听一听」里在日外国人在 Reddit 上问这件事的帖子，每年几条",
+    slots: [["REDDIT_CLIENT_ID"], ["REDDIT_CLIENT_SECRET"]],
+    how: "reddit.com/prefs/apps 建一个 script 类应用拿 client id 和 secret；2025-11 起新应用还要另外向 Reddit 申请、人工审批（不一定批，等多久也没准）",
+  },
+  {
     label: "Tavily",
     use: "Google 搜不到或出错时的备用搜索",
     slots: [["TAVILY_API_KEY"]],

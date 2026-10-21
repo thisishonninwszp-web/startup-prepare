@@ -1,15 +1,22 @@
 import { webSearch } from "@/lib/web-search";
+import { REDDIT_UA, redditToken } from "@/lib/reddit";
 import { parseSuggest } from "./attention-shared";
 import {
   collectAsks,
   mergeAsked,
   parseChiebukuroPage,
   parseKokkaiCount,
+  parseRedditListing,
+  parseYoutubeYear,
   questionUrl,
+  REDDIT_SUBS,
   SUGGEST_KANA,
   type AsksResult,
   type ChiebukuroSample,
   type KokkaiYears,
+  type RedditPost,
+  type RedditSample,
+  type YoutubeYears,
 } from "./asks-shared";
 
 export * from "./asks-shared";
@@ -28,11 +35,11 @@ const KOKKAI_YEARS = 10;
 const KOKKAI_PARALLEL = 3;
 const KOKKAI_DEADLINE_MS = 20_000;
 
-async function get(url: string, as: "json" | "text"): Promise<unknown> {
+async function get(url: string, as: "json" | "text", headers: Record<string, string> = {}): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": UA } });
+    const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": UA, ...headers } });
     if (!res.ok) return null;
     return as === "json" ? await res.json() : await res.text();
   } catch {
@@ -111,12 +118,92 @@ export async function kokkaiYears(topic: string, now = new Date()): Promise<Kokk
   return out.length > 0 ? out : null;
 }
 
-/** 三样一起查（信息缺口卡片上「数一数」用；「听一听」里由 fetchAttention 分别调）。 */
-export async function fetchAsks(topic: string, now = new Date()): Promise<AsksResult> {
-  const [chiebukuro, asked, kokkai] = await Promise.all([
+/** YouTube：往回数几年。每年一次 search.list（100 额度），一天免费 1 万额度。 */
+const YOUTUBE_YEARS = 5;
+
+/** YouTube（官方接口）：最近五年每年新上传、标题里有这个叫法的视频几条（每年只看一页 50 条，满了标「50 条以上」）。 */
+export async function youtubeYears(topic: string, now = new Date()): Promise<YoutubeYears | "no-key" | null> {
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) return "no-key";
+  const t = topic.trim();
+  if (!t) return null;
+  const thisYear = now.getUTCFullYear();
+  const years = Array.from({ length: YOUTUBE_YEARS }, (_, i) => thisYear - YOUTUBE_YEARS + 1 + i);
+  const rows = await Promise.all(
+    years.map(async (y) => {
+      const params = new URLSearchParams({
+        part: "snippet",
+        type: "video",
+        maxResults: "50",
+        regionCode: "JP",
+        relevanceLanguage: "ja",
+        q: t,
+        publishedAfter: `${y}-01-01T00:00:00Z`,
+        publishedBefore: `${y + 1}-01-01T00:00:00Z`,
+        key,
+      });
+      const parsed = parseYoutubeYear(await get(`https://www.googleapis.com/youtube/v3/search?${params}`, "json"), t);
+      return parsed ? { year: y, ...parsed } : null;
+    })
+  );
+  const ok = rows.filter((r): r is NonNullable<typeof r> => r !== null);
+  return ok.length > 0 ? ok : null;
+}
+
+/** Reddit 搜几页（每页 100 条）。 */
+const REDDIT_PAGES = 3;
+const REDDIT_KEEP = 200;
+
+/**
+ * Reddit（官方接口）：在日外国人的几个版块里搜这个英文说法，按新到旧翻最多三页，
+ * 留标题或正文里有这个说法每个词的帖子。没配 Key 返回 "no-key"。
+ */
+export async function redditSample(term: string): Promise<RedditSample | "no-key" | null> {
+  const t = term.trim().toLowerCase();
+  if (!t) return null;
+  const token = await redditToken().catch(() => undefined);
+  if (token === null) return "no-key";
+  if (!token) return null;
+  const posts: RedditPost[] = [];
+  let searched = 0;
+  let after: string | null = null;
+  for (let page = 0; page < REDDIT_PAGES; page += 1) {
+    const params = new URLSearchParams({ q: t, restrict_sr: "1", sort: "new", t: "all", limit: "100", raw_json: "1", ...(after ? { after } : {}) });
+    const json = await get(`https://oauth.reddit.com/r/${REDDIT_SUBS.join("+")}/search?${params}`, "json", {
+      Authorization: `bearer ${token}`,
+      "User-Agent": REDDIT_UA,
+    });
+    if (json === null) break;
+    const parsed = parseRedditListing(json, t);
+    searched += parsed.seen;
+    posts.push(...parsed.posts);
+    after = parsed.after;
+    if (!after) break;
+  }
+  if (searched === 0 && posts.length === 0) return null;
+  const unique = Array.from(new Map(posts.map((p) => [p.url, p])).values()).sort((a, b) => b.date.localeCompare(a.date));
+  return { term: t, subs: REDDIT_SUBS, searched, posts: unique.slice(0, REDDIT_KEEP) };
+}
+
+/**
+ * 信息缺口卡片上「数一数」：知恵袋、联想、国会、YouTube 每年几条一起查；给了英文说法再查 Reddit。
+ * 「听一听」里由 fetchAttention 分别调。
+ */
+export async function fetchAsks(topic: string, now = new Date(), en = ""): Promise<AsksResult> {
+  const [chiebukuro, asked, kokkai, yt, reddit] = await Promise.all([
     chiebukuroSample(topic).catch(() => null),
     askedQuestions(topic).catch(() => null),
     kokkaiYears(topic, now).catch(() => null),
+    youtubeYears(topic, now).catch(() => null),
+    en.trim() ? redditSample(en).catch(() => null) : Promise.resolve(undefined),
   ]);
-  return { topic: topic.trim(), chiebukuro, asked, kokkai, checked_at: now.toISOString() };
+  return {
+    topic: topic.trim(),
+    chiebukuro,
+    asked,
+    kokkai,
+    youtubeYears: yt,
+    ...(reddit !== undefined ? { reddit } : {}),
+    checked_at: now.toISOString(),
+  };
 }

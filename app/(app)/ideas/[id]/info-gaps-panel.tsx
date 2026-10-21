@@ -68,6 +68,7 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
   const [ownUrl, setOwnUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [asks, setAsks] = useState<AsksResult | null>(null);
+  const [en, setEn] = useState("");
   const [counting, startCounting] = useTransition();
   const overdue = gap.status === "open" && gap.due_on <= today;
   const routes = [...gap.routes].sort((a, b) => ROUTE_ORDER.indexOf(a.kind) - ROUTE_ORDER.indexOf(b.kind));
@@ -194,6 +195,12 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
                   ))}
                 </p>
                 <TrendsChart key={phrase.trim()} words={[phrase]} label={`就在这里看「${phrase.trim()}」这五年在 Google 上的搜索走势`} />
+                <Input
+                  value={en}
+                  onChange={(e) => setEn(e.target.value)}
+                  placeholder="在日外国人用英语怎么说（Reddit 用，可以空着；例：housekeeping service）"
+                  maxLength={40}
+                />
                 <Button
                   size="sm"
                   variant="ghost"
@@ -202,19 +209,27 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
                   onClick={() =>
                     startCounting(async () => {
                       setError(null);
-                      const r = await countAsksAction(phrase);
+                      const r = await countAsksAction(phrase, en);
                       if (r.ok) setAsks(r.result);
                       else setError(r.message);
                     })
                   }
                 >
-                  {counting ? "在数……二三十秒" : `让程序数一数：知恵袋上的提问、人们还会搜什么、国会提过几次`}
+                  {counting ? "在数……二三十秒" : `让程序数一数：知恵袋上的提问、人们还会搜什么、国会和 YouTube 每年几次${en.trim() ? "、Reddit" : ""}`}
                 </Button>
               </>
             )}
             {asks && (
               <div className="rounded-md border border-border p-3">
-                <AsksView topic={asks.topic} chiebukuro={asks.chiebukuro} asked={asks.asked} kokkai={asks.kokkai} thisYear={Number(asks.checked_at.slice(0, 4))} />
+                <AsksView
+                  topic={asks.topic}
+                  chiebukuro={asks.chiebukuro}
+                  asked={asks.asked}
+                  kokkai={asks.kokkai}
+                  youtubeYears={asks.youtubeYears}
+                  reddit={asks.reddit}
+                  thisYear={Number(asks.checked_at.slice(0, 4))}
+                />
                 <p className="mt-2 text-muted-foreground">这些不会自己存下来；有用的数，用上面「自己补一条」记一句。</p>
               </div>
             )}
