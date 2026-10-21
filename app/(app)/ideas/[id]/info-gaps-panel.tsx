@@ -18,6 +18,8 @@ import {
 } from "@/lib/domains/ideas/info-gaps-shared";
 import { addOwnGapEvidenceAction, countAsksAction, generateIdeaGapsAction, saveFounderFactsAction, setGapStatusAction } from "../info-gap-actions";
 import { TrendsChart } from "@/components/trends-chart";
+import { AddToThisGap } from "../add-asks-evidence";
+import { tokyoDate } from "@/lib/domains/signals/asks-summary";
 import { AsksView } from "@/components/asks-view";
 import type { AsksResult } from "@/lib/domains/signals/asks-shared";
 
@@ -236,8 +238,12 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
                   youtubeYears={asks.youtubeYears}
                   reddit={asks.reddit}
                   thisYear={Number(asks.checked_at.slice(0, 4))}
+                  checkedOn={tokyoDate(asks.checked_at)}
+                  renderAdd={(s) => <AddToThisGap gapId={gap.id} summary={s} />}
                 />
-                <p className="mt-2 text-muted-foreground">这些不会自己存下来；有用的数，用上面「自己补一条」记一句。</p>
+                <p className="mt-2 text-muted-foreground">
+                  这些不会自己存下来。有用的那一样点「补进这个缺口」：程序把它的数拼成一句、连同链接记在这个缺口下面，标「拿到了 / 拿不到」时就有依据。
+                </p>
               </div>
             )}
             <p className="text-muted-foreground">看到的数用上面「自己补一条」记下来（例：知恵袋上「家事代行 中国語」有 120 件问题，近两年的占一半）。</p>

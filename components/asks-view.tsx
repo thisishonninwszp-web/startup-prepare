@@ -9,6 +9,7 @@ import {
   type YoutubeYears,
 } from "@/lib/domains/signals/asks-shared";
 import type { CfSample, GcSample, PrSample } from "@/lib/domains/signals/sites-shared";
+import { asksSummaries, type AsksSummary, type AsksSummaryKey } from "@/lib/domains/signals/asks-summary";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
@@ -396,6 +397,7 @@ function Group({ label, children }: { label: string; children: ReactNode[] }) {
  * 有多少人在问、在花钱、在做（程序自动查的，不花钱）：分三组摆 ——
  * 有人在问、在头疼（知恵袋、ガルちゃん、Reddit、联想）/ 有人在花钱（CAMPFIRE）/ 有人在做、在讲（PR TIMES、YouTube、国会）。
  * undefined = 早先查的那次还没有这一样（或这次没要查），不显示；null = 这次没取到。
+ * renderAdd：给了就在每一样底下放一个「补进缺口」（那一句由代码拼，见 asks-summary.ts）；checkedOn 是哪天量的。
  */
 export function AsksView({
   topic,
@@ -409,6 +411,8 @@ export function AsksView({
   reddit,
   redditTerm,
   thisYear,
+  checkedOn,
+  renderAdd,
 }: {
   topic: string;
   chiebukuro?: ChiebukuroSample | null;
@@ -422,24 +426,38 @@ export function AsksView({
   /** AI 写的英文说法（没配 Key 时 reddit 里没有，标题用这个）。 */
   redditTerm?: string;
   thisYear: number;
+  checkedOn?: string;
+  renderAdd?: (summary: AsksSummary) => ReactNode;
 }) {
   if ([chiebukuro, girlschannel, campfire, prtimes, asked, kokkai, youtubeYears, reddit].every((x) => x === undefined)) return null;
+  const summaries = renderAdd
+    ? asksSummaries({ topic, chiebukuro, girlschannel, campfire, prtimes, asked, kokkai, youtubeYears, reddit, date: checkedOn ?? `${thisYear}-01-01` })
+    : [];
+  const withAdd = (key: AsksSummaryKey, node: ReactNode) => {
+    const summary = summaries.find((s) => s.key === key);
+    return (
+      <div key={key}>
+        {node}
+        {renderAdd && summary && <div className="mt-1">{renderAdd(summary)}</div>}
+      </div>
+    );
+  };
   return (
     <div className="space-y-6 text-xs leading-6">
       <Group label="有人在问、在头疼吗">
         {[
-          chiebukuro !== undefined && <Chiebukuro key="chiebukuro" topic={topic} sample={chiebukuro} thisYear={thisYear} />,
-          girlschannel !== undefined && <Girlschannel key="girlschannel" topic={topic} sample={girlschannel} thisYear={thisYear} />,
-          reddit !== undefined && <Reddit key="reddit" reddit={reddit} term={redditTerm} thisYear={thisYear} />,
-          asked !== undefined && <Asked key="asked" topic={topic} asked={asked} />,
+          chiebukuro !== undefined && withAdd("chiebukuro", <Chiebukuro topic={topic} sample={chiebukuro} thisYear={thisYear} />),
+          girlschannel !== undefined && withAdd("girlschannel", <Girlschannel topic={topic} sample={girlschannel} thisYear={thisYear} />),
+          reddit !== undefined && withAdd("reddit", <Reddit reddit={reddit} term={redditTerm} thisYear={thisYear} />),
+          asked !== undefined && withAdd("asked", <Asked topic={topic} asked={asked} />),
         ]}
       </Group>
-      <Group label="有人在花钱吗">{[campfire !== undefined && <Campfire key="campfire" topic={topic} sample={campfire} />]}</Group>
+      <Group label="有人在花钱吗">{[campfire !== undefined && withAdd("campfire", <Campfire topic={topic} sample={campfire} />)]}</Group>
       <Group label="有人在做、在讲吗">
         {[
-          prtimes !== undefined && <Prtimes key="prtimes" topic={topic} sample={prtimes} />,
-          youtubeYears !== undefined && <Youtube key="youtube" topic={topic} years={youtubeYears} />,
-          kokkai !== undefined && <Kokkai key="kokkai" topic={topic} years={kokkai} />,
+          prtimes !== undefined && withAdd("prtimes", <Prtimes topic={topic} sample={prtimes} />),
+          youtubeYears !== undefined && withAdd("youtube", <Youtube topic={topic} years={youtubeYears} />),
+          kokkai !== undefined && withAdd("kokkai", <Kokkai topic={topic} years={kokkai} />),
         ]}
       </Group>
     </div>

@@ -2,6 +2,8 @@ import { wikiYears, type Attention } from "@/lib/domains/signals/attention-share
 import { MonthLine } from "@/components/ui/month-line";
 import { TrendsChart } from "@/components/trends-chart";
 import { AsksView } from "@/components/asks-view";
+import { AddToIdeaGap } from "@/app/(app)/ideas/add-asks-evidence";
+import { tokyoDate } from "@/lib/domains/signals/asks-summary";
 
 const n = (v: number) => v.toLocaleString("ja-JP");
 
@@ -194,6 +196,8 @@ export function AttentionView({ attention }: { attention: Attention }) {
           reddit={a.reddit}
           redditTerm={a.en}
           thisYear={Number(a.checked_at.slice(0, 4))}
+          checkedOn={tokyoDate(a.checked_at)}
+          renderAdd={(s) => <AddToIdeaGap summary={s} />}
         />
       </div>
       {a.wiki && a.wiki.months.length >= 2 && (

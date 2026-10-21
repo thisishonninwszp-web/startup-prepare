@@ -3,7 +3,7 @@ import { planInfoGaps } from "@/lib/ai";
 import { HYPOTHESIS_FIELDS, type Hypothesis, type IdeaStatus } from "@/app/(app)/ideas/types";
 import { touchIdea } from "./touch";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { FOUNDER_FACTS_MAX, type GapEvidence, type GapStatus, type IdeaFit, type InfoGap } from "./info-gaps-shared";
+import { FOUNDER_FACTS_MAX, type GapEvidence, type GapStatus, type IdeaFit, type InfoGap, type OpenGapOption } from "./info-gaps-shared";
 
 export * from "./info-gaps-shared";
 
@@ -166,8 +166,6 @@ export async function addGapEvidence(userId: string, gapId: string, item: Omit<G
     .eq("user_id", userId);
   if (updateError) throw new Error(updateError.message);
 }
-
-export type OpenGapOption = { idea_id: string; idea_title: string; gaps: { id: string; question: string }[] };
 
 /** 外部信号"补进想法的缺口"要选的：没归档的想法里还缺的那几个缺口。表还没建返回空。 */
 export async function listOpenGapOptions(userId: string): Promise<OpenGapOption[]> {

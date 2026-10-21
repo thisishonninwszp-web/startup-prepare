@@ -92,3 +92,6 @@ export const UNOBTAINABLE_ADVICE = [
 export function dueGaps(gaps: Pick<InfoGap, "status" | "due_on">[], today: string): number {
   return gaps.filter((g) => g.status === "open" && g.due_on <= today).length;
 }
+
+/** 「补进想法的缺口」要选的：没归档的想法里还缺的那几个缺口。 */
+export type OpenGapOption = { idea_id: string; idea_title: string; gaps: { id: string; question: string }[] };

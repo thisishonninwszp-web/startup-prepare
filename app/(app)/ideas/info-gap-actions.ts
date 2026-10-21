@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import {
   addGapEvidence,
   generateIdeaGaps,
+  listOpenGapOptions,
+  type OpenGapOption,
   saveFounderFacts,
   setGapStatus,
   type GapStatus,
@@ -39,6 +41,16 @@ export async function countAsksAction(phrase: string, en = ""): Promise<{ ok: tr
     return { ok: true, result: await fetchAsks(p, new Date(), /^[a-z][a-z' -]*$/.test(e) ? e : "") };
   } catch (error) {
     return { ok: false, message: message(error, "这次没数成") };
+  }
+}
+
+/** 没归档的想法里还缺的缺口（「补进想法的缺口」点开时才取）。 */
+export async function listOpenGapOptionsAction(): Promise<{ ok: true; options: OpenGapOption[] } | { ok: false; message: string }> {
+  try {
+    const userId = await requireUserId();
+    return { ok: true, options: await listOpenGapOptions(userId) };
+  } catch (error) {
+    return { ok: false, message: message(error, "没取到想法的缺口") };
   }
 }
 
