@@ -22,6 +22,7 @@ export function AsksView({
   kokkai,
   youtubeYears,
   reddit,
+  redditTerm,
   thisYear,
 }: {
   topic: string;
@@ -30,6 +31,8 @@ export function AsksView({
   kokkai?: KokkaiYears | null;
   youtubeYears?: YoutubeYears | "no-key" | null;
   reddit?: RedditSample | "no-key" | null;
+  /** AI 写的英文说法（没配 Key 时 reddit 里没有，标题用这个）。 */
+  redditTerm?: string;
   thisYear: number;
 }) {
   if ([chiebukuro, asked, kokkai, youtubeYears, reddit].every((x) => x === undefined)) return null;
@@ -132,12 +135,12 @@ export function AsksView({
             <>
               <BarList
                 title={`YouTube 上每年新上传、标题里有「${topic}」的视频`}
-                items={youtubeYears.map((y) => ({ label: `${y.year} 年${y.capped ? "（50+）" : ""}`, value: y.count }))}
+                items={youtubeYears.map((y) => ({ label: `${y.year} 年${y.capped ? "（还有更多）" : ""}`, value: y.count }))}
                 unit=" 条"
                 empty={`最近 ${youtubeYears.length} 年一条都没有。`}
               />
               <p className="mt-1 text-muted-foreground">
-                YouTube 官方接口，每年只看一页（50 条）；标了「50+」的那年搜出来满一页，实际更多。拍视频的人多了，说明有人觉得这件事值得讲、有人看。
+                YouTube 官方接口，每年只看搜出来的前 50 条、数标题里有这个词的；标了「还有更多」的那年前 50 条都没看完，实际比这个多。拍视频的人多了，说明有人觉得这件事值得讲、有人看。
               </p>
             </>
           )}
@@ -146,9 +149,11 @@ export function AsksView({
 
       {reddit !== undefined && (
         <div>
-          <p className="text-sm font-medium">在日外国人在 Reddit 上问「{reddit && reddit !== "no-key" ? reddit.term : "（英文说法）"}」</p>
+          <p className="text-sm font-medium">在日外国人在 Reddit 上问「{reddit && reddit !== "no-key" ? reddit.term : redditTerm || "（英文说法）"}」</p>
           {reddit === "no-key" ? (
-            <p className="text-muted-foreground">没配 Reddit 的 Key（REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET，免费申请），这一样不查。</p>
+            <p className="text-muted-foreground">
+              没配 Reddit 的 Key（REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET），这一样不查。免费，但 2025-11 起新应用要先向 Reddit 申请、人工审批。
+            </p>
           ) : reddit === null ? (
             <p className="text-muted-foreground">这次没取到。</p>
           ) : reddit.posts.length === 0 ? (

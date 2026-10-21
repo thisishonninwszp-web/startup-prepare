@@ -189,6 +189,7 @@ export function AttentionView({ attention }: { attention: Attention }) {
           kokkai={a.kokkai}
           youtubeYears={a.youtubeYears}
           reddit={a.reddit}
+          redditTerm={a.en}
           thisYear={Number(a.checked_at.slice(0, 4))}
         />
       </div>
