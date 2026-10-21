@@ -330,8 +330,11 @@ function Prtimes({ topic, sample }: { topic: string; sample: PrSample | null }) 
         <>
           <p>
             {sample.total !== null && <>提到这个词的新闻稿一共 <span className="font-mono">{n(sample.total)}</span> 篇；</>}
-            最新的 {sample.seen} 篇里标题有「{topic}」的 <span className="font-mono">{sample.releases.length}</span> 篇
-            （{sample.releases[sample.releases.length - 1].date} 到 {sample.releases[0].date}），来自 {companies.length} 家公司：
+            最新的 {sample.seen} 篇里标题有「{topic}」的 <span className="font-mono">{sample.releases.length}</span> 篇（
+            {sample.releases[sample.releases.length - 1].date === sample.releases[0].date
+              ? `都是 ${sample.releases[0].date} 发的`
+              : `${sample.releases[sample.releases.length - 1].date} 到 ${sample.releases[0].date}`}
+            ），来自 {companies.length} 家公司：
             {companies.slice(0, 8).join("、")}。
           </p>
           <ul className="mt-2 space-y-1">
