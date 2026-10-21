@@ -15,9 +15,14 @@ export function rakutenKeys(): { applicationId: string; accessKey: string } | nu
   return applicationId && accessKey ? { applicationId, accessKey } : null;
 }
 
-/** 发给楽天的 Referer：要和楽天那边 Allowed websites 登记的域名一致。 */
-export function rakutenReferer(): string {
-  return process.env.RAKUTEN_REFERER || process.env.APP_URL || "https://startup-prepare.vercel.app/";
+/**
+ * 发给楽天的 Referer：要和楽天那边 Allowed websites 登记的域名一致。
+ * 环境变量里只写了域名（startup-prepare.vercel.app）也行，这里补成完整网址 —— Referer 要的是网址，不是域名。
+ */
+export function rakutenReferer(raw = process.env.RAKUTEN_REFERER || process.env.APP_URL || ""): string {
+  const v = raw.trim() || "https://startup-prepare.vercel.app/";
+  const url = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  return /^https?:\/\/[^/]+$/i.test(url) ? `${url}/` : url;
 }
 
 /** 搜一次（formatVersion=2，Items 是扁平的）。没配 Key 返回 "no-key"；接口出错返回 { error }，页面上要看得出卡在哪。 */
@@ -32,7 +37,7 @@ export async function rakutenItemSearch(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${ENDPOINT}?${query}`, { signal: controller.signal, headers: { Referer: referer, "User-Agent": "IdeaOS/1.0" } });
+    const res = await fetch(`${ENDPOINT}?${query}`, { signal: controller.signal, headers: { Referer: referer, Origin: new URL(referer).origin, "User-Agent": "IdeaOS/1.0" } });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.error("rakuten search failed", res.status, body.slice(0, 300));

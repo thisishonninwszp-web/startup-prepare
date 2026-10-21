@@ -47,7 +47,7 @@ export const ENV_ITEMS: EnvItem[] = [
   {
     label: "提醒邮件",
     use: "每天早上报告好了发一封",
-    slots: [["GMAIL_APP_PASSWORD"], ["IDEAOS_USER_EMAIL"]],
+    slots: [["GMAIL_USER"], ["GMAIL_APP_PASSWORD"]],
     how: "Google 账号 → 安全性 → 应用专用密码",
   },
 ];
