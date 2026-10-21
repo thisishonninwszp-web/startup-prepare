@@ -14,6 +14,7 @@ import {
 import { supabaseAdmin } from "@/lib/supabase";
 import { fetchAsks } from "@/lib/domains/signals/asks";
 import type { AsksResult } from "@/lib/domains/signals/asks-shared";
+import { isGrantArea, searchGrants, type Grant } from "@/lib/domains/ideas/grants";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -38,6 +39,20 @@ export async function countAsksAction(phrase: string, en = ""): Promise<{ ok: tr
     return { ok: true, result: await fetchAsks(p, new Date(), /^[a-z][a-z' -]*$/.test(e) ? e : "") };
   } catch (error) {
     return { ok: false, message: message(error, "这次没数成") };
+  }
+}
+
+/** 现在还在招募的补助金（jGrants，不存）。 */
+export async function searchGrantsAction(keyword: string, area: string): Promise<{ ok: true; grants: Grant[] } | { ok: false; message: string }> {
+  try {
+    await requireUserId();
+    const k = keyword.replace(/[\s　]+/g, " ").trim().slice(0, 30);
+    if (k.length < 2) return { ok: false, message: "关键词至少写两个字" };
+    const grants = await searchGrants(k, isGrantArea(area) ? area : "全国");
+    if (grants === null) return { ok: false, message: "jGrants 这次没连上，过一会儿再查" };
+    return { ok: true, grants };
+  } catch (error) {
+    return { ok: false, message: message(error, "这次没查成") };
   }
 }
 

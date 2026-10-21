@@ -11,6 +11,7 @@
  */
 
 import type { ChiebukuroSample, KokkaiYears, RedditSample, YoutubeYears } from "./asks-shared";
+import type { CfSample, GcSample, PrSample } from "./sites-shared";
 
 export type AttentionWiki = { title: string; url: string; months: { month: string; views: number }[] };
 export type AttentionHatena = { matched: number; bookmarks: number; top: { title: string; url: string; users: number; date: string }[] };
@@ -30,6 +31,10 @@ export type Attention = {
   kakei?: AttentionKakei | "no-key" | null;
   /** 知恵袋上的提问（Google 找页、程序只读提问页）、联想加假名问出来的说法、国会每年提到几次。早期查过的没有。 */
   chiebukuro?: ChiebukuroSample | null;
+  /** ガルちゃん的讨论、CAMPFIRE 的众筹项目、PR TIMES 的新闻稿。早期查过的没有。 */
+  girlschannel?: GcSample | null;
+  campfire?: CfSample | null;
+  prtimes?: PrSample | null;
   asked?: string[] | null;
   kokkai?: KokkaiYears | null;
   /** YouTube 每年新上传几条（"no-key"：没配 YOUTUBE_API_KEY）。早期查过的没有。 */

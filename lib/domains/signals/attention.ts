@@ -17,7 +17,16 @@ import {
 } from "./attention-shared";
 import { parseEstat } from "./slow";
 import { rakutenItemSearch } from "@/lib/rakuten";
-import { askedQuestions, chiebukuroSample, kokkaiYears, redditSample, youtubeYears } from "./asks";
+import {
+  askedQuestions,
+  campfireSample,
+  chiebukuroSample,
+  girlschannelSample,
+  kokkaiYears,
+  prtimesSample,
+  redditSample,
+  youtubeYears,
+} from "./asks";
 
 export * from "./attention-shared";
 
@@ -183,7 +192,7 @@ export async function fetchAttention(
   const t = topic.trim();
   if (!t) return null;
   const en = (opts.en ?? "").trim();
-  const [w, s, h, y, r, k, c, ko, yy, rd] = await Promise.all([
+  const [w, s, h, y, r, k, c, ko, yy, rd, gc, cf, pr] = await Promise.all([
     wiki(t, now),
     suggest(t),
     hatena(t),
@@ -194,6 +203,9 @@ export async function fetchAttention(
     kokkaiYears(t, now).catch(() => null),
     youtubeYears(t, now).catch(() => null),
     en ? redditSample(en).catch(() => null) : Promise.resolve(undefined),
+    girlschannelSample(t).catch(() => null),
+    campfireSample(t).catch(() => null),
+    prtimesSample(t).catch(() => null),
   ]);
   // 加假名的那几轮要先知道普通联想给了什么（不重复），所以排在后面
   const asked = await askedQuestions(t, s ?? []).catch(() => null);
@@ -206,6 +218,9 @@ export async function fetchAttention(
     rakuten: r,
     kakei: k,
     chiebukuro: c,
+    girlschannel: gc,
+    campfire: cf,
+    prtimes: pr,
     asked,
     kokkai: ko,
     youtubeYears: yy,

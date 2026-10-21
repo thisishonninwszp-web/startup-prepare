@@ -215,7 +215,7 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
                     })
                   }
                 >
-                  {counting ? "在数……二三十秒" : `让程序数一数：知恵袋上的提问、人们还会搜什么、国会和 YouTube 每年几次${en.trim() ? "、Reddit" : ""}`}
+                  {counting ? "在数……二三十秒" : `让程序数一数：知恵袋和ガルちゃん上有多少人在问、众筹有没有人掏钱、谁在发新闻稿、YouTube 和国会每年几次${en.trim() ? "、Reddit" : ""}`}
                 </Button>
               </>
             )}
@@ -224,6 +224,9 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
                 <AsksView
                   topic={asks.topic}
                   chiebukuro={asks.chiebukuro}
+                  girlschannel={asks.girlschannel}
+                  campfire={asks.campfire}
+                  prtimes={asks.prtimes}
                   asked={asks.asked}
                   kokkai={asks.kokkai}
                   youtubeYears={asks.youtubeYears}

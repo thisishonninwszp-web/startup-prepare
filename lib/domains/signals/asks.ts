@@ -19,8 +19,10 @@ import {
   type RedditSample,
   type YoutubeYears,
 } from "./asks-shared";
+import { keepMatching, parseCampfire, parseGirlschannel, parsePrtimes, type CfSample, type GcSample, type PrSample } from "./sites-shared";
 
 export * from "./asks-shared";
+export * from "./sites-shared";
 
 /**
  * 有多少人在问：知恵袋（Google 找页、程序只读提问页）、联想加假名、国会会議录。说明见 asks-shared.ts。
@@ -186,21 +188,63 @@ export async function redditSample(term: string): Promise<RedditSample | "no-key
   return { term: t, subs: REDDIT_SUBS, searched, posts: unique.slice(0, REDDIT_KEEP) };
 }
 
+/** ガルちゃん：搜索页（robots.txt 允许）翻最多两页（一页 50 个讨论）。 */
+export async function girlschannelSample(topic: string): Promise<GcSample | null> {
+  const t = topic.trim();
+  if (!t) return null;
+  const q = encodeURIComponent(t);
+  const first = await get(`https://girlschannel.net/topics/search/?q=${q}`, "text");
+  if (typeof first !== "string") return null;
+  const p1 = parseGirlschannel(first);
+  const pages = [p1.topics];
+  if ((p1.total ?? 0) > p1.topics.length && p1.topics.length > 0) {
+    const second = await get(`https://girlschannel.net/topics/search/2/?q=${q}&sort=&date=`, "text");
+    if (typeof second === "string") pages.push(parseGirlschannel(second).topics);
+  }
+  return { total: p1.total, topics: keepMatching(pages, t).sort((a, b) => b.date.localeCompare(a.date)) };
+}
+
+/** CAMPFIRE：搜索页第一页（按人气排）。 */
+export async function campfireSample(topic: string): Promise<CfSample | null> {
+  const t = topic.trim();
+  if (!t) return null;
+  const html = await get(`https://camp-fire.jp/projects/search?word=${encodeURIComponent(t)}`, "text");
+  if (typeof html !== "string") return null;
+  const page = parseCampfire(html);
+  return { total: page.total, seen: page.projects.length, projects: keepMatching([page.projects], t).sort((a, b) => b.amount - a.amount) };
+}
+
+/** PR TIMES：搜索页第一页（新的在前，40 篇）。 */
+export async function prtimesSample(topic: string): Promise<PrSample | null> {
+  const t = topic.trim();
+  if (!t) return null;
+  const html = await get(`https://prtimes.jp/main/action.php?run=html&page=searchkey&search_word=${encodeURIComponent(t)}`, "text");
+  if (typeof html !== "string") return null;
+  const page = parsePrtimes(html);
+  return { total: page.total, seen: page.releases.length, releases: keepMatching([page.releases], t) };
+}
+
 /**
  * 信息缺口卡片上「数一数」：知恵袋、联想、国会、YouTube 每年几条一起查；给了英文说法再查 Reddit。
  * 「听一听」里由 fetchAttention 分别调。
  */
 export async function fetchAsks(topic: string, now = new Date(), en = ""): Promise<AsksResult> {
-  const [chiebukuro, asked, kokkai, yt, reddit] = await Promise.all([
+  const [chiebukuro, asked, kokkai, yt, reddit, girlschannel, campfire, prtimes] = await Promise.all([
     chiebukuroSample(topic).catch(() => null),
     askedQuestions(topic).catch(() => null),
     kokkaiYears(topic, now).catch(() => null),
     youtubeYears(topic, now).catch(() => null),
     en.trim() ? redditSample(en).catch(() => null) : Promise.resolve(undefined),
+    girlschannelSample(topic).catch(() => null),
+    campfireSample(topic).catch(() => null),
+    prtimesSample(topic).catch(() => null),
   ]);
   return {
     topic: topic.trim(),
     chiebukuro,
+    girlschannel,
+    campfire,
+    prtimes,
     asked,
     kokkai,
     youtubeYears: yt,

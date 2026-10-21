@@ -185,6 +185,9 @@ export function AttentionView({ attention }: { attention: Attention }) {
         <AsksView
           topic={a.topic}
           chiebukuro={a.chiebukuro}
+          girlschannel={a.girlschannel}
+          campfire={a.campfire}
+          prtimes={a.prtimes}
           asked={a.asked}
           kokkai={a.kokkai}
           youtubeYears={a.youtubeYears}

@@ -31,6 +31,7 @@ import { WindLine } from "@/app/(app)/signals/slow/wind-line";
 import { dueGaps, getFounderFacts, loadIdeaGaps } from "@/lib/domains/ideas/info-gaps";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { InfoGapsPanel } from "./info-gaps-panel";
+import { GrantsPanel } from "./grants-panel";
 
 export const dynamic = "force-dynamic";
 // 列信息缺口（二三十秒）、「数一数」（二三十秒）都由这一页的 server action 跑
@@ -180,6 +181,10 @@ export default async function IdeaDetailPage({
             founderFacts={founderFacts}
             today={today}
           />
+        </section>
+        <section id="grants" className="mt-12 border-t pt-6">
+          <h2 className="mb-3 text-lg font-semibold">有没有补助金可以拿</h2>
+          <GrantsPanel />
         </section>
       </PageContainer>
     </>

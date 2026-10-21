@@ -1,3 +1,5 @@
+import type { CfSample, GcSample, PrSample } from "./sites-shared";
+
 /**
  * 有多少人在问（程序自动查、不花钱，浏览器端也要用的部分，不碰网络）：
  * - 知恵袋：搜索页 robots.txt 不许程序用，但单个提问页允许 —— 先用 Google 找到几页提问，程序读每页的
@@ -39,6 +41,9 @@ export type RedditSample = { term: string; subs: string[]; searched: number; pos
 
 /** 信息缺口卡片上「数一数」一次的结果（不存）。 */
 export type AsksResult = {
+  girlschannel: GcSample | null;
+  campfire: CfSample | null;
+  prtimes: PrSample | null;
   topic: string;
   chiebukuro: ChiebukuroSample | null;
   asked: string[] | null;
