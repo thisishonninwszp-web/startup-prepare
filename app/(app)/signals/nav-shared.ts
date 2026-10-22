@@ -7,6 +7,7 @@ export const SIGNALS_NAV: { label: string; pages: { href: string; label: string 
     label: "每天读",
     pages: [
       { href: "/signals", label: "今日报告" },
+      { href: "/signals/memory", label: "记忆" },
       { href: "/signals/week", label: "周报" },
       { href: "/signals/month", label: "月报" },
       { href: "/signals/inbox", label: "全部新闻" },
@@ -24,6 +25,7 @@ export const SIGNALS_NAV: { label: string; pages: { href: string; label: string 
   {
     label: "练判断",
     pages: [
+      { href: "/signals/forecast", label: "预测" },
       { href: "/signals/practice", label: "判断账本" },
       { href: "/signals/drill", label: "历史题" },
       { href: "/signals/questions", label: "在追的问题" },

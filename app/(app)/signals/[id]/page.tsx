@@ -17,6 +17,9 @@ import { ContactPlanButton } from "../contact-plan-button";
 import { getInference } from "@/lib/domains/signals/inference";
 import { listOpenGapOptions } from "@/lib/domains/ideas/info-gaps";
 import { RouteToGap } from "../route-to-gap";
+import { MarkButtons } from "../mark-buttons";
+import { StoryAround } from "../story-around";
+import { marksFor, storyAround } from "@/lib/domains/signals/memory";
 
 export const dynamic = "force-dynamic";
 // 第一次打开时要读原文 + 调 AI 写深读，默认 10 秒不够。
@@ -75,7 +78,7 @@ export default async function SignalDetailPage({
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [detail, judgment, inference, nodeBets, gapOptions] = await Promise.all([
+  const [detail, judgment, inference, nodeBets, gapOptions, marks, story] = await Promise.all([
     getSignalDetail(params.id),
     // 迁移 055 没跑时没有判断练习，详情页照旧直接显示报告
     getJudgmentForSignal(user.id, params.id).catch((e: Error) => {
@@ -85,6 +88,9 @@ export default async function SignalDetailPage({
     getInference(params.id),
     listNodeBets(user.id, params.id).catch(() => []),
     listOpenGapOptions(user.id).catch(() => []),
+    // 记忆层（迁移 091）：没跑、没算过指纹时这两样空着
+    marksFor(user.id, [params.id]).catch(() => new Map()),
+    storyAround(params.id).catch(() => null),
   ]);
   const bets = Object.fromEntries(
     nodeBets.map((b) => [b.question.slice(NODE_BET_PREFIX.length), formatDueDate(b.due_at)])
@@ -123,6 +129,9 @@ export default async function SignalDetailPage({
               {detail.kind === "tools" ? "去 GitHub 看 ↗" : "读原文 ↗"}
             </a>
           )}
+          <div className="mt-3">
+            <MarkButtons signalId={detail.id} initial={marks.get(detail.id)?.mark ?? null} />
+          </div>
 
           {detail.summary && (
             <section className="mt-8">
@@ -195,6 +204,13 @@ export default async function SignalDetailPage({
                 {detail.excerpt}
                 {detail.excerpt.length >= 1200 ? "…" : ""}
               </p>
+            </section>
+          )}
+
+          {story && (
+            <section className="mt-10 border-t pt-6">
+              <h2 className="mb-3 text-base font-semibold">这件事以前、后来</h2>
+              <StoryAround story={story} />
             </section>
           )}
 

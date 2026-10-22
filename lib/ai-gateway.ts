@@ -138,6 +138,40 @@ export async function executeAiGroundedSearch(
   });
 }
 
+/** 「意思的指纹」用的模型和维度（外部信号的记忆层；迁移 091 的列是 768 维）。 */
+export const EMBED_MODEL = process.env.AI_EMBED_MODEL ?? "gemini-embedding-001";
+export const EMBED_DIMENSIONS = 768;
+const EMBED_BATCH = 50;
+
+/**
+ * 算一批文字的指纹（向量）。document = 存进去的新闻，query = 他要找的那句话（两种算法略有不同，配对用效果更好）。
+ * 量大（每天几百条），不写进 ai_calls 日志；出错照样包成 AiGatewayError。按 50 条一批发。
+ */
+export async function executeEmbedding(texts: string[], kind: "document" | "query"): Promise<number[][]> {
+  const requestId = randomBytes(6).toString("hex");
+  const out: number[][] = [];
+  try {
+    for (let i = 0; i < texts.length; i += EMBED_BATCH) {
+      const batch = texts.slice(i, i + EMBED_BATCH).map((t) => t.slice(0, 2000) || " ");
+      const response = await getClient(30_000).models.embedContent({
+        model: EMBED_MODEL,
+        contents: batch,
+        config: { outputDimensionality: EMBED_DIMENSIONS, taskType: kind === "document" ? "RETRIEVAL_DOCUMENT" : "RETRIEVAL_QUERY" },
+      });
+      const vectors = (response.embeddings ?? []).map((e) => e.values ?? []);
+      if (vectors.length !== batch.length || vectors.some((v) => v.length !== EMBED_DIMENSIONS)) {
+        throw new Error("embedding schema: 返回的条数或维度不对");
+      }
+      out.push(...vectors);
+    }
+    return out;
+  } catch (error) {
+    if (error instanceof AiGatewayError) throw error;
+    const code = classifyAiError(error);
+    throw new AiGatewayError({ code, requestId, retryable: code === "rate_limit" || code === "timeout" || code === "network", cause: error });
+  }
+}
+
 type InlineImage = { mimeType: string; data: string };
 
 function firstImage(response: unknown): InlineImage | null {
