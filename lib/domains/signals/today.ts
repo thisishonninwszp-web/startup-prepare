@@ -1,4 +1,5 @@
 import { boardSections, loadForecastBoard, sidesOf, type ForecastQuestion } from "./forecast";
+import { drillProgress } from "./backtest";
 import { followedSignals, resurfacedOne, storyUpdates, type Resurfaced } from "./memory";
 import type { StoryUpdate } from "./memory-shared";
 import { sharedViewFor } from "./users";
@@ -12,6 +13,8 @@ import { sharedViewFor } from "./users";
 export const STORY_WINDOW_HOURS = 30;
 
 export type TodayForecast = {
+  /** 校准练习：今天做了几道、题库里还有没有没做的（迁移 094 没跑为 null）。 */
+  drill: { today: number; left: number } | null;
   toForecast: ForecastQuestion[];
   toConfirm: number;
   justResolved: { q: ForecastQuestion; me: number | null; ai: number | null; market: number | null }[];
@@ -37,10 +40,11 @@ function logged<T>(what: string, fallback: T) {
 export async function loadTodayPersonal(userId: string, today: string): Promise<TodayPersonal> {
   const view = await sharedViewFor(userId);
   const since = new Date(Date.now() - STORY_WINDOW_HOURS * 3_600_000).toISOString();
-  const [followed, lookBack, board] = await Promise.all([
+  const [followed, lookBack, board, drill] = await Promise.all([
     followedSignals(userId, view.shared).catch(logged("followed", null)),
     resurfacedOne(userId, today).catch(logged("look back", null)),
     loadForecastBoard(userId).catch(logged("forecast", null)),
+    drillProgress(userId, today).catch(logged("drill", null)),
   ]);
   const stories: TodayPersonal["stories"] = followed === null ? "error" : await storyUpdates(followed, since, 2).catch(logged("stories", "error" as const));
 
@@ -48,6 +52,7 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
   if (board && board !== "missing-schema") {
     const s = boardSections(board, today);
     forecast = {
+      drill: drill && drill !== "missing-schema" ? { today: drill.today, left: drill.left } : null,
       toForecast: s.toForecast,
       toConfirm: s.toConfirm.length,
       justResolved: s.justResolved.slice(0, 3).map((q) => ({ q, ...sidesOf(board.forecasts, q.id) })),

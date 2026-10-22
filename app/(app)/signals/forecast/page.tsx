@@ -17,6 +17,9 @@ import {
   type ForecastSource,
 } from "@/lib/domains/signals/forecast";
 import { Answers, ConfirmCard, ForecastCard } from "./forecast-cards";
+import Link from "next/link";
+import { describePlatt, SCORE_MIN, usableCalibration } from "@/lib/domains/signals/calibration-shared";
+import { historyBacktest } from "@/lib/domains/signals/backtest";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +37,8 @@ export default async function ForecastPage() {
   if (!user) notFound();
 
   const today = tokyoToday();
-  const board = await loadForecastBoard(user.id);
+  const [board, report] = await Promise.all([loadForecastBoard(user.id), historyBacktest().catch(() => null)]);
+  const calibration = report ? usableCalibration(report) : null;
 
   return (
     <PageContainer width="narrow">
@@ -100,6 +104,26 @@ export default async function ForecastPage() {
 
               <section className="mb-10">
                 <h2 className="mb-3 text-base font-semibold">记分</h2>
+                <p className="mb-3 text-sm leading-7">
+                  线上的题几个月才对一次账；在{" "}
+                  <Link href="/signals/calibrate" className="text-primary underline-offset-4 hover:underline">
+                    校准练习
+                  </Link>{" "}
+                  里，AI 不知道答案的历史题当天就能对账
+                  {report && report.n >= SCORE_MIN ? (
+                    <>
+                      ：{report.n} 道上 AI 平均分 <span className="font-mono">{report.aiBrier.toFixed(3)}</span>
+                      {report.marketBrier !== null && (
+                        <>
+                          、那天的市场 <span className="font-mono">{report.marketBrier.toFixed(3)}</span>
+                        </>
+                      )}
+                      {report.platt ? `；${describePlatt(report.platt)}` : ""}。
+                    </>
+                  ) : (
+                    "（题库还在攒）。"
+                  )}
+                </p>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-muted-foreground">
@@ -173,7 +197,7 @@ export default async function ForecastPage() {
                           {KIND_LABELS[q.kind]} · {q.resolve_on} 截止{q.revealed_at && !has(q.id, "me") ? " · 你没判断、先看了答案" : ""}
                           {q.kind === "business" && q.pending ? " · 到期了，等出题的人确认" : ""}
                         </p>
-                        <Answers q={q} forecasts={forecasts} />
+                        <Answers q={q} forecasts={forecasts} calibration={calibration} />
                       </li>
                     ))}
                   </ul>
@@ -196,7 +220,7 @@ export default async function ForecastPage() {
                             </a>
                           )}
                         </p>
-                        <Answers q={q} forecasts={forecasts} />
+                        <Answers q={q} forecasts={forecasts} calibration={calibration} />
                       </li>
                     ))}
                   </ul>

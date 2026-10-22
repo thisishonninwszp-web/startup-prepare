@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseHistoryPreparation,
   parseArchiveAnswer,
   parseBusinessQuestions,
   parseMarketTranslation,
@@ -67,5 +68,17 @@ describe("forecast AI parsers", () => {
       { text: "9 月的报道说 A 公司准备进日本。", refs: [1] },
       { text: "存档里没找到能回答这个的。", refs: [] },
     ]);
+  });
+});
+
+describe("历史回测：题目准备", () => {
+  const ok = { title: "日本银行会不会在 2025 年 7 月底前加息？", criteria: "以日本银行 7 月会议的公告为准。", category: "日本经济", search: '"Bank of Japan" rate hike' };
+  it("题目、标准、检索词都在才收", () => {
+    expect(parseHistoryPreparation(ok)).toMatchObject({ search: '"Bank of Japan" rate hike', category: "日本经济" });
+    expect(() => parseHistoryPreparation({ ...ok, search: "" })).toThrow();
+  });
+  it("写进了结算的事不收", () => {
+    expect(() => parseHistoryPreparation({ ...ok, criteria: "已经结算为会。" })).toThrow();
+    expect(() => parseHistoryPreparation({ ...ok, search: "BOJ resolved yes" })).toThrow();
   });
 });

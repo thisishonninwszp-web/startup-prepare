@@ -1,0 +1,27 @@
+# 预测的历史回测题库（迁移 094）：从预测市场取已经结算的题，选开盘后的某一天当「今天」，
+# 取那天市场给的几成、那天以前的新闻，让 AI 当时说几成。一道要调四次 AI、查新闻要隔 5 秒，所以单独一个任务、多跑几次；
+# 题库满了（HISTORY_TARGET 道）以后每次调用立刻返回 done，几乎不花钱。
+# 和 signals-jobs 一样只调线上的 /api/cron/jobs/history，只需要 CRON_SECRET。
+name: signals-history
+
+on:
+  schedule:
+    - cron: "15 */3 * * *" # 每 3 小时
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Build history questions
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: https://startup-prepare.vercel.app
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "没配 CRON_SECRET，跳过"; exit 0; fi
+          for i in $(seq 1 8); do
+            out=$(curl -sS --max-time 310 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/jobs/history" || echo '{"done":true,"note":"没连上"}')
+            echo "history #$i $out"
+            echo "$out" | grep -q '"done":true' && break
+          done

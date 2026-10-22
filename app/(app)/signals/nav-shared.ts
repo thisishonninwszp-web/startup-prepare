@@ -26,6 +26,7 @@ export const SIGNALS_NAV: { label: string; pages: { href: string; label: string 
     label: "预测",
     pages: [
       { href: "/signals/forecast", label: "预测题" },
+      { href: "/signals/calibrate", label: "校准练习" },
       { href: "/signals/practice", label: "判断账本" },
       { href: "/signals/drill", label: "历史题" },
       { href: "/signals/questions", label: "在追的问题" },

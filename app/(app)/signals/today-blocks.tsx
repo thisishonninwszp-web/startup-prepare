@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { newsSourceLabel } from "@/lib/domains/signals/feeds";
 import { KIND_LABELS, pct } from "@/lib/domains/signals/forecast-shared";
+import { DAILY_DRILL } from "@/lib/domains/signals/history-shared";
 import { followReasonText, MARK_LABELS, RESURFACE_LABELS, type StoryUpdate } from "@/lib/domains/signals/memory-shared";
 import { FOLLOW_DAYS } from "@/lib/domains/signals/memory";
 import { loadTodayPersonal, type TodayForecast, type TodayPersonal } from "@/lib/domains/signals/today";
@@ -125,10 +126,19 @@ function outcomeText(q: TodayForecast["justResolved"][number]["q"]): string {
 }
 
 function ForecastTodo({ f }: { f: TodayForecast }) {
-  if (f.toForecast.length === 0 && f.toConfirm === 0 && f.justResolved.length === 0) return null;
+  const drillLeft = f.drill && f.drill.left > 0 && f.drill.today < DAILY_DRILL ? DAILY_DRILL - f.drill.today : 0;
+  if (f.toForecast.length === 0 && f.toConfirm === 0 && f.justResolved.length === 0 && drillLeft === 0) return null;
   return (
     <section className="mb-8">
       <h2 className="text-lg font-semibold">预测</h2>
+      {drillLeft > 0 && (
+        <p className="mt-1 text-sm leading-7">
+          <Link href="/signals/calibrate" className="font-medium text-primary underline-offset-4 hover:underline">
+            校准练习还差 {drillLeft} 道
+          </Link>
+          <span className="ml-2 text-xs text-muted-foreground">已经结算的历史题，点了马上揭晓，两分钟</span>
+        </p>
+      )}
       {f.toForecast.length > 0 && (
         <>
           <p className="mt-1 text-sm leading-7">

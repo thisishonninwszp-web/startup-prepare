@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
 import { KIND_LABELS, MY_TIERS, pct, SOURCE_LABELS, type Forecast, type ForecastQuestion } from "@/lib/domains/signals/forecast-shared";
+import { applyPlatt, type Platt } from "@/lib/domains/signals/calibration-shared";
 import { confirmResolutionAction, revealQuestionAction, setMyForecastAction } from "../memory-actions";
 
 const OFFLINE = "没连上服务器（网络断了一下），过一会儿再试。";
@@ -40,13 +41,14 @@ function QuestionHead({ q }: { q: ForecastQuestion }) {
   );
 }
 
-/** 各方说的几成可能（他判断过或先看过答案以后才显示）。 */
-export function Answers({ q, forecasts }: { q: ForecastQuestion; forecasts: Forecast[] }) {
+/** 各方说的几成可能（他判断过或先看过答案以后才显示）。calibration：历史回测学到的 AI 校准（学到了、确实更准才有）。 */
+export function Answers({ q, forecasts, calibration }: { q: ForecastQuestion; forecasts: Forecast[]; calibration?: Platt | null }) {
   const of = (s: Forecast["source"]) => forecasts.find((f) => f.question_id === q.id && f.source === s);
   const me = of("me");
   const ai = of("ai");
   const market = of("market");
-  const parts = [me && `你 ${pct(me.probability)}`, ai ? `AI ${pct(ai.probability)}` : "AI 还没判断", market && `市场 ${pct(market.probability)}`].filter(Boolean);
+  const aiText = ai ? `AI ${pct(ai.probability)}${calibration ? `（按回测校准 ${pct(applyPlatt(ai.probability, calibration))}）` : ""}` : "AI 还没判断";
+  const parts = [me && `你 ${pct(me.probability)}`, aiText, market && `市场 ${pct(market.probability)}`].filter(Boolean);
   const three = (["ai_outside", "ai_inside", "ai_devil"] as const).map(of).filter((f): f is Forecast => Boolean(f));
   return (
     <div className="mt-2 text-sm leading-7">

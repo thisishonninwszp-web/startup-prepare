@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { embedBacklog } from "@/lib/domains/signals/memory";
 import { activeSignalUsers, createBusinessQuestions, forecastPending, importMarkets, resolveDue } from "@/lib/domains/signals/forecast";
+import { runHistoryStep } from "@/lib/domains/signals/backtest";
 
 /**
  * 外部信号的后台步骤，由 GitHub Actions（.github/workflows/signals-jobs.yml）定时一步一步调：
@@ -56,7 +57,12 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     }
     return { done: remaining === 0 || did === 0, did, remaining };
   },
+  // 历史回测的题库（全站共用，不分人；.github/workflows/signals-history.yml 每 3 小时调）：进候选、准备题目、AI 当时会说几成
+  history: async (_users, today) => runHistoryStep(today, START_BEFORE_MS),
 };
+
+/** 这几步跟账号无关，不用先查给谁跑。 */
+const SHARED_STEPS = new Set(["embed", "history"]);
 
 export async function GET(request: Request, { params }: { params: { step: string } }) {
   const secret = process.env.CRON_SECRET;
@@ -67,7 +73,7 @@ export async function GET(request: Request, { params }: { params: { step: string
   if (!run) return NextResponse.json({ error: `没有这一步：${params.step}` }, { status: 404 });
   const started = Date.now();
   try {
-    const users = params.step === "embed" ? [] : await activeSignalUsers();
+    const users = SHARED_STEPS.has(params.step) ? [] : await activeSignalUsers();
     // 回报这一次用了多少毫秒：Actions 的日志里看得出离 60 秒还有多远
     return NextResponse.json({ ...(await run(users, tokyoToday())), ms: Date.now() - started });
   } catch (error) {

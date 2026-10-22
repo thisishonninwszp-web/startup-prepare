@@ -70,6 +70,42 @@ export async function translateMarketQuestion(input: { question: string; descrip
   );
 }
 
+// ── 历史回测：已经结算的题当成「那天」的题 ───────────────────────────────────
+
+export type HistoryPreparation = MarketTranslation & { search: string };
+
+const historyPrompt = (asOf: string) => `下面是预测市场上一道已经结束的题（英文）和它的说明。我们要把它当成「今天是 ${asOf}」时的一道题来练预测 ——
+所以你写的任何东西都不能透露 ${asOf} 以后发生的事，更不能透露结果。说明里有「Update」「Resolved」「更新」「已结算」之类的段落、或者写着 ${asOf} 以后的事，一律不用。
+- title：一句「……会不会……？」，说清是谁、什么事、截止到什么时候（照原题的日子写，写成「2025 年 7 月底前」这种）。不要加原题没有的条件。
+- criteria：怎么才算「会」，一到两句，照结算说明写，不加不减；说明里没写的就照题目本身写。
+- category：从这几个里挑一个：${FORECAST_CATEGORIES.join("、")}。
+- search：给新闻检索用的英文关键词，2 到 5 个，专有名词用英文双引号括起来（例：\"Bank of Japan\" rate hike），只写这件事的主题词，不写结果。
+title、criteria 用简体中文；人名、公司名、机构名可以保留原文。不要写概率，不要写你的看法。
+
+只输出 JSON：{"title":"…","criteria":"…","category":"…","search":"…"}`;
+
+export function parseHistoryPreparation(value: unknown): HistoryPreparation {
+  const t = parseMarketTranslation(value);
+  const v = (value ?? {}) as Record<string, unknown>;
+  const search = typeof v.search === "string" ? v.search.trim() : "";
+  if (!search || search.length > 120) throw new Error("检索词缺了或太长");
+  if (/resolv|结算|已经/.test(`${t.title}${t.criteria}${search}`.toLowerCase())) throw new Error("写进了结算的事");
+  return { ...t, search };
+}
+
+export async function prepareHistoryQuestion(input: { question: string; description: string; asOf: string; resolveOn: string }): Promise<HistoryPreparation> {
+  const contents = `题目：${input.question}\n到期：${input.resolveOn}\n说明：${input.description.slice(0, 1200) || "（没写）"}`;
+  return executeAiJson(
+    { operation: "forecast_history_prepare", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
+    () => ({
+      model: MODEL,
+      contents,
+      config: { systemInstruction: historyPrompt(input.asOf), responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 700 },
+    }),
+    parseHistoryPreparation
+  );
+}
+
 // ── 从新闻出生意题 ─────────────────────────────────────────────────────────
 
 export type BusinessQuestionDraft = { signalId: string; headline: string; title: string; criteria: string; resolveOn: string; category: string };
