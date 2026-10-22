@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { embedBacklog } from "@/lib/domains/signals/memory";
-import { activeSignalUsers, createArrivalQuestions, createBusinessQuestions, createPolicyQuestions, forecastPending, importMarkets, resolveDue } from "@/lib/domains/signals/forecast";
+import {
+  activeSignalUsers,
+  createArrivalQuestions,
+  createBusinessQuestions,
+  createDataQuestions,
+  createPolicyQuestions,
+  forecastPending,
+  importMarkets,
+  resolveDue,
+} from "@/lib/domains/signals/forecast";
 import { refreshPolicy } from "@/lib/domains/signals/policy";
 import { refreshAppWatch } from "@/lib/domains/signals/app-watch";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
@@ -56,6 +65,10 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
       });
       did += await createPolicyQuestions(u, today).catch((e) => {
         console.error("policy question", e);
+        return 0;
+      });
+      did += await createDataQuestions(u, today).catch((e) => {
+        console.error("data question", e);
         return 0;
       });
     }

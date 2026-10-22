@@ -25,6 +25,7 @@ function QuestionHead({ q }: { q: ForecastQuestion }) {
       </div>
       <p className="text-sm leading-7 text-muted-foreground">怎么才算「会」：{q.criteria}</p>
       {q.kind === "arrival" && q.source.base && <p className="text-xs leading-6 text-muted-foreground">基准（时差图谱）：{q.source.base}</p>}
+      {q.kind === "data" && q.context && <p className="text-xs leading-6 text-muted-foreground">{q.context}</p>}
       {link && (
         <p className="text-xs">
           {link.startsWith("/") ? (

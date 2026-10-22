@@ -4,6 +4,9 @@ import { draftResolution, forecastFromPerspective, planArrivalQuestion, planBusi
 import { loadGapRechecks, openGapsWithSide } from "./gaps";
 import { openRelevantPolicies, policyHistory, policyOutcome } from "./policy";
 import { baseProbability, lagSummary, POLICY_MIN_HISTORY, policyResolveOn, shortPolicyTitle } from "./policy-shared";
+import { FAST_VARIABLES } from "./fast";
+import { wikiMonths, wikiTopics, yahooDaily } from "./data-questions";
+import { closeOnOrBefore, monthResolveOn, monthUpShare, prevMonth, upShare, weekAhead } from "./data-questions-shared";
 import { ATLAS_CATEGORIES, baseSentence, categoryBase, countedCases, listTransferCases, type AtlasCategory } from "./atlas";
 import { REPORT_SECTION_KINDS } from "./feeds";
 import type { BriefItem } from "./brief";
@@ -270,6 +273,11 @@ export async function resolveDue(userId: string, today: string, startBeforeMs = 
         resolution_url: q.source.url ?? null,
       });
       did += 1;
+    } else if (q.kind === "data" && q.source.series) {
+      const r = await settleData(q, today);
+      if (r === null) continue;
+      await resolveQuestion(userId, q.id, r);
+      did += 1;
     } else if (q.kind === "policy" && q.source.policy_id) {
       // 门槛日当天还可能公布：过了门槛日才判「不会」；判之前去结果页再查一次，免得订阅漏看
       const r = await policyOutcome(q.source.policy_id, true);
@@ -416,6 +424,118 @@ async function suggestEarlyArrivals(userId: string, questions: ForecastQuestion[
     };
     await resolveQuestion(userId, q.id, { pending });
   }
+}
+
+// ── 数据题 ──────────────────────────────────────────────────────────────────
+
+/** 星期一到五各出哪一个市场数（周末不出）。 */
+const DATA_ROTATION: Record<number, string> = { 1: "nikkei", 2: "usdjpy", 3: "cnyjpy", 4: "oil", 5: "us10y" };
+/** 一个月最多出几道维基关注度题（月初几天出）。 */
+const WIKI_PER_MONTH = 2;
+/** AI 上网查资料用的日文检索词（市场数）。 */
+const DATA_QUERIES: Record<string, string> = { nikkei: "日経平均 来週 見通し", usdjpy: "ドル円 来週 見通し", cnyjpy: "人民元 円 相場 見通し", oil: "原油 WTI 来週 見通し", us10y: "米10年債利回り 来週 見通し" };
+const WIKI_DAYS = 5;
+/** 上个月浏览不到这么多的页面不出题（多半是转到别的页面的空页，数太小，涨跌是噪音）。 */
+const WIKI_MIN_VIEWS = 100;
+
+const fmtValue = (v: number, digits: number) => v.toLocaleString("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+/**
+ * 一天最多一道数据题：每月头 5 天先出维基关注度题（他「听一听」过的差距清单那几条，一个月最多两道）：「这个月会不会比上个月多」；
+ * 别的工作日轮着出一个市场数：「一周后会不会高于今天」。统计基准存成 base 一方。迁移 097 没跑（没有 base）时只存题、不存基准。
+ */
+export async function createDataQuestions(userId: string, today: string): Promise<number> {
+  const { data: made, error } = await supabaseAdmin.from("forecast_questions").select("created_at, source").eq("user_id", userId).eq("kind", "data").gte("created_at", `${today.slice(0, 7)}-01T00:00:00+09:00`);
+  if (error) throw new Error(missing(error) ? FORECAST_MISSING : error.message);
+  const rows = (made ?? []) as { created_at: string; source: ForecastQuestion["source"] }[];
+  const startOfToday = Date.parse(`${today}T00:00:00+09:00`);
+  if (rows.some((r) => Date.parse(r.created_at) >= startOfToday)) return 0;
+
+  const month = today.slice(0, 7);
+  const day = Number(today.slice(8, 10));
+  if (day <= WIKI_DAYS) {
+    const askedThisMonth = rows.filter((r) => r.source.series === "wiki");
+    if (askedThisMonth.length < WIKI_PER_MONTH) {
+      const prev = prevMonth(month);
+      for (const topic of (await wikiTopics(userId)).filter((t) => !askedThisMonth.some((r) => r.source.wiki_title === t.title)).slice(0, 5)) {
+        const history = await wikiMonths(topic.title, "2015-07", prev);
+        const last = history?.find((h) => h.month === prev);
+        if (history && last && last.views >= WIKI_MIN_VIEWS) {
+          const base = monthUpShare(history, month);
+          return insertDataQuestion(userId, {
+            title: `日文维基「${topic.title}」${month} 一个月的浏览，会不会比 ${prev}（${last.views.toLocaleString("ja-JP")} 次）多？`,
+            criteria: `以 Wikimedia 公开的按月浏览数为准（ja.wikipedia，所有设备，真人访问）：${month} 的数大于 ${last.views} 算「会」。`,
+            resolveOn: monthResolveOn(month),
+            category: "日本经济",
+            source: { series: "wiki", wiki_title: topic.title, value0: last.views, target: month, signal_id: topic.signalId, headline: `${topic.title} 日本 話題` },
+            context: `日文维基「${topic.title}」最近 12 个月的浏览：${history.slice(-12).map((h) => `${h.month} ${h.views}`).join("、")}`,
+            base: base ? { p: base.p, reason: base.how } : null,
+          });
+        }
+      }
+    }
+  }
+
+  const key = DATA_ROTATION[new Date(`${today}T00:00:00Z`).getUTCDay()];
+  const v = FAST_VARIABLES.find((x) => x.key === key);
+  if (!v) return 0;
+  const series = await yahooDaily(v.symbol, "3y");
+  const latest = series?.[series.length - 1];
+  if (!series || !latest) return 0;
+  const resolveOn = weekAhead(today);
+  const value0 = Number(latest.close.toFixed(v.digits));
+  const p = upShare(series.map((s) => s.close), 5);
+  return insertDataQuestion(userId, {
+    title: `${v.label}在 ${resolveOn} 的收盘会不会高于 ${fmtValue(value0, v.digits)}（${latest.day} 的收盘）？`,
+    criteria: `以 Yahoo Finance 上 ${v.symbol} 的日收盘为准：${resolveOn} 那天（休市就取之前最后一个交易日）的收盘高于 ${fmtValue(value0, v.digits)} 算「会」。只练判断准不准，不是投资建议。`,
+    resolveOn,
+    category: v.key === "nikkei" || v.key === "usdjpy" ? "日本经济" : v.key === "cnyjpy" ? "中日关系" : "世界",
+    source: { series: "yahoo", symbol: v.symbol, value0, target: resolveOn, headline: DATA_QUERIES[v.key] ?? v.label },
+    context: `${v.label}最近十个交易日的收盘：${series.slice(-10).map((s) => `${s.day.slice(5)} ${fmtValue(s.close, v.digits)}`).join("、")}`,
+    base: p !== null ? { p, reason: "近三年里隔 5 个交易日比当时高的比例" } : null,
+  });
+}
+
+async function insertDataQuestion(
+  userId: string,
+  q: { title: string; criteria: string; resolveOn: string; category: string; source: ForecastQuestion["source"]; context: string; base: { p: number; reason: string } | null }
+): Promise<number> {
+  const { data: row, error } = await supabaseAdmin
+    .from("forecast_questions")
+    .insert({ user_id: userId, kind: "data", title: q.title, criteria: q.criteria, resolve_on: q.resolveOn, category: q.category, source: q.source, context: q.context.slice(0, 1500) })
+    .select("id")
+    .single();
+  if (error) throw new Error(missing(error) ? FORECAST_MISSING : error.message);
+  // 迁移 097 没跑时 forecasts 还不认 base：题照样存，基准不存
+  if (q.base) await insertForecasts(userId, row.id as string, [{ source: "base", probability: q.base.p, reason: q.base.reason }]).catch(() => undefined);
+  return 1;
+}
+
+/** 数据题对账：到期以后取数比；数还没出来先放着，过了两周还取不到就作废。 */
+async function settleData(q: ForecastQuestion, today: string): Promise<Partial<ForecastQuestion> | null> {
+  const s = q.source;
+  const now = new Date().toISOString();
+  if (s.series === "yahoo" && s.symbol && typeof s.value0 === "number") {
+    if (today <= q.resolve_on) return null;
+    const c = closeOnOrBefore((await yahooDaily(s.symbol, "3mo")) ?? [], q.resolve_on);
+    if (c && c.day > q.created_at.slice(0, 10)) {
+      return { status: "resolved", outcome: c.close > s.value0, resolved_at: now, resolution_note: `${c.day} 收盘 ${c.close}（出题时 ${s.value0}）`, resolution_url: `https://finance.yahoo.com/quote/${encodeURIComponent(s.symbol)}` };
+    }
+  } else if (s.series === "wiki" && s.wiki_title && s.target && typeof s.value0 === "number") {
+    if (today < q.resolve_on) return null;
+    const m = (await wikiMonths(s.wiki_title, s.target, s.target))?.find((x) => x.month === s.target);
+    if (m) {
+      return {
+        status: "resolved",
+        outcome: m.views > s.value0,
+        resolved_at: now,
+        resolution_note: `${s.target} 浏览 ${m.views} 次（上个月 ${s.value0} 次）`,
+        resolution_url: `https://ja.wikipedia.org/wiki/${encodeURIComponent(s.wiki_title.replace(/ /g, "_"))}`,
+      };
+    }
+  }
+  if (daysBetween(q.resolve_on, today) > 14) return { status: "void", outcome: null, resolved_at: now, resolution_note: "到期两周还取不到数（不算分）" };
+  return null;
 }
 
 // ── 政策题 ──────────────────────────────────────────────────────────────────

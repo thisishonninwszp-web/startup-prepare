@@ -40,7 +40,21 @@ export type ForecastQuestion = {
   resolve_on: string;
   category: string | null;
   /** 到日本题还带着：哪个方向的差距、时差图谱的类别和那一类的历史（base，一句话）。 */
-  source: Partial<MarketRef> & { signal_id?: string; headline?: string; side?: string; atlas?: string; base?: string; policy_id?: string; ministry?: string };
+  source: Partial<MarketRef> & {
+    signal_id?: string;
+    headline?: string;
+    side?: string;
+    atlas?: string;
+    base?: string;
+    policy_id?: string;
+    ministry?: string;
+    /** 数据题：哪一种数（yahoo 日线 / wiki 按月浏览）、代号或页面名、出题时的数、到哪天（哪个月）。 */
+    series?: "yahoo" | "wiki";
+    symbol?: string;
+    wiki_title?: string;
+    value0?: number;
+    target?: string;
+  };
   context: string | null;
   status: "open" | "resolved" | "void";
   outcome: boolean | null;
