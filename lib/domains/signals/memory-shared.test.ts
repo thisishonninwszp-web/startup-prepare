@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { embedText, mergeHits, parseVector, tokyoDayRange } from "./memory-shared";
+import { cleanSnippet, embedText, mergeHits, parseVector, tokyoDayRange } from "./memory-shared";
 
 describe("memory helpers", () => {
   it("embed text is title + body, capped", () => {
@@ -21,5 +21,12 @@ describe("memory helpers", () => {
     const h = (id: string) => ({ id, source: "s", url: null, title: id, snippet: "", fetched_at: "" });
     expect(mergeHits([h("a"), h("b")], [h("b"), h("c")], 10).map((x) => x.id)).toEqual(["a", "b", "c"]);
     expect(mergeHits([h("a")], [h("b"), h("c")], 2).map((x) => x.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("cleanSnippet", () => {
+  it("decodes RSS entities and squashes spaces", () => {
+    expect(cleanSnippet("モヤシ争奪戦 &nbsp;&nbsp; テレ朝NEWS")).toBe("モヤシ争奪戦 テレ朝NEWS");
+    expect(cleanSnippet(null)).toBe("");
   });
 });

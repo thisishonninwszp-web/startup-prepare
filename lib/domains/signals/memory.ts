@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { executeEmbedding } from "@/lib/ai-gateway";
 import { answerFromArchive, type ArchiveStatement } from "@/lib/ai";
 import {
+  cleanSnippet,
   embedText,
   mergeHits,
   parseVector,
@@ -86,7 +87,7 @@ async function match(vector: number[], count: number, range: { after?: string; b
     if (missing(error)) throw new Error(MEMORY_MISSING);
     throw new Error(error.message);
   }
-  return ((data ?? []) as ArchiveHit[]).map((h) => ({ ...h, snippet: h.snippet ?? "" }));
+  return ((data ?? []) as ArchiveHit[]).map((h) => ({ ...h, title: h.title ? cleanSnippet(h.title) : h.title, snippet: cleanSnippet(h.snippet) }));
 }
 
 /** 按他写的一句话找：标题里有这些字的在前，再加按意思最近的。 */
@@ -103,8 +104,8 @@ export async function searchArchive(query: string, limit = 30): Promise<ArchiveH
     id: r.id,
     source: r.source,
     url: r.url,
-    title: r.title,
-    snippet: (r.raw_text ?? "").slice(0, 400),
+    title: r.title ? cleanSnippet(r.title) : r.title,
+    snippet: cleanSnippet((r.raw_text ?? "").slice(0, 400)),
     fetched_at: r.fetched_at,
   }));
   return mergeHits(kw, semantic, limit);

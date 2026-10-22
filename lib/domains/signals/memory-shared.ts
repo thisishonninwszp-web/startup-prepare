@@ -53,5 +53,18 @@ export function mergeHits(keyword: ArchiveHit[], semantic: ArchiveHit[], limit: 
   return out;
 }
 
+/** RSS 里带来的 &nbsp; 这类 HTML 符号还原、多余空白压成一个（显示和交给 AI 都用这个）。 */
+export function cleanSnippet(t: string | null | undefined): string {
+  return (t ?? "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** 相似到什么程度才算「同一件事的以前 / 后来」。 */
 export const SAME_STORY = 0.72;
