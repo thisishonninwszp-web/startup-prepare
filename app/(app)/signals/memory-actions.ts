@@ -2,7 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { askArchive, marksFor, searchArchive, setMark, type ArchiveAnswer, type ArchiveHit, type Mark, type MarkKind } from "@/lib/domains/signals/memory";
+import {
+  askArchive,
+  marksFor,
+  searchArchive,
+  searchOpportunities,
+  setMark,
+  type ArchiveAnswer,
+  type ArchiveHit,
+  type Mark,
+  type MarkKind,
+  type TimelineEvent,
+} from "@/lib/domains/signals/memory";
+import { sharedViewFor } from "@/lib/domains/signals/users";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { confirmResolution, revealQuestion, setMyForecast } from "@/lib/domains/signals/forecast";
 
@@ -19,13 +31,23 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-/** 在存档里找（关键词 + 按意思）。 */
-export async function searchArchiveAction(query: string): Promise<{ ok: true; hits: ArchiveHit[]; marks: Record<string, Mark> } | { ok: false; message: string }> {
+/** 在存档里找（关键词 + 按意思），顺带时差图谱、官报里对得上的（排时间线用）。 */
+export async function searchArchiveAction(
+  query: string
+): Promise<{ ok: true; hits: ArchiveHit[]; marks: Record<string, Mark>; extras: TimelineEvent[] } | { ok: false; message: string }> {
   try {
     const userId = await requireUserId();
-    const hits = await searchArchive(query);
+    const view = await sharedViewFor(userId);
+    const [hits, extras] = await Promise.all([
+      searchArchive(query),
+      // 图谱是查出来的世界上的事，不是谁的私事：朋友的账号也查主账号攒的那份
+      searchOpportunities(query, view.sourceUserId).catch((e) => {
+        console.error("search opportunities", e);
+        return [] as TimelineEvent[];
+      }),
+    ]);
     const marks = await marksFor(userId, hits.map((h) => h.id));
-    return { ok: true, hits, marks: Object.fromEntries(marks) };
+    return { ok: true, hits, marks: Object.fromEntries(marks), extras };
   } catch (error) {
     return { ok: false, message: message(error, "这次没找成") };
   }

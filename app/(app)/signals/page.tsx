@@ -32,6 +32,7 @@ import { formatDueDate, JudgmentView } from "./judgment-view";
 import { ListenButton } from "./listen-button";
 import { ReaderPanel } from "./reader-panel";
 import { SectionTabs } from "./section-tabs";
+import { TodayBlocks } from "./today-blocks";
 import { SectionFeedback } from "./section-feedback";
 import { getFeedback } from "@/lib/domains/signals/feedback";
 import { describeMove, unusualFastMoves } from "@/lib/domains/signals/fast";
@@ -730,9 +731,13 @@ export default async function SignalsReportPage({
   return (
     <PageContainer width="narrow">
       <PageHeader
-        eyebrow={`Daily report · ${date}`}
-        title={isToday ? "今日报告" : `${formatReportDate(date)}的报告`}
-        description="先看总览，再做一道练习，然后按需往下翻五节。"
+        eyebrow={`Today · ${date}`}
+        title={isToday ? "今天" : `${formatReportDate(date)}的报告`}
+        description={
+          isToday
+            ? "五分钟看完：世界上发生了什么、你在跟的事有什么新消息、有什么等你判断。五节精选在最下面，按需翻。"
+            : "那天的总览和五节精选。"
+        }
       />
 
       {isToday && (
@@ -793,6 +798,12 @@ export default async function SignalsReportPage({
             <ListenButton paragraphs={listenScript} />
           </div>
 
+          {isToday && (
+            <Suspense fallback={<p className="mb-8 text-xs text-muted-foreground">在翻你在跟的事……</p>}>
+              <TodayBlocks userId={user.id} today={today} />
+            </Suspense>
+          )}
+
           {judgments === null ? (
             <div className="mb-8 rounded-lg border border-status-validating/30 bg-status-validating/10 p-4 text-sm leading-7 text-status-validating">
               「先判断，再看答案」的练习还差一步：迁移 055 没跑。执行 supabase/migrations/055_signal_judgments.sql 之后，这里会出现每天的练习题。
@@ -818,6 +829,8 @@ export default async function SignalsReportPage({
             </>
           )}
 
+          <h2 className="mb-1 mt-4 text-lg font-semibold">五节精选</h2>
+          <p className="mb-3 text-xs leading-6 text-muted-foreground">每一节从当天抓到的几百条里挑五条。总览已经说过大意，这里按需翻；全部的在「全部新闻」。</p>
           <SectionTabs
             tabs={SECTIONS.map((section) => ({
               key: section.kind,

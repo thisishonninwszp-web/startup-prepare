@@ -12,6 +12,8 @@ import type { ItemFlow } from "./flow-shared";
 import type { DigestPick } from "./digest";
 import { cleanBriefItem } from "./filler";
 import { signFlowCard } from "./flow-card-shared";
+import { followReasonText, MARK_LABELS, RESURFACE_LABELS } from "./memory-shared";
+import { loadTodayPersonal } from "./today";
 
 /**
  * 每天早上的提醒邮件：报告好了以后发一封到他的邮箱，带上今天的练习题。
@@ -55,6 +57,12 @@ export type DailyEmailInput = {
   fastAlerts?: string[];
   /** 周五提醒周刊：这周还没写（unwritten），写了还没发（unpublished）；发了或不是周五为 null。 */
   issueReminder?: "unwritten" | "unpublished" | null;
+  /** 他在跟的事有新消息（「今天」一页的同一块，最多 3 件、每件 2 条）。每人一份。 */
+  stories?: { title: string; reason: string; updates: { id: string; title: string }[] }[];
+  /** 回头看一条（一年前 / 一个月前 / 一周前标过的）。每人一份。 */
+  lookBack?: { when: string; mark: string; note: string | null; signalId: string; title: string; later: string[] } | null;
+  /** 预测题里等他做的：等判断几道（第一道的题目）、生意题等确认几道。每人一份。 */
+  forecastTodo?: { toForecast: number; first: string | null; toConfirm: number } | null;
   url: string | null;
 };
 
@@ -94,11 +102,29 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     for (const t of input.top) lines.push(`· ${t.headline}`, `  ${t.background}`);
     lines.push("");
   }
+  if (input.stories && input.stories.length > 0) {
+    lines.push("你在跟的事，有新消息");
+    for (const s of input.stories) {
+      lines.push(`· ${s.title}（${s.reason}）`);
+      for (const u of s.updates) lines.push(`  → ${u.title}`);
+    }
+    lines.push("");
+  }
+  if (input.lookBack) {
+    const b = input.lookBack;
+    lines.push("回头看", `${b.when}你标了「${b.mark}」：${b.title}`);
+    if (b.note) lines.push(`  当时你写：${b.note}`);
+    if (b.later.length > 0) lines.push("  后来：", ...b.later.map((t) => `  → ${t}`));
+    else lines.push("  存档里还没有它后来的消息。");
+    lines.push("");
+  }
   if (input.practice) {
     lines.push("今天的练习", `读这一条：${input.practice.headline}`, `问题：${input.practice.question}`, "先写下你的判断，再看 AI 怎么拆。", "");
   }
   if (input.fastAlerts && input.fastAlerts.length > 0) lines.push("这一周动得不寻常的：", ...input.fastAlerts.map((a) => `· ${a}`), "");
   if (input.dueCount > 0) lines.push(`有 ${input.dueCount} 条判断到期了，去对一下账。`, "");
+  for (const line of forecastTodoLines(input.forecastTodo)) lines.push(line);
+  if (input.forecastTodo) lines.push(...(input.url ? [`${input.url}/signals/forecast`] : []), "");
   for (const q of input.freshQuestions) {
     lines.push(`你在追的「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`);
   }
@@ -135,6 +161,15 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
   return { subject, text: lines.join("\n").trim() };
 }
 
+/** 预测题里等他做的，写成一两句。 */
+function forecastTodoLines(todo: DailyEmailInput["forecastTodo"]): string[] {
+  if (!todo) return [];
+  const out: string[] = [];
+  if (todo.toForecast > 0) out.push(`有 ${todo.toForecast} 道预测题等你判断${todo.first ? `，比如：${todo.first}` : ""}`);
+  if (todo.toConfirm > 0) out.push(`有 ${todo.toConfirm} 道生意题到期了，等你确认对账。`);
+  return out;
+}
+
 /** 邮件颜色：由 app/globals.css 的语义 token 换算成 hex（邮件客户端不一定认 hsl() 和 CSS 变量）。 */
 const EMAIL_COLOR = { paper: "#faf9f7", card: "#ffffff", ink: "#211f1c", accent: "#dd4913", muted: "#706b66", rule: "#e1dfdb" };
 
@@ -163,11 +198,33 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
       parts.push("</div>");
     }
   }
+  if (input.stories && input.stories.length > 0) {
+    parts.push(head("你在跟的事，有新消息"));
+    for (const s of input.stories) {
+      parts.push(para(`· ${s.title}（${s.reason}）`, "margin-bottom:2px;"));
+      for (const u of s.updates) {
+        parts.push(
+          input.url
+            ? `<p style="margin:0 0 4px 16px;font-size:14px;line-height:1.7;"><a href="${esc(`${input.url}/signals/${u.id}`)}" style="color:${C.accent};">→ ${esc(u.title)}</a></p>`
+            : para(`→ ${u.title}`, "font-size:14px;margin-left:16px;")
+        );
+      }
+    }
+  }
+  if (input.lookBack) {
+    const b = input.lookBack;
+    parts.push(head("回头看"), para(`${b.when}你标了「${b.mark}」：${b.title}`, "font-weight:600;"));
+    if (b.note) parts.push(para(`当时你写：${b.note}`, `font-size:14px;color:${C.muted};`));
+    if (b.later.length > 0) parts.push(para("后来：", "font-size:14px;margin-bottom:2px;"), ...b.later.map((t) => para(`→ ${t}`, "font-size:14px;margin-left:16px;")));
+    else parts.push(para("存档里还没有它后来的消息。", `font-size:14px;color:${C.muted};`));
+  }
   if (input.practice) {
     parts.push(head("今天的练习"), para(`读这一条：${input.practice.headline}`), para(`问题：${input.practice.question}`), para("先写下你的判断，再看 AI 怎么拆。", `color:${C.muted};`));
   }
   if (input.fastAlerts && input.fastAlerts.length > 0) parts.push(head("这一周动得不寻常的"), ...input.fastAlerts.map((a) => para(`· ${a}`)));
   if (input.dueCount > 0) parts.push(para(`有 ${input.dueCount} 条判断到期了，去对一下账。`));
+  for (const line of forecastTodoLines(input.forecastTodo)) parts.push(para(line));
+  if (input.forecastTodo && input.url) parts.push(link(`${input.url}/signals/forecast`, "去判断"));
   for (const q of input.freshQuestions) parts.push(para(`你在追的「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`));
   if (input.overview) parts.push(para(input.overview));
   for (const s of input.sections) {
@@ -270,6 +327,37 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   };
 }
 
+/** 邮件里每人一份的几块（跟「今天」一页同一份，代码算的，不调 AI）。取不到就不放，不拦着发邮件。 */
+async function personalParts(userId: string, date: string): Promise<Pick<DailyEmailInput, "stories" | "lookBack" | "forecastTodo">> {
+  try {
+    const t = await loadTodayPersonal(userId, date);
+    const f = t.forecast;
+    return {
+      stories: Array.isArray(t.stories)
+        ? t.stories.slice(0, 3).map((s) => ({
+            title: s.followed.title ?? "（没有标题）",
+            reason: followReasonText(s.followed),
+            updates: s.updates.slice(0, 2).map((u) => ({ id: u.id, title: u.title ?? "（没有标题）" })),
+          }))
+        : [],
+      lookBack: t.lookBack
+        ? {
+            when: RESURFACE_LABELS[t.lookBack.daysAgo],
+            mark: MARK_LABELS[t.lookBack.item.mark],
+            note: t.lookBack.item.note,
+            signalId: t.lookBack.item.signal_id,
+            title: t.lookBack.item.title ?? "（没有标题）",
+            later: t.lookBack.later.slice(0, 2).map((h) => h.title ?? "（没有标题）"),
+          }
+        : null,
+      forecastTodo: f && (f.toForecast.length > 0 || f.toConfirm > 0) ? { toForecast: f.toForecast.length, first: f.toForecast[0]?.title ?? null, toConfirm: f.toConfirm } : null,
+    };
+  } catch (e) {
+    console.error("email personal parts", userId, e);
+    return {};
+  }
+}
+
 export type SendOutcome = { sent: true; to: string } | { sent: false; reason: string };
 
 /**
@@ -311,9 +399,10 @@ export async function sendMemberEmails(ownerId: string, date = tokyoToday()): Pr
   const transport = nodemailer.createTransport({ service: "gmail", auth: { user: config.from, pass: process.env.GMAIL_APP_PASSWORD } });
   const sent: string[] = [];
   for (const m of members) {
-    const judgments = await listJudgments(m.id).catch(() => []);
+    const [judgments, personal] = await Promise.all([listJudgments(m.id).catch(() => []), personalParts(m.id, date)]);
     const input: DailyEmailInput = {
       ...base,
+      ...personal,
       sections: base.sections.map((s) => ({ ...s, items: s.items.map(publicItem) })),
       dueCount: dueJudgments(judgments).length,
       freshQuestions: [],
@@ -341,8 +430,9 @@ export async function sendMemberEmails(ownerId: string, date = tokyoToday()): Pr
 export async function sendDailyEmail(userId: string, date = tokyoToday()): Promise<SendOutcome> {
   const config = emailConfig();
   if (!config.ready) return { sent: false, reason: `还没配好：缺 ${config.missing.join("、")}` };
-  const input = await loadEmailInput(userId, date);
-  if (!input) return { sent: false, reason: "今天的报告还没生成" };
+  const report = await loadEmailInput(userId, date);
+  if (!report) return { sent: false, reason: "今天的报告还没生成" };
+  const input: DailyEmailInput = { ...report, ...(await personalParts(userId, date)) };
   const { subject, text } = buildDailyEmail(input);
   const attachments = await flowCardAttachments(input);
   const html = buildDailyEmailHtml(input, Object.fromEntries(attachments.map((a) => [a.signalId, a.cid])));

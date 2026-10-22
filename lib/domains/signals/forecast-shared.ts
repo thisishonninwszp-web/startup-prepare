@@ -265,3 +265,40 @@ export function calibrationBins(questions: Pick<ForecastQuestion, "id" | "status
 export function isDue(q: Pick<ForecastQuestion, "status" | "resolve_on">, today: string): boolean {
   return q.status === "open" && q.resolve_on <= today;
 }
+
+export type BoardSections = {
+  /** 等他判断：还开着、他没判断过、没先看答案、还没到期。 */
+  toForecast: ForecastQuestion[];
+  /** 生意题到期了、程序查好了证据，等出题的主账号确认（别的账号看不到这一组）。 */
+  toConfirm: ForecastQuestion[];
+  /** 他判断过（或先看了答案）、还没对账的。 */
+  open: ForecastQuestion[];
+  /** 对过账（或作废）的，新的在前。 */
+  done: ForecastQuestion[];
+  /** done 里最近 recentDays 天对账、他判断过或看过答案的：「今天」一页给他看谁说中了。 */
+  justResolved: ForecastQuestion[];
+};
+
+/** 预测页和「今天」一页用同一套分组。 */
+export function boardSections(
+  board: { questions: ForecastQuestion[]; forecasts: Forecast[]; canConfirm: boolean },
+  today: string,
+  recentDays = 7
+): BoardSections {
+  const { questions, forecasts } = board;
+  const mine = new Set(forecasts.filter((f) => f.source === "me").map((f) => f.question_id));
+  const toForecast = questions.filter((q) => q.status === "open" && !q.revealed_at && !mine.has(q.id) && daysBetween(today, q.resolve_on) > 0);
+  const toConfirm = board.canConfirm ? questions.filter((q) => q.status === "open" && q.kind === "business" && q.pending) : [];
+  const open = questions.filter((q) => q.status === "open" && (q.revealed_at || mine.has(q.id)) && !(board.canConfirm && q.kind === "business" && q.pending));
+  const done = questions.filter((q) => q.status !== "open").sort((a, b) => (b.resolved_at ?? "").localeCompare(a.resolved_at ?? ""));
+  const justResolved = done.filter(
+    (q) => q.resolved_at && daysBetween(q.resolved_at.slice(0, 10), today) <= recentDays && (mine.has(q.id) || q.revealed_at)
+  );
+  return { toForecast, toConfirm, open, done, justResolved };
+}
+
+/** 这道题各方给的几成（没有的那方是 null）。 */
+export function sidesOf(forecasts: Forecast[], questionId: string): Record<"me" | "ai" | "market", number | null> {
+  const get = (s: ForecastSource) => forecasts.find((f) => f.question_id === questionId && f.source === s)?.probability ?? null;
+  return { me: get("me"), ai: get("ai"), market: get("market") };
+}

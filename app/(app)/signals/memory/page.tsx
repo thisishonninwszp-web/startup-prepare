@@ -4,7 +4,24 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { archiveCoverage, interestGroups, KIND_TITLES, MARK_LABELS, recentMarks, RESURFACE_LABELS, resurfaced } from "@/lib/domains/signals/memory";
+import {
+  archiveCoverage,
+  FOLLOW_DAYS,
+  followedSignals,
+  interestGroups,
+  KIND_TITLES,
+  MARK_LABELS,
+  recentMarks,
+  RESURFACE_LABELS,
+  resurfaced,
+  storyUpdates,
+  type StoryUpdate,
+} from "@/lib/domains/signals/memory";
+import { sharedViewFor } from "@/lib/domains/signals/users";
+import { StoryList } from "../today-blocks";
+
+/** 「你在跟的事」看最近多少天的后续。 */
+const STORY_DAYS = 30;
 
 /** 「你最近在意什么」看最近多少天标的。 */
 const INTEREST_DAYS = 60;
@@ -21,11 +38,20 @@ export default async function MemoryPage() {
   if (!user) notFound();
 
   const today = tokyoToday();
-  const [coverage, marks, back, recent] = await Promise.all([
+  const view = await sharedViewFor(user.id);
+  const followed = await followedSignals(user.id, view.shared).catch((e) => {
+    console.error("memory: followed", e);
+    return [];
+  });
+  const [coverage, marks, back, recent, stories] = await Promise.all([
     archiveCoverage().catch(() => null),
     recentMarks(user.id, 30).catch(() => null),
     resurfaced(user.id, today).catch(() => []),
     recentMarks(user.id, 300, INTEREST_DAYS).catch(() => null),
+    storyUpdates(followed, new Date(Date.now() - STORY_DAYS * 86_400_000).toISOString(), 3).catch((e): StoryUpdate[] | "error" => {
+      console.error("memory: stories", e);
+      return "error";
+    }),
   ]);
   const interests = recent ? interestGroups(recent) : [];
 
@@ -58,6 +84,24 @@ export default async function MemoryPage() {
         <p className="mb-3 text-xs leading-6 text-muted-foreground">「我以前看过的关于 X 的都有什么」「X 这件事后来怎样了」—— 只用存档里的回答，每句带出处。</p>
         <AskArchive />
       </section>
+
+      {followed.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-1 text-base font-semibold">你在跟的事</h2>
+          {stories === null ? (
+            <p className="text-sm leading-7 text-muted-foreground">还差一步：迁移 093 没跑。执行 supabase/migrations/093_signal_today.sql 之后，这里列出你在跟的事后来的消息。</p>
+          ) : stories === "error" ? (
+            <p className="text-sm leading-7 text-muted-foreground">这一块这次没取到，刷新一下再试。</p>
+          ) : (
+            <>
+              <p className="text-xs leading-6 text-muted-foreground">
+                最近 {FOLLOW_DAYS} 天你标过、记成观察、写过判断的 {followed.length} 件事里，这 {STORY_DAYS} 天有后续的 {stories.length} 件。
+              </p>
+              {stories.length > 0 && <StoryList stories={stories} />}
+            </>
+          )}
+        </section>
+      )}
 
       {back.length > 0 && (
         <section className="mb-10">

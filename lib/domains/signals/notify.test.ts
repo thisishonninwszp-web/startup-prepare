@@ -94,3 +94,29 @@ describe("邮件更丰富：最值得点开的几条带背景，各条带一句�
     expect(firstSentence("没有句号")).toBe("没有句号");
   });
 });
+
+describe("每人一份的几块：在跟的事、回头看、预测题", () => {
+  const base = { date: "2026-10-22", practice: null, overview: null, sections: [], dueCount: 0, freshQuestions: [], url: "https://app.example" };
+  const input = {
+    ...base,
+    stories: [{ title: "美团进日本", reason: "你标了「重要」", updates: [{ id: "u1", title: "美团在东京招人" }] }],
+    lookBack: { when: "一个月前", mark: "存疑", note: "数字对不上", signalId: "s1", title: "某某融资", later: [] },
+    forecastTodo: { toForecast: 2, first: "日银 12 月会加息吗？", toConfirm: 1 },
+  };
+
+  it("纯文字版：在跟的事和回头看在练习之前，预测题跟到期判断放一起", () => {
+    const { text } = buildDailyEmail(input);
+    expect(text).toContain("你在跟的事，有新消息\n· 美团进日本（你标了「重要」）\n  → 美团在东京招人");
+    expect(text).toContain("回头看\n一个月前你标了「存疑」：某某融资\n  当时你写：数字对不上\n  存档里还没有它后来的消息。");
+    expect(text).toContain("有 2 道预测题等你判断，比如：日银 12 月会加息吗？\n有 1 道生意题到期了，等你确认对账。\nhttps://app.example/signals/forecast");
+  });
+
+  it("HTML 版：新消息带链接；没有这几块就什么都不多", () => {
+    const html = buildDailyEmailHtml(input, {});
+    expect(html).toContain('href="https://app.example/signals/u1"');
+    expect(html).toContain("去判断");
+    const plain = buildDailyEmailHtml(base, {});
+    expect(plain).not.toContain("你在跟的事");
+    expect(plain).not.toContain("去判断");
+  });
+});

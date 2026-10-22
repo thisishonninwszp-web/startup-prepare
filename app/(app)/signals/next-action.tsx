@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { loadActState, nextSteps } from "@/lib/domains/signals/act";
 
-/** 今日报告顶上一行：这周最该做的一件事（和本周行动页同一套排法）。出错就不显示，不耽误读报告。 */
+/** 「今天」顶上一行：这周最该做的一件事（和本周行动页同一套排法）。出错就不显示，不耽误读报告。 */
 export async function NextActionLine({ userId }: { userId: string }) {
   const state = await loadActState(userId).catch(() => null);
   if (!state) return null;

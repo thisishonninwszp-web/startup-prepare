@@ -4,8 +4,8 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import {
+  boardSections,
   calibrationBins,
-  daysBetween,
   headToHead,
   KIND_LABELS,
   loadForecastBoard,
@@ -52,11 +52,8 @@ export default async function ForecastPage() {
         (() => {
           const { questions, forecasts } = board;
           const has = (qid: string, s: ForecastSource) => forecasts.some((f) => f.question_id === qid && f.source === s);
-          const toForecast = questions.filter((q) => q.status === "open" && !q.revealed_at && !has(q.id, "me") && daysBetween(today, q.resolve_on) > 0);
-          // 生意题到期后由出题的主账号确认；别的账号在「判断过的」里看到它在等确认
-          const toConfirm = board.canConfirm ? questions.filter((q) => q.status === "open" && q.kind === "business" && q.pending) : [];
-          const open = questions.filter((q) => q.status === "open" && (q.revealed_at || has(q.id, "me")) && !(board.canConfirm && q.kind === "business" && q.pending));
-          const done = questions.filter((q) => q.status !== "open").sort((a, b) => (b.resolved_at ?? "").localeCompare(a.resolved_at ?? ""));
+          // 生意题到期后由出题的主账号确认；别的账号在「判断过的」里看到它在等确认（「今天」一页用同一套分组）
+          const { toForecast, toConfirm, open, done } = boardSections(board, today);
           const scores = scoreBySource(questions, forecasts, ["me", "ai", "market", "ai_outside", "ai_inside", "ai_devil"]);
           const bins = (["ai", "me"] as ForecastSource[]).map((s) => ({ s, bins: calibrationBins(questions, forecasts, s) }));
 

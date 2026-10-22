@@ -109,7 +109,7 @@ export default async function SignalDetailPage({
     <PageContainer width="narrow">
       <p className="mb-6 text-sm">
         <Link href="/signals" className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          ← 今日报告
+          ← 今天
         </Link>
       </p>
 

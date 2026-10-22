@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { activeHref, SIGNALS_NAV } from "./nav-shared";
 
 describe("外部信号的二级导航", () => {
-  it("activeHref：最长的前缀对得上的那一页；新闻详情页算今日报告", () => {
+  it("activeHref：最长的前缀对得上的那一页；新闻详情页算「今天」", () => {
     expect(activeHref("/signals")).toBe("/signals");
     expect(activeHref("/signals/gaps")).toBe("/signals/gaps");
     expect(activeHref("/signals/gaps/door")).toBe("/signals/gaps");
@@ -17,5 +17,10 @@ describe("外部信号的二级导航", () => {
   it("每一页只出现在一组里", () => {
     const hrefs = SIGNALS_NAV.flatMap((g) => g.pages.map((p) => p.href));
     expect(new Set(hrefs).size).toBe(hrefs.length);
+  });
+
+  it("五块：今天、记忆、预测、机会、行动；每块第一页是点块名去的地方", () => {
+    expect(SIGNALS_NAV.map((g) => g.label)).toEqual(["今天", "记忆", "预测", "机会", "行动"]);
+    expect(SIGNALS_NAV.map((g) => g.pages[0].href)).toEqual(["/signals", "/signals/memory", "/signals/forecast", "/signals/gaps", "/signals/act"]);
   });
 });

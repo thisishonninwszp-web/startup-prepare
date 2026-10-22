@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  boardSections,
   brier,
   calibrationBins,
   headToHead,
@@ -9,7 +10,9 @@ import {
   parsePolymarketMarket,
   pickMarkets,
   scoreBySource,
+  sidesOf,
   type Forecast,
+  type ForecastQuestion,
   type MarketCandidate,
 } from "./forecast-shared";
 
@@ -104,5 +107,61 @@ describe("market picking details", () => {
     const c = (id: string, url: string, q = id) => ({ platform: "polymarket" as const, id, question: q, url, closes: "2026-12-01", probability: 0.5, depth: 9000, description: "" });
     const out = pickMarkets([c("a", "u1"), c("b", "u1"), c("c", "u2", "Will X be between 1 and 2?"), c("d", "u3")], "2026-10-22", new Set(), 3);
     expect(out.map((x) => x.id).sort()).toEqual(["a", "d"]);
+  });
+});
+
+describe("boardSections", () => {
+  const q = (id: string, over: Partial<ForecastQuestion> = {}): ForecastQuestion => ({
+    id,
+    kind: "market",
+    title: id,
+    original_title: null,
+    criteria: "",
+    resolve_on: "2026-12-31",
+    category: null,
+    source: {},
+    context: null,
+    status: "open",
+    outcome: null,
+    resolved_at: null,
+    resolution_note: null,
+    resolution_url: null,
+    pending: null,
+    revealed_at: null,
+    created_at: "2026-10-01T00:00:00Z",
+    ...over,
+  });
+  const me = (question_id: string, probability = 0.7): Forecast => ({ question_id, source: "me", probability, reason: null, made_at: "2026-10-02" });
+  const pending = { suggested: "yes" as const, note: "", evidence: [], checked_on: "2026-10-20" };
+  const questions = [
+    q("new"),
+    q("judged"),
+    q("peeked", { revealed_at: "2026-10-03" }),
+    q("expired", { resolve_on: "2026-10-22" }),
+    q("biz", { kind: "business", pending }),
+    q("won", { status: "resolved", outcome: true, resolved_at: "2026-10-20T03:00:00Z" }),
+    q("old", { status: "resolved", outcome: false, resolved_at: "2026-09-01T03:00:00Z" }),
+    q("skipped", { status: "resolved", outcome: true, resolved_at: "2026-10-21T03:00:00Z" }),
+  ];
+  const forecasts = [me("judged"), me("biz"), me("won"), me("old"), { question_id: "won", source: "ai" as const, probability: 0.4, reason: null, made_at: "" }];
+
+  it("主账号：等判断、等确认、判断过的、刚对完账的", () => {
+    const s = boardSections({ questions, forecasts, canConfirm: true }, "2026-10-22");
+    expect(s.toForecast.map((x) => x.id)).toEqual(["new"]);
+    expect(s.toConfirm.map((x) => x.id)).toEqual(["biz"]);
+    expect(s.open.map((x) => x.id)).toEqual(["judged", "peeked"]);
+    expect(s.done.map((x) => x.id)).toEqual(["skipped", "won", "old"]);
+    // 没判断也没看答案的不算「刚对完账」给他看
+    expect(s.justResolved.map((x) => x.id)).toEqual(["won"]);
+  });
+
+  it("朋友的账号：生意题不在等确认里，在判断过的里", () => {
+    const s = boardSections({ questions, forecasts, canConfirm: false }, "2026-10-22");
+    expect(s.toConfirm).toEqual([]);
+    expect(s.open.map((x) => x.id)).toEqual(["judged", "peeked", "biz"]);
+  });
+
+  it("各方的几成", () => {
+    expect(sidesOf(forecasts, "won")).toEqual({ me: 0.7, ai: 0.4, market: null });
   });
 });

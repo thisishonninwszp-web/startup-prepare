@@ -32,6 +32,7 @@ import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
 import { loadSituationFacts } from "./reader-facts";
 import { sendDailyEmail, sendMemberEmails } from "./notify";
 import { generateDigest } from "./digest";
+import { embedBacklog } from "./memory";
 import type { Breakdown } from "./breakdown-shared";
 
 /**
@@ -534,8 +535,11 @@ async function fetchedRecently(): Promise<boolean> {
  * 5:30 那个任务抓完新闻接着生成"谁在掏钱"，6 点这个生成另外四节再发邮件（实测各三四十秒，留出余量）。
  */
 export const EARLY_KINDS = ["money"] as const;
-/** 6 点的任务跑到这个时间以内，才顺手写今日总览（60 秒上限，留出发邮件的余量）。 */
-const DIGEST_TIME_BUDGET_MS = 45_000;
+/** 6 点的任务跑到这个时间以内，才顺手写今日总览（开了 Fluid Compute，上限 300 秒；留出算指纹、发邮件的余量）。 */
+const DIGEST_TIME_BUDGET_MS = 180_000;
+/** 发邮件之前给夜里抓到的算指纹：跑到这个时间以内才算，一次最多这么多条（「你在跟的事，有新消息」要靠它）。 */
+const EMBED_TIME_BUDGET_MS = 220_000;
+const EMBED_BEFORE_EMAIL = 800;
 const MORNING_KINDS = ["news", "calendar", "voices", "tools"] as const;
 
 /** 给该跑的账号（见 signalUserIds：配了 IDEAOS_USER_EMAIL 只给那一个），生成这几节。 */
@@ -575,6 +579,15 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
       await generateDigest(userIds[0], tokyoToday());
     } catch (e) {
       failed.push(`今日总览：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // 夜里抓到的还没算指纹（后台 7:30 才算）：先算了，邮件里「你在跟的事，有新消息」才盖得住昨晚到今早
+  if (Date.now() - startedAt < EMBED_TIME_BUDGET_MS) {
+    try {
+      await embedBacklog(EMBED_BEFORE_EMAIL);
+    } catch (e) {
+      failed.push(`算指纹：${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

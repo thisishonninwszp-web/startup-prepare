@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { ArchiveHit, Mark } from "@/lib/domains/signals/memory-shared";
+import { buildTimeline, TIMELINE_KIND_LABELS, type ArchiveHit, type Mark, type TimelineEvent } from "@/lib/domains/signals/memory-shared";
+import { cn } from "@/lib/utils";
 import type { ArchiveStatement } from "@/lib/ai/forecast";
 import { MarkButtons } from "../mark-buttons";
 import { askArchiveAction, searchArchiveAction } from "../memory-actions";
@@ -33,6 +34,8 @@ export function ArchiveSearch() {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<ArchiveHit[] | null>(null);
   const [marks, setMarks] = useState<Record<string, Mark>>({});
+  const [extras, setExtras] = useState<TimelineEvent[]>([]);
+  const [order, setOrder] = useState<"relevance" | "time">("relevance");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +47,7 @@ export function ArchiveSearch() {
         if (r.ok) {
           setHits(r.hits);
           setMarks(r.marks);
+          setExtras(r.extras);
         } else setError(r.message);
       } catch {
         setError(OFFLINE);
@@ -68,15 +72,99 @@ export function ArchiveSearch() {
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
       {hits !== null &&
-        (hits.length === 0 ? (
+        (hits.length === 0 && extras.length === 0 ? (
           <p className="text-sm text-muted-foreground">存档里没找到。换个说法再试（按意思找时，写一句完整的话比写一个词准）。</p>
         ) : (
-          <ul className="space-y-2">
-            {hits.map((h) => (
-              <HitRow key={h.id} h={h} mark={marks[h.id] ?? undefined} />
+          <>
+            <div className="flex gap-3 text-xs" role="group" aria-label="怎么排">
+              {(
+                [
+                  ["relevance", "按相关"],
+                  ["time", "按时间（连成一条线）"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={order === key}
+                  onClick={() => setOrder(key)}
+                  className={cn(
+                    "transition-colors duration-150",
+                    order === key ? "font-medium text-primary" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {order === "time" ? (
+              <Timeline hits={hits} extras={extras} />
+            ) : (
+              <>
+                <ul className="space-y-2">
+                  {hits.map((h) => (
+                    <HitRow key={h.id} h={h} mark={marks[h.id] ?? undefined} />
+                  ))}
+                </ul>
+                {extras.length > 0 && (
+                  <div className="rounded-md border border-border p-3">
+                    <p className="mb-1 text-xs text-muted-foreground">时差图谱、官报里也有</p>
+                    <ul className="space-y-1 text-sm leading-7">
+                      {extras.map((e) => (
+                        <EventRow key={e.key} e={e} />
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        ))}
+    </div>
+  );
+}
+
+function EventRow({ e }: { e: TimelineEvent }) {
+  const title = e.href ? (
+    e.external ? (
+      <a href={e.href} target="_blank" rel="noreferrer" className="transition-colors duration-150 hover:text-primary">
+        {e.title}
+      </a>
+    ) : (
+      <Link href={e.href} className="transition-colors duration-150 hover:text-primary">
+        {e.title}
+      </Link>
+    )
+  ) : (
+    <span>{e.title}</span>
+  );
+  return (
+    <li>
+      <span className="mr-2 font-mono text-xs text-muted-foreground">{e.date}</span>
+      {title}
+      <span className="ml-1 text-xs text-muted-foreground">{TIMELINE_KIND_LABELS[e.kind]}</span>
+    </li>
+  );
+}
+
+/** 找到的新闻和图谱、官报里对得上的，按时间从早到晚排成一条线，一年一段。 */
+function Timeline({ hits, extras }: { hits: ArchiveHit[]; extras: TimelineEvent[] }) {
+  const years = buildTimeline(hits, extras);
+  return (
+    <div className="space-y-4">
+      {years.map((y) => (
+        <section key={y.year}>
+          <h3 className="mb-1 font-mono text-xs text-muted-foreground">{y.year}</h3>
+          <ul className="space-y-1 border-l border-border pl-3 text-sm leading-7">
+            {y.events.map((e) => (
+              <EventRow key={e.key} e={e} />
             ))}
           </ul>
-        ))}
+        </section>
+      ))}
+      <p className="text-xs leading-6 text-muted-foreground">
+        新闻只有存档开始以后的；更早的那几件来自时差图谱（那边什么时候出现、日本什么时候出现）和官报（决算公告）。
+      </p>
     </div>
   );
 }

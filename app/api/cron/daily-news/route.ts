@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { runDailySignals } from "@/lib/domains/signals/brief";
 
-// 抓 RSS + 补简介 + 抓 GitHub + 生成两份精选，默认 10 秒不够。
-export const maxDuration = 60;
+// 抓 RSS + 补简介 + 抓 GitHub + 生成四节精选 + 今日总览 + 算指纹 + 发邮件。项目开了 Fluid Compute，免费版一次最多 300 秒。
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;

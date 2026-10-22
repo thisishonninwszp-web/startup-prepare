@@ -62,7 +62,7 @@ export default async function JudgmentLedgerPage() {
       ) : judgments.length === 0 ? (
         <EmptyState
           title="这里空着。"
-          description="还没写过判断。回今日报告做今天的练习，写下第一句。"
+          description="还没写过判断。回「今天」做今天的练习，写下第一句。"
         />
       ) : (
         <Ledger judgments={judgments} drillMisses={drillMisses} />
