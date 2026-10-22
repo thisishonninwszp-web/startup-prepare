@@ -6,16 +6,20 @@ import { activeSignalUsers, createBusinessQuestions, forecastPending, importMark
 /**
  * 外部信号的后台步骤，由 GitHub Actions（.github/workflows/signals-jobs.yml）定时一步一步调：
  * 每次一分钟以内做一小份，返回 done（做完了没有）；没做完 Actions 会再调一次。
- * Vercel 免费版只有两个定时任务、一次 60 秒，量大的活（算指纹、AI 押题）放这里。只认 CRON_SECRET。
+ * Vercel 免费版只有两个定时任务，量大的活（算指纹、AI 押题）放这里。只认 CRON_SECRET。
+ * 项目开了 Fluid Compute（他确认过，2026-10-22），免费版一次最多 300 秒；每一步照样按时间预算做，留出一道最慢的余量。
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
+
+/** 开始下一道之前，已经用了这么久就停（一道最慢六七十秒，300 秒上限里留足余量）。 */
+const START_BEFORE_MS = 200_000;
 
 type Result = { done: boolean; did: number; remaining?: number; note?: string; ms?: number };
 
 const STEPS: Record<string, (users: string[], today: string) => Promise<Result>> = {
   // 新闻算指纹（全站共用一张表，不分人）
   embed: async () => {
-    const r = await embedBacklog(300);
+    const r = await embedBacklog(1000);
     return { done: r.remaining === 0, did: r.embedded, remaining: r.remaining };
   },
   // 到期的题对账（市场题问平台、生意题查证据）
@@ -23,7 +27,7 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     let did = 0;
     let remaining = 0;
     for (const u of users) {
-      const r = await resolveDue(u, today);
+      const r = await resolveDue(u, today, START_BEFORE_MS);
       did += r.did;
       remaining += r.remaining;
     }
@@ -41,12 +45,12 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     for (const u of users) did += await createBusinessQuestions(u, today);
     return { done: true, did };
   },
-  // AI 三种思路押还没押的题：按时间预算做（一道二三十秒，过了 20 秒就不开始下一道）
+  // AI 三种思路押还没押的题：按时间预算做（一道二三十秒，过了 200 秒就不开始下一道）
   forecast: async (users, today) => {
     let did = 0;
     let remaining = 0;
     for (const u of users) {
-      const r = await forecastPending(u, today);
+      const r = await forecastPending(u, today, START_BEFORE_MS);
       did += r.did;
       remaining += r.remaining;
     }
