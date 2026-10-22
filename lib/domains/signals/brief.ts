@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { signalUserIds } from "./users";
 import {
   checkJapanComparisons,
   compareWithJapan,
@@ -537,17 +538,11 @@ export const EARLY_KINDS = ["money"] as const;
 const DIGEST_TIME_BUDGET_MS = 45_000;
 const MORNING_KINDS = ["news", "calendar", "voices", "tools"] as const;
 
-/** 给最近一个月用过报告的人，生成这几节。 */
+/** 给该跑的账号（见 signalUserIds：配了 IDEAOS_USER_EMAIL 只给那一个），生成这几节。 */
 export async function generateBriefsForRecentUsers(
   kinds: readonly SignalKind[]
 ): Promise<{ userIds: string[]; briefs: number; failed: string[] }> {
-  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const { data: recent, error } = await supabaseAdmin
-    .from("signal_briefs")
-    .select("user_id")
-    .gte("brief_date", monthAgo);
-  if (error) throw new Error(error.message);
-  const userIds = Array.from(new Set((recent ?? []).map((r) => r.user_id as string)));
+  const userIds = await signalUserIds();
   const failed: string[] = [];
   let briefs = 0;
   await Promise.all(

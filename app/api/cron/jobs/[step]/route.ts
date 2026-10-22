@@ -41,12 +41,12 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     for (const u of users) did += await createBusinessQuestions(u, today);
     return { done: true, did };
   },
-  // AI 三种思路押还没押的题（一次两道）
+  // AI 三种思路押还没押的题（一次一道：查资料加三次 AI 要二三十秒，两道会超过 60 秒）
   forecast: async (users, today) => {
     let did = 0;
     let remaining = 0;
     for (const u of users) {
-      const r = await forecastPending(u, today, 2);
+      const r = await forecastPending(u, today, 1);
       did += r.did;
       remaining += r.remaining;
     }

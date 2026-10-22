@@ -51,6 +51,12 @@ export const ENV_ITEMS: EnvItem[] = [
     how: "TypeSafe 的控制台",
   },
   {
+    label: "只给你的账号跑",
+    use: "每天的报告、提醒邮件、预测题只给这一个账号做（别的测试账号不再花 AI 的钱）",
+    slots: [["IDEAOS_USER_EMAIL"]],
+    how: "填你登录 IdeaOS 用的邮箱",
+  },
+  {
     label: "提醒邮件",
     use: "每天早上报告好了发一封",
     slots: [["GMAIL_USER"], ["GMAIL_APP_PASSWORD"]],

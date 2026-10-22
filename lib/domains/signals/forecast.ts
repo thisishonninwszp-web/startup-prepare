@@ -4,6 +4,7 @@ import { draftResolution, forecastFromPerspective, planBusinessQuestions, transl
 import { REPORT_SECTION_KINDS } from "./feeds";
 import type { BriefItem } from "./brief";
 import { getMarket, searchMarkets } from "./markets";
+import { signalUserIds } from "./users";
 import {
   daysBetween,
   isJapanQuestion,
@@ -36,12 +37,9 @@ const QUESTION_COLUMNS =
 
 const clamp = (p: number) => Math.min(0.99, Math.max(0.01, p));
 
-/** 最近一个月用过报告的人（单用户阶段就是他）。 */
+/** 给哪些账号跑（配了 IDEAOS_USER_EMAIL 只给那一个）。 */
 export async function activeSignalUsers(): Promise<string[]> {
-  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const { data, error } = await supabaseAdmin.from("signal_briefs").select("user_id").gte("brief_date", monthAgo);
-  if (error) throw new Error(error.message);
-  return Array.from(new Set((data ?? []).map((r) => r.user_id as string)));
+  return signalUserIds();
 }
 
 export type ForecastBoard = { questions: ForecastQuestion[]; forecasts: Forecast[] };
