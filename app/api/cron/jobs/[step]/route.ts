@@ -10,7 +10,7 @@ import { activeSignalUsers, createBusinessQuestions, forecastPending, importMark
  */
 export const maxDuration = 60;
 
-type Result = { done: boolean; did: number; remaining?: number; note?: string };
+type Result = { done: boolean; did: number; remaining?: number; note?: string; ms?: number };
 
 const STEPS: Record<string, (users: string[], today: string) => Promise<Result>> = {
   // 新闻算指纹（全站共用一张表，不分人）
@@ -41,12 +41,12 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     for (const u of users) did += await createBusinessQuestions(u, today);
     return { done: true, did };
   },
-  // AI 三种思路押还没押的题（一次一道：查资料加三次 AI 要二三十秒，两道会超过 60 秒）
+  // AI 三种思路押还没押的题：按时间预算做（一道二三十秒，过了 20 秒就不开始下一道）
   forecast: async (users, today) => {
     let did = 0;
     let remaining = 0;
     for (const u of users) {
-      const r = await forecastPending(u, today, 1);
+      const r = await forecastPending(u, today);
       did += r.did;
       remaining += r.remaining;
     }
@@ -61,12 +61,14 @@ export async function GET(request: Request, { params }: { params: { step: string
   }
   const run = STEPS[params.step];
   if (!run) return NextResponse.json({ error: `没有这一步：${params.step}` }, { status: 404 });
+  const started = Date.now();
   try {
     const users = params.step === "embed" ? [] : await activeSignalUsers();
-    return NextResponse.json(await run(users, tokyoToday()));
+    // 回报这一次用了多少毫秒：Actions 的日志里看得出离 60 秒还有多远
+    return NextResponse.json({ ...(await run(users, tokyoToday())), ms: Date.now() - started });
   } catch (error) {
     // 出错也回 done，免得 Actions 一直重试同一个错；错误写在 note 里，Actions 的日志能看到
     const message = error instanceof Error ? error.message : "出错了";
-    return NextResponse.json({ done: true, did: 0, note: message }, { status: 200 });
+    return NextResponse.json({ done: true, did: 0, note: message, ms: Date.now() - started }, { status: 200 });
   }
 }

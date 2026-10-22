@@ -184,13 +184,16 @@ async function questionsWithoutAi(userId: string): Promise<ForecastQuestion[]> {
 }
 
 /**
- * 给最多 max 道题让 AI 押：先上网查一次资料（三种思路共用），三种思路各押一个，代码取中间值存成「AI」。
+ * 在时间预算内让 AI 押还没押的题：先上网查一次资料（三种思路共用），三种思路各押一个，代码取中间值存成「AI」。
  * 市场题不给 AI 看市场的概率。三个里至少两个押成了才存中间值。
+ * 不按固定道数做：开始下一道之前看已经用了多久，过了 startBeforeMs 就停（一道要二三十秒，Vercel 一次最多 60 秒）。
  */
-export async function forecastPending(userId: string, today: string, max = 2): Promise<{ did: number; remaining: number }> {
+export async function forecastPending(userId: string, today: string, startBeforeMs = 20_000): Promise<{ did: number; remaining: number }> {
+  const started = Date.now();
   const todo = await questionsWithoutAi(userId);
   let did = 0;
-  for (const q of todo.slice(0, max)) {
+  for (const q of todo) {
+    if (did > 0 && Date.now() - started > startBeforeMs) break;
     const query = q.original_title ?? (q.source.headline as string | undefined) ?? q.title;
     const sources = (await webSearch(query, 5).catch(() => [])).map((s) => ({ title: s.title, url: s.url, content: s.content }));
     const input = { title: q.title, criteria: q.criteria, resolveOn: q.resolve_on, today, context: q.context ?? "", sources };
@@ -214,14 +217,19 @@ async function resolveQuestion(userId: string, id: string, patch: Partial<Foreca
 
 /**
  * 到期的题：市场题问平台结算了没有（结算了按平台结果对，取消的作废；还没结算的明天再问）；
- * 生意题上网查证据、AI 给建议，存成「等你确认」（他点了才算对账）。一次最多处理 max 道。
+ * 生意题上网查证据、AI 给建议，存成「等你确认」（他点了才算对账）。
+ * 按时间预算做：开始下一道之前过了 startBeforeMs 就停，剩下的下次调用接着做。
  */
-export async function resolveDue(userId: string, today: string, max = 6): Promise<{ did: number; remaining: number }> {
+export async function resolveDue(userId: string, today: string, startBeforeMs = 25_000): Promise<{ did: number; remaining: number }> {
+  const started = Date.now();
   const board = await loadForecastBoard(userId);
   if (board === "missing-schema") throw new Error(FORECAST_MISSING);
   const due = board.questions.filter((q) => q.status === "open" && q.resolve_on <= today && !(q.kind === "business" && q.pending));
   let did = 0;
-  for (const q of due.slice(0, max)) {
+  let tried = 0;
+  for (const q of due) {
+    if (tried > 0 && Date.now() - started > startBeforeMs) break;
+    tried += 1;
     if (q.kind === "market" && q.source.platform && q.source.id) {
       const m = await getMarket({ platform: q.source.platform, id: q.source.id, url: q.source.url ?? "" });
       if (!m?.resolved) continue;
@@ -247,7 +255,7 @@ export async function resolveDue(userId: string, today: string, max = 6): Promis
       did += 1;
     }
   }
-  return { did, remaining: Math.max(0, due.length - did) };
+  return { did, remaining: Math.max(0, due.length - tried) };
 }
 
 // ── 他的操作 ────────────────────────────────────────────────────────────────
