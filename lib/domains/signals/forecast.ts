@@ -2,6 +2,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { webSearch } from "@/lib/web-search";
 import { draftResolution, forecastFromPerspective, planArrivalQuestion, planBusinessQuestions, translateMarketQuestion, type Perspective } from "@/lib/ai";
 import { loadGapRechecks, openGapsWithSide } from "./gaps";
+import { openRelevantPolicies, policyHistory, policyOutcome } from "./policy";
+import { baseProbability, lagSummary, POLICY_MIN_HISTORY, policyResolveOn, shortPolicyTitle } from "./policy-shared";
 import { ATLAS_CATEGORIES, baseSentence, categoryBase, countedCases, listTransferCases, type AtlasCategory } from "./atlas";
 import { REPORT_SECTION_KINDS } from "./feeds";
 import type { BriefItem } from "./brief";
@@ -250,6 +252,8 @@ export async function resolveDue(userId: string, today: string, startBeforeMs = 
   const due = board.questions.filter((q) => q.status === "open" && q.resolve_on <= today && !(needsConfirm(q.kind) && q.pending));
   // 到日本题还没到期、但差距清单重查已经查到日本有了（带出处）：先给出「会」的建议，等他确认
   await suggestEarlyArrivals(userId, board.questions, today);
+  // 政策题没到期、但已经公布了：直接对账（公布日是 e-Gov 上写着的，不用他确认）
+  await settleEarlyPolicies(userId, board.questions, today);
   let did = 0;
   let tried = 0;
   for (const q of due) {
@@ -264,6 +268,20 @@ export async function resolveDue(userId: string, today: string, startBeforeMs = 
         resolved_at: new Date().toISOString(),
         resolution_note: m.resolved === "void" ? "平台取消了这道题（不算分）" : `按 ${q.source.platform === "manifold" ? "Manifold" : "Polymarket"} 的结算结果`,
         resolution_url: q.source.url ?? null,
+      });
+      did += 1;
+    } else if (q.kind === "policy" && q.source.policy_id) {
+      // 门槛日当天还可能公布：过了门槛日才判「不会」；判之前去结果页再查一次，免得订阅漏看
+      const r = await policyOutcome(q.source.policy_id, true);
+      if (!r) continue;
+      const yes = r.promulgate_date !== null && r.promulgate_date <= q.resolve_on;
+      if (!yes && today <= q.resolve_on) continue;
+      await resolveQuestion(userId, q.id, {
+        status: "resolved",
+        outcome: yes,
+        resolved_at: new Date().toISOString(),
+        resolution_note: yes ? `${r.promulgate_date} 公布（e-Gov 意见征集结果公示）` : r.promulgate_date ? `${r.promulgate_date} 才公布，晚于门槛日` : `到 ${q.resolve_on} 还没公布（e-Gov 上没有结果公示）`,
+        resolution_url: r.url,
       });
       did += 1;
     } else if (needsConfirm(q.kind)) {
@@ -397,6 +415,80 @@ async function suggestEarlyArrivals(userId: string, questions: ForecastQuestion[
       checked_on: today,
     };
     await resolveQuestion(userId, q.id, { pending });
+  }
+}
+
+// ── 政策题 ──────────────────────────────────────────────────────────────────
+
+/** 今天有没有出过政策题。 */
+async function policyToday(userId: string, today: string): Promise<boolean> {
+  const { count, error } = await supabaseAdmin
+    .from("forecast_questions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("kind", "policy")
+    .gte("created_at", `${today}T00:00:00+09:00`);
+  if (error) throw new Error(missing(error) ? FORECAST_MISSING : error.message);
+  return (count ?? 0) > 0;
+}
+
+/**
+ * 正在征求意见、跟他有关的一件出一道政策题，一天最多一道：「会不会在某天之前公布」，门槛日取历史上「截止 → 公布」的中位数（取月底）。
+ * 统计基准（历史上那么多天以内公布的比例）存成 base 一方，跟 AI、他一起记分。历史不够 POLICY_MIN_HISTORY 条先不出。迁移 097 没跑返回 0。
+ */
+export async function createPolicyQuestions(userId: string, today: string): Promise<number> {
+  if (await policyToday(userId, today).catch(() => true)) return 0;
+  const history = await policyHistory();
+  if (!history || history.length < POLICY_MIN_HISTORY) return 0;
+  const median = lagSummary(history).median ?? 0;
+  const [open, asked] = await Promise.all([
+    openRelevantPolicies(today),
+    supabaseAdmin.from("forecast_questions").select("source").eq("user_id", userId).eq("kind", "policy"),
+  ]);
+  if (asked.error) throw new Error(asked.error.message);
+  const done = new Set(((asked.data ?? []) as { source: { policy_id?: string } }[]).map((r) => r.source.policy_id));
+  const item = open.find((i) => i.deadline && i.deadline >= today && !done.has(i.id));
+  if (!item?.deadline) return 0;
+  const resolveOn = policyResolveOn(item.deadline, median);
+  const base = baseProbability(history, daysBetween(item.deadline, resolveOn));
+  const { data: row, error } = await supabaseAdmin
+    .from("forecast_questions")
+    .insert({
+      user_id: userId,
+      kind: "policy",
+      title: `「${shortPolicyTitle(item.title)}」会不会在 ${resolveOn} 之前公布？`,
+      criteria: `以 e-Gov 意见征集结果公示上的公布日为准（「命令等の公布日」或「対象が定められた日」）：${resolveOn} 当天或以前公布算「会」；到那天还没公布、或者不再公布算「不会」。`,
+      resolve_on: resolveOn,
+      category: "日本政治社会",
+      source: { policy_id: item.id, url: item.url, headline: item.title, ministry: item.ministry ?? undefined },
+      context: `${item.title}\n${item.ministry ?? ""} · 意见截止 ${item.deadline}\n历史（e-Gov 结果公示）：截止后中位 ${median} 天公布（${history.length} 件）。`.slice(0, 1500),
+    })
+    .select("id")
+    .single();
+  if (error) {
+    if (/forecast_questions_kind_check|violates check constraint/.test(error.message)) return 0;
+    throw new Error(error.message);
+  }
+  if (base !== null) {
+    await insertForecasts(userId, row.id as string, [
+      { source: "base", probability: base, reason: `历史上 ${history.length} 件意见征集里，截止后 ${daysBetween(item.deadline, resolveOn)} 天以内公布的比例` },
+    ]);
+  }
+  return 1;
+}
+
+/** 没到期的政策题：库里已经有公布日、而且不晚于门槛日，直接对成「会」。 */
+async function settleEarlyPolicies(userId: string, questions: ForecastQuestion[], today: string): Promise<void> {
+  for (const q of questions.filter((x) => x.kind === "policy" && x.status === "open" && x.resolve_on > today && x.source.policy_id)) {
+    const r = await policyOutcome(q.source.policy_id as string, false).catch(() => null);
+    if (!r?.promulgate_date || r.promulgate_date > q.resolve_on) continue;
+    await resolveQuestion(userId, q.id, {
+      status: "resolved",
+      outcome: true,
+      resolved_at: new Date().toISOString(),
+      resolution_note: `${r.promulgate_date} 公布（e-Gov 意见征集结果公示）`,
+      resolution_url: r.url,
+    });
   }
 }
 

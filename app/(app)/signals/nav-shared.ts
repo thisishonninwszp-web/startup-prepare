@@ -38,6 +38,7 @@ export const SIGNALS_NAV: { label: string; pages: { href: string; label: string 
       { href: "/signals/gaps", label: "差距清单" },
       { href: "/signals/atlas", label: "时差图谱" },
       { href: "/signals/indicators", label: "领先指标" },
+      { href: "/signals/policy", label: "政策流水线" },
       { href: "/signals/kanpo", label: "官报" },
       { href: "/signals/slow", label: "慢变量" },
     ],

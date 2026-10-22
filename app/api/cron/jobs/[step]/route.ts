@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { embedBacklog } from "@/lib/domains/signals/memory";
-import { activeSignalUsers, createArrivalQuestions, createBusinessQuestions, forecastPending, importMarkets, resolveDue } from "@/lib/domains/signals/forecast";
+import { activeSignalUsers, createArrivalQuestions, createBusinessQuestions, createPolicyQuestions, forecastPending, importMarkets, resolveDue } from "@/lib/domains/signals/forecast";
+import { refreshPolicy } from "@/lib/domains/signals/policy";
 import { refreshAppWatch } from "@/lib/domains/signals/app-watch";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
 import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
@@ -53,13 +54,32 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
         console.error("arrival question", e);
         return 0;
       });
+      did += await createPolicyQuestions(u, today).catch((e) => {
+        console.error("policy question", e);
+        return 0;
+      });
     }
     return { done: true, did };
   },
   // 领先指标：上过中国 App 榜的 App 在日本上架了没有、加了日语没有（全站共用，不调 AI）
+  // 和政策流水线：e-Gov 意见征集的订阅、补结果、法律修改历史（一个月刷新一次）
   indicators: async (_users, today) => {
-    const r = await refreshAppWatch(today);
-    return { done: true, did: r.events, note: `查了 ${r.checked} 个` };
+    const notes: string[] = [];
+    let did = 0;
+    try {
+      const r = await refreshAppWatch(today);
+      did += r.events;
+      notes.push(`App 查了 ${r.checked} 个`);
+    } catch (e) {
+      notes.push(`App：${e instanceof Error ? e.message : String(e)}`);
+    }
+    try {
+      const p = await refreshPolicy(today, 120_000);
+      notes.push(`意见征集 ${p.items} 件、补结果 ${p.results} 件、法律修改 ${p.lags} 条`);
+    } catch (e) {
+      notes.push(`政策：${e instanceof Error ? e.message : String(e)}`);
+    }
+    return { done: true, did, note: notes.join("；") };
   },
   // AI 三种思路押还没押的题：按时间预算做（一道二三十秒，过了 200 秒就不开始下一道）
   forecast: async (users, today) => {

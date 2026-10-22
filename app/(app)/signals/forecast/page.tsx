@@ -139,7 +139,7 @@ export default async function ForecastPage() {
           const has = (qid: string, s: ForecastSource) => forecasts.some((f) => f.question_id === qid && f.source === s);
           // 生意题到期后由出题的主账号确认；别的账号在「判断过的」里看到它在等确认（「今天」一页用同一套分组）
           const { toForecast, toConfirm, open, done } = boardSections(board, today);
-          const scores = scoreBySource(questions, forecasts, ["me", "ai", "market", "ai_outside", "ai_inside", "ai_devil"]);
+          const scores = scoreBySource(questions, forecasts, ["me", "ai", "market", "base", "ai_outside", "ai_inside", "ai_devil"]);
           const bins = (["ai", "me"] as ForecastSource[]).map((s) => ({ s, bins: calibrationBins(questions, forecasts, s) }));
 
           if (questions.length === 0) {

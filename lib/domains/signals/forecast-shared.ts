@@ -6,10 +6,11 @@
  * 只用于 AI、他、市场对世界事件的预测；分数全部由代码算、能看到是哪几道题；样本不够只显示件数；对想法/机会仍然不打分。
  */
 
-export type ForecastKind = "market" | "data" | "business" | "arrival";
-export type ForecastSource = "ai_outside" | "ai_inside" | "ai_devil" | "ai" | "me" | "market";
+export type ForecastKind = "market" | "data" | "business" | "arrival" | "policy";
+/** base：统计基准（代码从历史数出来的比例，政策题、数据题有）。 */
+export type ForecastSource = "ai_outside" | "ai_inside" | "ai_devil" | "ai" | "me" | "market" | "base";
 
-export const KIND_LABELS: Record<ForecastKind, string> = { market: "市场题", data: "数据题", business: "生意题", arrival: "到日本题" };
+export const KIND_LABELS: Record<ForecastKind, string> = { market: "市场题", data: "数据题", business: "生意题", arrival: "到日本题", policy: "政策题" };
 
 /** 到期要程序查证据、出题的人确认的几种题（生意题、到日本题）。 */
 export function needsConfirm(kind: ForecastKind): boolean {
@@ -19,6 +20,7 @@ export const SOURCE_LABELS: Record<ForecastSource, string> = {
   ai_outside: "AI · 先看基准率",
   ai_inside: "AI · 只看这件事",
   ai_devil: "AI · 唱反调",
+  base: "统计基准",
   ai: "AI（三个取中间）",
   me: "你",
   market: "市场",
@@ -38,7 +40,7 @@ export type ForecastQuestion = {
   resolve_on: string;
   category: string | null;
   /** 到日本题还带着：哪个方向的差距、时差图谱的类别和那一类的历史（base，一句话）。 */
-  source: Partial<MarketRef> & { signal_id?: string; headline?: string; side?: string; atlas?: string; base?: string };
+  source: Partial<MarketRef> & { signal_id?: string; headline?: string; side?: string; atlas?: string; base?: string; policy_id?: string; ministry?: string };
   context: string | null;
   status: "open" | "resolved" | "void";
   outcome: boolean | null;
