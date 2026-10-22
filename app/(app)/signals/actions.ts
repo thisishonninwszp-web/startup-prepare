@@ -1,5 +1,6 @@
 "use server";
 
+import { generateMonthly, isMonth } from "@/lib/domains/signals/monthly";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -1051,6 +1052,20 @@ export async function generateWeeklyAction(weekStart: string): Promise<{ ok: tru
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "周报没写出来") };
+  }
+}
+
+/** 写（或重写）这个月的月报：缺的周报先补，再连起来（三四十秒）。 */
+export async function generateMonthlyAction(month: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  if (!isMonth(month)) return { ok: false, message: "月份不对" };
+  try {
+    const monthly = await generateMonthly(userId, month);
+    if (!monthly) return { ok: false, message: "这个月过完的周里，有周报的不到两周，连不起来" };
+    revalidatePath("/signals/month");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "月报没写出来") };
   }
 }
 

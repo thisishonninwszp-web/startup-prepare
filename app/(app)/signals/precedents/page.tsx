@@ -29,7 +29,7 @@ export default async function PrecedentsPage() {
     .limit(LOOKBACK);
   if (error) throw new Error(error.message);
   const precedents = collectPrecedents(
-    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: (r.items as BriefItem[] | null) ?? [] }))
+    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: Array.isArray(r.items) ? (r.items as BriefItem[]) : [] }))
   );
 
   return (

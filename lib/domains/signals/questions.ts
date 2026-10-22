@@ -278,7 +278,8 @@ export async function listRelatedReports(userId: string, questionId: string): Pr
     .gte("brief_date", since);
   if (error) throw new Error(error.message);
   return relatedReportItems(
-    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: (r.items as BriefItem[] | null) ?? [] })),
+    // 周报、月报那几行的 items 不是报告条目；不是数组的一律当空
+    (data ?? []).map((r) => ({ brief_date: r.brief_date as string, items: Array.isArray(r.items) ? (r.items as BriefItem[]) : [] })),
     questionId
   );
 }

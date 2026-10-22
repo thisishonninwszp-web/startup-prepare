@@ -91,7 +91,7 @@ export default async function SlowVariablesPage() {
     loadSlowThens(user.id),
     loadSlowWind(user.id),
   ]);
-  const coverage = pestleCoverage((week.data ?? []).flatMap((r) => (r.items as BriefItem[] | null) ?? []));
+  const coverage = pestleCoverage((week.data ?? []).flatMap((r) => (Array.isArray(r.items) ? (r.items as BriefItem[]) : [])));
   const tagged = coverage.reduce((n, c) => n + c.count, 0);
 
   return (

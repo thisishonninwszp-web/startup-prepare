@@ -4678,6 +4678,142 @@ export async function writeWeeklyDigest(days: WeeklyDayInput[]): Promise<WeeklyD
   );
 }
 
+// ── 月报：这个月的几份周报连起来看，哪几条线整月在走、哪几条中途没声了，落到差距清单和想法上 ──────
+
+export type MonthlyWeekInput = {
+  /** 「第 2 周（10/6–10/12）」 */
+  label: string;
+  summary: string;
+  threads: { id: string; title: string; note: string }[];
+};
+
+export const MONTHLY_NEXT = ["issue", "door", "listen", "gaps", "judge"] as const;
+export type MonthlyNext = (typeof MONTHLY_NEXT)[number];
+
+export type MonthlyLineDraft = {
+  title: string;
+  note: string;
+  /** 引用的周报线（编号，至少来自两个不同的周 —— 代码核对）。 */
+  threadIds: string[];
+  /** 跟它有关的差距清单条目、想法（编号，标题照抄核对过）。 */
+  related: string[];
+  next: MonthlyNext | null;
+  why: string;
+};
+
+export type MonthlyDigest = { summary: string; lines: MonthlyLineDraft[] };
+
+const MAX_MONTHLY_LINES = 5;
+
+const MONTHLY_PROMPT = `你是他身边一个懂行的老同事。他每周都看了周报，但一周一周看不出一个月的走势。你把这个月的几份周报连起来，跟他讲这个月到底发生了什么，再落到他手上的东西上。
+
+summary：4 到 6 句，像当面说话：
+- 先讲这个月的主线：哪件事从月初走到月底，中间怎么变的（变大、变小、换了说法）。
+- 再讲中途没声了的、到月底才冒出来的。分不清是噪音还是还没发酵，就直说分不清。
+- 只用周报里有的事实，绝不许自己推因果或结论（"可能是因为""这说明""这意味着""标志着""这会影响""这可能会"都不许写）；不同的事不许硬连。
+- 提到哪一周就照材料写「第几周」，材料里没有的周不许提。不要逐周复述，不要目录式开头，不要空话。
+
+lines：最多 ${MAX_MONTHLY_LINES} 条"这个月不止一周出现的线"：
+- title：一句话说是什么事（具体，带主体）。
+- note：一句话说这个月里它怎么变的（第几周……到第几周……）。只写周报里有的。
+- threadIds：照抄材料里周报线的编号（w1.t2 这种），至少要来自两个不同的周；凑不出两周的不算一条线，不要写。
+- related：材料最后「差距清单和想法」里，跟这条线是同一件事、或者直接靠这条线撑着的条目，每条写 {"id":"G3","title":"照抄那一条的原文"}，最多 3 条；真没有就空数组，不许硬凑。
+- next：这条线落到行动上最该做的一步，只能从这五个里选一个：
+  issue（放进下周的周刊写判断）、door（给相关的那条差距开假门、写上价格）、listen（听一听这边有没有人为这件事头疼）、gaps（给相关的那个想法列信息缺口）、judge（押一条判断，到期对账）。
+  related 是空的就只能选 judge 或 issue。
+- why：一句话说为什么是这一步（只说这一步能拿到什么信息，不许夸、不许打气）。
+
+你不知道他是做什么的：不许写"你""跟你""你的工作"。
+
+${SIGNAL_SHARED_RULES}
+
+只输出 JSON：{"summary":"…","lines":[{"title":"…","note":"…","threadIds":["w1.t1","w3.t2"],"related":[{"id":"G3","title":"…"}],"next":"door","why":"…"}]}`;
+
+/** 月报里自己推因果的说法（只去那一句）。 */
+const MONTHLY_SELF_CAUSE = /可能是因为|或许是因为|这说明|这意味着|说明了|标志着|这可能会|这会|将会影响|的表现/;
+
+function dropCauseSentences(text: string): string {
+  return (text.match(/[^。！？]+[。！？]?/g) ?? [])
+    .filter((x) => x.trim() && !MONTHLY_SELF_CAUSE.test(x))
+    .join("")
+    .trim();
+}
+
+/**
+ * weekOf：周报线编号 → 第几周（0 起）；related：差距/想法编号 → 原标题；material：给它的全部材料（十以上的数字要在里面）。
+ * 一条线至少来自两个不同的周；related 标题照抄核对，对不上的丢掉；next 只认五个，related 空时只认 judge / issue。
+ */
+export function parseMonthlyDigest(value: unknown, weekOf: Map<string, number>, related: Map<string, string>, material: string): MonthlyDigest {
+  if (!value || typeof value !== "object") throw new Error("输出不是对象");
+  const v = value as Record<string, unknown>;
+  const summary = dropCauseSentences(requireString(v, "summary"));
+  if (!summary) throw new Error("月报正文每一句都在自己推因果");
+  const lines: MonthlyLineDraft[] = [];
+  for (const r of Array.isArray(v.lines) ? v.lines : []) {
+    if (!r || typeof r !== "object") continue;
+    const t = r as Record<string, unknown>;
+    const title = typeof t.title === "string" ? t.title.trim() : "";
+    const note = typeof t.note === "string" ? dropCauseSentences(t.note.trim()) : "";
+    const threadIds = Array.from(
+      new Set((Array.isArray(t.threadIds) ? t.threadIds : []).filter((x): x is string => typeof x === "string" && weekOf.has(x.trim())).map((x) => x.trim()))
+    );
+    if (!title || !note || MONTHLY_SELF_CAUSE.test(title) || new Set(threadIds.map((id) => weekOf.get(id))).size < 2) continue;
+    const rel = Array.from(
+      new Set(
+        (Array.isArray(t.related) ? t.related : []).flatMap((x) => {
+          const o = (x ?? {}) as Record<string, unknown>;
+          const id = typeof o.id === "string" ? o.id.trim() : "";
+          const echo = typeof o.title === "string" ? o.title : "";
+          const real = related.get(id);
+          return real && titleEchoMatches(echo, real) ? [id] : [];
+        })
+      )
+    ).slice(0, 3);
+    const rawNext = typeof t.next === "string" ? t.next.trim() : "";
+    const allowed: readonly string[] = rel.length > 0 ? MONTHLY_NEXT : ["judge", "issue"];
+    const next = allowed.includes(rawNext) ? (rawNext as MonthlyNext) : null;
+    const why = next && typeof t.why === "string" ? t.why.trim() : "";
+    lines.push({ title, note, threadIds, related: rel, next: next && why ? next : null, why: next && why ? why : "" });
+    if (lines.length >= MAX_MONTHLY_LINES) break;
+  }
+  const texts = [summary, ...lines.flatMap((l) => [l.title, l.note, l.why].filter(Boolean))];
+  assertNoBanned(texts);
+  assertChinese(texts);
+  if (texts.some((t) => /跟你|你的|你做|你平时|你可以/.test(t))) throw new Error("月报里编了跟他的关系");
+  const bad = unsupportedIssueNumber(texts, material);
+  if (bad) throw new Error(`数字「${bad}」在周报里找不到`);
+  return { summary, lines };
+}
+
+export async function writeMonthlyDigest(weeks: MonthlyWeekInput[], related: { id: string; title: string }[]): Promise<MonthlyDigest> {
+  if (weeks.length < 2) throw new Error("这个月过完的周不到两周，连不起来");
+  const weekBlocks = weeks.map((w) =>
+    [`【${w.label}】`, w.summary ? `那一周的总览：${w.summary}` : "", ...w.threads.map((t) => `- (${t.id}) ${t.title}：${t.note}`)].filter(Boolean).join("\n")
+  );
+  const relatedBlock = related.length > 0 ? `【差距清单和想法】\n${related.map((r) => `- (${r.id}) ${r.title}`).join("\n")}` : "【差距清单和想法】（空）";
+  const contents = [...weekBlocks, relatedBlock].join("\n\n");
+  const weekOf = new Map(weeks.flatMap((w, i) => w.threads.map((t) => [t.id, i] as const)));
+  const relatedMap = new Map(related.map((r) => [r.id, r.title]));
+  return executeAiJson(
+    { operation: "brief_monthly", module: "unknown", outputMode: "json", timeoutMs: 45_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验：threadIds 必须照抄 w1.t1 这种编号，每条线至少来自两个不同的周；related 的 title 要照抄原文；next 只能是 issue/door/listen/gaps/judge；不许自己推因果；十以上的数字必须在周报里；用中文写。"
+          : ""),
+      config: {
+        systemInstruction: MONTHLY_PROMPT,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2500,
+      },
+    }),
+    (value) => parseMonthlyDigest(value, weekOf, relatedMap, contents)
+  );
+}
+
 // ── GitHub 仓库：用中文说一句它能干什么 ─────────────────────────────────────────
 
 export type RepoInput = { name: string; description: string | null; language: string | null; topics: string[] };

@@ -8,6 +8,7 @@ export const SIGNALS_NAV: { label: string; pages: { href: string; label: string 
     pages: [
       { href: "/signals", label: "今日报告" },
       { href: "/signals/week", label: "周报" },
+      { href: "/signals/month", label: "月报" },
       { href: "/signals/inbox", label: "全部新闻" },
     ],
   },
