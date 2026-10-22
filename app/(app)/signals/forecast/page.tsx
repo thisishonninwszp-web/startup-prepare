@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import {
   boardSections,
+  needsConfirm,
   calibrationBins,
   headToHead,
   KIND_LABELS,
@@ -277,7 +278,7 @@ export default async function ForecastPage() {
                         <p className="text-sm font-medium">{q.title}</p>
                         <p className="font-mono text-xs text-muted-foreground">
                           {KIND_LABELS[q.kind]} · {q.resolve_on} 截止{q.revealed_at && !has(q.id, "me") ? " · 你没判断、先看了答案" : ""}
-                          {q.kind === "business" && q.pending ? " · 到期了，等出题的人确认" : ""}
+                          {needsConfirm(q.kind) && q.pending ? " · 到期了，等出题的人确认" : ""}
                         </p>
                         <Answers q={q} forecasts={forecasts} calibration={calibration} />
                       </li>

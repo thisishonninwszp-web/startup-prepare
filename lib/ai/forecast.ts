@@ -106,6 +106,55 @@ export async function prepareHistoryQuestion(input: { question: string; descript
   );
 }
 
+// ── 到日本题：差距清单里的一条到某天会不会在日本出现 ───────────────────────────
+
+export type ArrivalDraft = { title: string; criteria: string; resolveOn: string; category: AtlasCategoryKey };
+
+/** 时差图谱的类别（和 atlas-shared 的 ATLAS_CATEGORIES 同一组键）。 */
+export const ARRIVAL_CATEGORIES = ["payment", "mobility", "commerce", "food", "content", "work", "hardware", "other"] as const;
+export type AtlasCategoryKey = (typeof ARRIVAL_CATEGORIES)[number];
+
+export const ARRIVAL_RULES = { minDays: 300, maxDays: 760 };
+
+const ARRIVAL_PROMPT = `下面是一条「那边（中国或美国）已经有、日本还没有」的东西：那边是怎么回事、日本这边现在怎样。
+出一道可以对账的预测题：到某一天，日本会不会出现这样东西。
+- title：一句「到 YYYY 年 M 月底，日本会不会……？」。说清是什么东西（具体到一类服务或产品，不要泛泛的「这个趋势」）。
+- criteria：怎么才算「会」，一到两句，具体到能上网核对：在日本有公司（日本公司，或者那边的公司在日本）正式对外提供这样东西 —— 以官网、新闻稿或报道为准；只是宣布计划、只在测试不算。
+- resolve_on：截止日 YYYY-MM-DD，在今天之后 ${ARRIVAL_RULES.minDays} 到 ${ARRIVAL_RULES.maxDays} 天之间，取月底。
+- category：它属于哪一类，只能从这几个里挑一个：payment（支付、金融）、mobility（出行）、commerce（零售、电商）、food（外卖、餐饮）、content（内容、社交）、work（工具、企业服务）、hardware（硬件、设备）、other（其他）。
+用简体中文；公司名、产品名可以保留原文。不要写概率、不要写你的看法。
+
+只输出 JSON：{"title":"…","criteria":"…","resolve_on":"YYYY-MM-DD","category":"…"}`;
+
+export function parseArrivalDraft(value: unknown, today: string): ArrivalDraft {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const title = typeof v.title === "string" ? v.title.trim() : "";
+  const criteria = typeof v.criteria === "string" ? v.criteria.trim() : "";
+  const resolveOn = typeof v.resolve_on === "string" ? v.resolve_on.trim() : "";
+  const cat = typeof v.category === "string" ? v.category.trim() : "";
+  if (!title || title.length > 120 || !criteria || criteria.length > 400) throw new Error("题目或标准缺了、太长");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(resolveOn)) throw new Error("截止日格式不对");
+  const days = Math.round((Date.parse(`${resolveOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  if (!(days >= ARRIVAL_RULES.minDays && days <= ARRIVAL_RULES.maxDays)) throw new Error("截止日不在范围里");
+  if (/\d{1,3}\s*%|百分之|你的|跟你/.test(`${title}${criteria}`)) throw new Error("写了概率或「你」");
+  assertChineseAllowingNames([title, criteria]);
+  assertNoBanned([title, criteria]);
+  return { title, criteria, resolveOn, category: (ARRIVAL_CATEGORIES as readonly string[]).includes(cat) ? (cat as AtlasCategoryKey) : "other" };
+}
+
+export async function planArrivalQuestion(gap: { headline: string; background: string; japan: string }, today: string): Promise<ArrivalDraft> {
+  const contents = `今天是 ${today}。\n\n那边：${gap.headline}\n${gap.background}\n\n日本这边现在：${gap.japan}`;
+  return executeAiJson(
+    { operation: "forecast_arrival_plan", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验：截止日要在范围里、取月底；category 只能是那八个英文词之一；不许写概率。" : ""),
+      config: { systemInstruction: ARRIVAL_PROMPT, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 700 },
+    }),
+    (value) => parseArrivalDraft(value, today)
+  );
+}
+
 // ── 从新闻出生意题 ─────────────────────────────────────────────────────────
 
 export type BusinessQuestionDraft = { signalId: string; headline: string; title: string; criteria: string; resolveOn: string; category: string };

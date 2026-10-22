@@ -24,7 +24,7 @@ jobs:
           call() {
             curl -sS --max-time 310 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/jobs/$1" || echo '{"done":true,"note":"没连上"}'
           }
-          for step in embed resolve markets business forecast; do
+          for step in embed indicators resolve markets business forecast; do
             for i in $(seq 1 15); do
               out=$(call "$step")
               echo "$step #$i $out"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseArrivalDraft,
   parseHistoryPreparation,
   parseArchiveAnswer,
   parseBusinessQuestions,
@@ -80,5 +81,17 @@ describe("历史回测：题目准备", () => {
   it("写进了结算的事不收", () => {
     expect(() => parseHistoryPreparation({ ...ok, criteria: "已经结算为会。" })).toThrow();
     expect(() => parseHistoryPreparation({ ...ok, search: "BOJ resolved yes" })).toThrow();
+  });
+});
+
+describe("到日本题", () => {
+  const ok = { title: "到 2027 年 10 月底，日本会不会出现按小时收费的上门做饭服务？", criteria: "以日本有公司正式对外提供、有官网或报道为准；只宣布计划不算。", resolve_on: "2027-10-31", category: "food" };
+  it("截止日要在 300 到 760 天之间；类别只认那八个", () => {
+    expect(parseArrivalDraft(ok, "2026-10-23")).toMatchObject({ resolveOn: "2027-10-31", category: "food" });
+    expect(parseArrivalDraft({ ...ok, category: "外卖" }, "2026-10-23").category).toBe("other");
+    expect(() => parseArrivalDraft({ ...ok, resolve_on: "2026-12-31" }, "2026-10-23")).toThrow();
+  });
+  it("不许写概率", () => {
+    expect(() => parseArrivalDraft({ ...ok, criteria: "有 60% 的可能。" }, "2026-10-23")).toThrow();
   });
 });

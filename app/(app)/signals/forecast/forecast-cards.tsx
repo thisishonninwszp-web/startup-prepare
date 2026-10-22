@@ -24,11 +24,12 @@ function QuestionHead({ q }: { q: ForecastQuestion }) {
         </span>
       </div>
       <p className="text-sm leading-7 text-muted-foreground">怎么才算「会」：{q.criteria}</p>
+      {q.kind === "arrival" && q.source.base && <p className="text-xs leading-6 text-muted-foreground">基准（时差图谱）：{q.source.base}</p>}
       {link && (
         <p className="text-xs">
           {link.startsWith("/") ? (
             <Link href={link} className="text-primary underline-offset-4 hover:underline">
-              出自这条新闻 →
+              {q.kind === "arrival" ? "差距清单里的这一条 →" : "出自这条新闻 →"}
             </Link>
           ) : (
             <a href={link} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">

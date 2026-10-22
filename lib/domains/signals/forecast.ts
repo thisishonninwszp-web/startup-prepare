@@ -1,11 +1,14 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { webSearch } from "@/lib/web-search";
-import { draftResolution, forecastFromPerspective, planBusinessQuestions, translateMarketQuestion, type Perspective } from "@/lib/ai";
+import { draftResolution, forecastFromPerspective, planArrivalQuestion, planBusinessQuestions, translateMarketQuestion, type Perspective } from "@/lib/ai";
+import { loadGapRechecks, openGapsWithSide } from "./gaps";
+import { ATLAS_CATEGORIES, baseSentence, categoryBase, countedCases, listTransferCases, type AtlasCategory } from "./atlas";
 import { REPORT_SECTION_KINDS } from "./feeds";
 import type { BriefItem } from "./brief";
 import { getMarket, searchMarkets } from "./markets";
 import { sharedViewFor, signalUserIds } from "./users";
 import {
+  needsConfirm,
   daysBetween,
   isJapanQuestion,
   medianProbability,
@@ -244,7 +247,9 @@ export async function resolveDue(userId: string, today: string, startBeforeMs = 
   const started = Date.now();
   const board = await loadForecastBoard(userId);
   if (board === "missing-schema") throw new Error(FORECAST_MISSING);
-  const due = board.questions.filter((q) => q.status === "open" && q.resolve_on <= today && !(q.kind === "business" && q.pending));
+  const due = board.questions.filter((q) => q.status === "open" && q.resolve_on <= today && !(needsConfirm(q.kind) && q.pending));
+  // 到日本题还没到期、但差距清单重查已经查到日本有了（带出处）：先给出「会」的建议，等他确认
+  await suggestEarlyArrivals(userId, board.questions, today);
   let did = 0;
   let tried = 0;
   for (const q of due) {
@@ -261,8 +266,9 @@ export async function resolveDue(userId: string, today: string, startBeforeMs = 
         resolution_url: q.source.url ?? null,
       });
       did += 1;
-    } else if (q.kind === "business") {
-      const sources = (await webSearch(`${q.source.headline ?? q.title} ${q.resolve_on.slice(0, 7)}`, 6).catch(() => [])).map((s) => ({
+    } else if (needsConfirm(q.kind)) {
+      const query = q.kind === "arrival" ? `${q.source.headline ?? q.title} 日本` : `${q.source.headline ?? q.title} ${q.resolve_on.slice(0, 7)}`;
+      const sources = (await webSearch(query, 6).catch(() => [])).map((s) => ({
         title: s.title,
         url: s.url,
         content: s.content,
@@ -319,6 +325,79 @@ export async function revealQuestion(userId: string, questionId: string): Promis
   if (!revealsMissing(error)) throw new Error(error.message);
   if (shared) throw new Error(MEMBERS_MISSING);
   if (!q.revealed_at) await resolveQuestion(pool, questionId, { revealed_at: new Date().toISOString() });
+}
+
+// ── 到日本题 ────────────────────────────────────────────────────────────────
+
+/** 今天有没有出过到日本题。 */
+async function arrivalToday(userId: string, today: string): Promise<boolean> {
+  const { count, error } = await supabaseAdmin
+    .from("forecast_questions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("kind", "arrival")
+    .gte("created_at", `${today}T00:00:00+09:00`);
+  if (error) throw new Error(missing(error) ? FORECAST_MISSING : error.message);
+  return (count ?? 0) > 0;
+}
+
+/**
+ * 从差距清单（日本这边还没有的）出一道到日本题，一天最多一道：他开过假门的先出（他在意的），再按进清单的先后（新的先）。
+ * 附上时差图谱里同一类东西的历史当基准率（AI「先看基准率」的思路和他都看得到）。迁移 096 没跑时这种题存不进去，返回 0。
+ */
+export async function createArrivalQuestions(userId: string, today: string): Promise<number> {
+  if (await arrivalToday(userId, today).catch(() => true)) return 0;
+  const rechecks = await loadGapRechecks(userId);
+  const [gaps, asked, doors, cases] = await Promise.all([
+    openGapsWithSide(userId, rechecks ?? []),
+    supabaseAdmin.from("forecast_questions").select("source").eq("user_id", userId).eq("kind", "arrival"),
+    supabaseAdmin.from("signal_fake_doors").select("signal_id").eq("user_id", userId),
+    listTransferCases(userId),
+  ]);
+  if (asked.error) throw new Error(asked.error.message);
+  const done = new Set(((asked.data ?? []) as { source: { signal_id?: string } }[]).map((r) => r.source.signal_id));
+  const withDoor = new Set(((doors.error ? [] : doors.data ?? []) as { signal_id: string | null }[]).map((d) => d.signal_id));
+  const gap = gaps
+    .filter((g) => g.side === "japan" && !done.has(g.signal_id))
+    .sort((a, b) => Number(withDoor.has(b.signal_id)) - Number(withDoor.has(a.signal_id)) || b.brief_date.localeCompare(a.brief_date))[0];
+  if (!gap) return 0;
+  const draft = await planArrivalQuestion({ headline: gap.headline, background: gap.background, japan: gap.japan }, today);
+  const category = draft.category as AtlasCategory;
+  const base = baseSentence(category, categoryBase(cases === "missing-schema" ? [] : countedCases(cases).filter((c) => c.category === category)));
+  const { error } = await supabaseAdmin.from("forecast_questions").insert({
+    user_id: userId,
+    kind: "arrival",
+    title: draft.title,
+    criteria: draft.criteria,
+    resolve_on: draft.resolveOn,
+    category: ATLAS_CATEGORIES[category],
+    source: { signal_id: gap.signal_id, headline: gap.headline, side: gap.side, atlas: category, base },
+    context: `那边：${gap.headline}\n${gap.background}\n日本这边（进清单时）：${gap.japan}\n基准（时差图谱）：${base}`.slice(0, 1500),
+  });
+  if (error) {
+    // 迁移 096 没跑：题目类型的约束还不认 arrival
+    if (/forecast_questions_kind_check|violates check constraint/.test(error.message)) return 0;
+    throw new Error(error.message);
+  }
+  return 1;
+}
+
+/** 还没到期的到日本题：差距清单重查查到日本这边有了（带出处），就先存成「建议：会」，等出题的人确认。 */
+async function suggestEarlyArrivals(userId: string, questions: ForecastQuestion[], today: string): Promise<void> {
+  const open = questions.filter((q) => q.kind === "arrival" && q.status === "open" && !q.pending && q.resolve_on > today && q.source.signal_id);
+  if (open.length === 0) return;
+  const rechecks = (await loadGapRechecks(userId)) ?? [];
+  for (const q of open) {
+    const hit = rechecks.find((r) => r.signal_id === q.source.signal_id && r.side === (q.source.side ?? "japan") && r.verdict === "arrived" && r.checked_on >= q.created_at.slice(0, 10));
+    if (!hit) continue;
+    const pending: PendingResolution = {
+      suggested: "yes",
+      note: `差距清单重查（${hit.checked_on}）：日本这边有了 —— ${hit.japan}`.slice(0, 200),
+      evidence: (hit.source_check?.basis ?? []).slice(0, 3),
+      checked_on: today,
+    };
+    await resolveQuestion(userId, q.id, { pending });
+  }
 }
 
 /** 生意题对账：出题的主账号按证据点会 / 不会 / 作废（作废的不算分），对所有人生效。 */

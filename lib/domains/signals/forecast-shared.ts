@@ -6,10 +6,15 @@
  * 只用于 AI、他、市场对世界事件的预测；分数全部由代码算、能看到是哪几道题；样本不够只显示件数；对想法/机会仍然不打分。
  */
 
-export type ForecastKind = "market" | "data" | "business";
+export type ForecastKind = "market" | "data" | "business" | "arrival";
 export type ForecastSource = "ai_outside" | "ai_inside" | "ai_devil" | "ai" | "me" | "market";
 
-export const KIND_LABELS: Record<ForecastKind, string> = { market: "市场题", data: "数据题", business: "生意题" };
+export const KIND_LABELS: Record<ForecastKind, string> = { market: "市场题", data: "数据题", business: "生意题", arrival: "到日本题" };
+
+/** 到期要程序查证据、出题的人确认的几种题（生意题、到日本题）。 */
+export function needsConfirm(kind: ForecastKind): boolean {
+  return kind === "business" || kind === "arrival";
+}
 export const SOURCE_LABELS: Record<ForecastSource, string> = {
   ai_outside: "AI · 先看基准率",
   ai_inside: "AI · 只看这件事",
@@ -32,7 +37,8 @@ export type ForecastQuestion = {
   criteria: string;
   resolve_on: string;
   category: string | null;
-  source: Partial<MarketRef> & { signal_id?: string; headline?: string };
+  /** 到日本题还带着：哪个方向的差距、时差图谱的类别和那一类的历史（base，一句话）。 */
+  source: Partial<MarketRef> & { signal_id?: string; headline?: string; side?: string; atlas?: string; base?: string };
   context: string | null;
   status: "open" | "resolved" | "void";
   outcome: boolean | null;
@@ -288,8 +294,8 @@ export function boardSections(
   const { questions, forecasts } = board;
   const mine = new Set(forecasts.filter((f) => f.source === "me").map((f) => f.question_id));
   const toForecast = questions.filter((q) => q.status === "open" && !q.revealed_at && !mine.has(q.id) && daysBetween(today, q.resolve_on) > 0);
-  const toConfirm = board.canConfirm ? questions.filter((q) => q.status === "open" && q.kind === "business" && q.pending) : [];
-  const open = questions.filter((q) => q.status === "open" && (q.revealed_at || mine.has(q.id)) && !(board.canConfirm && q.kind === "business" && q.pending));
+  const toConfirm = board.canConfirm ? questions.filter((q) => q.status === "open" && needsConfirm(q.kind) && q.pending) : [];
+  const open = questions.filter((q) => q.status === "open" && (q.revealed_at || mine.has(q.id)) && !(board.canConfirm && needsConfirm(q.kind) && q.pending));
   const done = questions.filter((q) => q.status !== "open").sort((a, b) => (b.resolved_at ?? "").localeCompare(a.resolved_at ?? ""));
   const justResolved = done.filter(
     (q) => q.resolved_at && daysBetween(q.resolved_at.slice(0, 10), today) <= recentDays && (mine.has(q.id) || q.revealed_at)

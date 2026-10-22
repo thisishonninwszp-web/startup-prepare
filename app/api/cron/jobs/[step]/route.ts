@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { embedBacklog } from "@/lib/domains/signals/memory";
-import { activeSignalUsers, createBusinessQuestions, forecastPending, importMarkets, resolveDue } from "@/lib/domains/signals/forecast";
+import { activeSignalUsers, createArrivalQuestions, createBusinessQuestions, forecastPending, importMarkets, resolveDue } from "@/lib/domains/signals/forecast";
+import { refreshAppWatch } from "@/lib/domains/signals/app-watch";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
 import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
 
@@ -43,11 +44,22 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     for (const u of users) did += await importMarkets(u, today, 2);
     return { done: true, did };
   },
-  // 从今天的报告出生意题（一天一次）
+  // 从今天的报告出生意题、从差距清单出到日本题（各一天一次）
   business: async (users, today) => {
     let did = 0;
-    for (const u of users) did += await createBusinessQuestions(u, today);
+    for (const u of users) {
+      did += await createBusinessQuestions(u, today);
+      did += await createArrivalQuestions(u, today).catch((e) => {
+        console.error("arrival question", e);
+        return 0;
+      });
+    }
     return { done: true, did };
+  },
+  // 领先指标：上过中国 App 榜的 App 在日本上架了没有、加了日语没有（全站共用，不调 AI）
+  indicators: async (_users, today) => {
+    const r = await refreshAppWatch(today);
+    return { done: true, did: r.events, note: `查了 ${r.checked} 个` };
   },
   // AI 三种思路押还没押的题：按时间预算做（一道二三十秒，过了 200 秒就不开始下一道）
   forecast: async (users, today) => {
@@ -65,7 +77,7 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
 };
 
 /** 这几步跟账号无关，不用先查给谁跑。 */
-const SHARED_STEPS = new Set(["embed", "history"]);
+const SHARED_STEPS = new Set(["embed", "history", "indicators"]);
 
 export async function GET(request: Request, { params }: { params: { step: string } }) {
   const secret = process.env.CRON_SECRET;
