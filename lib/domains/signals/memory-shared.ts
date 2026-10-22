@@ -1,4 +1,4 @@
-import { signalKindOf, type SignalKind } from "./feeds";
+import { isGithubSource, signalKindOf, type SignalKind } from "./feeds";
 
 /**
  * 记忆层（浏览器端也要用的部分，不碰数据库、不碰网络）：
@@ -137,19 +137,21 @@ export type StoryUpdate = { followed: Followed; updates: ArchiveHit[] };
 
 /**
  * 「你在跟的事，有新消息」：按他在跟的那一条分组。同一条新消息像好几件事时只放在最像的那件下面；
- * 新消息本身也是他在跟的就不再列（他已经知道了）。有最新消息的那件事在前，每件事里新的在前。
+ * 新消息本身也是他在跟的就不再列（他已经知道了）；GitHub 新仓库不算新消息（同一个模板写的，彼此看着像）。
+ * 每件最多 perStory 条（最像的几条），有最新消息的那件事在前，每件事里新的在前。
  */
-export function groupStoryUpdates(rows: StoryRow[], followed: Followed[]): StoryUpdate[] {
+export function groupStoryUpdates(rows: StoryRow[], followed: Followed[], perStory = 3): StoryUpdate[] {
   const followedIds = new Set(followed.map((f) => f.signal_id));
   const best = new Map<string, StoryRow>();
   for (const r of rows) {
-    if (followedIds.has(r.id)) continue;
+    if (followedIds.has(r.id) || isGithubSource(r.source)) continue;
     const prev = best.get(r.id);
     if (!prev || r.similarity > prev.similarity) best.set(r.id, r);
   }
   const groups = new Map<string, ArchiveHit[]>();
-  for (const r of Array.from(best.values())) {
+  for (const r of Array.from(best.values()).sort((a, b) => b.similarity - a.similarity)) {
     const list = groups.get(r.followed_id) ?? [];
+    if (list.length >= perStory) continue;
     list.push({ id: r.id, source: r.source, url: r.url, title: r.title ? cleanSnippet(r.title) : r.title, snippet: "", fetched_at: r.fetched_at, similarity: r.similarity });
     groups.set(r.followed_id, list);
   }

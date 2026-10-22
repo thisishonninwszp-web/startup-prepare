@@ -97,6 +97,8 @@ export default async function SignalDetailPage({
   // 「记成观察 / 只是知道了」每人一份：主账号看这条的状态，朋友的账号看他自己处理过没有
   const view = await sharedViewFor(user.id);
   const actionable = view.shared ? (await userSignalState(user.id, params.id)) === "pending" : detail !== null && detail !== "missing-schema" && detail.status === "pending";
+  // 校准「同一件事」的门槛用（临时）：?debug=story 时在页面里放一份没过门槛的近邻和相似度，页面上看不见
+  const storyDebug = searchParams.debug === "story" ? await storyAround(params.id, 12, 0).catch(() => null) : null;
   const bets = Object.fromEntries(
     nodeBets.map((b) => [b.question.slice(NODE_BET_PREFIX.length), formatDueDate(b.due_at)])
   );
@@ -216,6 +218,17 @@ export default async function SignalDetailPage({
             <section className="mt-10 border-t pt-6">
               <h2 className="mb-3 text-base font-semibold">这件事以前、后来</h2>
               <StoryAround story={story} />
+              {storyDebug && (
+                <script
+                  type="application/json"
+                  id="story-debug"
+                  dangerouslySetInnerHTML={{
+                    __html: JSON.stringify(
+                      [...storyDebug.before, ...storyDebug.after].map((h) => ({ t: h.title, s: h.source, sim: h.similarity }))
+                    ).replace(/</g, "\\u003c"),
+                  }}
+                />
+              )}
             </section>
           )}
 

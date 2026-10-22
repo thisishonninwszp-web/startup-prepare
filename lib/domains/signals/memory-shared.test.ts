@@ -84,6 +84,13 @@ describe("在跟的事", () => {
     ]);
   });
 
+  it("GitHub 新仓库不算新消息；每件最多留最像的几条", () => {
+    const followed = [{ ...f("x", "mark", "2026-10-01"), title: "x", source: "github:new", fetched_at: "2026-10-01" }];
+    const row = (id: string, source: string, similarity: number) => ({ followed_id: "x", id, source, url: null, title: id, fetched_at: "2026-10-21", similarity });
+    const groups = groupStoryUpdates([row("repo", "github:new", 0.95), row("a", "news:a", 0.9), row("b", "news:b", 0.8), row("c", "news:c", 0.75)], followed, 2);
+    expect(groups[0].updates.map((u) => u.id).sort()).toEqual(["a", "b"]);
+  });
+
   it("理由写成一句话", () => {
     expect(followReasonText({ reason: "mark", mark: "doubt" })).toBe("你标了「存疑」");
     expect(followReasonText({ reason: "judgment", mark: null })).toBe("你写过判断");

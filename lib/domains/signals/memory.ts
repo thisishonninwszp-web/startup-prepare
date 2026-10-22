@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { executeEmbedding } from "@/lib/ai-gateway";
 import { answerFromArchive, type ArchiveStatement } from "@/lib/ai";
+import { isGithubSource } from "./feeds";
 import {
   cleanSnippet,
   embedText,
@@ -118,8 +119,11 @@ export async function searchArchive(query: string, limit = 30): Promise<ArchiveH
   return mergeHits(kw, semantic, limit);
 }
 
-/** 这一条的以前和后来：意思够近（同一件事）的，以前的按时间倒着、后来的按时间顺着。 */
-export async function storyAround(signalId: string, n = 6): Promise<{ before: ArchiveHit[]; after: ArchiveHit[] } | null> {
+/**
+ * 这一条的以前和后来：意思够近（同一件事）的，以前的按时间倒着、后来的按时间顺着。
+ * GitHub 新仓库不算（每条都是同一个模板写的，彼此看着像，其实不是一件事）。minSimilarity 调低只在校准时用。
+ */
+export async function storyAround(signalId: string, n = 6, minSimilarity = SAME_STORY): Promise<{ before: ArchiveHit[]; after: ArchiveHit[] } | null> {
   const { data, error } = await supabaseAdmin.from("external_signals").select("embedding, fetched_at").eq("id", signalId).maybeSingle();
   if (error) {
     if (missing(error)) return null;
@@ -128,8 +132,8 @@ export async function storyAround(signalId: string, n = 6): Promise<{ before: Ar
   const vector = parseVector(data?.embedding);
   if (!data || !vector) return null;
   const at = data.fetched_at as string;
-  const [before, after] = await Promise.all([match(vector, n * 2, { before: at }), match(vector, n * 2, { after: at })]);
-  const same = (h: ArchiveHit) => h.id !== signalId && (h.similarity ?? 0) >= SAME_STORY;
+  const [before, after] = await Promise.all([match(vector, n * 3, { before: at }), match(vector, n * 3, { after: at })]);
+  const same = (h: ArchiveHit) => h.id !== signalId && (h.similarity ?? 0) >= minSimilarity && !isGithubSource(h.source);
   return {
     before: before.filter(same).slice(0, n).sort((a, b) => b.fetched_at.localeCompare(a.fetched_at)),
     after: after.filter(same).slice(0, n).sort((a, b) => a.fetched_at.localeCompare(b.fetched_at)),
@@ -309,13 +313,14 @@ export async function storyUpdates(followed: Followed[], since: string, perStory
     followed: followed.map((f) => f.signal_id),
     since,
     min_similarity: SAME_STORY,
-    per_story: perStory,
+    // 多要几条：GitHub 新仓库在下面筛掉，筛完每件再留 perStory 条
+    per_story: perStory * 4,
   });
   if (error) {
     if (/story_updates|does not exist|schema cache|Could not find the function/.test(error.message)) return null;
     throw new Error(error.message);
   }
-  return groupStoryUpdates(((data ?? []) as StoryRow[]).map((r) => ({ ...r, similarity: Number(r.similarity) })), followed);
+  return groupStoryUpdates(((data ?? []) as StoryRow[]).map((r) => ({ ...r, similarity: Number(r.similarity) })), followed, perStory);
 }
 
 // ── 机会并进时间线 ──────────────────────────────────────────────────────────
