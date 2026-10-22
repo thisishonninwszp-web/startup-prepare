@@ -60,7 +60,6 @@ export function DrillCard({ q }: { q: DrillQuestion }) {
       </p>
       <p className="mt-2 text-base font-medium leading-7">{q.title}</p>
       <p className="mt-1 text-sm leading-7 text-muted-foreground">怎么才算「会」：{q.criteria}</p>
-      <p className="text-xs text-muted-foreground">{q.resolve_on} 截止</p>
 
       {q.news.length > 0 && (
         <details className="mt-3 text-sm">
@@ -113,6 +112,7 @@ function Reveal({ r, onNext }: { r: DrillReveal; onNext: () => void }) {
   return (
     <div className="mt-4 border-t border-border pt-4 text-sm leading-7">
       <p className="text-base font-semibold">{r.outcome ? "结果：发生了" : "结果：没发生"}</p>
+      <p className="text-xs text-muted-foreground">市场在 {r.resolvedOn} 结算</p>
       <p className="font-mono text-xs text-muted-foreground">
         {r.knew ? "你记得结果，这道不计分" : `你 ${r.you !== null ? pct(r.you) : "—"}${r.baseRate !== null ? `（基准率写的 ${pct(r.baseRate)}）` : ""}`}
         {r.market !== null ? ` · 那天市场 ${pct(r.market)}` : ""}

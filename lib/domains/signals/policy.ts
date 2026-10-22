@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { selectAll } from "@/lib/supabase-all";
 import {
   deadlineToPromulgate,
   isRelevantPolicy,
@@ -98,9 +99,9 @@ type LawRevision = { amendment_law_title?: string; amendment_promulgate_date?: s
 async function refreshLawLags(today: string, budgetMs: number): Promise<number> {
   const started = Date.now();
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const { data, error } = await supabaseAdmin.from("policy_law_lags").select("law_title, fetched_on").gte("fetched_on", since).limit(5000);
+  const { data, error } = await selectAll<{ law_title: string }>((a, b) => supabaseAdmin.from("policy_law_lags").select("law_title").gte("fetched_on", since).order("law_id").range(a, b));
   if (error) throw new Error(missing(error) ? POLICY_MISSING : error.message);
-  const fresh = new Set(((data ?? []) as { law_title: string }[]).map((r) => r.law_title.split("（")[0]));
+  const fresh = new Set(data.map((r) => r.law_title.split("（")[0]));
   let added = 0;
   for (const name of WATCHED_LAWS) {
     if (Date.now() - started > budgetMs) break;
@@ -144,12 +145,14 @@ export async function refreshPolicy(today: string, budgetMs = 60_000): Promise<{
 
 /** 「截止 → 公布」的历史（天）：所有有结果、两头都有日子的。迁移没跑返回 null。 */
 export async function policyHistory(): Promise<number[] | null> {
-  const { data, error } = await supabaseAdmin.from("policy_items").select("deadline, promulgate_date").not("promulgate_date", "is", null).limit(10000);
+  const { data, error } = await selectAll<Pick<PolicyItem, "deadline" | "promulgate_date">>((a, b) =>
+    supabaseAdmin.from("policy_items").select("deadline, promulgate_date").not("promulgate_date", "is", null).order("id").range(a, b)
+  );
   if (error) {
     if (missing(error)) return null;
     throw new Error(error.message);
   }
-  return deadlineToPromulgate((data ?? []) as Pick<PolicyItem, "deadline" | "promulgate_date">[]);
+  return deadlineToPromulgate(data);
 }
 
 /** 正在征求意见（还没截止或截止不到一个月、还没结果）、跟他有关的。 */
@@ -187,8 +190,10 @@ export async function policySummary(today: string): Promise<PolicySummary | null
       .not("result_date", "is", null)
       .order("result_date", { ascending: false })
       .limit(20),
-    supabaseAdmin.from("policy_items").select("deadline, promulgate_date", { count: "exact" }).limit(10000),
-    supabaseAdmin.from("policy_law_lags").select("law_title, law_type, promulgate_date, enforce_date").limit(20000),
+    selectAll<Pick<PolicyItem, "deadline" | "promulgate_date">>((a, b) => supabaseAdmin.from("policy_items").select("deadline, promulgate_date").order("id").range(a, b)),
+    selectAll<{ law_title: string; promulgate_date: string; enforce_date: string }>((a, b) =>
+      supabaseAdmin.from("policy_law_lags").select("law_title, promulgate_date, enforce_date").order("law_id").order("promulgate_date").order("enforce_date").order("amendment_title").range(a, b)
+    ),
   ]);
   if (open === null) return null;
   const error = recent.error ?? all.error ?? lags.error;
@@ -196,18 +201,18 @@ export async function policySummary(today: string): Promise<PolicySummary | null
     if (missing(error)) return null;
     throw new Error(error.message);
   }
-  const lagRows = (lags.data ?? []) as { law_title: string; promulgate_date: string; enforce_date: string }[];
+  const lagRows = lags.data;
   const byLaw = new Map<string, number[]>();
   for (const r of lagRows) byLaw.set(r.law_title, [...(byLaw.get(r.law_title) ?? []), daysBetween(r.promulgate_date, r.enforce_date)]);
   return {
     open,
     recent: (recent.data ?? []) as PolicyItem[],
-    deadlineToPromulgate: lagSummary(deadlineToPromulgate((all.data ?? []) as Pick<PolicyItem, "deadline" | "promulgate_date">[])),
+    deadlineToPromulgate: lagSummary(deadlineToPromulgate(all.data)),
     laws: Array.from(byLaw.entries())
       .map(([title, days]) => ({ title, summary: lagSummary(days) }))
       .sort((a, b) => b.summary.n - a.summary.n),
     allLaws: lagSummary(lagRows.map((r) => daysBetween(r.promulgate_date, r.enforce_date))),
-    tracked: all.count ?? 0,
+    tracked: all.data.length,
   };
 }
 

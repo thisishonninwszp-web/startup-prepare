@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { selectAll } from "@/lib/supabase-all";
 import { forecastFromPerspective, prepareHistoryQuestion, type Perspective } from "@/lib/ai";
 import { medianProbability } from "./forecast-shared";
 import { gdeltNews } from "./gdelt";
@@ -146,14 +147,15 @@ async function prepareOne(row: PendingRow): Promise<boolean> {
   const { p, description } = await marketAsOf(row);
   if (p === null) return skip(row.id, "那天以前还没有成交").then(() => false);
   if (p < HISTORY_MIN_P || p > HISTORY_MAX_P) return skip(row.id, "那天市场几乎已经定了").then(() => false);
-  const prepared = await prepareHistoryQuestion({ question: row.original_title, description, asOf: row.as_of, resolveOn: row.resolve_on }).catch(() => null);
+  const prepared = await prepareHistoryQuestion({ question: row.original_title, description, asOf: row.as_of }).catch(() => null);
   if (!prepared) return skip(row.id, "题目没译成").then(() => false);
   const query = cleanSearchQuery(prepared.search);
   const news: HistoryNews[] = query ? await gdeltNews(query, row.as_of) : [];
   const input = {
     title: prepared.title,
     criteria: prepared.criteria,
-    resolveOn: row.resolve_on,
+    // 不给实际结算日（提前结算的题，结算日就透露了答案）：截止只按题目里写的
+    resolveOn: "以题目里写的为准",
     today: row.as_of,
     context: "",
     sources: news.map((n) => ({ title: n.title, url: n.url, content: `${n.date} ${n.domain}：${n.title}` })),
@@ -172,12 +174,30 @@ async function prepareOne(row: PendingRow): Promise<boolean> {
       category: prepared.category,
       market_prob: p,
       news,
-      ai: { ...Object.fromEntries(ok.map((o) => [o.key, { p: o.p, reason: o.reason }])), median },
+      ai: { ...Object.fromEntries(ok.map((o) => [o.key, { p: o.p, reason: o.reason }])), median, v: PREPARE_VERSION },
       prepared_at: new Date().toISOString(),
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
   return true;
+}
+
+/**
+ * 准备的版本：2026-10-23 以前准备的题，译题和 AI 都看到了实际结算日（提前结算的题会透露答案），作废重做。
+ * 没带这个版本号的 ready 题改回 pending，他在这些题上的练习一并删掉（题目会重新译，旧答案对不上了）。
+ */
+const PREPARE_VERSION = 2;
+
+async function redoOldPreparations(): Promise<number> {
+  const { data, error } = await supabaseAdmin.from("forecast_history").select("id").eq("status", "ready").is("ai->>v", null).limit(1000);
+  if (error) throw new Error(missing(error) ? HISTORY_MISSING : error.message);
+  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  if (ids.length === 0) return 0;
+  const { error: answersError } = await supabaseAdmin.from("forecast_history_answers").delete().in("question_id", ids);
+  if (answersError) throw new Error(answersError.message);
+  const { error: resetError } = await supabaseAdmin.from("forecast_history").update({ status: "pending", ai: null, news: null, title: null, criteria: null, prepared_at: null }).in("id", ids);
+  if (resetError) throw new Error(resetError.message);
+  return ids.length;
 }
 
 async function countStatus(status: "ready" | "pending"): Promise<number> {
@@ -191,6 +211,7 @@ async function countStatus(status: "ready" | "pending"): Promise<number> {
  */
 export async function runHistoryStep(today: string, startBeforeMs: number): Promise<{ done: boolean; did: number; remaining: number; note?: string }> {
   const started = Date.now();
+  await redoOldPreparations();
   const ready = await countStatus("ready");
   if (ready >= HISTORY_TARGET) return { done: true, did: 0, remaining: 0, note: `题库满了（${ready} 道）` };
   const pendingRows = async () => {
@@ -226,13 +247,13 @@ export async function runHistoryStep(today: string, startBeforeMs: number): Prom
 
 export type AiView = { median: number; outside?: { p: number; reason: string }; inside?: { p: number; reason: string }; devil?: { p: number; reason: string } };
 
+/** 练习时给他看的：不带实际结算日（提前结算的题，结算日就透露了答案）。 */
 export type DrillQuestion = {
   id: string;
   title: string;
   criteria: string;
   category: string | null;
   as_of: string;
-  resolve_on: string;
   news: HistoryNews[];
 };
 
@@ -247,6 +268,8 @@ export type DrillReveal = {
   knew: boolean;
   url: string | null;
   originalTitle: string;
+  /** 市场实际结算的那天（揭晓以后才给）。 */
+  resolvedOn: string;
 };
 
 /** 同一个人每次的顺序固定、不同的人不一样（不用随机数，刷新也不变）。 */
@@ -259,20 +282,20 @@ function order(id: string, userId: string): number {
 /** 下一道没做过的：跟日本、中国、经济有关的先出，同一档里每人顺序不同。迁移没跑返回 "missing-schema"，没题了返回 null。 */
 export async function nextDrillQuestion(userId: string): Promise<DrillQuestion | null | "missing-schema"> {
   const [ready, done] = await Promise.all([
-    supabaseAdmin.from("forecast_history").select("id, priority").eq("status", "ready").limit(5000),
-    supabaseAdmin.from("forecast_history_answers").select("question_id").eq("user_id", userId).limit(5000),
+    selectAll<{ id: string; priority: number }>((a, b) => supabaseAdmin.from("forecast_history").select("id, priority").eq("status", "ready").order("id").range(a, b)),
+    selectAll<{ question_id: string }>((a, b) => supabaseAdmin.from("forecast_history_answers").select("question_id").eq("user_id", userId).order("question_id").range(a, b)),
   ]);
   const error = ready.error ?? done.error;
   if (error) {
     if (missing(error)) return "missing-schema";
     throw new Error(error.message);
   }
-  const answered = new Set(((done.data ?? []) as { question_id: string }[]).map((r) => r.question_id));
-  const next = ((ready.data ?? []) as { id: string; priority: number }[])
+  const answered = new Set(done.data.map((r) => r.question_id));
+  const next = ready.data
     .filter((r) => !answered.has(r.id))
     .sort((a, b) => b.priority - a.priority || order(a.id, userId) - order(b.id, userId))[0];
   if (!next) return null;
-  const { data, error: rowError } = await supabaseAdmin.from("forecast_history").select("id, title, criteria, category, as_of, resolve_on, news").eq("id", next.id).single();
+  const { data, error: rowError } = await supabaseAdmin.from("forecast_history").select("id, title, criteria, category, as_of, news").eq("id", next.id).single();
   if (rowError) throw new Error(rowError.message);
   return { ...(data as Omit<DrillQuestion, "news">), news: ((data as { news: HistoryNews[] | null }).news ?? []) as HistoryNews[] };
 }
@@ -299,7 +322,7 @@ export async function answerDrill(
   );
   if (error) throw new Error(missing(error) ? HISTORY_MISSING : error.message);
   const [{ data: row, error: rowError }, { data: mine }] = await Promise.all([
-    supabaseAdmin.from("forecast_history").select("outcome, market_prob, ai, url, original_title").eq("id", questionId).single(),
+    supabaseAdmin.from("forecast_history").select("outcome, market_prob, ai, url, original_title, resolve_on").eq("id", questionId).single(),
     supabaseAdmin.from("forecast_history_answers").select("base_rate, probability, knew").eq("question_id", questionId).eq("user_id", userId).single(),
   ]);
   if (rowError) throw new Error(rowError.message);
@@ -315,6 +338,7 @@ export async function answerDrill(
     knew: Boolean(mine?.knew),
     url: (row.url as string | null) ?? null,
     originalTitle: row.original_title as string,
+    resolvedOn: row.resolve_on as string,
   };
 }
 
@@ -323,11 +347,14 @@ export type DrillProgress = { today: number; ready: number; left: number; stats:
 /** 他练了多少（今天几道、题库里还剩几道没做）、成绩。 */
 export async function drillProgress(userId: string, today: string): Promise<DrillProgress | "missing-schema"> {
   const [answers, ready] = await Promise.all([
-    supabaseAdmin
-      .from("forecast_history_answers")
-      .select("base_rate, probability, knew, answered_at, forecast_history!inner(outcome, market_prob, ai)")
-      .eq("user_id", userId)
-      .limit(5000),
+    selectAll((a, b) =>
+      supabaseAdmin
+        .from("forecast_history_answers")
+        .select("base_rate, probability, knew, answered_at, forecast_history!inner(outcome, market_prob, ai)")
+        .eq("user_id", userId)
+        .order("answered_at")
+        .range(a, b)
+    ),
     supabaseAdmin.from("forecast_history").select("id", { count: "exact", head: true }).eq("status", "ready"),
   ]);
   const error = answers.error ?? ready.error;
@@ -336,7 +363,7 @@ export async function drillProgress(userId: string, today: string): Promise<Dril
     throw new Error(error.message);
   }
   type Row = { base_rate: number | null; probability: number | null; knew: boolean; answered_at: string; forecast_history: { outcome: boolean; market_prob: number | null; ai: AiView | null } };
-  const rows = (answers.data ?? []) as unknown as Row[];
+  const rows = answers.data as unknown as Row[];
   const startOfToday = Date.parse(`${today}T00:00:00+09:00`);
   return {
     today: rows.filter((r) => Date.parse(r.answered_at) >= startOfToday).length,
@@ -362,7 +389,7 @@ let cached: { at: number; report: BacktestReport } | null = null;
 /** AI 在历史题上的回测（十分钟内用同一份）。迁移没跑返回 null。 */
 export async function historyBacktest(): Promise<BacktestReport | null> {
   if (cached && Date.now() - cached.at < 10 * 60_000) return cached.report;
-  const { data, error } = await supabaseAdmin.from("forecast_history").select("id, ai, market_prob, outcome").eq("status", "ready").order("id").limit(5000);
+  const { data, error } = await selectAll((a, b) => supabaseAdmin.from("forecast_history").select("id, ai, market_prob, outcome").eq("status", "ready").order("id").range(a, b));
   if (error) {
     if (missing(error)) return null;
     throw new Error(error.message);

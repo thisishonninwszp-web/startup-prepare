@@ -168,10 +168,15 @@ export async function createBusinessQuestions(userId: string, today: string): Pr
   if (error) throw new Error(error.message);
   const latest = data?.[0]?.brief_date as string | undefined;
   if (!latest) return 0;
+  // 同一条新闻出过题的不再用（报告还没出来时会拿到前一天那份，不然会对同一条新闻再出一遍差不多的题）
+  const { data: asked, error: askedError } = await supabaseAdmin.from("forecast_questions").select("source").eq("user_id", userId).eq("kind", "business").limit(1000);
+  if (askedError) throw new Error(askedError.message);
+  const used = new Set(((asked ?? []) as { source: { signal_id?: string } }[]).map((r) => r.source.signal_id));
   const items = (data ?? [])
     .filter((r) => r.brief_date === latest)
-    .flatMap((r) => (Array.isArray(r.items) ? (r.items as BriefItem[]) : []).filter((i) => !i.extra && i.signal_id && i.headline))
+    .flatMap((r) => (Array.isArray(r.items) ? (r.items as BriefItem[]) : []).filter((i) => !i.extra && i.signal_id && i.headline && !used.has(i.signal_id)))
     .slice(0, 15);
+  if (items.length === 0) return 0;
   const drafts = await planBusinessQuestions(
     items.map((i) => ({ id: i.signal_id, headline: i.headline, background: i.background ?? "" })),
     today

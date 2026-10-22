@@ -93,8 +93,9 @@ export function parseHistoryPreparation(value: unknown): HistoryPreparation {
   return { ...t, search };
 }
 
-export async function prepareHistoryQuestion(input: { question: string; description: string; asOf: string; resolveOn: string }): Promise<HistoryPreparation> {
-  const contents = `题目：${input.question}\n到期：${input.resolveOn}\n说明：${input.description.slice(0, 1200) || "（没写）"}`;
+/** 不给它实际结算的日子：提前结算的题（比如「2027 年底前」的事 2025 年就发生了）结算日本身就透露了答案。截止只按题目里写的。 */
+export async function prepareHistoryQuestion(input: { question: string; description: string; asOf: string }): Promise<HistoryPreparation> {
+  const contents = `题目：${input.question}\n说明：${input.description.slice(0, 1200) || "（没写）"}`;
   return executeAiJson(
     { operation: "forecast_history_prepare", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
     () => ({
