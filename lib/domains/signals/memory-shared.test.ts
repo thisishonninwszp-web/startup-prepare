@@ -71,11 +71,14 @@ describe("在跟的事", () => {
     ]);
   });
 
+  // 标题都带同一个专有名词 PHP，相似度 0.84 以上就算同一件事（规则见 same-story.ts）
+  const php = (id: string) => `PHP の脆弱性 ${id}`;
+
   it("新消息只放在最像的那件事下面；他自己在跟的不再列；有最新消息的在前", () => {
-    const followed = ["x", "y", "z"].map((id) => ({ ...f(id, "mark", "2026-10-01"), title: id, source: "news:a", fetched_at: "2026-10-01" }));
-    const row = (followed_id: string, id: string, fetched_at: string, similarity: number) => ({ followed_id, id, source: "news:a", url: null, title: id, fetched_at, similarity });
+    const followed = ["x", "y", "z"].map((id) => ({ ...f(id, "mark", "2026-10-01"), title: php(id), source: "news:a", fetched_at: "2026-10-01" }));
+    const row = (followed_id: string, id: string, fetched_at: string, similarity: number) => ({ followed_id, id, source: "news:a", url: null, title: php(id), fetched_at, similarity });
     const groups = groupStoryUpdates(
-      [row("x", "n1", "2026-10-20", 0.8), row("y", "n1", "2026-10-20", 0.9), row("x", "n2", "2026-10-21", 0.75), row("x", "z", "2026-10-22", 0.95)],
+      [row("x", "n1", "2026-10-20", 0.86), row("y", "n1", "2026-10-20", 0.9), row("x", "n2", "2026-10-21", 0.85), row("x", "z", "2026-10-22", 0.95)],
       followed
     );
     expect(groups.map((g) => [g.followed.signal_id, g.updates.map((u) => u.id)])).toEqual([
@@ -85,10 +88,19 @@ describe("在跟的事", () => {
   });
 
   it("GitHub 新仓库不算新消息；每件最多留最像的几条", () => {
-    const followed = [{ ...f("x", "mark", "2026-10-01"), title: "x", source: "github:new", fetched_at: "2026-10-01" }];
-    const row = (id: string, source: string, similarity: number) => ({ followed_id: "x", id, source, url: null, title: id, fetched_at: "2026-10-21", similarity });
-    const groups = groupStoryUpdates([row("repo", "github:new", 0.95), row("a", "news:a", 0.9), row("b", "news:b", 0.8), row("c", "news:c", 0.75)], followed, 2);
+    const followed = [{ ...f("x", "mark", "2026-10-01"), title: php("x"), source: "github:new", fetched_at: "2026-10-01" }];
+    const row = (id: string, source: string, similarity: number) => ({ followed_id: "x", id, source, url: null, title: php(id), fetched_at: "2026-10-21", similarity });
+    const groups = groupStoryUpdates([row("repo", "github:new", 0.97), row("a", "news:a", 0.95), row("b", "news:b", 0.9), row("c", "news:c", 0.86)], followed, 2);
     expect(groups[0].updates.map((u) => u.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("相似度够、标题却没有共同的凭据词的不算（同一个作者的不同文章）", () => {
+    const followed = [{ ...f("x", "mark", "2026-10-01"), title: "お客さんが増えない理由は「チャネル」が少ないからかもしれない。", source: "voice:note", fetched_at: "2026-10-01" }];
+    const groups = groupStoryUpdates(
+      [{ followed_id: "x", id: "e", source: "voice:note", url: null, title: "「読まれた」で終わらせない。アクセスを収益につなげるWEBマーケティングの基本。", fetched_at: "2026-10-21", similarity: 0.949 }],
+      followed
+    );
+    expect(groups).toEqual([]);
   });
 
   it("理由写成一句话", () => {

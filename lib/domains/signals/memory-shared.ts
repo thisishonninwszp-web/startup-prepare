@@ -1,4 +1,5 @@
 import { isGithubSource, signalKindOf, type SignalKind } from "./feeds";
+import { isSameStory } from "./same-story";
 
 /**
  * 记忆层（浏览器端也要用的部分，不碰数据库、不碰网络）：
@@ -68,8 +69,6 @@ export function cleanSnippet(t: string | null | undefined): string {
     .trim();
 }
 
-/** 相似到什么程度才算「同一件事的以前 / 后来」。 */
-export const SAME_STORY = 0.72;
 
 /** 报告里这一类叫什么（跟今日总览的小标题一致）。 */
 export const KIND_TITLES: Record<SignalKind, string> = {
@@ -136,15 +135,18 @@ export type StoryRow = { followed_id: string; id: string; source: string; url: s
 export type StoryUpdate = { followed: Followed; updates: ArchiveHit[] };
 
 /**
- * 「你在跟的事，有新消息」：按他在跟的那一条分组。同一条新消息像好几件事时只放在最像的那件下面；
+ * 「你在跟的事，有新消息」：按他在跟的那一条分组，只留算得上同一件事的（isSameStory：相似度够高、标题有共同的凭据词）。
+ * 同一条新消息像好几件事时只放在最像的那件下面；
  * 新消息本身也是他在跟的就不再列（他已经知道了）；GitHub 新仓库不算新消息（同一个模板写的，彼此看着像）。
  * 每件最多 perStory 条（最像的几条），有最新消息的那件事在前，每件事里新的在前。
  */
 export function groupStoryUpdates(rows: StoryRow[], followed: Followed[], perStory = 3): StoryUpdate[] {
   const followedIds = new Set(followed.map((f) => f.signal_id));
+  const titles = new Map(followed.map((f) => [f.signal_id, f.title]));
   const best = new Map<string, StoryRow>();
   for (const r of rows) {
     if (followedIds.has(r.id) || isGithubSource(r.source)) continue;
+    if (!isSameStory(titles.get(r.followed_id) ?? null, r.title, r.similarity)) continue;
     const prev = best.get(r.id);
     if (!prev || r.similarity > prev.similarity) best.set(r.id, r);
   }

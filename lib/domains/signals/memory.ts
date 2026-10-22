@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { executeEmbedding } from "@/lib/ai-gateway";
 import { answerFromArchive, type ArchiveStatement } from "@/lib/ai";
 import { isGithubSource } from "./feeds";
+import { isSameStory, SAME_STORY_FLOOR } from "./same-story";
 import {
   cleanSnippet,
   embedText,
@@ -11,7 +12,6 @@ import {
   normalizeEventDate,
   parseVector,
   RESURFACE_DAYS,
-  SAME_STORY,
   tokyoDayRange,
   type ArchiveHit,
   type Followed,
@@ -120,11 +120,11 @@ export async function searchArchive(query: string, limit = 30): Promise<ArchiveH
 }
 
 /**
- * 这一条的以前和后来：意思够近（同一件事）的，以前的按时间倒着、后来的按时间顺着。
- * GitHub 新仓库不算（每条都是同一个模板写的，彼此看着像，其实不是一件事）。minSimilarity 调低只在校准时用。
+ * 这一条的以前和后来：算得上同一件事的（isSameStory：相似度够高、标题有共同的凭据词），以前的按时间倒着、后来的按时间顺着。
+ * GitHub 新仓库不算（每条都是同一个模板写的，彼此看着像，其实不是一件事）。
  */
-export async function storyAround(signalId: string, n = 6, minSimilarity = SAME_STORY): Promise<{ before: ArchiveHit[]; after: ArchiveHit[] } | null> {
-  const { data, error } = await supabaseAdmin.from("external_signals").select("embedding, fetched_at").eq("id", signalId).maybeSingle();
+export async function storyAround(signalId: string, n = 6): Promise<{ before: ArchiveHit[]; after: ArchiveHit[] } | null> {
+  const { data, error } = await supabaseAdmin.from("external_signals").select("embedding, fetched_at, title").eq("id", signalId).maybeSingle();
   if (error) {
     if (missing(error)) return null;
     throw new Error(error.message);
@@ -133,7 +133,8 @@ export async function storyAround(signalId: string, n = 6, minSimilarity = SAME_
   if (!data || !vector) return null;
   const at = data.fetched_at as string;
   const [before, after] = await Promise.all([match(vector, n * 3, { before: at }), match(vector, n * 3, { after: at })]);
-  const same = (h: ArchiveHit) => h.id !== signalId && (h.similarity ?? 0) >= minSimilarity && !isGithubSource(h.source);
+  const title = (data.title as string | null) ? cleanSnippet(data.title as string) : null;
+  const same = (h: ArchiveHit) => h.id !== signalId && !isGithubSource(h.source) && isSameStory(title, h.title, h.similarity ?? 0);
   return {
     before: before.filter(same).slice(0, n).sort((a, b) => b.fetched_at.localeCompare(a.fetched_at)),
     after: after.filter(same).slice(0, n).sort((a, b) => a.fetched_at.localeCompare(b.fetched_at)),
@@ -312,7 +313,7 @@ export async function storyUpdates(followed: Followed[], since: string, perStory
   const { data, error } = await supabaseAdmin.rpc("story_updates", {
     followed: followed.map((f) => f.signal_id),
     since,
-    min_similarity: SAME_STORY,
+    min_similarity: SAME_STORY_FLOOR,
     // 多要几条：GitHub 新仓库在下面筛掉，筛完每件再留 perStory 条
     per_story: perStory * 4,
   });
