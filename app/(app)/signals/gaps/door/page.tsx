@@ -7,6 +7,9 @@ import { findJapanGap } from "@/lib/domains/signals/gaps";
 import { gapPlaces, type GapSide } from "@/lib/domains/signals/gaps-shared";
 import { getFakeDoor, listDoorSignups } from "@/lib/domains/signals/fake-door";
 import { DoorEditor, SignupList } from "./door-editor";
+import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
+import { tokyoToday } from "@/lib/domains/signals/brief";
+import { ExperimentRow, ProposalCard } from "../../forecast/experiment-cards";
 
 export const dynamic = "force-dynamic";
 // AI 起草要十几秒，由这一页的 server action 跑
@@ -32,6 +35,10 @@ export default async function FakeDoorEditPage({ searchParams }: { searchParams:
   if (!gap) notFound();
   const { here } = gapPlaces(side);
   const signups = door && typeof door !== "string" ? await listDoorSignups(user.id, door.id) : [];
+  const experiments = door && typeof door !== "string" ? await loadExperimentBoard(user.id, tokyoToday()).catch(() => null) : null;
+  const mine = experiments && experiments !== "missing-schema" && door && typeof door !== "string"
+    ? { proposals: experiments.proposals.filter((p) => p.targetId === door.id), made: [...experiments.open, ...experiments.resolved].filter((f) => f.target_id === door.id) }
+    : null;
 
   return (
     <PageContainer width="narrow">
@@ -53,6 +60,26 @@ export default async function FakeDoorEditPage({ searchParams }: { searchParams:
       ) : (
         <>
           <DoorEditor target={{ kind: "gap", signalId, side }} readers={`${here}的陌生人`} door={door} />
+          {mine && (mine.proposals.length > 0 || mine.made.length > 0) && (
+            <section className="mt-10">
+              <h2 className="text-base font-semibold">先猜一下</h2>
+              <p className="mt-1 text-xs leading-6 text-muted-foreground">把链接贴出去之前猜：两周后系统自己对账。猜得准不准，就是你对「陌生人会怎么做」的判断准不准。</p>
+              {mine.proposals.length > 0 && (
+                <ul className="mt-3 space-y-3">
+                  {mine.proposals.map((p) => (
+                    <ProposalCard key={p.kind} p={p} />
+                  ))}
+                </ul>
+              )}
+              {mine.made.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {mine.made.slice(0, 6).map((f) => (
+                    <ExperimentRow key={f.id} f={f} />
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
           {door && (
             <section className="mt-10">
               <h2 className="text-base font-semibold">留了邮箱的人（{signups.length}）</h2>

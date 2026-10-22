@@ -3,6 +3,7 @@ import { tokyoToday } from "@/lib/domains/signals/brief";
 import { embedBacklog } from "@/lib/domains/signals/memory";
 import { activeSignalUsers, createBusinessQuestions, forecastPending, importMarkets, resolveDue } from "@/lib/domains/signals/forecast";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
+import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
 
 /**
  * 外部信号的后台步骤，由 GitHub Actions（.github/workflows/signals-jobs.yml）定时一步一步调：
@@ -31,6 +32,8 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
       const r = await resolveDue(u, today, START_BEFORE_MS);
       did += r.did;
       remaining += r.remaining;
+      // 自己实验的预测：代码对账，读一遍就对了（迁移 095 没跑就跳过）
+      await loadExperimentBoard(u, today).catch(() => null);
     }
     return { done: remaining === 0 || did === 0, did, remaining };
   },

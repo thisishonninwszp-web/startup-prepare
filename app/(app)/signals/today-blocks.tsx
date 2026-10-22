@@ -127,7 +127,9 @@ function outcomeText(q: TodayForecast["justResolved"][number]["q"]): string {
 
 function ForecastTodo({ f }: { f: TodayForecast }) {
   const drillLeft = f.drill && f.drill.left > 0 && f.drill.today < DAILY_DRILL ? DAILY_DRILL - f.drill.today : 0;
-  if (f.toForecast.length === 0 && f.toConfirm === 0 && f.justResolved.length === 0 && drillLeft === 0) return null;
+  const exp = f.experiments;
+  const expCount = exp ? exp.proposals + exp.waiting : 0;
+  if (f.toForecast.length === 0 && f.toConfirm === 0 && f.justResolved.length === 0 && drillLeft === 0 && expCount === 0) return null;
   return (
     <section className="mb-8">
       <h2 className="text-lg font-semibold">预测</h2>
@@ -137,6 +139,14 @@ function ForecastTodo({ f }: { f: TodayForecast }) {
             校准练习还差 {drillLeft} 道
           </Link>
           <span className="ml-2 text-xs text-muted-foreground">已经结算的历史题，点了马上揭晓，两分钟</span>
+        </p>
+      )}
+      {exp && expCount > 0 && (
+        <p className="mt-1 text-sm leading-7">
+          <Link href="/signals/forecast#experiments" className="font-medium text-primary underline-offset-4 hover:underline">
+            {exp.proposals > 0 ? `你的实验有 ${exp.proposals} 道可以先猜` : `你的实验有 ${exp.waiting} 道到期了，等你填数对账`}
+          </Link>
+          <span className="ml-2 text-xs text-muted-foreground">假门、周刊的结果，先猜再看</span>
         </p>
       )}
       {f.toForecast.length > 0 && (

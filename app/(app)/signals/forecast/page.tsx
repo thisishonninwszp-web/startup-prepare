@@ -17,6 +17,9 @@ import {
   type ForecastSource,
 } from "@/lib/domains/signals/forecast";
 import { Answers, ConfirmCard, ForecastCard } from "./forecast-cards";
+import { ExperimentRow, ProposalCard } from "./experiment-cards";
+import { loadExperimentBoard, type ExperimentBoard } from "@/lib/domains/signals/experiments";
+import { BIN_MIN } from "@/lib/domains/signals/calibration-shared";
 import Link from "next/link";
 import { describePlatt, SCORE_MIN, usableCalibration } from "@/lib/domains/signals/calibration-shared";
 import { historyBacktest } from "@/lib/domains/signals/backtest";
@@ -29,6 +32,76 @@ const PAIRS: [ForecastSource, ForecastSource][] = [
   ["me", "market"],
 ];
 
+/** 先猜自己实验的结果：能猜的、在等的、对过账的、准不准。 */
+function ExperimentsSection({ board }: { board: ExperimentBoard | "missing-schema" | null }) {
+  if (board === null) return null;
+  return (
+    <section id="experiments" className="mb-10 scroll-mt-20">
+      <h2 className="mb-1 text-base font-semibold">你的实验：先猜结果</h2>
+      <p className="mb-3 text-xs leading-6 text-muted-foreground">
+        创业最要练的判断是「陌生人会怎么做」。假门开着、周刊刚发出去时先猜一下，一两周后系统自己对账（周刊要你填了数）。门槛按你以前同类实验的中位数定，只数次数，不算转化率，也不给想法打分。
+      </p>
+      {board === "missing-schema" ? (
+        <p className="text-sm leading-7 text-muted-foreground">还差一步：迁移 095 没跑。执行 supabase/migrations/095_experiment_forecasts.sql 之后这里就能用。</p>
+      ) : board.proposals.length === 0 && board.open.length === 0 && board.waiting.length === 0 && board.resolved.length === 0 ? (
+        <p className="text-sm leading-7 text-muted-foreground">
+          现在没有能猜的：在
+          <Link href="/signals/gaps" className="mx-1 text-primary underline-offset-4 hover:underline">
+            差距清单
+          </Link>
+          开一个假门、或者把
+          <Link href="/signals/issue" className="mx-1 text-primary underline-offset-4 hover:underline">
+            周刊
+          </Link>
+          发出去，就会出现在这里。
+        </p>
+      ) : (
+        <>
+          {board.proposals.length > 0 && (
+            <ul className="mb-4 space-y-3">
+              {board.proposals.map((p) => (
+                <ProposalCard key={`${p.kind}-${p.targetId}-${p.platform}`} p={p} />
+              ))}
+            </ul>
+          )}
+          {[...board.waiting, ...board.open].length > 0 && (
+            <>
+              <p className="mb-1 text-xs text-muted-foreground">猜过、还没对账的</p>
+              <ul className="mb-4 space-y-1">
+                {board.waiting.map((f) => (
+                  <ExperimentRow key={f.id} f={f} waiting />
+                ))}
+                {board.open.map((f) => (
+                  <ExperimentRow key={f.id} f={f} />
+                ))}
+              </ul>
+            </>
+          )}
+          {board.resolved.length > 0 && (
+            <>
+              <p className="mb-1 text-xs text-muted-foreground">对过账的</p>
+              <ul className="space-y-1">
+                {board.resolved.slice(0, 10).map((f) => (
+                  <ExperimentRow key={f.id} f={f} />
+                ))}
+              </ul>
+              <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                {board.stats.brier !== null
+                  ? `对过账的 ${board.stats.n} 道，你的平均分 ${board.stats.brier.toFixed(3)}（永远说五成是 0.250）。`
+                  : `对过账的 ${board.stats.n} 道，满 ${SCORE_MIN} 道才给分。`}
+                {board.stats.bins
+                  .filter((b) => b.n >= BIN_MIN)
+                  .map((b) => ` 说 ${Math.round(b.lo * 100)}–${Math.round(b.hi * 100)}% 的 ${b.n} 道，到了 ${b.happened} 道。`)
+                  .join("")}
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default async function ForecastPage() {
   const supabase = createClient();
   const {
@@ -37,7 +110,14 @@ export default async function ForecastPage() {
   if (!user) notFound();
 
   const today = tokyoToday();
-  const [board, report] = await Promise.all([loadForecastBoard(user.id), historyBacktest().catch(() => null)]);
+  const [board, report, experiments] = await Promise.all([
+    loadForecastBoard(user.id),
+    historyBacktest().catch(() => null),
+    loadExperimentBoard(user.id, today).catch((e) => {
+      console.error("forecast: experiments", e);
+      return null;
+    }),
+  ]);
   const calibration = report ? usableCalibration(report) : null;
 
   return (
@@ -90,6 +170,8 @@ export default async function ForecastPage() {
                   {board.shared ? " 大家共用同一批题，但你的判断和分数只有你自己看得到。" : ""}
                 </p>
               </section>
+
+              <ExperimentsSection board={experiments} />
 
               {toConfirm.length > 0 && (
                 <section className="mb-10">

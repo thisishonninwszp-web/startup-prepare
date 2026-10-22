@@ -1,5 +1,6 @@
 import { boardSections, loadForecastBoard, sidesOf, type ForecastQuestion } from "./forecast";
 import { drillProgress } from "./backtest";
+import { loadExperimentBoard } from "./experiments";
 import { followedSignals, resurfacedOne, storyUpdates, type Resurfaced } from "./memory";
 import type { StoryUpdate } from "./memory-shared";
 import { sharedViewFor } from "./users";
@@ -15,6 +16,8 @@ export const STORY_WINDOW_HOURS = 30;
 export type TodayForecast = {
   /** 校准练习：今天做了几道、题库里还有没有没做的（迁移 094 没跑为 null）。 */
   drill: { today: number; left: number } | null;
+  /** 自己的实验：能先猜的几道、到期了等他填周刊数的几道。 */
+  experiments: { proposals: number; waiting: number } | null;
   toForecast: ForecastQuestion[];
   toConfirm: number;
   justResolved: { q: ForecastQuestion; me: number | null; ai: number | null; market: number | null }[];
@@ -46,6 +49,7 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
     loadForecastBoard(userId).catch(logged("forecast", null)),
     drillProgress(userId, today).catch(logged("drill", null)),
   ]);
+  const experiments = await loadExperimentBoard(userId, today).catch(logged("experiments", null));
   const stories: TodayPersonal["stories"] = followed === null ? "error" : await storyUpdates(followed, since, 2).catch(logged("stories", "error" as const));
 
   let forecast: TodayForecast | null = null;
@@ -53,6 +57,7 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
     const s = boardSections(board, today);
     forecast = {
       drill: drill && drill !== "missing-schema" ? { today: drill.today, left: drill.left } : null,
+      experiments: experiments && experiments !== "missing-schema" ? { proposals: experiments.proposals.length, waiting: experiments.waiting.length } : null,
       toForecast: s.toForecast,
       toConfirm: s.toConfirm.length,
       justResolved: s.justResolved.slice(0, 3).map((q) => ({ q, ...sidesOf(board.forecasts, q.id) })),

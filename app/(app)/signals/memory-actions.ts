@@ -17,6 +17,8 @@ import {
 import { sharedViewFor } from "@/lib/domains/signals/users";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { confirmResolution, revealQuestion, setMyForecast } from "@/lib/domains/signals/forecast";
+import { saveExperimentForecast } from "@/lib/domains/signals/experiments";
+import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -102,6 +104,23 @@ export async function confirmResolutionAction(questionId: string, verdict: "yes"
     const userId = await requireUserId();
     await confirmResolution(userId, questionId, verdict, note);
     revalidatePath("/signals/forecast");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: message(error, "没记上") };
+  }
+}
+
+/** 先猜一个自己实验的结果（题目、门槛由服务器重新算）。 */
+export async function saveExperimentForecastAction(
+  pick: { kind: ExperimentKind; targetId: string; platform: string },
+  probability: number
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const userId = await requireUserId();
+    await saveExperimentForecast(userId, tokyoToday(), pick, probability);
+    revalidatePath("/signals/forecast");
+    revalidatePath("/signals/gaps/door");
+    revalidatePath("/signals");
     return { ok: true };
   } catch (error) {
     return { ok: false, message: message(error, "没记上") };
