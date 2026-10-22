@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isAllowedEmail } from "./lib/members";
 
 /**
  * Refreshes the Supabase auth session on every request and guards routes:
@@ -47,6 +48,20 @@ export async function middleware(request: NextRequest) {
   if (!user && pathname !== "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  // 不在使用名单上的账号（配了 IDEAOS_USER_EMAIL / IDEAOS_MEMBERS 时）：哪里都去不了，只停在「还没对你开放」。
+  // server action 走的是页面地址的 POST，也会在这里被拦下 —— 陌生人注册了也花不了 AI 的钱。
+  if (user && !isAllowedEmail(user.email)) {
+    if (pathname === "/not-member") return supabaseResponse;
+    const url = request.nextUrl.clone();
+    url.pathname = "/not-member";
+    return NextResponse.redirect(url);
+  }
+  if (user && pathname === "/not-member") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

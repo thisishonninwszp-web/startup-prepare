@@ -122,7 +122,7 @@ export async function listMarketApps(userId: string): Promise<MarketApp[]> {
 /** 从"市场怎么看我"押一条进判断账本（source_type=self），到期他对着次数对账。 */
 export async function createMarketBet(userId: string, input: { text: string; dueOn: string; confidence: number }): Promise<void> {
   const text = input.text.trim();
-  if (text.length < 6) throw new Error("写清楚押的是什么，比如「数据分析类再投 5 家，至少 1 家约面试」。");
+  if (text.length < 6) throw new Error("写清楚判断的是什么，比如「数据分析类再投 5 家，至少 1 家约面试」。");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dueOn)) throw new Error("到期日格式不对");
   const confidence = Math.round(input.confidence);
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 100) throw new Error("把握度要在 0–100 之间");

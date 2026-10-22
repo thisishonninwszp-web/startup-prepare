@@ -265,7 +265,7 @@ export async function createMarketBetAction(input: { text: string; dueOn: string
     revalidatePath("/self");
     return { ok: true };
   } catch (error) {
-    return { ok: false, message: errorMessage(error, "没押上") };
+    return { ok: false, message: errorMessage(error, "没记上") };
   }
 }
 

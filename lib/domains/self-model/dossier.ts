@@ -244,7 +244,7 @@ function falsifierFor(
     adoption: ["做出来没人用", "做出来有人真的用起来"],
     deed: ["开了头没做完", "从头做到尾"],
     window: ["赶上这种情况你没动", "赶上这种情况你动了"],
-    prediction: ["押的没中", "押的中了"],
+    prediction: ["预测没中", "预测中了"],
     hypothesis: ["它又站住了", "它又站住了"],
   };
 
@@ -451,7 +451,7 @@ function actionFor(label: DossierLabel): string {
     case "deed":
       return "开了头就先定一个最小的「做完」，做到那儿再说。";
     case "prediction":
-      return "押之前先写下：什么样算落空。";
+      return "预测之前先写下：什么样算落空。";
     default:
       return label.subject;
   }

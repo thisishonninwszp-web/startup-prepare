@@ -78,10 +78,10 @@ describe("周刊", () => {
 describe("点三下就是判断", () => {
   it("stanceSentence：点的拼成一句，补的那句原样接在后面；其他、没点的不说", () => {
     expect(stanceSentence({ will: "will", blocker: "law", firstMover: "startup" }, "日本")).toBe(
-      "我押2年内日本会出现这个。最大的阻碍是法规。最可能先做的是创业公司。"
+      "我判断2年内日本会出现这个。最大的阻碍是法规。最可能先做的是创业公司。"
     );
     expect(stanceSentence({ will: "wont", blocker: "other" }, "日本", " 便利店已经够近了。")).toBe(
-      "我押2年内日本不会出现这个。便利店已经够近了。"
+      "我判断2年内日本不会出现这个。便利店已经够近了。"
     );
     expect(stanceSentence({ will: "unsure", firstMover: "none" }, "中国")).toBe("2年内中国会不会出现，我说不清。我觉得不会有人做。");
   });
@@ -116,7 +116,7 @@ describe("小红书封面", () => {
     expect(items).toHaveLength(3);
     expect(Array.from(items[0].headline)).toHaveLength(30);
     expect(items[0].headline.endsWith("…")).toBe(true);
-    expect(items.map((i) => i.stance)).toEqual(["我押：2 年内会出现", "我押：2 年内不会出现", "我说不清"]);
+    expect(items.map((i) => i.stance)).toEqual(["我的判断：2 年内会出现", "我的判断：2 年内不会出现", "我说不清"]);
     expect(coverItems([{ headline: "没点过的老数据" }])[0].stance).toBe("");
   });
 
@@ -131,7 +131,7 @@ describe("小红书封面", () => {
       top: "中国有 · 日本还没有",
       title: "在日本找不到的中国服务",
       headline: "美团用无人机送药",
-      stance: "我押：2 年内会出现",
+      stance: "我的判断：2 年内会出现",
     });
     expect(coverSingle(p, undefined).title).toBe("美团用无人机送药");
     expect(coverSingle(p, undefined).headline).toBe("");

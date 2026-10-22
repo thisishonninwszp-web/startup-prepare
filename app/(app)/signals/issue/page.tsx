@@ -66,7 +66,7 @@ export default async function IssuePage({ searchParams }: { searchParams: { pick
       <PageHeader
         eyebrow="Weekly"
         title="周刊"
-        description="朋友圈小，就写出来让陌生人找上门。每周一期「那边有、这边还没有」：挑几条核实过的，每条写一句你自己的判断，再公开对账押过的。系统排成小红书、日文 note、中文长文三个版本，你复制去发。前两三个月多半没人来，靠的是每周不断。"
+        description="朋友圈小，就写出来让陌生人找上门。每周一期「那边有、这边还没有」：挑几条核实过的，每条写一句你自己的判断，到期再公开对账。系统排成小红书、日文 note、中文长文三个版本，你复制去发。前两三个月多半没人来，靠的是每周不断。"
       />
 
       {current === "missing-schema" ? (

@@ -80,7 +80,7 @@ export async function researchHistory(input: {
 export async function ensureSignalHistory(id: string): Promise<StoredHistory> {
   const detail = await getSignalDetail(id);
   if (detail === "missing-schema") throw new Error("迁移 056 还没跑");
-  if (!detail) throw new Error("这条已经不在了（两周没动的会被清掉）");
+  if (!detail) throw new Error("这条已经不在了");
   if (detail.history) return detail.history;
   if (detail.kind === "tools") throw new Error("工具没有历史参照");
 

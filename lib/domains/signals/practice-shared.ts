@@ -192,7 +192,7 @@ export const ISSUE_BET_PREFIX = "【周刊】";
 export function displayQuestion(question: string): string {
   if (isNodeBet(question)) return `往下推的一步会不会发生：${question.slice(NODE_BET_PREFIX.length)}`;
   if (question.startsWith(QUESTION_BET_PREFIX)) return `我在追的问题：${question.slice(QUESTION_BET_PREFIX.length)}`;
-  if (question.startsWith(ISSUE_BET_PREFIX)) return `周刊上公开押的：${question.slice(ISSUE_BET_PREFIX.length)}`;
+  if (question.startsWith(ISSUE_BET_PREFIX)) return `周刊上公开判断的：${question.slice(ISSUE_BET_PREFIX.length)}`;
   if (question.startsWith(MILESTONE_PREFIX)) return `长期判断的中途苗头：${displayQuestion(question.slice(MILESTONE_PREFIX.length))}`;
   return question;
 }

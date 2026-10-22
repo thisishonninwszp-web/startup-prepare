@@ -72,7 +72,7 @@ export async function getSignalDetail(id: string): Promise<SignalDetail | null |
 export async function ensureSignalAnalysis(userId: string, id: string): Promise<SignalAnalysis> {
   const detail = await getSignalDetail(id);
   if (detail === "missing-schema") throw new Error("迁移 054 还没跑");
-  if (!detail) throw new Error("这条已经不在了（两周没动的会被清掉）");
+  if (!detail) throw new Error("这条已经不在了");
   if (detail.analysis) return detail.analysis;
 
   const reader = await loadSignalReader(userId);

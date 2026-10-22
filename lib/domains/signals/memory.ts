@@ -155,14 +155,14 @@ export async function marksFor(userId: string, signalIds: string[]): Promise<Map
 
 export type MarkedItem = Mark & { title: string | null; url: string | null; source: string; fetched_at: string };
 
-/** 他最近标过的（新的在前）。迁移没跑返回 null。 */
-export async function recentMarks(userId: string, limit = 30): Promise<MarkedItem[] | null> {
-  const { data, error } = await supabaseAdmin
+/** 他最近标过的（新的在前；sinceDays 限定只看最近几天标的）。迁移没跑返回 null。 */
+export async function recentMarks(userId: string, limit = 30, sinceDays?: number): Promise<MarkedItem[] | null> {
+  let query = supabaseAdmin
     .from("signal_marks")
     .select("signal_id, mark, note, created_at, external_signals!inner(title, url, source, fetched_at)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+    .eq("user_id", userId);
+  if (sinceDays) query = query.gte("created_at", new Date(Date.now() - sinceDays * 86_400_000).toISOString());
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
   if (error) {
     if (missing(error)) return null;
     throw new Error(error.message);

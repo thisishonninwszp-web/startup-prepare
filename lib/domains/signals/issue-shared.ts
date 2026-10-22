@@ -56,9 +56,9 @@ const FIRST_MOVER_PHRASE: Record<keyof typeof FIRST_MOVER_OPTIONS, string> = {
 export function stanceSentence(stance: PickStance, here: string, note = ""): string {
   const parts = [
     stance.will === "will"
-      ? `我押${STANCE_YEARS}年内${here}会出现这个。`
+      ? `我判断${STANCE_YEARS}年内${here}会出现这个。`
       : stance.will === "wont"
-        ? `我押${STANCE_YEARS}年内${here}不会出现这个。`
+        ? `我判断${STANCE_YEARS}年内${here}不会出现这个。`
         : `${STANCE_YEARS}年内${here}会不会出现，我说不清。`,
     stance.blocker && BLOCKER_PHRASE[stance.blocker] ? `最大的阻碍是${BLOCKER_PHRASE[stance.blocker]}。` : "",
     stance.firstMover ? FIRST_MOVER_PHRASE[stance.firstMover] : "",
@@ -107,9 +107,9 @@ export function coverItems(picks: Pick<IssuePick, "headline" | "stance">[]): { h
     stance: !p.stance
       ? ""
       : p.stance.will === "will"
-        ? `我押：${STANCE_YEARS} 年内会出现`
+        ? `我的判断：${STANCE_YEARS} 年内会出现`
         : p.stance.will === "wont"
-          ? `我押：${STANCE_YEARS} 年内不会出现`
+          ? `我的判断：${STANCE_YEARS} 年内不会出现`
           : "我说不清",
   }));
 }

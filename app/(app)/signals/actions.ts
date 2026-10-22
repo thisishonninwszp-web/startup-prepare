@@ -1,5 +1,7 @@
 "use server";
 
+import { sharedViewFor } from "@/lib/domains/signals/users";
+import { setUserSignalState, userSignalState } from "@/lib/domains/signals/user-states";
 import { generateMonthly, isMonth } from "@/lib/domains/signals/monthly";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -101,14 +103,19 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
-async function getPendingSignal(id: string) {
+/**
+ * 还没处理过的这一条：主账号看 external_signals.status；朋友的账号看他自己的那一份（signal_user_states），
+ * 别人处理过不影响他。
+ */
+async function getPendingSignal(id: string, viewer?: { userId: string; shared: boolean }) {
   const { data: row, error } = await supabaseAdmin
     .from("external_signals")
     .select("id, status, source, title, url")
     .eq("id", id)
     .single();
   if (error) throw new Error(error.message);
-  if (row.status !== "pending") throw new Error("这条已经处理过了");
+  const pending = viewer?.shared ? (await userSignalState(viewer.userId, id)) === "pending" : row.status === "pending";
+  if (!pending) throw new Error("这条已经处理过了");
   return {
     title: (row.title as string | null) ?? "",
     source: newsSourceLabel(row.source as string),
@@ -136,8 +143,9 @@ export async function refreshSignals(
  * 你的那句话放最前面 —— 新闻本身不是信号，你对它的反应才是。
  */
 export async function keepSignal(id: string, note: string): Promise<string> {
-  await requireUserId();
-  const signal = await getPendingSignal(id);
+  const userId = await requireUserId();
+  const view = await sharedViewFor(userId);
+  const signal = await getPendingSignal(id, { userId, shared: view.shared });
 
   const text = [
     note.trim(),
@@ -149,11 +157,15 @@ export async function keepSignal(id: string, note: string): Promise<string> {
 
   const observation = await createObservation(text, [EXTERNAL_TAG]);
 
-  const { error: updateError } = await supabaseAdmin
-    .from("external_signals")
-    .update({ status: "promoted", promoted_observation_id: observation.id })
-    .eq("id", id);
-  if (updateError) throw new Error(updateError.message);
+  if (view.shared) {
+    await setUserSignalState(userId, id, "promoted", observation.id);
+  } else {
+    const { error: updateError } = await supabaseAdmin
+      .from("external_signals")
+      .update({ status: "promoted", promoted_observation_id: observation.id })
+      .eq("id", id);
+    if (updateError) throw new Error(updateError.message);
+  }
 
   revalidatePath("/signals");
   revalidatePath("/capture");
@@ -175,7 +187,13 @@ export async function recordJapanGapAction(signalId: string, note: string, side:
 }
 
 export async function dismissSignal(id: string): Promise<void> {
-  await requireUserId();
+  const userId = await requireUserId();
+  const view = await sharedViewFor(userId);
+  if (view.shared) {
+    await setUserSignalState(userId, id, "dismissed");
+    revalidatePath("/signals");
+    return;
+  }
   const { error } = await supabaseAdmin
     .from("external_signals")
     .update({ status: "dismissed" })

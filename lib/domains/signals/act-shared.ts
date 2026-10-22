@@ -130,7 +130,7 @@ export function nextSteps(state: ActState): ActStep[] {
     steps.push({
       key: "judgments",
       text: `${state.dueJudgments} 条判断到期了，去对账`,
-      why: "不对账，判断力就没有反馈，攒的判断也白押了。",
+      why: "不对账，判断力就没有反馈，攒的判断也白记了。",
       href: "/signals/practice",
       cta: "去对账",
     });

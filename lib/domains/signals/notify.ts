@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import { memberAccounts } from "./users";
+import { publicItem } from "./shared-view";
 import { describeMove, unusualFastMoves } from "./fast";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { BriefItem, BriefPracticeRow } from "./brief";
@@ -291,6 +293,48 @@ async function flowCardAttachments(input: DailyEmailInput): Promise<{ signalId: 
     })
   );
   return results.filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
+/**
+ * 同一份报告发给名单上已经注册的朋友（IDEAOS_MEMBERS）：内容和主账号那封一样（不多花一分 AI 的钱），
+ * 去掉只关于主账号的几句（跟你、你在追的问题、周刊提醒），到期的判断换成他自己的。一人一封。
+ */
+export async function sendMemberEmails(ownerId: string, date = tokyoToday()): Promise<string[]> {
+  const config = emailConfig();
+  if (!config.ready) return [];
+  const members = await memberAccounts();
+  if (members.length === 0) return [];
+  const base = await loadEmailInput(ownerId, date);
+  if (!base) return [];
+  const attachments = await flowCardAttachments(base);
+  const images = Object.fromEntries(attachments.map((a) => [a.signalId, a.cid]));
+  const transport = nodemailer.createTransport({ service: "gmail", auth: { user: config.from, pass: process.env.GMAIL_APP_PASSWORD } });
+  const sent: string[] = [];
+  for (const m of members) {
+    const judgments = await listJudgments(m.id).catch(() => []);
+    const input: DailyEmailInput = {
+      ...base,
+      sections: base.sections.map((s) => ({ ...s, items: s.items.map(publicItem) })),
+      dueCount: dueJudgments(judgments).length,
+      freshQuestions: [],
+      issueReminder: null,
+    };
+    const { subject, text } = buildDailyEmail(input);
+    try {
+      await transport.sendMail({
+        from: `IdeaOS <${config.from}>`,
+        to: m.email,
+        subject,
+        text,
+        html: buildDailyEmailHtml(input, images),
+        attachments: attachments.map((a) => ({ filename: a.filename, content: a.content, cid: a.cid })),
+      });
+      sent.push(m.email);
+    } catch (e) {
+      console.error("member email failed", m.email, e);
+    }
+  }
+  return sent;
 }
 
 /** 把今天的报告发到他的邮箱。没配、或者今天还没有报告，就不发并说明原因。 */

@@ -274,7 +274,7 @@ function Empty({ dossier, side }: { dossier: Dossier; side: "kept" | "unkept" })
           <>
             <p className="text-sm text-muted-foreground">
               档案只收一种东西：你事先说过会怎样、后来有了结果的事。
-              押出去还没到期的、正在做还没做完的，都不算 —— 悬着的事说明不了你是谁。
+              预测了还没到期的、正在做还没做完的，都不算 —— 悬着的事说明不了你是谁。
               所以刚开始它必然是空的，这不是坏了。
             </p>
             <p className="text-sm text-muted-foreground">

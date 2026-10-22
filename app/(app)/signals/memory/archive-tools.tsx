@@ -23,7 +23,7 @@ function HitRow({ h, mark, n }: { h: ArchiveHit; mark?: Mark; n?: number }) {
         <span className="ml-1 text-xs text-muted-foreground">{h.source}</span>
       </div>
       {h.snippet && <p className="line-clamp-2 text-xs leading-6 text-muted-foreground">{h.snippet}</p>}
-      {mark !== undefined || n === undefined ? <MarkButtons signalId={h.id} initial={mark?.mark ?? null} compact /> : null}
+      {mark !== undefined || n === undefined ? <MarkButtons signalId={h.id} initial={mark?.mark ?? null} initialNote={mark?.note ?? null} compact /> : null}
     </li>
   );
 }

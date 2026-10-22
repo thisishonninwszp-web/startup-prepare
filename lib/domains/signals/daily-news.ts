@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { CN_APP_SOURCE, RSS_FEEDS, rssSource, SIGNAL_KIND_PREFIXES, type RssFeed } from "./feeds";
+import { RSS_FEEDS, rssSource, type RssFeed } from "./feeds";
 import { fetchHtml } from "./article";
 import { extractPageDescription, parseFeed } from "./rss";
 import { usableSummary, worthFetchingPage } from "./summary";
@@ -12,15 +12,12 @@ import { usableSummary, worthFetchingPage } from "./summary";
  */
 
 const PER_FEED = 20;
-/** 没人看过的新闻放多久就清掉。挑过、忽略过的不动。 */
-const PENDING_TTL_DAYS = 14;
 /** 补简介时同时敲几个网站、每个等多久。整轮要在 cron 的 60 秒内跑完。 */
 const PAGE_CONCURRENCY = 8;
 const PAGE_TIMEOUT_MS = 5_000;
 
 export type DailyNewsOutcome = {
   inserted: number;
-  purged: number;
   failed: string[];
 };
 
@@ -96,25 +93,6 @@ export async function fetchDailyNews(): Promise<DailyNewsOutcome> {
     await fillMissingSummaries((data ?? []) as InsertedRow[]);
   }
 
-  return { inserted, purged: await purgeStalePending(), failed };
-}
-
-/** 没人动过、放了两周的新闻和工具清掉。挑过、忽略过的不动。 */
-async function purgeStalePending(): Promise<number> {
-  const cutoff = new Date(Date.now() - PENDING_TTL_DAYS * 86_400_000).toISOString();
-  let purged = 0;
-  for (const prefix of Object.values(SIGNAL_KIND_PREFIXES).flat()) {
-    const { data, error } = await supabaseAdmin
-      .from("external_signals")
-      .delete()
-      .like("source", `${prefix}%`)
-      // 中国 App 榜单记的是"见过哪些 App"，清掉就会把老面孔又当成新上榜
-      .neq("source", CN_APP_SOURCE)
-      .eq("status", "pending")
-      .lt("fetched_at", cutoff)
-      .select("id");
-    if (error) throw new Error(error.message);
-    purged += data?.length ?? 0;
-  }
-  return purged;
+  // 没人动过的不再删：存档一条不删（记忆层，迁移 091），收件箱只列最近两周的（见 queries.ts INBOX_DAYS）
+  return { inserted, failed };
 }

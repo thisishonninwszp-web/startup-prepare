@@ -36,7 +36,7 @@ export default async function IssueDoorPage({ searchParams }: { searchParams: { 
       <PageHeader
         eyebrow="Paid edition"
         title="这份周刊能不能卖"
-        description="你每周已经在做一样东西：核实过的「那边有、日本还没有」，带出处、时差基准、能不能搬过来、你押的判断和公开对账。给它的付费版做一页「准备中」，看陌生人看着价格还愿不愿意留邮箱。有人留，就有了一个不用开发任何东西、下个月就能收钱的生意。"
+        description="你每周已经在做一样东西：核实过的「那边有、日本还没有」，带出处、时差基准、能不能搬过来、你下的判断和公开对账。给它的付费版做一页「准备中」，看陌生人看着价格还愿不愿意留邮箱。有人留，就有了一个不用开发任何东西、下个月就能收钱的生意。"
       />
 
       <p className="mb-6 flex flex-wrap gap-4 text-sm">

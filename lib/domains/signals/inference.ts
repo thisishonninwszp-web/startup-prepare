@@ -48,7 +48,7 @@ export async function getInference(id: string): Promise<InferenceNode[] | "missi
 async function loadTree(signalId: string) {
   const detail = await getSignalDetail(signalId);
   if (detail === "missing-schema") throw new Error("迁移还没跑完");
-  if (!detail) throw new Error("这条已经不在了（两周没动的会被清掉）");
+  if (!detail) throw new Error("这条已经不在了");
   const nodes = await getInference(signalId);
   if (nodes === "missing-schema") throw new Error("迁移 058 还没跑");
   return { detail, nodes };
@@ -352,7 +352,7 @@ export async function flagNode(signalId: string, nodeId: string, circular: boole
 
 /**
  * 他标过的车轱辘，连同上一步，拿来重新校准裁判（对比裁判当时怎么判的）。
- * 单用户阶段直接扫全表；条目两周后会被清，所以要校准就趁早导出。
+ * 单用户阶段直接扫全表；存档一条不删，什么时候导出都行。
  */
 export async function listUserFlaggedSteps(): Promise<{ parent: string; claim: string; judgedAs: string }[]> {
   const { data, error } = await supabaseAdmin.from("external_signals").select("title, inference").not("inference", "is", null);

@@ -161,7 +161,7 @@ export function JudgmentForm({
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 {byDeadline && deadline ? `要等到${deadlineLabel(deadline)}` : `要等${HORIZONS[horizon].label.replace("后", "")}`}
-                才能对账，太久了。填了就自动多押一条半年后对账的，中途也有反馈。
+                才能对账，太久了。填了就自动多记一条半年后对账的，中途也有反馈。
               </p>
             </div>
           </div>

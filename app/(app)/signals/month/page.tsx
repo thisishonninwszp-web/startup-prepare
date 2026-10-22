@@ -17,6 +17,8 @@ import {
   weekLabel,
 } from "@/lib/domains/signals/monthly";
 import { MonthlyLoader } from "./monthly-loader";
+import { sharedViewFor } from "@/lib/domains/signals/users";
+import { publicMonthlyLine } from "@/lib/domains/signals/shared-view";
 
 export const dynamic = "force-dynamic";
 // 缺的周报先补写再连起来，三四十秒，由这一页的 server action 跑
@@ -36,7 +38,10 @@ export default async function MonthlyPage({ searchParams }: { searchParams: { m?
   const current = today.slice(0, 7);
   const month = searchParams.m && isMonth(searchParams.m) && searchParams.m <= current ? searchParams.m : current;
   const ongoing = month === current;
-  const [monthly, activity] = await Promise.all([getMonthly(user.id, month).catch(() => null), monthlyActivity(user.id, month)]);
+  // 朋友的账号看主账号那一份月报（去掉跟主账号的差距清单、想法的关联和下一步）；「往前推了几格」数的是自己的
+  const view = await sharedViewFor(user.id);
+  const [ownMonthly, activity] = await Promise.all([getMonthly(view.sourceUserId, month).catch(() => null), monthlyActivity(user.id, month)]);
+  const monthly = ownMonthly && view.shared ? { ...ownMonthly, lines: ownMonthly.lines.map(publicMonthlyLine) } : ownMonthly;
   const weeks = monthly?.weeks.length ? monthly.weeks : monthWeeks(month, today);
   const prev = shiftMonth(month, -1);
   const next = month < current ? shiftMonth(month, 1) : null;
@@ -123,15 +128,19 @@ export default async function MonthlyPage({ searchParams }: { searchParams: { m?
           {monthly.lines.length === 0 && (
             <p className="mt-6 text-sm leading-7 text-muted-foreground">这个月没有哪条线连着出现两周以上 —— 都是一周就过去的事。</p>
           )}
-          <div className="mt-8 flex justify-end">
-            <MonthlyLoader month={month} regenerate />
-          </div>
+          {!view.shared && (
+            <div className="mt-8 flex justify-end">
+              <MonthlyLoader month={month} regenerate />
+            </div>
+          )}
         </>
       ) : weeks.length < 2 ? (
         <p className="text-sm leading-7 text-muted-foreground">
           这个月过完的周还不到两周{weeks.length === 1 ? `（只有 ${weekLabel(0, weeks[0])}）` : ""}，连不起来。
           {ongoing ? "过了下个周日再来；这期间看「周报」就够了。" : "看看前后的月份。"}
         </p>
+      ) : view.shared ? (
+        <p className="text-sm leading-7 text-muted-foreground">这个月的月报还没写。</p>
       ) : (
         <MonthlyLoader month={month} />
       )}

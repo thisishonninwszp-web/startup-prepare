@@ -272,9 +272,9 @@ export default async function QuestionDetailPage({ params }: { params: { id: str
         )}
       </section>
 
-      {/* 押进账本 */}
+      {/* 记进账本 */}
       <section className="mb-10">
-        <h2 className="text-base font-semibold">押进判断账本</h2>
+        <h2 className="text-base font-semibold">记进判断账本</h2>
         <p className="mt-1 text-xs leading-6 text-muted-foreground">
           把看法里能检验的那一部分写成一句话，定个对账的日子。五年太远，挑一个几个月内就能看出苗头的。
         </p>
@@ -293,7 +293,7 @@ export default async function QuestionDetailPage({ params }: { params: { id: str
             question={questionBetQuestion(`${question.question}（${new Date().toISOString().slice(0, 10)}）`)}
             questionLabel="几个月后能说清对错的一句话"
             initialJudgment=""
-            submitLabel="押进账本"
+            submitLabel="记进账本"
             knownTags={knownTags(allJudgments)}
           />
         </div>

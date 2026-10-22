@@ -20,6 +20,8 @@ import { RouteToGap } from "../route-to-gap";
 import { MarkButtons } from "../mark-buttons";
 import { StoryAround } from "../story-around";
 import { marksFor, storyAround } from "@/lib/domains/signals/memory";
+import { sharedViewFor } from "@/lib/domains/signals/users";
+import { userSignalState } from "@/lib/domains/signals/user-states";
 
 export const dynamic = "force-dynamic";
 // 第一次打开时要读原文 + 调 AI 写深读，默认 10 秒不够。
@@ -92,6 +94,9 @@ export default async function SignalDetailPage({
     marksFor(user.id, [params.id]).catch(() => new Map()),
     storyAround(params.id).catch(() => null),
   ]);
+  // 「记成观察 / 只是知道了」每人一份：主账号看这条的状态，朋友的账号看他自己处理过没有
+  const view = await sharedViewFor(user.id);
+  const actionable = view.shared ? (await userSignalState(user.id, params.id)) === "pending" : detail !== null && detail !== "missing-schema" && detail.status === "pending";
   const bets = Object.fromEntries(
     nodeBets.map((b) => [b.question.slice(NODE_BET_PREFIX.length), formatDueDate(b.due_at)])
   );
@@ -130,7 +135,7 @@ export default async function SignalDetailPage({
             </a>
           )}
           <div className="mt-3">
-            <MarkButtons signalId={detail.id} initial={marks.get(detail.id)?.mark ?? null} />
+            <MarkButtons signalId={detail.id} initial={marks.get(detail.id)?.mark ?? null} initialNote={marks.get(detail.id)?.note ?? null} />
           </div>
 
           {detail.summary && (
@@ -218,11 +223,11 @@ export default async function SignalDetailPage({
             <h2 className="text-base font-semibold">这条去哪</h2>
             <p className="mb-3 mt-1 text-xs leading-6 text-muted-foreground">
               信息只有改变一个决定时才有用。看完选一个去处：补进某个想法还缺的那一格、记成观察、或者只是知道了就放下。
-              押一个判断在上面「写判断」或往下推的某一步上。
+              想下一个判断，就在上面「写判断」或往下推的某一步上记。
             </p>
             <p className="mb-2 text-sm font-medium">补进想法的缺口</p>
             <RouteToGap signalId={detail.id} options={gapOptions} />
-            {detail.status === "pending" && (
+            {actionable && (
               <div className="mt-6">
                 <p className="mb-3 text-sm text-muted-foreground">记成观察，或者只是知道了（不看了）：</p>
                 <SignalActions id={detail.id} />

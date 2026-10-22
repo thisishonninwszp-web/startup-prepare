@@ -165,10 +165,10 @@ function draftRarity(trait: TraitInput): Draft {
 
   // 纯正修正：靠证据决定爬多高。
   if (forecastHits >= 1 && contexts >= 3 && windows >= 5) {
-    return { rarity: "epic", verdict: "修正全为正 · 跨 3 类情境 · 有押中的预测", blocked };
+    return { rarity: "epic", verdict: "修正全为正 · 跨 3 类情境 · 有命中的预测", blocked };
   }
   if (windows >= 5 && contexts >= 2) {
-    if (forecastHits < 1) blocked.push("升史诗还需要一条押中的事前预测");
+    if (forecastHits < 1) blocked.push("升史诗还需要一条命中的事前预测");
     if (contexts < 3) blocked.push("升史诗还需要第 3 类情境");
     return { rarity: "rare", verdict: "修正全为正，证据站得住", blocked };
   }

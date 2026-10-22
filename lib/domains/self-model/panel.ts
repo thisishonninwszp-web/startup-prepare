@@ -491,7 +491,7 @@ const SUB_SPECS: SubSpec[] = [
     key: "int.calibration",
     main: "INT",
     domain: "work",
-    name: "押注准头",
+    name: "预测准头",
     build: (input) => ({
       value:
         input.predictionsSettled >= MIN_SAMPLE

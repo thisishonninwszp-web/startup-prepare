@@ -169,17 +169,17 @@ function MissReasonPick({ drill }: { drill: AnsweredDrill }) {
   );
 }
 
-/** 回到今天：今天那件事会不会也这样？押一条，进判断账本，到期对账。 */
+/** 回到今天：今天那件事会不会也这样？记一条判断，进判断账本，到期对账。 */
 function TodayBridge({ drill }: { drill: AnsweredDrill }) {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   if (!drill.today_question || !(drill.topic_signal_id || drill.topic_question_id)) return null;
-  if (done) return <p className="mt-3 text-sm text-primary">押进判断账本了，到期回来对账。</p>;
+  if (done) return <p className="mt-3 text-sm text-primary">记进判断账本了，到期回来对账。</p>;
   return (
     <div className="mt-3 border-t border-border pt-3">
       {!open ? (
         <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-          今天那件事会不会也这样？押一条
+          今天那件事会不会也这样？记一条判断
         </Button>
       ) : (
         <div className="rounded-md bg-background p-4">
@@ -188,7 +188,7 @@ function TodayBridge({ drill }: { drill: AnsweredDrill }) {
             questionId={drill.topic_signal_id ? undefined : (drill.topic_question_id ?? undefined)}
             question={drill.today_question}
             initialTags={["历史题"]}
-            submitLabel="押下，进判断账本"
+            submitLabel="记进判断账本"
             onSubmitted={() => setDone(true)}
           />
         </div>

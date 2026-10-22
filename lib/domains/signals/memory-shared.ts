@@ -1,3 +1,5 @@
+import { signalKindOf, type SignalKind } from "./feeds";
+
 /**
  * 记忆层（浏览器端也要用的部分，不碰数据库、不碰网络）：
  * 抓到的每一条新闻都存着（external_signals，一条不删），算一个「意思的指纹」，能按意思搜、能看这件事以前和后来；
@@ -68,3 +70,30 @@ export function cleanSnippet(t: string | null | undefined): string {
 
 /** 相似到什么程度才算「同一件事的以前 / 后来」。 */
 export const SAME_STORY = 0.72;
+
+/** 报告里这一类叫什么（跟今日总览的小标题一致）。 */
+export const KIND_TITLES: Record<SignalKind, string> = {
+  news: "今天的世界",
+  calendar: "已经定了的未来",
+  voices: "谁在头疼什么",
+  money: "谁在掏钱",
+  tools: "新工具和新可能",
+};
+
+export type InterestGroup = { kind: SignalKind; count: number; reasons: { signal_id: string; title: string | null; note: string }[] };
+
+/**
+ * 他最近在意什么：标过的按报告的几类数一数（代码数，不让 AI 归纳），每类列出他自己写的理由。
+ * 多的在前；以后画自我画像用的是这些原话，不是 AI 的概括。
+ */
+export function interestGroups(marks: { signal_id: string; source: string; title: string | null; note: string | null }[]): InterestGroup[] {
+  const groups = new Map<SignalKind, InterestGroup>();
+  for (const m of marks) {
+    const kind = signalKindOf(m.source);
+    const g = groups.get(kind) ?? { kind, count: 0, reasons: [] };
+    g.count += 1;
+    if (m.note?.trim()) g.reasons.push({ signal_id: m.signal_id, title: m.title, note: m.note.trim() });
+    groups.set(kind, g);
+  }
+  return Array.from(groups.values()).sort((a, b) => b.count - a.count);
+}

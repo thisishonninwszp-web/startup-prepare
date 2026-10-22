@@ -159,7 +159,7 @@ export function NewPredictionForm({
 
       <Err message={error} />
       <Button type="submit" disabled={pending}>
-        {pending ? "记录中…" : "押下"}
+        {pending ? "记录中…" : "记下"}
       </Button>
     </form>
   );

@@ -140,7 +140,7 @@ export function renderIdea(idea: ContextIdea): string {
     }
   }
   if (idea.predictions.length) {
-    lines.push("", "## 押过的预测", "");
+    lines.push("", "## 做过的预测", "");
     for (const p of idea.predictions) {
       lines.push(`- ${p.text}（${day(p.due_at)} 到期，${OUTCOME_LABEL[p.outcome] ?? p.outcome}）${p.note ? `：${p.note}` : ""}`);
     }

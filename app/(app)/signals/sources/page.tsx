@@ -172,7 +172,7 @@ export default async function SourcesPage() {
             .map((r) => ({ label: r.label, value: decided.get(r.source) ?? 0 }))
             .sort((a, b) => b.value - a.value)}
           unit=" 条"
-          empty="两周里还没有一条进了决定：记成观察、押判断、补进想法的缺口、听一听、开假门，做过一次就会出现在这里。"
+          empty="两周里还没有一条进了决定：记成观察、记判断、补进想法的缺口、听一听、开假门，做过一次就会出现在这里。"
         />
       </section>
 
@@ -198,7 +198,7 @@ export default async function SourcesPage() {
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">
           挑中的数只算精选，不算「也值得一看」。没被挑中不一定是源不好，也可能是那一节每天名额太少。
-          「进了决定」数的是真的被你用上的：记成了观察、押过判断、补进了想法的缺口、在差距清单里听过原话或开过假门。
+          「进了决定」数的是真的被你用上的：记成了观察、记过判断、补进了想法的缺口、在差距清单里听过原话或开过假门。
           信息只有改变一个决定时才有用 —— 两周下来一条都进不了决定的源，读得再多也是噪音。
         </p>
       </section>

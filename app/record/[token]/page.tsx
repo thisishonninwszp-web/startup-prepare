@@ -25,20 +25,20 @@ export default async function PublicRecordPage({ params }: { params: { token: st
       <div className="py-12">
         <PageHeader
           eyebrow="Track record"
-          title="押过的，都摆在这里"
-          description="周刊上每一条「那边有、这边还没有」，我都押过两年内这边会不会出现。到期对账，错的也照样留着。能自动对账的，附了查到的出处。"
+          title="说过的判断，都摆在这里"
+          description="周刊上每一条「那边有、这边还没有」，我都判断过两年内这边会不会出现。到期对账，错的也照样留着。能自动对账的，附了查到的出处。"
         />
         <p className="mb-8 font-mono text-sm">
-          押了 {bets.length} 条 · 应验 {count("hit")} · 没应验 {count("miss")} · 还在等 {count("pending")}
+          判断了 {bets.length} 条 · 应验 {count("hit")} · 没应验 {count("miss")} · 还在等 {count("pending")}
         </p>
         {bets.length === 0 ? (
-          <p className="text-sm leading-7 text-muted-foreground">这里空着。第一期周刊发出去以后，押的那几条会出现在这里。</p>
+          <p className="text-sm leading-7 text-muted-foreground">这里空着。第一期周刊发出去以后，判断的那几条会出现在这里。</p>
         ) : (
           <ul className="space-y-6">
             {bets.map((b, i) => (
               <li key={i} className="border-b border-border pb-6 last:border-b-0">
                 <p className="font-mono text-xs text-muted-foreground">
-                  {b.made_on} 押 · {b.due_on} 到期 · {OUTCOME[b.outcome]}
+                  {b.made_on} 判断 · {b.due_on} 到期 · {OUTCOME[b.outcome]}
                 </p>
                 <p className="mt-1 text-sm leading-7 text-muted-foreground">{b.question}</p>
                 <p className="mt-1 border-l-2 border-primary pl-3 text-base font-medium leading-8">{b.judgment}</p>

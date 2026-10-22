@@ -233,7 +233,7 @@ export function InferenceTree({
         )}
         {n.vague && (
           <p className="mt-1 text-xs leading-6 text-muted-foreground">
-            这一步说得太泛，到时候很难说清它算不算发生了。押之前，先把它改成一句能对账的话。
+            这一步说得太泛，到时候很难说清它算不算发生了。记成判断之前，先把它改成一句能对账的话。
           </p>
         )}
         {n.specifies && !n.restates && (
@@ -311,10 +311,10 @@ export function InferenceTree({
             {n.userFlag === "circular" ? "你标了车轱辘 · 取消" : "这是车轱辘"}
           </Button>
           {bets[n.claim] ? (
-            <span className="text-xs text-primary">已经押了，{bets[n.claim]}对账</span>
+            <span className="text-xs text-primary">已经记成判断，{bets[n.claim]}对账</span>
           ) : (
             <Button variant="ghost" size="sm" className="h-10 sm:h-8" onClick={() => setBetOpen(betOpen === n.id ? null : n.id)}>
-              {betOpen === n.id ? "不押了" : "押这一条"}
+              {betOpen === n.id ? "不记了" : "把这一条记成判断"}
             </Button>
           )}
         </div>
@@ -325,7 +325,7 @@ export function InferenceTree({
               question={nodeBetQuestion(n.claim)}
               questionLabel="你觉得这一步会不会发生？改成你自己的说法，越具体越好对账。"
               initialJudgment={n.claim}
-              submitLabel="押下，进判断账本"
+              submitLabel="记进判断账本"
             />
           </div>
         )}

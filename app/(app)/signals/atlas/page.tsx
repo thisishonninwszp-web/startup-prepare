@@ -155,7 +155,7 @@ export default async function AtlasPage() {
                     />
                     {timeline && <AtlasTimeline timeline={timeline} />}
                     <p className="text-xs leading-6 text-muted-foreground">
-                      周刊上押「两年内这边会不会出现」之前，先看这张图：同一类的线大多多长、有几条是虚线一直拖到今天。
+                      周刊上判断「两年内这边会不会出现」之前，先看这张图：同一类的线大多多长、有几条是虚线一直拖到今天。
                       线短不等于结果好 —— 进来又退出的也算「到了」，结果写在每行末尾。
                     </p>
                   </section>

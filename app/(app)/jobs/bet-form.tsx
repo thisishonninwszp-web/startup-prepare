@@ -20,7 +20,7 @@ export function BetForm() {
       const r = await createMarketBetAction({ text, dueOn, confidence: Number(confidence) });
       if (r.ok) {
         setText("");
-        setMessage("押上了，到期在「自我」的判断账本里对账。");
+        setMessage("记上了，到期在「自我」的判断账本里对账。");
       } else setMessage(r.message);
     });
 
@@ -37,7 +37,7 @@ export function BetForm() {
           <Input inputMode="numeric" className="h-8 w-16" value={confidence} onChange={(e) => setConfidence(e.target.value)} />%
         </label>
         <Button size="sm" variant="outline" disabled={pending || !text.trim()} onClick={save}>
-          押这一条
+          把这一条记成判断
         </Button>
       </div>
       {message && <p className="text-xs text-muted-foreground">{message}</p>}

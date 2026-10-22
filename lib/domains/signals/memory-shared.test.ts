@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cleanSnippet, embedText, mergeHits, parseVector, tokyoDayRange } from "./memory-shared";
+import { cleanSnippet, embedText, interestGroups, mergeHits, parseVector, tokyoDayRange } from "./memory-shared";
+import { NEWS_SOURCE_PREFIX, VOICE_SOURCE_PREFIX } from "./feeds";
 
 describe("memory helpers", () => {
   it("embed text is title + body, capped", () => {
@@ -28,5 +29,21 @@ describe("cleanSnippet", () => {
   it("decodes RSS entities and squashes spaces", () => {
     expect(cleanSnippet("モヤシ争奪戦 &nbsp;&nbsp; テレ朝NEWS")).toBe("モヤシ争奪戦 テレ朝NEWS");
     expect(cleanSnippet(null)).toBe("");
+  });
+});
+
+describe("interestGroups", () => {
+  it("counts marks per report section, most first, keeping only written reasons", () => {
+    const groups = interestGroups([
+      { signal_id: "a", source: `${VOICE_SOURCE_PREFIX}x`, title: "A", note: "跟我做的事有关" },
+      { signal_id: "b", source: `${VOICE_SOURCE_PREFIX}y`, title: "B", note: null },
+      { signal_id: "c", source: `${NEWS_SOURCE_PREFIX}z`, title: "C", note: "  " },
+    ]);
+    expect(groups.map((g) => [g.kind, g.count])).toEqual([
+      ["voices", 2],
+      ["news", 1],
+    ]);
+    expect(groups[0].reasons).toEqual([{ signal_id: "a", title: "A", note: "跟我做的事有关" }]);
+    expect(groups[1].reasons).toEqual([]);
   });
 });

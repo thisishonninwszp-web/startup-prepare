@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { getWeekly, lastWeekRange } from "@/lib/domains/signals/weekly";
 import { WeeklyLoader } from "./weekly-loader";
+import { sharedViewFor } from "@/lib/domains/signals/users";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,7 +34,9 @@ export default async function WeeklyPage({ searchParams }: { searchParams: { sta
   // 只看已经过完的周；周一要对齐
   const start = requested > latest || new Date(`${requested}T12:00:00Z`).getUTCDay() !== 1 ? latest : requested;
   const end = new Date(new Date(`${shiftWeek(start, 1)}T12:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 10);
-  const weekly = await getWeekly(user.id, start);
+  // 朋友的账号看主账号那一份（周报只讲世界上发生了什么，不涉及他），不能自己写、不能重写
+  const view = await sharedViewFor(user.id);
+  const weekly = await getWeekly(view.sourceUserId, start);
   const prev = shiftWeek(start, -1);
   const next = start < latest ? shiftWeek(start, 1) : null;
 
@@ -71,10 +74,14 @@ export default async function WeeklyPage({ searchParams }: { searchParams: { sta
               </ul>
             </section>
           )}
-          <div className="mt-8 flex justify-end">
-            <WeeklyLoader weekStart={start} regenerate />
-          </div>
+          {!view.shared && (
+            <div className="mt-8 flex justify-end">
+              <WeeklyLoader weekStart={start} regenerate />
+            </div>
+          )}
         </>
+      ) : view.shared ? (
+        <p className="text-sm leading-7 text-muted-foreground">这一周的周报还没写。每周一早上会有。</p>
       ) : (
         <WeeklyLoader weekStart={start} />
       )}

@@ -138,8 +138,8 @@ function PublicRecordToggle({ initialToken }: { initialToken: string | null }) {
     <section className="border-t pt-6">
       <h2 className="text-base font-semibold">公开对账页</h2>
       <p className="mt-1 text-xs leading-6 text-muted-foreground">
-        周刊上押过的每一条、到期对没对，摆在一个不用登录就能看的页面上，错的也留着。贴在主页或笔记里 ——
-        陌生人信不信你，看的是你押过的东西应验了几条。只显示周刊上押的那几条，别的一概不显示。
+        周刊上下过判断的每一条、到期对没对，摆在一个不用登录就能看的页面上，错的也留着。贴在主页或笔记里 ——
+        陌生人信不信你，看的是你说过的判断应验了几条。只显示周刊上的那几条，别的一概不显示。
       </p>
       {token ? (
         <div className="mt-3 space-y-2">
@@ -265,7 +265,7 @@ export function IssueComposer({
         <h2 className="text-base font-semibold">这一期写哪几条（最多 {ISSUE_MAX_PICKS} 条）</h2>
         <p className="mt-1 text-xs leading-6 text-muted-foreground">
           最近两周清单里的。每条点三下就是你的判断 —— 发出去的就是这句话，别人写不出来的也就是这句话。
-          第一问押了「会」或「不会」的，发出去时自动押进判断账本，{STANCE_YEARS} 年后对账。
+          第一问选了「会」或「不会」的，发出去时自动记进判断账本，{STANCE_YEARS} 年后对账。
         </p>
         {gaps.length === 0 ? (
           <p className="mt-3 text-sm leading-7 text-muted-foreground">这两周清单里没有新的。去差距清单扫一轮再来。</p>
@@ -363,10 +363,10 @@ export function IssueComposer({
       <section>
         <h2 className="text-base font-semibold">公开对账（可选）</h2>
         <p className="mt-1 text-xs leading-6 text-muted-foreground">
-          最近两周押的、刚对过账的判断。错了也照实写 —— 敢公开对账的人很少，时间长了，这就是别人信你的理由。
+          最近两周记下的、刚对过账的判断。错了也照实写 —— 敢公开对账的人很少，时间长了，这就是别人信你的理由。
         </p>
         {bets.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">最近两周没有押过或对过账的判断。</p>
+          <p className="mt-3 text-sm text-muted-foreground">最近两周没有记过或对过账的判断。</p>
         ) : (
           <ul className="mt-3 space-y-2">
             {bets.map((b) => {
@@ -376,7 +376,7 @@ export function IssueComposer({
                   <span>
                     {b.judgment}
                     <span className="ml-2 font-mono text-xs text-muted-foreground">
-                      {b.made_on} 押 · {OUTCOME[b.outcome]}
+                      {b.made_on} 记下 · {OUTCOME[b.outcome]}
                     </span>
                   </span>
                   <Button
@@ -523,7 +523,7 @@ export function IssueComposer({
                     if (result.ok) {
                       setIssue(result.issue);
                       setUrl("");
-                      if (result.bets > 0) setBetNotice(`这一期押了「会 / 不会」的 ${result.bets} 条，已经押进判断账本，${STANCE_YEARS} 年后对账。`);
+                      if (result.bets > 0) setBetNotice(`这一期选了「会 / 不会」的 ${result.bets} 条，已经记进判断账本，${STANCE_YEARS} 年后对账。`);
                     } else setLogError(result.message);
                   })
                 }

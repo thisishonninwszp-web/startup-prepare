@@ -854,7 +854,7 @@ export default async function SelfPage() {
       <PageHeader
         eyebrow="SELF"
         title="自我"
-        description="关于自己的判断，只有先押注、再挨打，才算数。这里不给人格标签，只记可证伪的条件命题。"
+        description="关于自己的判断，只有先说出来、再被事实检验，才算数。这里不给人格标签，只记可证伪的条件命题。"
       />
 
       <section className="mb-6">
@@ -1007,7 +1007,7 @@ export default async function SelfPage() {
         {quests.length === 0 ? (
           <EmptyState
             title="没有怪可打"
-            description="台账是空的，或者手上的假设都已经在押注中。先建一条假设，怪自己会出现。"
+            description="台账是空的，或者手上的假设都已经在检验中。先建一条假设，怪自己会出现。"
           />
         ) : (
           <div className="self-panel px-5 py-1">
@@ -1641,7 +1641,7 @@ export default async function SelfPage() {
 
       <section className="mb-10 space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">押注</h2>
+          <h2 className="text-lg font-semibold">事前预测</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             在去验证之前先写下你的预判。这是唯一能推动档位上升的证据。
           </p>
@@ -1650,7 +1650,7 @@ export default async function SelfPage() {
         {pending.length === 0 ? (
           <EmptyState
             title="还没有待结算的预测"
-            description="下一次你准备替别人回答“他肯定会说不需要”的时候，先把它押在这里。"
+            description="下一次你准备替别人回答“他肯定会说不需要”的时候，先把它记在这里。"
           />
         ) : (
           <div className="space-y-2">
@@ -1678,12 +1678,12 @@ export default async function SelfPage() {
 
         {overdue.length > 0 && (
           <p className="text-sm text-primary">
-            有 {overdue.length} 条已到期没对账。不对账的预测等于没押过。
+            有 {overdue.length} 条已到期没对账。不对账的预测等于没说过。
           </p>
         )}
 
         <div className="self-panel p-5">
-          <h3 className="mb-3 text-sm font-medium">押一条新的</h3>
+          <h3 className="mb-3 text-sm font-medium">记一条新的</h3>
           <NewPredictionForm
             hypotheses={active.map((entry) => ({
               id: entry.hypothesis.id,

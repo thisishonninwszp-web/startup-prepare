@@ -62,7 +62,7 @@ export async function loadPublicRecord(token: string): Promise<PublicBet[] | nul
   return (data ?? []).map((r) => {
     const p = (Array.isArray(r.predictions) ? r.predictions[0] : r.predictions) as { due_at: string; outcome: PublicBet["outcome"]; note: string | null };
     return {
-      question: displayQuestion(r.question as string).replace(/^周刊上公开押的：/, ""),
+      question: displayQuestion(r.question as string).replace(/^周刊上公开判断的：/, ""),
       judgment: r.judgment as string,
       made_on: (r.created_at as string).slice(0, 10),
       due_on: p.due_at.slice(0, 10),

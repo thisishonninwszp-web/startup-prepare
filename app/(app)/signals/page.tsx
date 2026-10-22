@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { sharedViewFor } from "@/lib/domains/signals/users";
+import { publicEarlier, publicItem } from "@/lib/domains/signals/shared-view";
 import Link from "next/link";
 import { NextActionLine } from "./next-action";
 import { notFound } from "next/navigation";
@@ -16,7 +18,7 @@ import { emailConfig } from "@/lib/domains/signals/notify";
 import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
 import { deadlineLabel, HORIZONS, type HorizonKey } from "@/lib/domains/signals/practice-shared";
 import { practiceHorizon, questionDeadline } from "@/lib/ai";
-import { countPendingSignals, getDailyReport, type ReportSection } from "./queries";
+import { countPendingSignals, getDailyReport, type DailyReport, type ReportSection } from "./queries";
 import { GenerateBriefButton } from "./brief-panel";
 import { SourceCheckView } from "./check-view";
 import { DigestLoader } from "./digest-loader";
@@ -316,6 +318,7 @@ function ReportSectionView({
   section,
   data,
   isToday,
+  canGenerate,
   hiddenSignalId,
   earlier,
   date,
@@ -324,6 +327,8 @@ function ReportSectionView({
   section: (typeof SECTIONS)[number];
   data: ReportSection | null;
   isToday: boolean;
+  /** 能不能自己生成 / 重新生成这一节（看共用那一份的账号不能）。 */
+  canGenerate: boolean;
   date: string;
   /** 这一节今天点过的"有用 / 没用"。 */
   feedback?: boolean;
@@ -355,9 +360,9 @@ function ReportSectionView({
         <div className="mt-4 rounded-lg border border-dashed bg-dotgrid px-6 py-8 text-center">
           <p className="text-sm">{section.empty}</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {isToday ? "每天早上会自动生成；现在想看就点下面，大约要十几秒。" : "那天没有生成这一份。"}
+            {!isToday ? "那天没有生成这一份。" : canGenerate ? "每天早上会自动生成；现在想看就点下面，大约要十几秒。" : "每天早上会自动生成，还没好的话过一会儿再来。"}
           </p>
-          {isToday && (
+          {canGenerate && (
             <div className="mt-4 flex justify-center">
               <GenerateBriefButton kind={section.kind} />
             </div>
@@ -407,7 +412,7 @@ function ReportSectionView({
           )}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
             <SectionFeedback date={date} kind={section.kind} initial={feedback} />
-            {isToday && <GenerateBriefButton kind={section.kind} regenerate />}
+            {canGenerate && <GenerateBriefButton kind={section.kind} regenerate />}
           </div>
         </>
       )}
@@ -495,7 +500,11 @@ function DigestCard({ digest, date, canGenerate }: { digest: Digest | null; date
             </div>
           )}
           <div className="mt-4 border-t pt-3">
-            {digest.detail ? <DigestDetailView detail={digest.detail} date={date} canRewrite={canGenerate} /> : <DigestDetailButton date={date} />}
+            {digest.detail ? (
+              <DigestDetailView detail={digest.detail} date={date} canRewrite={canGenerate} />
+            ) : canGenerate ? (
+              <DigestDetailButton date={date} />
+            ) : null}
           </div>
         </>
       ) : canGenerate ? (
@@ -643,6 +652,20 @@ async function PracticeCard({
   );
 }
 
+/** 共用那一份给别的账号看：每节的精选去掉只关于主账号的几句，「之前上过」去掉他那次写的判断。 */
+function publicReport(report: DailyReport): DailyReport {
+  const section = (s: ReportSection | null): ReportSection | null => (s ? { ...s, items: s.items.map(publicItem) } : s);
+  return {
+    ...report,
+    news: section(report.news),
+    tools: section(report.tools),
+    voices: section(report.voices),
+    calendar: section(report.calendar),
+    money: section(report.money),
+    earlier: publicEarlier(report.earlier),
+  };
+}
+
 export default async function SignalsReportPage({
   searchParams,
 }: {
@@ -657,20 +680,23 @@ export default async function SignalsReportPage({
   const today = tokyoToday();
   const date = isReportDate(searchParams.date) ? searchParams.date : today;
   const isToday = date === today;
-  const [report, newsCount, toolsCount, judgments, digest, feedback, fastAlerts] = await Promise.all([
-    getDailyReport(user.id, date),
-    countPendingSignals("news"),
-    countPendingSignals("tools", [GITHUB_SOURCE_PREFIX]),
+  // 朋友的账号看主账号那一份（共用，去掉只关于主账号的几句）；自己就是主账号或没配主账号时看自己的
+  const view = await sharedViewFor(user.id);
+  const [rawReport, newsCount, toolsCount, judgments, digest, feedback, fastAlerts] = await Promise.all([
+    getDailyReport(view.sourceUserId, date),
+    countPendingSignals("news", undefined, view.shared ? user.id : undefined),
+    countPendingSignals("tools", [GITHUB_SOURCE_PREFIX], view.shared ? user.id : undefined),
     // 迁移 055 没跑时练习整块不显示，报告照常
     listJudgments(user.id).catch((e: Error) => {
       if (/signal_judgments/.test(e.message)) return null;
       throw e;
     }),
-    getDigest(user.id, date).catch(() => null),
+    getDigest(view.sourceUserId, date).catch(() => null),
     getFeedback(user.id, date),
     isToday ? unusualFastMoves().catch(() => []) : Promise.resolve([]),
   ]);
 
+  const report = rawReport !== "missing-schema" && view.shared ? publicReport(rawReport) : rawReport;
   const practice = report !== "missing-schema" ? report.news?.practice ?? null : null;
   const newsPicks = report !== "missing-schema" ? (report.news?.items ?? []).filter((i) => !i.extra) : [];
   const practiceIndex = practice ? newsPicks.findIndex((i) => i.signal_id === practice.signal_id) : -1;
@@ -757,7 +783,12 @@ export default async function SignalsReportPage({
               </p>
             </div>
           )}
-          <DigestCard digest={digest === "missing-schema" ? null : digest} date={date} canGenerate={isToday && hasAnySection} />
+          {view.shared && (
+            <p className="mb-6 text-xs leading-6 text-muted-foreground">
+              这是大家共用的一份报告，每天早上自动生成。你的判断、标记、记成的观察都是你自己的，别人看不到。
+            </p>
+          )}
+          <DigestCard digest={digest === "missing-schema" ? null : digest} date={date} canGenerate={isToday && hasAnySection && !view.shared} />
           <div className="mb-8">
             <ListenButton paragraphs={listenScript} />
           </div>
@@ -797,6 +828,7 @@ export default async function SignalsReportPage({
                   section={section}
                   data={report[section.kind]}
                   isToday={isToday}
+                  canGenerate={isToday && !view.shared}
                   earlier={report.earlier}
                   hiddenSignalId={section.kind === "news" ? hiddenSignalId : null}
                   date={date}
@@ -810,7 +842,11 @@ export default async function SignalsReportPage({
 
       <footer className="mt-16 space-y-4 border-t pt-4">
         {isToday && <ReaderPanel userId={user.id} />}
-        <EmailPanel to={mail.ready ? mail.to : null} missing={mail.ready ? [] : mail.missing} />
+        {view.shared ? (
+          <p className="text-xs leading-6 text-muted-foreground">每天早上报告好了，提醒邮件会发到你注册用的邮箱。</p>
+        ) : (
+          <EmailPanel to={mail.ready ? mail.to : null} missing={mail.ready ? [] : mail.missing} />
+        )}
       </footer>
     </PageContainer>
   );

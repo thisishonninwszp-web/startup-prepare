@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { writeDailyDigest, writeDigestDetail, type DetailTheme, type DigestSectionInput } from "@/lib/ai";
 import type { BriefItem } from "./brief";
 import { REPORT_SECTION_KINDS } from "./feeds";
+import { KIND_TITLES } from "./memory-shared";
 
 /**
  * 今日总览：看完五节以后，像一个懂行的人跟他讲几句今天世界上发生了什么，再挑最值得点开的三条。
@@ -27,13 +28,7 @@ function readPracticeColumn(raw: PracticeColumn): { chain?: DigestChain; detail?
   return { chain: raw.chain ?? undefined, detail: raw.detail ?? undefined };
 }
 
-const SECTION_TITLES: Record<string, string> = {
-  news: "今天的世界",
-  calendar: "已经定了的未来",
-  voices: "谁在头疼什么",
-  money: "谁在掏钱",
-  tools: "新工具和新可能",
-};
+const SECTION_TITLES: Record<string, string> = KIND_TITLES;
 
 /** 迁移 061 没跑时返回 "missing-schema"。 */
 export async function getDigest(userId: string, date: string): Promise<Digest | null | "missing-schema"> {

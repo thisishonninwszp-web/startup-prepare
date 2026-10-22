@@ -55,7 +55,7 @@ export const NEXT_LABELS: Record<MonthlyNextKey, string> = {
   door: "给它开一个假门，写上价格",
   listen: "听一听这边有没有人为它头疼",
   gaps: "给这个想法列信息缺口",
-  judge: "押一条判断，到期对账",
+  judge: "记一条判断，到期对账",
 };
 
 function shift(date: string, days: number): string {

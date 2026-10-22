@@ -4,7 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { archiveCoverage, MARK_LABELS, recentMarks, RESURFACE_LABELS, resurfaced } from "@/lib/domains/signals/memory";
+import { archiveCoverage, interestGroups, KIND_TITLES, MARK_LABELS, recentMarks, RESURFACE_LABELS, resurfaced } from "@/lib/domains/signals/memory";
+
+/** 「你最近在意什么」看最近多少天标的。 */
+const INTEREST_DAYS = 60;
 import { ArchiveSearch, AskArchive } from "./archive-tools";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +21,13 @@ export default async function MemoryPage() {
   if (!user) notFound();
 
   const today = tokyoToday();
-  const [coverage, marks, back] = await Promise.all([
+  const [coverage, marks, back, recent] = await Promise.all([
     archiveCoverage().catch(() => null),
     recentMarks(user.id, 30).catch(() => null),
     resurfaced(user.id, today).catch(() => []),
+    recentMarks(user.id, 300, INTEREST_DAYS).catch(() => null),
   ]);
+  const interests = recent ? interestGroups(recent) : [];
 
   return (
     <PageContainer width="narrow">
@@ -88,13 +93,46 @@ export default async function MemoryPage() {
         </section>
       )}
 
+      {interests.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-1 text-base font-semibold">你最近在意什么</h2>
+          <p className="mb-3 text-xs leading-6 text-muted-foreground">
+            最近 {INTEREST_DAYS} 天你标过的，按报告的几节数一数；底下是你自己写的为什么。以后画你的画像用的是这些原话，不是 AI 的概括。
+          </p>
+          <ul className="space-y-4">
+            {interests.map((g) => (
+              <li key={g.kind} className="text-sm leading-7">
+                <p>
+                  <span className="font-medium">{KIND_TITLES[g.kind]}</span>
+                  <span className="ml-2 font-mono text-xs text-muted-foreground">{g.count} 条</span>
+                </p>
+                {g.reasons.length > 0 ? (
+                  <ul className="mt-1 space-y-1 border-l border-border pl-3">
+                    {g.reasons.slice(0, 8).map((r) => (
+                      <li key={r.signal_id} className="text-xs leading-6">
+                        <span className="text-foreground">{r.note}</span>
+                        <Link href={`/signals/${r.signal_id}`} className="ml-2 text-muted-foreground transition-colors duration-150 hover:text-primary">
+                          {r.title ?? "（没有标题）"}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">这一节标过的都没写为什么。</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-3 text-base font-semibold">你标过的</h2>
         {marks === null ? (
           <p className="text-sm text-muted-foreground">迁移 091 跑完之后才能标。</p>
         ) : marks.length === 0 ? (
           <p className="text-sm leading-7 text-muted-foreground">
-            这里空着。看新闻时在详情页点一下「重要 / 跟我有关 / 存疑」，过一周、一个月、一年会在「回头看」再拿出来给你，连同它后来怎样了。
+            这里空着。看新闻时在详情页点一下「重要 / 跟我有关 / 存疑」，顺手写一句为什么在意（可以不写）；过一周、一个月、一年会在「回头看」再拿出来给你，连同它后来怎样了。
           </p>
         ) : (
           <ul className="space-y-2">

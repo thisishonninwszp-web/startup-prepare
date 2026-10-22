@@ -41,7 +41,7 @@ export default async function ForecastPage() {
       <PageHeader
         eyebrow="Forecasts"
         title="预测"
-        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场的概率当对照）、从今天新闻里出的生意题（到期程序查证据，你点确认）。你先押，AI 用三种思路各押一个取中间。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
+        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场给的几成可能当对照）、从今天新闻里出的生意题（到期程序查证据，出题的人确认）。每道题你先说你觉得有几成可能会发生，再看 AI 和市场怎么说 —— AI 用三种思路各给一个、取中间。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
       />
 
       {board === "missing-schema" ? (
@@ -53,14 +53,17 @@ export default async function ForecastPage() {
           const { questions, forecasts } = board;
           const has = (qid: string, s: ForecastSource) => forecasts.some((f) => f.question_id === qid && f.source === s);
           const toForecast = questions.filter((q) => q.status === "open" && !q.revealed_at && !has(q.id, "me") && daysBetween(today, q.resolve_on) > 0);
-          const toConfirm = questions.filter((q) => q.status === "open" && q.kind === "business" && q.pending);
-          const open = questions.filter((q) => q.status === "open" && (q.revealed_at || has(q.id, "me")) && !(q.kind === "business" && q.pending));
+          // 生意题到期后由出题的主账号确认；别的账号在「判断过的」里看到它在等确认
+          const toConfirm = board.canConfirm ? questions.filter((q) => q.status === "open" && q.kind === "business" && q.pending) : [];
+          const open = questions.filter((q) => q.status === "open" && (q.revealed_at || has(q.id, "me")) && !(board.canConfirm && q.kind === "business" && q.pending));
           const done = questions.filter((q) => q.status !== "open").sort((a, b) => (b.resolved_at ?? "").localeCompare(a.resolved_at ?? ""));
           const scores = scoreBySource(questions, forecasts, ["me", "ai", "market", "ai_outside", "ai_inside", "ai_devil"]);
           const bins = (["ai", "me"] as ForecastSource[]).map((s) => ({ s, bins: calibrationBins(questions, forecasts, s) }));
 
           if (questions.length === 0) {
-            return (
+            return board.shared ? (
+              <p className="text-sm leading-7 text-muted-foreground">这里空着。题目每天早上 7:30 和晚上 7 点进来，大家共用同一批题，各自判断、各自算分。</p>
+            ) : (
               <p className="text-sm leading-7 text-muted-foreground">
                 这里空着。题目每天早上 7:30 和晚上 7 点由后台进来（GitHub 上的定时任务调用这个网站；要在 GitHub 仓库的 Settings → Secrets 里加一个
                 CRON_SECRET，值和 Vercel 里的一样）。也可以在 GitHub 的 Actions 页面手动点一次「signals-jobs」。
@@ -71,9 +74,9 @@ export default async function ForecastPage() {
           return (
             <>
               <section className="mb-10">
-                <h2 className="mb-3 text-base font-semibold">等你押（{toForecast.length}）</h2>
+                <h2 className="mb-3 text-base font-semibold">等你判断（{toForecast.length}）</h2>
                 {toForecast.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">这会儿没有等你押的题。新题每天早上和晚上进来。</p>
+                  <p className="text-sm text-muted-foreground">这会儿没有等你判断的题。新题每天早上和晚上进来。</p>
                 ) : (
                   <ul className="space-y-4">
                     {toForecast.map((q) => (
@@ -82,7 +85,8 @@ export default async function ForecastPage() {
                   </ul>
                 )}
                 <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                  先押、再看 AI 和市场 —— 先看了再押，押的就是它们的数，账本就不是你的了。押了不能改：改了就没法知道你当时准不准。
+                  先说你的判断、再看 AI 和市场 —— 先看了再判断，填的就是它们的数，账本就不是你的了。判断了不能改：改了就没法知道你当时准不准。
+                  {board.shared ? " 大家共用同一批题，但你的判断和分数只有你自己看得到。" : ""}
                 </p>
               </section>
 
@@ -126,10 +130,10 @@ export default async function ForecastPage() {
                           {SOURCE_LABELS[a]} 对 {SOURCE_LABELS[b]}：
                         </span>
                         {h.n === 0 ? (
-                          "还没有两边都押过、又对过账的题"
+                          "还没有两边都判断过、又对过账的题"
                         ) : (
                           <>
-                            两边都押过的 {h.n} 道里，{SOURCE_LABELS[a]}更近 {h.aBetter} 道、{SOURCE_LABELS[b]}更近 {h.bBetter} 道
+                            两边都判断过的 {h.n} 道里，{SOURCE_LABELS[a]}更近 {h.aBetter} 道、{SOURCE_LABELS[b]}更近 {h.bBetter} 道
                             {h.tie > 0 ? `、一样 ${h.tie} 道` : ""}
                             {h.aBrier !== null && h.bBrier !== null ? `（平均分 ${h.aBrier.toFixed(3)} 对 ${h.bBrier.toFixed(3)}）` : ""}
                           </>
@@ -155,7 +159,7 @@ export default async function ForecastPage() {
                   ))}
                 </div>
                 <p className="mt-3 text-xs leading-6 text-muted-foreground">
-                  平均分是每道题（押的概率 − 结果）² 的平均，结果「会」算 1、「不会」算 0。永远押 50% 是 0.250 —— 比 0.250 小才算比瞎猜强。
+                  平均分是每道题（说的几成可能 − 结果）² 的平均，结果「会」算 1、「不会」算 0。永远说 50% 是 0.250 —— 比 0.250 小才算比瞎猜强。
                   分数和比率满 {MIN_SCORED} 道（每一格满 {MIN_BIN} 道）才显示，前面只数件数：几道题的准不准多半是运气。
                   这些数字只用于对世界事件的预测，不给想法打分。
                 </p>
@@ -163,13 +167,14 @@ export default async function ForecastPage() {
 
               {open.length > 0 && (
                 <section className="mb-10">
-                  <h2 className="mb-3 text-base font-semibold">押过、还没到期的（{open.length}）</h2>
+                  <h2 className="mb-3 text-base font-semibold">判断过、还没对账的（{open.length}）</h2>
                   <ul className="space-y-3">
                     {open.map((q) => (
                       <li key={q.id} className="border-b border-border pb-3 last:border-b-0">
                         <p className="text-sm font-medium">{q.title}</p>
                         <p className="font-mono text-xs text-muted-foreground">
-                          {KIND_LABELS[q.kind]} · {q.resolve_on} 截止{q.revealed_at && !has(q.id, "me") ? " · 你没押、先看了答案" : ""}
+                          {KIND_LABELS[q.kind]} · {q.resolve_on} 截止{q.revealed_at && !has(q.id, "me") ? " · 你没判断、先看了答案" : ""}
+                          {q.kind === "business" && q.pending ? " · 到期了，等出题的人确认" : ""}
                         </p>
                         <Answers q={q} forecasts={forecasts} />
                       </li>

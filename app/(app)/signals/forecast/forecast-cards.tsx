@@ -40,20 +40,20 @@ function QuestionHead({ q }: { q: ForecastQuestion }) {
   );
 }
 
-/** 各方押了多少（他押过或先看过答案以后才显示）。 */
+/** 各方说的几成可能（他判断过或先看过答案以后才显示）。 */
 export function Answers({ q, forecasts }: { q: ForecastQuestion; forecasts: Forecast[] }) {
   const of = (s: Forecast["source"]) => forecasts.find((f) => f.question_id === q.id && f.source === s);
   const me = of("me");
   const ai = of("ai");
   const market = of("market");
-  const parts = [me && `你 ${pct(me.probability)}`, ai ? `AI ${pct(ai.probability)}` : "AI 还没押", market && `市场 ${pct(market.probability)}`].filter(Boolean);
+  const parts = [me && `你 ${pct(me.probability)}`, ai ? `AI ${pct(ai.probability)}` : "AI 还没判断", market && `市场 ${pct(market.probability)}`].filter(Boolean);
   const three = (["ai_outside", "ai_inside", "ai_devil"] as const).map(of).filter((f): f is Forecast => Boolean(f));
   return (
     <div className="mt-2 text-sm leading-7">
       <p className="font-mono">{parts.join(" · ")}</p>
       {three.length > 0 && (
         <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">AI 的三种思路各押了多少、为什么</summary>
+          <summary className="cursor-pointer text-muted-foreground">AI 的三种思路各说了几成、为什么</summary>
           <ul className="mt-1 space-y-1">
             {three.map((f) => (
               <li key={f.source}>
@@ -70,7 +70,7 @@ export function Answers({ q, forecasts }: { q: ForecastQuestion; forecasts: Fore
   );
 }
 
-/** 等你押：先点一档（看不到 AI 和市场的）；不想押也可以先看答案，但看了这道就不能再押。 */
+/** 等你判断：先点一档（看不到 AI 和市场的）；也可以先看答案，但看了这道就不能再判断。 */
 export function ForecastCard({ q }: { q: ForecastQuestion }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -98,7 +98,7 @@ export function ForecastCard({ q }: { q: ForecastQuestion }) {
         ))}
       </div>
       <Button size="sm" variant="ghost" className="mt-1 h-7 px-2 text-xs" disabled={pending} onClick={() => act(() => revealQuestionAction(q.id))}>
-        不押，先看 AI 和市场怎么说（看了这道就不能再押）
+        先不判断，直接看 AI 和市场怎么说（看了这道就不能再判断）
       </Button>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </li>

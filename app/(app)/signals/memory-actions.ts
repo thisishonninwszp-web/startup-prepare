@@ -60,7 +60,7 @@ export async function setMyForecastAction(questionId: string, probability: numbe
     revalidatePath("/signals/forecast");
     return { ok: true };
   } catch (error) {
-    return { ok: false, message: message(error, "没押上") };
+    return { ok: false, message: message(error, "没记上") };
   }
 }
 

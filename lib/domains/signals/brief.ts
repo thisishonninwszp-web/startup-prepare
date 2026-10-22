@@ -30,7 +30,7 @@ import { fetchCnAppChart } from "./app-chart";
 import { usableSummary } from "./summary";
 import { SKILL_DEFS } from "@/lib/domains/self-model/skills";
 import { loadSituationFacts } from "./reader-facts";
-import { sendDailyEmail } from "./notify";
+import { sendDailyEmail, sendMemberEmails } from "./notify";
 import { generateDigest } from "./digest";
 import type { Breakdown } from "./breakdown-shared";
 
@@ -584,6 +584,8 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
     try {
       const outcome = await sendDailyEmail(userIds[0]);
       emails.push(outcome.sent ? `发给 ${outcome.to}` : `没发：${outcome.reason}`);
+      // 同一份发给名单上的朋友（配了 IDEAOS_MEMBERS 才有），不多花 AI 的钱
+      if (outcome.sent) for (const to of await sendMemberEmails(userIds[0])) emails.push(`发给 ${to}`);
     } catch (e) {
       failed.push(`提醒邮件：${e instanceof Error ? e.message : String(e)}`);
     }

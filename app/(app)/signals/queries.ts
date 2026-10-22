@@ -3,6 +3,7 @@ import { kindSourceFilter, REPORT_SECTION_KINDS, type SignalKind } from "@/lib/d
 import type { BriefItem, BriefPracticeRow } from "@/lib/domains/signals/brief";
 import { cleanBriefItem } from "@/lib/domains/signals/filler";
 import { findEarlierMentions, type EarlierJudgment, type EarlierMention } from "@/lib/domains/signals/followups";
+import { handledSignalIds } from "@/lib/domains/signals/user-states";
 
 export type NewsItem = {
   id: string;
@@ -19,15 +20,26 @@ function prefixFilter(kind: SignalKind, prefixes?: string[]): string {
   return prefixes ? prefixes.map((p) => `source.like.${p}%`).join(",") : kindSourceFilter(kind);
 }
 
-/** 某个页签下没处理过的条目，按发布时间倒序。迁移 052 没跑时返回 null。 */
-export async function listPendingSignals(kind: SignalKind, limit = 60, prefixes?: string[]): Promise<NewsItem[] | null> {
-  const { data, error } = await supabaseAdmin
+/** 收件箱列最近几天抓到、还没处理过的。更早的不删（存档一条不删），只是不在这里列，记忆页能找到。 */
+export const INBOX_DAYS = 14;
+
+function inboxSince(): string {
+  return new Date(Date.now() - INBOX_DAYS * 86_400_000).toISOString();
+}
+
+/**
+ * 某个页签下没处理过的条目，按发布时间倒序。迁移 052 没跑时返回 null。
+ * sharedViewer：朋友的账号 —— 不看 external_signals.status（那是主账号的），去掉他自己处理过的。
+ */
+export async function listPendingSignals(kind: SignalKind, limit = 60, prefixes?: string[], sharedViewer?: string): Promise<NewsItem[] | null> {
+  let query = supabaseAdmin
     .from("external_signals")
     .select("id, source, url, title, raw_text, published_at, fetched_at")
     .or(prefixFilter(kind, prefixes))
-    .eq("status", "pending")
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(limit);
+    .gte("fetched_at", inboxSince());
+  const handled = sharedViewer ? await handledSignalIds(sharedViewer) : null;
+  if (!sharedViewer) query = query.eq("status", "pending");
+  const { data, error } = await query.order("published_at", { ascending: false, nullsFirst: false }).limit(limit + (handled?.size ?? 0));
   if (error) {
     if (/published_at/.test(error.message)) return null;
     throw new Error(error.message);
@@ -35,6 +47,7 @@ export async function listPendingSignals(kind: SignalKind, limit = 60, prefixes?
   // 隔天同一篇换了个分类再进来，表里就会有两行；显示时按链接只留一条。
   const seen = new Set<string>();
   return ((data ?? []) as NewsItem[]).filter((item) => {
+    if (handled?.has(item.id)) return false;
     if (!item.url) return true;
     if (seen.has(item.url)) return false;
     seen.add(item.url);
@@ -42,14 +55,28 @@ export async function listPendingSignals(kind: SignalKind, limit = 60, prefixes?
   });
 }
 
-export async function countPendingSignals(kind: SignalKind, prefixes?: string[]): Promise<number> {
-  const { count, error } = await supabaseAdmin
-    .from("external_signals")
-    .select("id", { count: "exact", head: true })
-    .or(prefixFilter(kind, prefixes))
-    .eq("status", "pending");
-  if (error) throw new Error(error.message);
-  return count ?? 0;
+export async function countPendingSignals(kind: SignalKind, prefixes?: string[], sharedViewer?: string): Promise<number> {
+  if (!sharedViewer) {
+    const { count, error } = await supabaseAdmin
+      .from("external_signals")
+      .select("id", { count: "exact", head: true })
+      .or(prefixFilter(kind, prefixes))
+      .eq("status", "pending")
+      .gte("fetched_at", inboxSince());
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+  // 朋友的账号：收件箱这段时间里这一类一共几条，减去他自己处理过的
+  const since = inboxSince();
+  const handled = Array.from(await handledSignalIds(sharedViewer));
+  const [all, done] = await Promise.all([
+    supabaseAdmin.from("external_signals").select("id", { count: "exact", head: true }).or(prefixFilter(kind, prefixes)).gte("fetched_at", since),
+    handled.length > 0
+      ? supabaseAdmin.from("external_signals").select("id", { count: "exact", head: true }).or(prefixFilter(kind, prefixes)).gte("fetched_at", since).in("id", handled.slice(0, 500))
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
+  if (all.error) throw new Error(all.error.message);
+  return Math.max(0, (all.count ?? 0) - (done.count ?? 0));
 }
 
 export type ReportSection = { overview: string | null; items: BriefItem[]; practice: BriefPracticeRow | null };

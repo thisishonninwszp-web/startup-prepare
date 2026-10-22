@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { ABLE_SOURCE_PREFIX, GITHUB_SOURCE_PREFIX, type SignalKind } from "@/lib/domains/signals/feeds";
+import { sharedViewFor } from "@/lib/domains/signals/users";
 import { listPendingSignals } from "../queries";
 import { RefreshButton, SignalList } from "../signal-list";
 
@@ -67,14 +68,15 @@ export default async function SignalsInboxPage({
 
   const tab = TABS.find((t) => t.key === searchParams.tab) ?? TABS[0];
   const kind = tab.kind;
-  const items = await listPendingSignals(kind, 60, tab.prefixes);
+  const view = await sharedViewFor(user.id);
+  const items = await listPendingSignals(kind, 60, tab.prefixes, view.shared ? user.id : undefined);
 
   return (
     <PageContainer>
       <PageHeader
         eyebrow="All signals"
         title="全部条目"
-        description="报告只挑了 5 条，这里是全部。哪条让你多看了一眼，就记一笔；没动过的两周后自己清掉。"
+        description="报告只挑了 5 条，这里是全部。哪条让你多看了一眼，就记一笔；没动过的两周后从这里收起来（不删，记忆页还找得到）。"
         actions={items !== null && <RefreshButton kind={kind} />}
       />
 

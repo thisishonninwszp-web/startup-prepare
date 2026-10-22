@@ -106,7 +106,7 @@ export default async function SlowVariablesPage() {
         <h2 className="text-base font-semibold">这些数字有什么用</h2>
         <p className="mt-1 text-muted-foreground">
           慢变量自己不会让你做任何事，它是你做三类决定时的底：挑方向时看顺风还是逆风；看时机时问「为什么是现在、五年前为什么不行」；
-          押「两年内会不会出现」时多一个理由或反理由。点下面这个，看看你差距清单和想法库里的东西，各顺着、逆着哪几个数字。
+          判断「两年内会不会出现」时多一个理由或反理由。点下面这个，看看你差距清单和想法库里的东西，各顺着、逆着哪几个数字。
         </p>
         <div className="mt-3">
           <WindButton lastAt={wind?.created_at ?? null} />
