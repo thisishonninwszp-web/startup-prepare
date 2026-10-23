@@ -1,7 +1,9 @@
 import { boardSections, loadForecastBoard, sidesOf, type ForecastQuestion } from "./forecast";
 import { drillProgress } from "./backtest";
 import { loadExperimentBoard } from "./experiments";
-import { followedSignals, resurfacedOne, storyUpdates, type Resurfaced } from "./memory";
+import { followedSignals, storyUpdates } from "./memory";
+import { dueRecalls, type RecallItem } from "./recall";
+import { RECALL_PER_DAY } from "./recall-shared";
 import type { StoryUpdate } from "./memory-shared";
 import { sharedViewFor } from "./users";
 
@@ -28,7 +30,8 @@ export type TodayPersonal = {
   followedCount: number;
   /** null = 迁移 093 没跑；"error" = 这次没取到。 */
   stories: StoryUpdate[] | null | "error";
-  lookBack: Resurfaced | null;
+  /** 今天该回想的（最多 RECALL_PER_DAY 条）和一共几条到期；null = 迁移 098 没跑或这次没取到。 */
+  recall: { items: RecallItem[]; total: number } | null;
   /** null = 迁移 091 没跑或这次没取到。 */
   forecast: TodayForecast | null;
 };
@@ -43,9 +46,9 @@ function logged<T>(what: string, fallback: T) {
 export async function loadTodayPersonal(userId: string, today: string): Promise<TodayPersonal> {
   const view = await sharedViewFor(userId);
   const since = new Date(Date.now() - STORY_WINDOW_HOURS * 3_600_000).toISOString();
-  const [followed, lookBack, board, drill] = await Promise.all([
+  const [followed, recall, board, drill] = await Promise.all([
     followedSignals(userId, view.shared).catch(logged("followed", null)),
-    resurfacedOne(userId, today).catch(logged("look back", null)),
+    dueRecalls(userId, view.shared, today, RECALL_PER_DAY).catch(logged("recall", null)),
     loadForecastBoard(userId).catch(logged("forecast", null)),
     drillProgress(userId, today).catch(logged("drill", null)),
   ]);
@@ -63,5 +66,5 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
       justResolved: s.justResolved.slice(0, 3).map((q) => ({ q, ...sidesOf(board.forecasts, q.id) })),
     };
   }
-  return { followedCount: followed?.length ?? 0, stories, lookBack, forecast };
+  return { followedCount: followed?.length ?? 0, stories, recall, forecast };
 }

@@ -33,6 +33,8 @@ import { ListenButton } from "./listen-button";
 import { ReaderPanel } from "./reader-panel";
 import { SectionTabs } from "./section-tabs";
 import { TodayBlocks } from "./today-blocks";
+import { MarkButtons } from "./mark-buttons";
+import { marksFor, type Mark } from "@/lib/domains/signals/memory";
 import { SectionFeedback } from "./section-feedback";
 import { getFeedback } from "@/lib/domains/signals/feedback";
 import { describeMove, unusualFastMoves } from "@/lib/domains/signals/fast";
@@ -145,12 +147,15 @@ function ReportItem({
   forYouLabel,
   hidden,
   earlier,
+  mark,
 }: {
   item: BriefItem;
   n: number;
   forYouLabel: string;
   hidden: boolean;
   earlier?: EarlierMention;
+  /** 他标过没有（展开以后可以直接标，不用点进详情页）。 */
+  mark?: Mark;
 }) {
   // 中国那边只在"没有、没普及"时显示：中国早就有的（比如豆芽）只是噪音
   const showChina = !!item.china_side && /^(没有|有类似的)/.test(item.china_side);
@@ -194,6 +199,9 @@ function ReportItem({
           <span className="mt-1 hidden text-xs text-muted-foreground group-open:inline">收起</span>
         </summary>
         <div className="pb-4 pl-7">
+          <div className="mb-1">
+            <MarkButtons signalId={item.signal_id} initial={mark?.mark ?? null} initialNote={mark?.note ?? null} compact />
+          </div>
           <p className="font-mono text-xs text-muted-foreground">{item.source}</p>
           {hidden ? (
             <p className="mt-2 rounded-md bg-muted/60 px-3 py-2 text-sm leading-7 text-muted-foreground">
@@ -324,7 +332,10 @@ function ReportSectionView({
   earlier,
   date,
   feedback,
+  marks,
 }: {
+  /** 他标过的（signal_id → 标记）。 */
+  marks: Record<string, Mark>;
   section: (typeof SECTIONS)[number];
   data: ReportSection | null;
   isToday: boolean;
@@ -386,6 +397,7 @@ function ReportSectionView({
                       forYouLabel={section.forYouLabel}
                       hidden={item.signal_id === hiddenSignalId}
                       earlier={earlier[item.signal_id]}
+                      mark={marks[item.signal_id]}
                     />
                   ))}
                 </ol>
@@ -698,6 +710,13 @@ export default async function SignalsReportPage({
   ]);
 
   const report = rawReport !== "missing-schema" && view.shared ? publicReport(rawReport) : rawReport;
+  // 各节每一条他标过没有（展开以后能直接标）
+  const marks = Object.fromEntries(
+    await marksFor(
+      user.id,
+      report === "missing-schema" ? [] : SECTIONS.flatMap((s) => (report[s.kind]?.items ?? []).map((i) => i.signal_id))
+    ).catch(() => new Map<string, Mark>())
+  );
   const practice = report !== "missing-schema" ? report.news?.practice ?? null : null;
   const newsPicks = report !== "missing-schema" ? (report.news?.items ?? []).filter((i) => !i.extra) : [];
   const practiceIndex = practice ? newsPicks.findIndex((i) => i.signal_id === practice.signal_id) : -1;
@@ -846,6 +865,7 @@ export default async function SignalsReportPage({
                   hiddenSignalId={section.kind === "news" ? hiddenSignalId : null}
                   date={date}
                   feedback={feedback[section.kind as keyof typeof feedback]}
+                  marks={marks}
                 />
               ),
             }))}

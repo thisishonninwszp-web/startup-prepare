@@ -12,7 +12,9 @@ import type { ItemFlow } from "./flow-shared";
 import type { DigestPick } from "./digest";
 import { cleanBriefItem } from "./filler";
 import { signFlowCard } from "./flow-card-shared";
-import { followReasonText, MARK_LABELS, RESURFACE_LABELS } from "./memory-shared";
+import { followReasonText } from "./memory-shared";
+import { MY_TIERS, pct } from "./forecast-shared";
+import { actionSecret, actionUrl, signAction, type ActionKind } from "@/lib/action-links";
 import { loadTodayPersonal } from "./today";
 
 /**
@@ -50,7 +52,7 @@ export type DailyEmailInput = {
   /** 今日总览挑的最值得点开的几条（最多 3 条）：标题、背景、一图看懂。 */
   top?: { signal_id: string; headline: string; background: string; flow?: ItemFlow }[];
   /** 每一节的精选：标题、背景（邮件里只放第一句）、两种提示。 */
-  sections: { title: string; items: (Pick<BriefItem, "headline" | "related_question" | "surprise"> & { background?: string })[] }[];
+  sections: { title: string; items: (Pick<BriefItem, "headline" | "related_question" | "surprise"> & { signal_id?: string; background?: string })[] }[];
   dueCount: number;
   freshQuestions: { question: string; freshCount: number }[];
   /** 这一周动得不寻常的快变量（已经写成一句话）。 */
@@ -59,8 +61,12 @@ export type DailyEmailInput = {
   issueReminder?: "unwritten" | "unpublished" | null;
   /** 他在跟的事有新消息（「今天」一页的同一块，最多 3 件、每件 2 条）。每人一份。 */
   stories?: { title: string; reason: string; updates: { id: string; title: string }[] }[];
-  /** 回头看一条（一年前 / 一个月前 / 一周前标过的）。每人一份。 */
-  lookBack?: { when: string; mark: string; note: string | null; signalId: string; title: string; later: string[] } | null;
+  /** 回想一条（间隔重复到期的）：先想、点链接再看答案。每人一份。 */
+  recall?: { title: string; reason: string; url: string } | null;
+  /** 点一下就标上的链接（signal_id → 两个链接），每人一份口令。 */
+  markLinks?: Record<string, { important: string; mine: string }>;
+  /** 等他判断的第一道题：点一档就记上（每一档一个链接）。 */
+  forecastQuick?: { title: string; links: { label: string; url: string }[] } | null;
   /** 预测题里等他做的：等判断几道（第一道的题目）、生意题等确认几道。每人一份。 */
   forecastTodo?: { toForecast: number; first: string | null; toConfirm: number } | null;
   url: string | null;
@@ -110,13 +116,9 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     }
     lines.push("");
   }
-  if (input.lookBack) {
-    const b = input.lookBack;
-    lines.push("回头看", `${b.when}你标了「${b.mark}」：${b.title}`);
-    if (b.note) lines.push(`  当时你写：${b.note}`);
-    if (b.later.length > 0) lines.push("  后来：", ...b.later.map((t) => `  → ${t}`));
-    else lines.push("  存档里还没有它后来的消息。");
-    lines.push("");
+  if (input.recall) {
+    const r = input.recall;
+    lines.push("回想", `${r.reason}：${r.title}`, "  先别往下看：当时你为什么在意？后来怎样了？想好了再点开看答案：", `  ${r.url}`, "");
   }
   if (input.practice) {
     lines.push("今天的练习", `读这一条：${input.practice.headline}`, `问题：${input.practice.question}`, "先写下你的判断，再看 AI 怎么拆。", "");
@@ -186,6 +188,9 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   const para = (text: string, style = "") => `<p style="margin:0 0 12px;font-size:15px;line-height:1.75;color:${C.ink};${style}">${esc(text)}</p>`;
   const head = (text: string) => `<p style="margin:28px 0 8px;font-size:13px;color:${C.muted};">${esc(text)}</p>`;
   const link = (href: string, text: string) => `<p style="margin:0 0 12px;font-size:14px;"><a href="${esc(href)}" style="color:${C.accent};">${esc(text)}</a></p>`;
+  // 点一下就标上（进记忆、进「在跟的事」、以后会回想）
+  const markLine = (m: { important: string; mine: string }) =>
+    `<p style="margin:0 0 8px;font-size:12px;color:${C.muted};">标一下：<a href="${esc(m.important)}" style="color:${C.muted};">重要</a> · <a href="${esc(m.mine)}" style="color:${C.muted};">跟我有关</a></p>`;
   const parts: string[] = [];
   if (input.digest) parts.push(para(input.digest));
   if (input.top && input.top.length > 0) {
@@ -193,6 +198,8 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
     for (const t of input.top) {
       parts.push(`<div style="margin:0 0 20px;padding:14px 16px;border:1px solid ${C.rule};border-radius:8px;background:${C.card};">`);
       parts.push(para(t.headline, "font-weight:600;"), para(t.background));
+      const marks = input.markLinks?.[t.signal_id];
+      if (marks) parts.push(markLine(marks));
       const cid = images[t.signal_id];
       if (cid) parts.push(`<img src="cid:${esc(cid)}" alt="一图看懂" width="560" style="display:block;width:100%;max-width:560px;height:auto;border-radius:6px;" />`);
       parts.push("</div>");
@@ -211,12 +218,14 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
       }
     }
   }
-  if (input.lookBack) {
-    const b = input.lookBack;
-    parts.push(head("回头看"), para(`${b.when}你标了「${b.mark}」：${b.title}`, "font-weight:600;"));
-    if (b.note) parts.push(para(`当时你写：${b.note}`, `font-size:14px;color:${C.muted};`));
-    if (b.later.length > 0) parts.push(para("后来：", "font-size:14px;margin-bottom:2px;"), ...b.later.map((t) => para(`→ ${t}`, "font-size:14px;margin-left:16px;")));
-    else parts.push(para("存档里还没有它后来的消息。", `font-size:14px;color:${C.muted};`));
+  if (input.recall) {
+    const r = input.recall;
+    parts.push(
+      head("回想"),
+      para(`${r.reason}：${r.title}`, "font-weight:600;"),
+      para("先别往下看：当时你为什么在意？后来怎样了？在心里说一遍。", `font-size:14px;color:${C.muted};`),
+      link(r.url, "想好了，看答案")
+    );
   }
   if (input.practice) {
     parts.push(head("今天的练习"), para(`读这一条：${input.practice.headline}`), para(`问题：${input.practice.question}`), para("先写下你的判断，再看 AI 怎么拆。", `color:${C.muted};`));
@@ -224,6 +233,14 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   if (input.fastAlerts && input.fastAlerts.length > 0) parts.push(head("这一周动得不寻常的"), ...input.fastAlerts.map((a) => para(`· ${a}`)));
   if (input.dueCount > 0) parts.push(para(`有 ${input.dueCount} 条判断到期了，去对一下账。`));
   for (const line of forecastTodoLines(input.forecastTodo)) parts.push(para(line));
+  if (input.forecastQuick) {
+    parts.push(para(`先说你的判断（点一下，确认就记上）：${input.forecastQuick.title}`, "font-size:14px;margin-bottom:4px;"));
+    parts.push(
+      `<p style="margin:0 0 12px;font-size:14px;">${input.forecastQuick.links
+        .map((l) => `<a href="${esc(l.url)}" style="color:${C.accent};margin-right:10px;">${esc(l.label)}</a>`)
+        .join("")}</p>`
+    );
+  }
   if (input.forecastTodo && input.url) parts.push(link(`${input.url}/signals/forecast`, "去判断"));
   for (const q of input.freshQuestions) parts.push(para(`你在追的「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`));
   if (input.overview) parts.push(para(input.overview));
@@ -232,6 +249,8 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
     parts.push(head(`【${s.title}】`));
     for (const item of s.items) {
       parts.push(para(`· ${item.headline}`, "margin-bottom:2px;"));
+      const marks = item.signal_id ? input.markLinks?.[item.signal_id] : undefined;
+      if (marks) parts.push(markLine(marks));
       if (item.background) parts.push(para(firstSentence(item.background), `font-size:14px;color:${C.muted};`));
       if (item.surprise) parts.push(para(`↳ 意外：原本以为${item.surprise.expected}，结果${item.surprise.actual}。为什么？`, "font-size:14px;"));
       if (item.related_question) parts.push(para(`↳ 跟你在追的「${item.related_question.question}」有关`, "font-size:14px;"));
@@ -327,12 +346,39 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   };
 }
 
+/** 这封邮件里出现的新闻（最值得点开的几条、各节的精选），给它们配「点一下就标上」的链接。 */
+function emailSignalIds(input: DailyEmailInput): string[] {
+  const ids = [...(input.top ?? []).map((t) => t.signal_id), ...input.sections.flatMap((s) => s.items.map((i) => i.signal_id ?? ""))];
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
 /** 邮件里每人一份的几块（跟「今天」一页同一份，代码算的，不调 AI）。取不到就不放，不拦着发邮件。 */
-async function personalParts(userId: string, date: string): Promise<Pick<DailyEmailInput, "stories" | "lookBack" | "forecastTodo">> {
+async function personalParts(
+  userId: string,
+  date: string,
+  signalIds: string[]
+): Promise<Pick<DailyEmailInput, "stories" | "recall" | "forecastTodo" | "markLinks" | "forecastQuick">> {
   try {
     const t = await loadTodayPersonal(userId, date);
     const f = t.forecast;
+    const base = appUrl();
+    const secret = actionSecret();
+    // 点一下就完成的链接：口令里写着是谁、做什么（见 lib/action-links.ts）；网址或密钥没配就不放
+    const tap = (k: ActionKind, target: string, v: string) => (base && secret ? actionUrl(base, signAction({ u: userId, k, t: target, v }, secret)) : null);
+    const recallItem = t.recall?.items[0];
+    const recallUrl = recallItem ? tap("recall", recallItem.signal_id, "") : null;
+    const first = f?.toForecast[0];
+    const tiers = first ? MY_TIERS.map((p) => ({ label: pct(p), url: tap("forecast", first.id, String(p)) })) : [];
     return {
+      recall: recallItem && recallUrl ? { title: recallItem.title ?? "（没有标题）", reason: recallItem.reason, url: recallUrl } : null,
+      markLinks: Object.fromEntries(
+        signalIds.flatMap((id) => {
+          const important = tap("mark", id, "important");
+          const mine = tap("mark", id, "mine");
+          return important && mine ? [[id, { important, mine }]] : [];
+        })
+      ),
+      forecastQuick: first && tiers.every((x) => x.url) ? { title: first.title, links: tiers as { label: string; url: string }[] } : null,
       stories: Array.isArray(t.stories)
         ? t.stories.slice(0, 3).map((s) => ({
             title: s.followed.title ?? "（没有标题）",
@@ -340,16 +386,6 @@ async function personalParts(userId: string, date: string): Promise<Pick<DailyEm
             updates: s.updates.slice(0, 2).map((u) => ({ id: u.id, title: u.title ?? "（没有标题）" })),
           }))
         : [],
-      lookBack: t.lookBack
-        ? {
-            when: RESURFACE_LABELS[t.lookBack.daysAgo],
-            mark: MARK_LABELS[t.lookBack.item.mark],
-            note: t.lookBack.item.note,
-            signalId: t.lookBack.item.signal_id,
-            title: t.lookBack.item.title ?? "（没有标题）",
-            later: t.lookBack.later.slice(0, 2).map((h) => h.title ?? "（没有标题）"),
-          }
-        : null,
       forecastTodo: f && (f.toForecast.length > 0 || f.toConfirm > 0) ? { toForecast: f.toForecast.length, first: f.toForecast[0]?.title ?? null, toConfirm: f.toConfirm } : null,
     };
   } catch (e) {
@@ -399,7 +435,7 @@ export async function sendMemberEmails(ownerId: string, date = tokyoToday()): Pr
   const transport = nodemailer.createTransport({ service: "gmail", auth: { user: config.from, pass: process.env.GMAIL_APP_PASSWORD } });
   const sent: string[] = [];
   for (const m of members) {
-    const [judgments, personal] = await Promise.all([listJudgments(m.id).catch(() => []), personalParts(m.id, date)]);
+    const [judgments, personal] = await Promise.all([listJudgments(m.id).catch(() => []), personalParts(m.id, date, emailSignalIds(base))]);
     const input: DailyEmailInput = {
       ...base,
       ...personal,
@@ -432,7 +468,7 @@ export async function sendDailyEmail(userId: string, date = tokyoToday()): Promi
   if (!config.ready) return { sent: false, reason: `还没配好：缺 ${config.missing.join("、")}` };
   const report = await loadEmailInput(userId, date);
   if (!report) return { sent: false, reason: "今天的报告还没生成" };
-  const input: DailyEmailInput = { ...report, ...(await personalParts(userId, date)) };
+  const input: DailyEmailInput = { ...report, ...(await personalParts(userId, date, emailSignalIds(report))) };
   const { subject, text } = buildDailyEmail(input);
   const attachments = await flowCardAttachments(input);
   const html = buildDailyEmailHtml(input, Object.fromEntries(attachments.map((a) => [a.signalId, a.cid])));

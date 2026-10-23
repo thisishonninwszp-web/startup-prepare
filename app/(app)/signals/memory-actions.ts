@@ -18,6 +18,8 @@ import { sharedViewFor } from "@/lib/domains/signals/users";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { confirmResolution, revealQuestion, setMyForecast } from "@/lib/domains/signals/forecast";
 import { saveExperimentForecast } from "@/lib/domains/signals/experiments";
+import { rateRecall, recallReveal, type RecallReveal } from "@/lib/domains/signals/recall";
+import type { RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
 
 async function requireUserId(): Promise<string> {
@@ -122,6 +124,29 @@ export async function saveExperimentForecastAction(
     revalidatePath("/signals/gaps/door");
     revalidatePath("/signals");
     return { ok: true };
+  } catch (error) {
+    return { ok: false, message: message(error, "没记上") };
+  }
+}
+
+/** 回想：他想过以后看答案。 */
+export async function recallRevealAction(signalId: string): Promise<{ ok: true; reveal: RecallReveal } | { ok: false; message: string }> {
+  try {
+    const userId = await requireUserId();
+    return { ok: true, reveal: await recallReveal(userId, signalId) };
+  } catch (error) {
+    return { ok: false, message: message(error, "没取到") };
+  }
+}
+
+/** 回想：记得 / 模糊 / 忘了，排下一次。 */
+export async function rateRecallAction(signalId: string, result: RecallResult): Promise<{ ok: true; next: string } | { ok: false; message: string }> {
+  try {
+    const userId = await requireUserId();
+    const next = await rateRecall(userId, signalId, result, tokyoToday());
+    revalidatePath("/signals");
+    revalidatePath("/signals/memory");
+    return { ok: true, next };
   } catch (error) {
     return { ok: false, message: message(error, "没记上") };
   }

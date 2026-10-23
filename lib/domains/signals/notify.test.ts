@@ -95,19 +95,19 @@ describe("邮件更丰富：最值得点开的几条带背景，各条带一句�
   });
 });
 
-describe("每人一份的几块：在跟的事、回头看、预测题", () => {
+describe("每人一份的几块：在跟的事、回想、预测题", () => {
   const base = { date: "2026-10-22", practice: null, overview: null, sections: [], dueCount: 0, freshQuestions: [], url: "https://app.example" };
   const input = {
     ...base,
     stories: [{ title: "美团进日本", reason: "你标了「重要」", updates: [{ id: "u1", title: "美团在东京招人" }] }],
-    lookBack: { when: "一个月前", mark: "存疑", note: "数字对不上", signalId: "s1", title: "某某融资", later: [] },
+    recall: { title: "某某融资", reason: "你标了「存疑」", url: "https://app.example/a/tok" },
     forecastTodo: { toForecast: 2, first: "日银 12 月会加息吗？", toConfirm: 1 },
   };
 
-  it("纯文字版：在跟的事和回头看在练习之前，预测题跟到期判断放一起", () => {
+  it("纯文字版：在跟的事和回想在练习之前，预测题跟到期判断放一起", () => {
     const { text } = buildDailyEmail(input);
     expect(text).toContain("你在跟的事，有新消息\n· 美团进日本（你标了「重要」）\n  → 美团在东京招人");
-    expect(text).toContain("回头看\n一个月前你标了「存疑」：某某融资\n  当时你写：数字对不上\n  存档里还没有它后来的消息。");
+    expect(text).toContain("回想\n你标了「存疑」：某某融资\n  先别往下看：当时你为什么在意？后来怎样了？想好了再点开看答案：\n  https://app.example/a/tok");
     expect(text).toContain("有 2 道预测题等你判断，比如：日银 12 月会加息吗？\n有 1 道生意题到期了，等你确认对账。\nhttps://app.example/signals/forecast");
   });
 
@@ -118,5 +118,24 @@ describe("每人一份的几块：在跟的事、回头看、预测题", () => {
     const plain = buildDailyEmailHtml(base, {});
     expect(plain).not.toContain("你在跟的事");
     expect(plain).not.toContain("去判断");
+  });
+});
+
+describe("点一下就完成的链接", () => {
+  const base = { date: "2026-10-23", practice: null, overview: null, dueCount: 0, freshQuestions: [], url: "https://app.example" };
+  it("各节每一条下面有「标一下」；等判断的题每一档一个链接；没有链接就什么都不多", () => {
+    const html = buildDailyEmailHtml(
+      {
+        ...base,
+        sections: [{ title: "今天的世界", items: [{ signal_id: "s1", headline: "PHP 漏洞" }] }],
+        markLinks: { s1: { important: "https://app.example/a/imp", mine: "https://app.example/a/mine" } },
+        forecastQuick: { title: "日银会加息吗？", links: [{ label: "30%", url: "https://app.example/a/p30" }] },
+      },
+      {}
+    );
+    expect(html).toContain('href="https://app.example/a/imp"');
+    expect(html).toContain('href="https://app.example/a/p30"');
+    const plain = buildDailyEmailHtml({ ...base, sections: [{ title: "今天的世界", items: [{ signal_id: "s1", headline: "PHP 漏洞" }] }] }, {});
+    expect(plain).not.toContain("标一下");
   });
 });

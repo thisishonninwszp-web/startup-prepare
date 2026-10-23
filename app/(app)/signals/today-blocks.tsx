@@ -2,7 +2,8 @@ import Link from "next/link";
 import { newsSourceLabel } from "@/lib/domains/signals/feeds";
 import { KIND_LABELS, pct } from "@/lib/domains/signals/forecast-shared";
 import { DAILY_DRILL } from "@/lib/domains/signals/history-shared";
-import { followReasonText, MARK_LABELS, RESURFACE_LABELS, type StoryUpdate } from "@/lib/domains/signals/memory-shared";
+import { followReasonText, type StoryUpdate } from "@/lib/domains/signals/memory-shared";
+import { RecallCard } from "./recall-card";
 import { FOLLOW_DAYS } from "@/lib/domains/signals/memory";
 import { loadTodayPersonal, type TodayForecast, type TodayPersonal } from "@/lib/domains/signals/today";
 
@@ -23,7 +24,7 @@ export function TodayBlocksView({ t }: { t: TodayPersonal }) {
   return (
     <>
       <Stories t={t} />
-      {t.lookBack && <LookBack item={t.lookBack} />}
+      {t.recall && t.recall.items.length > 0 && <Recall recall={t.recall} />}
       {t.forecast && <ForecastTodo f={t.forecast} />}
     </>
   );
@@ -92,29 +93,24 @@ export function StoryList({ stories }: { stories: StoryUpdate[] }) {
   );
 }
 
-function LookBack({ item: r }: { item: NonNullable<TodayPersonal["lookBack"]> }) {
+function Recall({ recall }: { recall: NonNullable<TodayPersonal["recall"]> }) {
   return (
     <section className="mb-8">
-      <h2 className="text-lg font-semibold">回头看</h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {RESURFACE_LABELS[r.daysAgo]}你标了「{MARK_LABELS[r.item.mark]}」{r.item.note ? `：${r.item.note}` : ""}
-      </p>
-      <Link href={`/signals/${r.item.signal_id}`} className={`text-sm font-medium leading-7 ${linkClass}`}>
-        {r.item.title ?? "（没有标题）"}
-      </Link>
-      {r.later.length > 0 ? (
-        <ul className="mt-1 space-y-1 border-l border-border pl-3 text-sm leading-7">
-          {r.later.map((h) => (
-            <li key={h.id}>
-              <span className="mr-2 font-mono text-xs text-muted-foreground">{h.fetched_at.slice(0, 10)}</span>
-              <Link href={`/signals/${h.id}`} className={linkClass}>
-                {h.title}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-1 text-xs text-muted-foreground">存档里还没有它后来的消息。当时你为什么在意它，现在还成立吗？</p>
+      <h2 className="text-lg font-semibold">回想</h2>
+      <p className="mt-1 text-xs leading-6 text-muted-foreground">自己想起来一次，比再看一遍记得牢。先想，再看答案；记得的会隔得越来越久再问。</p>
+      <div className="mt-3 space-y-3">
+        {recall.items.map((item) => (
+          <RecallCard key={item.signal_id} item={item} />
+        ))}
+      </div>
+      {recall.total > recall.items.length && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          今天一共有 {recall.total} 条到期，
+          <Link href="/signals/memory#recall" className="underline-offset-4 hover:underline">
+            其余的在记忆页
+          </Link>
+          。
+        </p>
       )}
     </section>
   );

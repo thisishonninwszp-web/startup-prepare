@@ -12,13 +12,13 @@ import {
   KIND_TITLES,
   MARK_LABELS,
   recentMarks,
-  RESURFACE_LABELS,
-  resurfaced,
   storyUpdates,
   type StoryUpdate,
 } from "@/lib/domains/signals/memory";
 import { sharedViewFor } from "@/lib/domains/signals/users";
 import { StoryList } from "../today-blocks";
+import { RecallCard } from "../recall-card";
+import { dueRecalls } from "@/lib/domains/signals/recall";
 
 /** 「你在跟的事」看最近多少天的后续。 */
 const STORY_DAYS = 30;
@@ -43,10 +43,13 @@ export default async function MemoryPage() {
     console.error("memory: followed", e);
     return [];
   });
-  const [coverage, marks, back, recent, stories] = await Promise.all([
+  const [coverage, marks, recall, recent, stories] = await Promise.all([
     archiveCoverage().catch(() => null),
     recentMarks(user.id, 30).catch(() => null),
-    resurfaced(user.id, today).catch(() => []),
+    dueRecalls(user.id, view.shared, today, 20).catch((e) => {
+      console.error("memory: recall", e);
+      return null;
+    }),
     recentMarks(user.id, 300, INTEREST_DAYS).catch(() => null),
     storyUpdates(followed, new Date(Date.now() - STORY_DAYS * 86_400_000).toISOString(), 3).catch((e): StoryUpdate[] | "error" => {
       console.error("memory: stories", e);
@@ -103,37 +106,21 @@ export default async function MemoryPage() {
         </section>
       )}
 
-      {back.length > 0 && (
-        <section className="mb-10">
-          <h2 className="mb-3 text-base font-semibold">回头看</h2>
-          <ul className="space-y-4">
-            {back.map((r) => (
-              <li key={`${r.daysAgo}-${r.item.signal_id}`} className="rounded-lg border border-border bg-card p-4 text-sm leading-7">
-                <p className="text-xs text-muted-foreground">
-                  {RESURFACE_LABELS[r.daysAgo]}你标了「{MARK_LABELS[r.item.mark]}」
-                  {r.item.note ? `：${r.item.note}` : ""}
-                </p>
-                <Link href={`/signals/${r.item.signal_id}`} className="font-medium transition-colors duration-150 hover:text-primary">
-                  {r.item.title ?? "（没有标题）"}
-                </Link>
-                {r.later.length > 0 ? (
-                  <ul className="mt-2 space-y-1">
-                    <li className="text-xs text-muted-foreground">后来：</li>
-                    {r.later.map((h) => (
-                      <li key={h.id}>
-                        <span className="mr-2 font-mono text-xs text-muted-foreground">{h.fetched_at.slice(0, 10)}</span>
-                        <Link href={`/signals/${h.id}`} className="transition-colors duration-150 hover:text-primary">
-                          {h.title}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-xs text-muted-foreground">存档里还没有它后来的消息。</p>
-                )}
-              </li>
-            ))}
-          </ul>
+      {recall && (
+        <section id="recall" className="mb-10 scroll-mt-20">
+          <h2 className="mb-1 text-base font-semibold">回想</h2>
+          <p className="mb-3 text-xs leading-6 text-muted-foreground">
+            你标过、记成观察、写过判断的，第一次在一周后问，之后按你说的记得 / 模糊 / 忘了排：记得的越隔越久（最长一年），忘了的过一周再问。自己想起来一次，比再看一遍记得牢。
+          </p>
+          {recall.items.length === 0 ? (
+            <p className="text-sm leading-7 text-muted-foreground">今天没有到期的。</p>
+          ) : (
+            <div className="space-y-3">
+              {recall.items.map((item) => (
+                <RecallCard key={item.signal_id} item={item} />
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -176,7 +163,7 @@ export default async function MemoryPage() {
           <p className="text-sm text-muted-foreground">迁移 091 跑完之后才能标。</p>
         ) : marks.length === 0 ? (
           <p className="text-sm leading-7 text-muted-foreground">
-            这里空着。看新闻时在详情页点一下「重要 / 跟我有关 / 存疑」，顺手写一句为什么在意（可以不写）；过一周、一个月、一年会在「回头看」再拿出来给你，连同它后来怎样了。
+            这里空着。看新闻时在详情页点一下「重要 / 跟我有关 / 存疑」，顺手写一句为什么在意（可以不写）；过一周会在「回想」里问你一次还记不记得，记得的越隔越久再问。
           </p>
         ) : (
           <ul className="space-y-2">

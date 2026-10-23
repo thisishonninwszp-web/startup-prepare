@@ -12,7 +12,8 @@ import { isAllowedEmail } from "./lib/members";
  * 它们没有登录 cookie，不放行就会被跳到 /login —— 定时任务就是这样一直没跑起来的。
  * 一图看懂的卡片（/api/flow-card）靠 CRON_SECRET 签名，发邮件时由服务器去取，也没有登录 cookie。
  */
-const TOKEN_AUTH_PREFIXES = ["/api/cron/", "/api/share", "/api/flow-card", "/record/", "/soon/"];
+// 邮件里「点一下就完成」的链接（/a/<口令>）也是：口令里签着是谁，见 lib/action-links.ts
+const TOKEN_AUTH_PREFIXES = ["/api/cron/", "/api/share", "/api/flow-card", "/record/", "/soon/", "/a/"];
 
 export async function middleware(request: NextRequest) {
   if (TOKEN_AUTH_PREFIXES.some((p) => request.nextUrl.pathname.startsWith(p))) return NextResponse.next();
