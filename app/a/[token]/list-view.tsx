@@ -11,7 +11,7 @@ import { CONFIDENCE_LEVELS, deadlineLabel, draftVerdict, HORIZONS, MISS_REASONS,
 import { RECALL_LABELS, type RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { RecallReveal } from "@/lib/domains/signals/recall";
 import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
-import type { ListConfirm, ListDoor, ListDue, ListExperiment, ListForecast, ListItem, ListPractice, ListRecall } from "@/lib/domains/signals/today-list-shared";
+import type { ListConfirm, ListDoor, ListDue, ListExperiment, ListForecast, ListIssue, ListItem, ListPractice, ListRecall } from "@/lib/domains/signals/today-list-shared";
 import {
   listConfirmAction,
   listDoorDismissAction,
@@ -431,6 +431,34 @@ function DoorCard({ token, d, onDone }: { token: string; d: ListDoor; onDone: Do
   );
 }
 
+/** 这周的周刊：AI 先挑好、先填好的几条摆出来，点去网站上看、改、生成（生成要二三十秒，复制去发也在那边）。 */
+function IssueCard({ i, onDone }: { i: ListIssue; onDone: Done }) {
+  return (
+    <>
+      <Kind>这周的周刊</Kind>
+      <p className="font-medium leading-7">AI 先替你挑了 {i.picks.length} 条，有到日本题的先填了「两年内会不会」</p>
+      <ul className="mt-1 space-y-1 text-sm leading-7">
+        {i.picks.map((p, n) => (
+          <li key={n}>
+            · {p.headline}
+            <span className="ml-2 text-xs text-muted-foreground">
+              {p.will ? `AI 先填：${p.will === "will" ? "会" : "不会"}（${Math.round((p.ai ?? 0) * 100)}%）` : "没先填，你点一下"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Link href="/signals/issue" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+          去看、改、生成 →
+        </Link>
+        <Button size="sm" variant="ghost" onClick={() => onDone("这周先不写了。")}>
+          这周不写
+        </Button>
+      </div>
+    </>
+  );
+}
+
 function ExperimentCard({ token, p, onDone }: { token: string; p: ListExperiment; onDone: Done }) {
   const { pending, error, act } = useAct(onDone);
   return (
@@ -506,6 +534,8 @@ export function TodayListView({
               <RecallCard token={token} r={it.r} onDone={finish(i)} />
             ) : it.kind === "door" ? (
               <DoorCard token={token} d={it.d} onDone={finish(i)} />
+            ) : it.kind === "issue" ? (
+              <IssueCard i={it.i} onDone={finish(i)} />
             ) : (
               <ExperimentCard token={token} p={it.p} onDone={finish(i)} />
             )}

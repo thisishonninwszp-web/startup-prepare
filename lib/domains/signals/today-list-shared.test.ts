@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LIST_CAPS, LIST_MAX, listSeconds, pickListItems, previewLine, type ListCandidates, type ListForecast } from "./today-list-shared";
+import { isIssueDay, LIST_CAPS, LIST_MAX, listSeconds, pickListItems, previewLine, type ListCandidates, type ListForecast } from "./today-list-shared";
 
 const fq = (id: string, blind = false, ai: number | null = 0.3): ListForecast => ({
   id,
@@ -93,7 +93,16 @@ describe("一分钟清单", () => {
   });
 
   it("各种的上限", () => {
-    expect(LIST_CAPS).toEqual({ practice: 1, door: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 });
+    expect(LIST_CAPS).toEqual({ practice: 1, door: 1, issue: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 });
+  });
+
+  it("这周的周刊：周四到周日才放，排在假门后面", () => {
+    expect(isIssueDay("2026-10-22")).toBe(true);
+    expect(isIssueDay("2026-10-25")).toBe(true);
+    expect(isIssueDay("2026-10-26")).toBe(false);
+    const { items } = pickListItems({ ...base, forecasts: [fq("a")], issue: { picks: [{ headline: "x", ai: 0.6, will: "will" }] } });
+    expect(items.map((i) => i.kind)).toEqual(["issue", "forecast"]);
+    expect(previewLine(items[0])).toEqual({ label: "周刊", title: "这周 1 条替你挑好了", note: "去看、生成" });
   });
 
   it("做好的假门排在练习后面，估 20 秒；邮件里写价格填了没有", () => {
