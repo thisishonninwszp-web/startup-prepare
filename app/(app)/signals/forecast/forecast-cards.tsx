@@ -6,7 +6,17 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
-import { KIND_LABELS, MY_TIERS, pct, SOURCE_LABELS, type Forecast, type ForecastQuestion } from "@/lib/domains/signals/forecast-shared";
+import {
+  KIND_LABELS,
+  MODE_LABELS,
+  modeOf,
+  MY_TIERS,
+  pct,
+  SOURCE_LABELS,
+  tiersBeside,
+  type Forecast,
+  type ForecastQuestion,
+} from "@/lib/domains/signals/forecast-shared";
 import { applyPlatt, type Platt } from "@/lib/domains/signals/calibration-shared";
 import { confirmResolutionAction, revealQuestionAction, setMyForecastAction } from "../memory-actions";
 
@@ -43,6 +53,26 @@ function QuestionHead({ q }: { q: ForecastQuestion }) {
   );
 }
 
+/** AI 的三种思路各说了几成、为什么（折起来，点开才看）。 */
+function ThreeViews({ three, summary }: { three: Forecast[]; summary: string }) {
+  if (three.length === 0) return null;
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-muted-foreground">{summary}</summary>
+      <ul className="mt-1 space-y-1">
+        {three.map((f) => (
+          <li key={f.source}>
+            <span className="font-mono text-muted-foreground">
+              {SOURCE_LABELS[f.source]} {pct(f.probability)}
+            </span>
+            <span className="ml-1">{f.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 /** 各方说的几成可能（他判断过或先看过答案以后才显示）。calibration：历史回测学到的 AI 校准（学到了、确实更准才有）。 */
 export function Answers({ q, forecasts, calibration }: { q: ForecastQuestion; forecasts: Forecast[]; calibration?: Platt | null }) {
   const of = (s: Forecast["source"]) => forecasts.find((f) => f.question_id === q.id && f.source === s);
@@ -50,35 +80,27 @@ export function Answers({ q, forecasts, calibration }: { q: ForecastQuestion; fo
   const ai = of("ai");
   const market = of("market");
   const aiText = ai ? `AI ${pct(ai.probability)}${calibration ? `（按回测校准 ${pct(applyPlatt(ai.probability, calibration))}）` : ""}` : "AI 还没判断";
-  const parts = [me && `你 ${pct(me.probability)}`, aiText, market && `市场 ${pct(market.probability)}`].filter(Boolean);
+  const parts = [me && `你 ${pct(me.probability)}（${MODE_LABELS[modeOf(me)]}）`, aiText, market && `市场 ${pct(market.probability)}`].filter(Boolean);
   const three = (["ai_outside", "ai_inside", "ai_devil"] as const).map(of).filter((f): f is Forecast => Boolean(f));
   return (
     <div className="mt-2 text-sm leading-7">
       <p className="font-mono">{parts.join(" · ")}</p>
-      {three.length > 0 && (
-        <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">AI 的三种思路各说了几成、为什么</summary>
-          <ul className="mt-1 space-y-1">
-            {three.map((f) => (
-              <li key={f.source}>
-                <span className="font-mono text-muted-foreground">
-                  {SOURCE_LABELS[f.source]} {pct(f.probability)}
-                </span>
-                <span className="ml-1">{f.reason}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <ThreeViews three={three} summary="AI 的三种思路各说了几成、为什么" />
     </div>
   );
 }
 
-/** 等你判断：先点一档（看不到 AI 和市场的）；也可以先看答案，但看了这道就不能再判断。 */
-export function ForecastCard({ q }: { q: ForecastQuestion }) {
+/**
+ * 等你判断（经用户明确裁决，2026-10-23：AI 先判、你点行不行）。
+ * 别的题：摆出 AI 的数，「行」= 记成这个数，「不行」在那一边改一档（可以带一句为什么），「跳过」不记；市场的数点完才给看。
+ * 每周一道的先判题（或 AI 还没判的）：照旧先点一档、看不到 AI 和市场；也可以先看答案，但看了这道就不能再判断。
+ */
+export function ForecastCard({ q, blind, ai, calibrated, three }: { q: ForecastQuestion; blind: boolean; ai: number | null; calibrated: boolean; three: Forecast[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [side, setSide] = useState<"higher" | "lower" | null>(null);
+  const [note, setNote] = useState("");
   const act = (fn: () => Promise<{ ok: true } | { ok: false; message: string }>) =>
     startTransition(async () => {
       setError(null);
@@ -90,9 +112,55 @@ export function ForecastCard({ q }: { q: ForecastQuestion }) {
         setError(OFFLINE);
       }
     });
+  if (!blind && ai !== null) {
+    const higher = tiersBeside(ai, "higher");
+    const lower = tiersBeside(ai, "lower");
+    return (
+      <li className="rounded-lg border border-border bg-card p-4">
+        <QuestionHead q={q} />
+        <p className="mt-3 text-sm">
+          AI：<span className="font-mono">{pct(ai)}</span> 会{calibrated ? "（按回测校准）" : ""}
+        </p>
+        <ThreeViews three={three} summary="为什么（三种思路各说了几成）" />
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="sm" disabled={pending} onClick={() => act(() => setMyForecastAction(q.id, "agree"))}>
+            行
+          </Button>
+          {higher.length > 0 && (
+            <Button size="sm" variant={side === "higher" ? "secondary" : "outline"} disabled={pending} onClick={() => setSide(side === "higher" ? null : "higher")}>
+              不行，更高
+            </Button>
+          )}
+          {lower.length > 0 && (
+            <Button size="sm" variant={side === "lower" ? "secondary" : "outline"} disabled={pending} onClick={() => setSide(side === "lower" ? null : "lower")}>
+              不行，更低
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => act(() => revealQuestionAction(q.id))}>
+            跳过
+          </Button>
+        </div>
+        {side && (
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap gap-1">
+              {(side === "higher" ? higher : lower).map((p) => (
+                <Button key={p} size="sm" variant="outline" className="h-8 px-2 font-mono text-xs" disabled={pending} onClick={() => act(() => setMyForecastAction(q.id, p, note))}>
+                  {pct(p)}
+                </Button>
+              ))}
+            </div>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="一句：你看到了什么 AI 没看到的（可以不写，先写再点档）" maxLength={200} />
+          </div>
+        )}
+        <p className="mt-1 text-xs text-muted-foreground">市场怎么说，点完再给你看。</p>
+        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      </li>
+    );
+  }
   return (
     <li className="rounded-lg border border-border bg-card p-4">
       <QuestionHead q={q} />
+      {blind && <p className="mt-3 text-xs leading-6 text-muted-foreground">这道先自己判，判完再看 AI 的。每周一道，量的是你自己准不准。</p>}
       <p className="mt-3 text-xs text-muted-foreground">到截止日，你觉得「会」的可能有多大？</p>
       <div className="mt-1 flex flex-wrap gap-1">
         {MY_TIERS.map((p) => (

@@ -1,4 +1,4 @@
-import { CONFIDENCE_LEVELS, displayQuestion, type JudgmentRow } from "@/lib/domains/signals/practice-shared";
+import { CONFIDENCE_LEVELS, displayQuestion, JUDGMENT_MODE_LABELS, type JudgmentRow } from "@/lib/domains/signals/practice-shared";
 import { RetryFeedback } from "./judgment-forms";
 
 const DATE = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric" });
@@ -25,6 +25,8 @@ export function JudgmentView({ judgment, showQuestion = true }: { judgment: Judg
       {showQuestion && <p className="text-sm text-muted-foreground">{displayQuestion(judgment.question)}</p>}
       <p className="mt-2 border-l-2 border-primary pl-3 text-base font-medium leading-8">{judgment.judgment}</p>
       <p className="mt-2 font-mono text-xs text-muted-foreground">
+        {/* 099 没跑时不知道来路（undefined），不标 */}
+        {judgment.mode !== undefined ? `${JUDGMENT_MODE_LABELS[judgment.mode ?? "blind"]} · ` : ""}
         {formatDueDate(judgment.due_at)} 对账{confidence ? ` · ${confidence}` : ""}
         {judgment.outcome !== "pending" ? ` · ${outcomeLabel(judgment.outcome)}` : ""}
         {judgment.tags.length > 0 ? ` · ${judgment.tags.map((t) => `#${t}`).join(" ")}` : ""}
@@ -32,7 +34,10 @@ export function JudgmentView({ judgment, showQuestion = true }: { judgment: Judg
       {judgment.note && <p className="mt-1 text-sm leading-7">后来：{judgment.note}</p>}
 
       <div className="mt-5">
-        {judgment.feedback ? (
+        {judgment.mode === "agree" ? (
+          // 点「行」同意 AI 的不挑刺：AI 挑自己的刺是车轱辘
+          <p className="text-sm leading-7 text-muted-foreground">这是你点「行」同意的 AI 判断，不挑刺。到期对账时，对了错了说的是 AI 准不准。</p>
+        ) : judgment.feedback ? (
           <dl className="space-y-4 text-base leading-8">
             <div>
               <dt className="text-sm font-medium text-muted-foreground">你没提到的</dt>

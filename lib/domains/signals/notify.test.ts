@@ -129,12 +129,13 @@ describe("点一下就完成的链接", () => {
         ...base,
         sections: [{ title: "今天的世界", items: [{ signal_id: "s1", headline: "PHP 漏洞" }] }],
         markLinks: { s1: { important: "https://app.example/a/imp", mine: "https://app.example/a/mine" } },
-        forecastQuick: { title: "日银会加息吗？", links: [{ label: "30%", url: "https://app.example/a/p30" }] },
+        forecastQuick: { lead: "AI 说 30% 会，行不行？", title: "日银会加息吗？", links: [{ label: "30%", url: "https://app.example/a/p30" }] },
       },
       {}
     );
     expect(html).toContain('href="https://app.example/a/imp"');
     expect(html).toContain('href="https://app.example/a/p30"');
+    expect(html).toContain("AI 说 30% 会，行不行？日银会加息吗？");
     const plain = buildDailyEmailHtml({ ...base, sections: [{ title: "今天的世界", items: [{ signal_id: "s1", headline: "PHP 漏洞" }] }] }, {});
     expect(plain).not.toContain("标一下");
   });

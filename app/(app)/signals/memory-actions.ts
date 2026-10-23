@@ -81,11 +81,13 @@ export async function setMarkAction(signalId: string, mark: MarkKind | null, not
   }
 }
 
-export async function setMyForecastAction(questionId: string, probability: number): Promise<{ ok: true } | { ok: false; message: string }> {
+/** choice：「行」= agree（同意 AI 显示的数），或者点的那一档几成；note 是改判时可以带的一句为什么。 */
+export async function setMyForecastAction(questionId: string, choice: number | "agree", note = ""): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const userId = await requireUserId();
-    await setMyForecast(userId, questionId, probability, tokyoToday());
+    await setMyForecast(userId, questionId, choice === "agree" ? "agree" : Number(choice), tokyoToday(), String(note ?? ""));
     revalidatePath("/signals/forecast");
+    revalidatePath("/signals");
     return { ok: true };
   } catch (error) {
     return { ok: false, message: message(error, "没记上") };

@@ -5,9 +5,15 @@ import { fetchArticleBody } from "./article";
 import { mergeSources } from "./sources";
 import { getSignalDetail } from "./analysis";
 import { getQuestion } from "./questions";
+import { loadBriefPractice } from "./breakdown";
+import { sharedViewFor } from "./users";
 import {
+  AI_FIRST_TAG,
   CONFIDENCE_LEVELS,
+  draftVerdict,
   GENERIC_QUESTION,
+  overrideReasoning,
+  type PracticeDraft,
   displayQuestion,
   HORIZONS,
   LONG_HORIZONS,
@@ -44,19 +50,21 @@ type PredictionJoin = {
 const SELECT_BASE =
   "id, signal_id, question_id, tags, miss_reason, prediction_id, news_title, news_url, question, judgment, feedback, created_at, predictions!inner(due_at, outcome, confidence, resolved_at, note)";
 const SELECT = `outcome_evidence, ${SELECT_BASE}`;
+/** 迁移 099：判断怎么来的（先判 / 同意 AI / 改判）。 */
+const SELECT_MODE = `mode, ${SELECT}`;
 /** 迁移 059 还没跑时退回的列（没有 tags / question_id）。 */
 const SELECT_LEGACY =
   "id, signal_id, prediction_id, news_title, news_url, question, judgment, feedback, created_at, predictions!inner(due_at, outcome, confidence, resolved_at, note)";
 
 /** 哪个迁移没跑时会报这些列不存在。 */
-const MISSING_COLUMN = /tags|question_id|miss_reason|outcome_evidence/;
+const MISSING_COLUMN = /tags|question_id|miss_reason|outcome_evidence|mode/;
 
-/** 先按新列查；064、059 没跑（报列不存在）就一级级退回老列，账本照常能看。 */
+/** 先按新列查；099、064、059 没跑（报列不存在）就一级级退回老列，账本照常能看。 */
 async function selectJudgments<T>(
   build: (select: string) => PromiseLike<{ data: T | null; error: { message: string } | null }>
 ): Promise<T | null> {
   let lastError = "";
-  for (const select of [SELECT, SELECT_BASE, SELECT_LEGACY]) {
+  for (const select of [SELECT_MODE, SELECT, SELECT_BASE, SELECT_LEGACY]) {
     const result = await build(select);
     if (!result.error) return result.data;
     lastError = result.error.message;
@@ -87,6 +95,8 @@ function flatten(row: Record<string, unknown>): JudgmentRow {
     miss_reason: (row.miss_reason as JudgmentRow["miss_reason"]) ?? null,
     // 064 没跑时这一列不在结果里：undefined（页面就不自动去查，免得查完存不进去），跑过还没查是 null
     outcome_evidence: "outcome_evidence" in row ? ((row.outcome_evidence as OutcomeEvidence | null) ?? null) : undefined,
+    // 099 没跑时这一列不在结果里：undefined（页面就不标来路）
+    mode: "mode" in row ? ((row.mode as JudgmentRow["mode"]) ?? null) : undefined,
   };
 }
 
@@ -148,8 +158,29 @@ export async function submitJudgment(input: {
   dueDate?: string;
   /** 判断前在拆解卡上对每个因素点的偏向，给挑刺看（"哪个因素看反了、漏了"）。 */
   reasoning?: string;
+  /**
+   * AI 先判的练习（经用户明确裁决，2026-10-23）：agree 点了「行」、override 点了「不行」。服务器按那一天（主账号那份报告）的
+   * AI 先判来记，不信浏览器传来的 AI 判断；agree 的句子和把握都照 AI 的，不挑刺（AI 挑自己的刺是车轱辘）。
+   */
+  draft?: { date: string; mode: "agree" | "override" };
 }): Promise<JudgmentRow> {
-  const judgment = input.judgment.trim();
+  let judgment = input.judgment.trim();
+  let confidence = input.confidence;
+  let reasoning = input.reasoning?.trim() || undefined;
+  let aiDraft: PracticeDraft | null = null;
+  if (input.draft) {
+    const { sourceUserId } = await sharedViewFor(input.userId);
+    const practice = await loadBriefPractice(sourceUserId, input.draft.date);
+    aiDraft = practice.ai_draft ?? null;
+    if (!aiDraft) throw new Error("这道题 AI 还没判，刷新一下再看");
+    if (input.draft.mode === "agree") {
+      const v = draftVerdict(aiDraft.probability, practice.question);
+      judgment = v.sentence;
+      confidence = v.confidence;
+    } else {
+      reasoning = overrideReasoning(aiDraft, practice.question);
+    }
+  }
   if (judgment.length < 4) throw new Error("写一句完整的判断，哪怕很粗糙");
   const subject = await loadSubject(input.userId, input.signalId, input.questionId);
 
@@ -157,7 +188,7 @@ export async function submitJudgment(input: {
   const question = input.question.trim() || GENERIC_QUESTION;
   const existing = await findJudgment(input.userId, subject, question);
   if (existing) return existing;
-  const tags = normalizeTags(input.tags ?? []);
+  const tags = normalizeTags([...(input.tags ?? []), ...(input.draft ? [AI_FIRST_TAG] : [])]);
 
   const byDate = input.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) ? deadlineDays(input.dueDate) : null;
   if (byDate !== null && (byDate < 2 || byDate > 5 * 365)) throw new Error("题目里的日子不对，换一个期限");
@@ -172,7 +203,7 @@ export async function submitJudgment(input: {
       source_type: "signal",
       text: judgment,
       due_at: dueAt,
-      confidence: input.confidence ? CONFIDENCE_LEVELS[input.confidence].value : null,
+      confidence: confidence ? CONFIDENCE_LEVELS[confidence].value : null,
     })
     .select("id")
     .single();
@@ -189,31 +220,36 @@ export async function submitJudgment(input: {
   };
   // 有标签或连着问题才需要 059 的新列；不需要时照老样子插，059 没跑也能记判断
   const needsNewColumns = tags.length > 0 || subject.questionId !== null;
-  const { data: row, error } = await supabaseAdmin
-    .from("signal_judgments")
-    .insert(needsNewColumns ? { ...base, tags, question_id: subject.questionId } : base)
-    .select("id")
-    .single();
+  const withColumns = needsNewColumns ? { ...base, tags, question_id: subject.questionId } : base;
+  // 来路只在 AI 先判时写（099 的列）；自己先判的照老样子插，099 没跑也能记
+  const insertRow = input.draft ? { ...withColumns, mode: input.draft.mode, ai_draft: aiDraft } : withColumns;
+  const { data: row, error } = await supabaseAdmin.from("signal_judgments").insert(insertRow).select("id").single();
   if (error) {
+    // 判断那一行没插上：刚插的预测也删掉，免得账本里留一条没有判断的预测
+    await supabaseAdmin.from("predictions").delete().eq("id", prediction.id);
+    if (/mode|ai_draft/.test(error.message)) throw new Error("迁移 099 还没跑：执行 supabase/migrations/099_ai_first_judgment.sql 之后才能点「行 / 不行」");
     if (/tags|question_id/.test(error.message)) throw new Error("迁移 059 还没跑，标签和问题还存不了");
     throw new Error(error.message);
   }
 
-  // 挑刺失败不影响判断本身已经记下；页面上可以重试。
-  try {
-    const body = await subject.loadBody();
-    const feedback = await critiqueJudgment({
-      newsTitle: subject.title,
-      newsSummary: subject.summary,
-      body,
-      question: displayQuestion(question),
-      judgment,
-      horizon: horizon.label,
-      reasoning: input.reasoning?.trim().slice(0, 600) || undefined,
-    });
-    await supabaseAdmin.from("signal_judgments").update({ feedback }).eq("id", row.id);
-  } catch (e) {
-    console.error("judgment critique failed", e);
+  // 挑刺失败不影响判断本身已经记下；页面上可以重试。点「行」的不挑刺（AI 挑自己的刺是车轱辘）。
+  if (input.draft?.mode !== "agree") {
+    try {
+      const body = await subject.loadBody();
+      const feedback = await critiqueJudgment({
+        newsTitle: subject.title,
+        newsSummary: subject.summary,
+        body,
+        question: displayQuestion(question),
+        judgment,
+        horizon: horizon.label,
+        // 改判的理由里带着 AI 三种思路的话，长一些
+        reasoning: reasoning?.slice(0, 1200),
+      });
+      await supabaseAdmin.from("signal_judgments").update({ feedback }).eq("id", row.id);
+    } catch (e) {
+      console.error("judgment critique failed", e);
+    }
   }
 
   const saved = await findJudgment(input.userId, subject, question);

@@ -12,9 +12,12 @@ import {
   loadForecastBoard,
   MIN_BIN,
   MIN_SCORED,
+  modeOf,
   pct,
   scoreBySource,
+  shownAi,
   SOURCE_LABELS,
+  withMyModes,
   type ForecastSource,
 } from "@/lib/domains/signals/forecast";
 import { Answers, ConfirmCard, ForecastCard } from "./forecast-cards";
@@ -29,11 +32,10 @@ import { historyBacktest } from "@/lib/domains/signals/backtest";
 
 export const dynamic = "force-dynamic";
 
-const PAIRS: [ForecastSource, ForecastSource][] = [
-  ["me", "ai"],
-  ["ai", "market"],
-  ["me", "market"],
-];
+/** 两两比时各方怎么称呼（「你」那一方已经按来路滤过）。 */
+const WHO: Partial<Record<ForecastSource, string>> = { me: "你", ai: "AI", market: "市场" };
+
+const THREE_VIEWS: ForecastSource[] = ["ai_outside", "ai_inside", "ai_devil"];
 
 /** 先猜自己实验的结果：能猜的、在等的、对过账的、准不准。 */
 function ExperimentsSection({ board }: { board: ExperimentBoard | "missing-schema" | null }) {
@@ -132,7 +134,7 @@ export default async function ForecastPage() {
       <PageHeader
         eyebrow="Forecasts"
         title="预测"
-        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场给的几成可能当对照）、从今天新闻里出的生意题（到期程序查证据，出题的人确认）。每道题你先说你觉得有几成可能会发生，再看 AI 和市场怎么说 —— AI 用三种思路各给一个、取中间。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
+        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场给的几成可能当对照）、从今天新闻里出的生意题（到期程序查证据，出题的人确认）。每道题 AI 先用三种思路各给一个、取中间，你看行不行；每周一道你先自己判。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
       />
 
       {board === "missing-schema" ? (
@@ -144,9 +146,27 @@ export default async function ForecastPage() {
           const { questions, forecasts } = board;
           const has = (qid: string, s: ForecastSource) => forecasts.some((f) => f.question_id === qid && f.source === s);
           // 生意题到期后由出题的主账号确认；别的账号在「判断过的」里看到它在等确认（「今天」一页用同一套分组）
-          const { toForecast, toConfirm, open, done } = boardSections(board, today);
-          const scores = scoreBySource(questions, forecasts, ["me", "ai", "market", "base", "ai_outside", "ai_inside", "ai_devil"]);
-          const bins = (["ai", "me"] as ForecastSource[]).map((s) => ({ s, bins: calibrationBins(questions, forecasts, s) }));
+          const { toForecast, toConfirm, open, done, blind } = boardSections(board, today);
+          // 记分分三份：你先判的、你改判的、AI（和市场、基准）。点「行」同意 AI 的不算你的分 —— 那是 AI 的
+          const blindMine = withMyModes(forecasts, ["blind"]);
+          const overrideMine = withMyModes(forecasts, ["override"]);
+          const others = forecasts.filter((f) => f.source !== "me");
+          const scores = [
+            { label: "你（先判的）", ...scoreBySource(questions, blindMine, ["me"])[0] },
+            { label: "你（改判的）", ...scoreBySource(questions, overrideMine, ["me"])[0] },
+            ...scoreBySource(questions, others, ["ai", "market", "base", "ai_outside", "ai_inside", "ai_devil"]).map((s) => ({ label: SOURCE_LABELS[s.source], ...s })),
+          ];
+          const pairs = [
+            { label: "你改判的那几次：你 对 AI", h: headToHead(questions, overrideMine, "me", "ai") },
+            { label: "你先判的：你 对 AI", h: headToHead(questions, blindMine, "me", "ai") },
+            { label: "AI 对 市场", h: headToHead(questions, others, "ai", "market") },
+            { label: "你先判的：你 对 市场", h: headToHead(questions, blindMine, "me", "market") },
+          ];
+          const bins = [
+            { label: SOURCE_LABELS.ai, bins: calibrationBins(questions, forecasts, "ai") },
+            { label: "你（先判的）", bins: calibrationBins(questions, blindMine, "me") },
+          ];
+          const agreed = forecasts.filter((f) => f.source === "me" && modeOf(f) === "agree").length;
 
           if (questions.length === 0) {
             return board.shared ? (
@@ -167,13 +187,23 @@ export default async function ForecastPage() {
                   <p className="text-sm text-muted-foreground">这会儿没有等你判断的题。新题每天早上和晚上进来。</p>
                 ) : (
                   <ul className="space-y-4">
-                    {toForecast.map((q) => (
-                      <ForecastCard key={q.id} q={q} />
-                    ))}
+                    {toForecast.map((q) => {
+                      const raw = forecasts.find((f) => f.question_id === q.id && f.source === "ai")?.probability ?? null;
+                      return (
+                        <ForecastCard
+                          key={q.id}
+                          q={q}
+                          blind={blind.has(q.id)}
+                          ai={raw === null ? null : shownAi(raw, calibration)}
+                          calibrated={!!calibration}
+                          three={forecasts.filter((f) => f.question_id === q.id && THREE_VIEWS.includes(f.source))}
+                        />
+                      );
+                    })}
                   </ul>
                 )}
                 <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                  先说你的判断、再看 AI 和市场 —— 先看了再判断，填的就是它们的数，账本就不是你的了。判断了不能改：改了就没法知道你当时准不准。
+                  AI 先判好了：同意就点「行」，觉得它高了低了就点「不行」改一档，不想判就跳过。每周有一道先自己判、判完再看 AI 的 —— 那道量的是你自己准不准。点「行」的不算你的分，那是 AI 的。表了态不能改。
                   {board.shared ? " 大家共用同一批题，但你的判断和分数只有你自己看得到。" : ""}
                 </p>
               </section>
@@ -223,8 +253,8 @@ export default async function ForecastPage() {
                   </thead>
                   <tbody className="font-mono">
                     {scores.map((s) => (
-                      <tr key={s.source} className="border-t border-border">
-                        <td className="py-1 font-sans">{SOURCE_LABELS[s.source]}</td>
+                      <tr key={s.label} className="border-t border-border">
+                        <td className="py-1 font-sans">{s.label}</td>
                         <td className="py-1 text-right">{s.n}</td>
                         <td className="py-1 text-right">{s.brier !== null ? s.brier.toFixed(3) : `满 ${MIN_SCORED} 道才算`}</td>
                       </tr>
@@ -232,30 +262,28 @@ export default async function ForecastPage() {
                   </tbody>
                 </table>
                 <ul className="mt-3 space-y-1 text-sm leading-7">
-                  {PAIRS.map(([a, b]) => {
-                    const h = headToHead(questions, forecasts, a, b);
-                    return (
-                      <li key={`${a}-${b}`}>
-                        <span className="text-muted-foreground">
-                          {SOURCE_LABELS[a]} 对 {SOURCE_LABELS[b]}：
-                        </span>
-                        {h.n === 0 ? (
-                          "还没有两边都判断过、又对过账的题"
-                        ) : (
-                          <>
-                            两边都判断过的 {h.n} 道里，{SOURCE_LABELS[a]}更近 {h.aBetter} 道、{SOURCE_LABELS[b]}更近 {h.bBetter} 道
-                            {h.tie > 0 ? `、一样 ${h.tie} 道` : ""}
-                            {h.aBrier !== null && h.bBrier !== null ? `（平均分 ${h.aBrier.toFixed(3)} 对 ${h.bBrier.toFixed(3)}）` : ""}
-                          </>
-                        )}
-                      </li>
-                    );
-                  })}
+                  {pairs.map(({ label, h }) => (
+                    <li key={label}>
+                      <span className="text-muted-foreground">{label}：</span>
+                      {h.n === 0 ? (
+                        "还没有两边都判断过、又对过账的题"
+                      ) : (
+                        <>
+                          两边都判断过的 {h.n} 道里，{WHO[h.a]}更近 {h.aBetter} 道、{WHO[h.b]}更近 {h.bBetter} 道
+                          {h.tie > 0 ? `、一样 ${h.tie} 道` : ""}
+                          {h.aBrier !== null && h.bBrier !== null ? `（平均分 ${h.aBrier.toFixed(3)} 对 ${h.bBrier.toFixed(3)}）` : ""}
+                        </>
+                      )}
+                    </li>
+                  ))}
                 </ul>
+                <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                  你点「行」同意 AI 的 {agreed} 道不算进上面任何一份「你」的分 —— 那是 AI 的分。改判的那一行最值得看：你出手改判时，比 AI 准还是比它差。
+                </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  {bins.map(({ s, bins: rows }) => (
-                    <div key={s}>
-                      <p className="mb-1 text-xs text-muted-foreground">{SOURCE_LABELS[s]} 说的和实际发生的</p>
+                  {bins.map(({ label, bins: rows }) => (
+                    <div key={label}>
+                      <p className="mb-1 text-xs text-muted-foreground">{label} 说的和实际发生的</p>
                       <ul className="space-y-0.5 font-mono text-xs">
                         {rows.map((b) => (
                           <li key={b.lo}>
@@ -285,7 +313,7 @@ export default async function ForecastPage() {
                       <li key={q.id} className="border-b border-border pb-3 last:border-b-0">
                         <p className="text-sm font-medium">{q.title}</p>
                         <p className="font-mono text-xs text-muted-foreground">
-                          {KIND_LABELS[q.kind]} · {q.resolve_on} 截止{q.revealed_at && !has(q.id, "me") ? " · 你没判断、先看了答案" : ""}
+                          {KIND_LABELS[q.kind]} · {q.resolve_on} 截止{q.revealed_at && !has(q.id, "me") ? " · 你跳过了这道" : ""}
                           {needsConfirm(q.kind) && q.pending ? " · 到期了，等出题的人确认" : ""}
                         </p>
                         <Answers q={q} forecasts={forecasts} calibration={calibration} />

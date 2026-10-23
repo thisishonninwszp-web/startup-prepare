@@ -34,6 +34,7 @@ import { sendDailyEmail, sendMemberEmails } from "./notify";
 import { generateDigest } from "./digest";
 import { embedBacklog } from "./memory";
 import type { Breakdown } from "./breakdown-shared";
+import type { PracticeDraft } from "./practice-shared";
 
 /**
  * 每日精选：从最近一天半没处理过的条目里，让 AI 挑 5 条并写清楚为什么。
@@ -58,6 +59,8 @@ export type BriefPracticeRow = {
   horizon?: string;
   /** 判断前的拆解卡（他点了"先拆一拆"才有；见 breakdown-shared.ts）。 */
   breakdown?: Breakdown;
+  /** AI 先判（后台 7:30 或第一次打开「今天」时出；周一的先判题没有）。见 practice-draft.ts。 */
+  ai_draft?: PracticeDraft;
 };
 
 export type BriefItem = {

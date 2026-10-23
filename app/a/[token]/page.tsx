@@ -34,14 +34,16 @@ export default async function TapPage({ params }: { params: { token: string } })
   }
 
   if (p.k === "forecast") {
+    // agree：在邮件里点了「行」，同意 AI 的判断（记成哪个数由服务器按 AI 的数算）
+    const agree = p.v === "agree";
     const { data: q } = await supabaseAdmin.from("forecast_questions").select("title, criteria, resolve_on").eq("id", p.t).maybeSingle();
     return shell(
       <>
         <p className="text-xs text-muted-foreground">预测题 · {q?.resolve_on ?? ""} 截止</p>
         <h1 className="mt-1 text-lg font-semibold leading-8">{q?.title ?? "这道题找不到了"}</h1>
         {q?.criteria && <p className="mt-1 text-sm leading-7 text-muted-foreground">怎么才算「会」：{q.criteria}</p>}
-        <p className="mb-4 mt-4 text-sm">你的判断：{pct(Number(p.v))}。记上以后就不能改了。</p>
-        <ConfirmTap token={params.token} label={`就是 ${pct(Number(p.v))}，记上`} />
+        <p className="mb-4 mt-4 text-sm">{agree ? "你点了「行」：同意 AI 的判断。" : `你的判断：${pct(Number(p.v))}。`}记上以后就不能改了。</p>
+        <ConfirmTap token={params.token} label={agree ? "同意，记上" : `就是 ${pct(Number(p.v))}，记上`} />
       </>
     );
   }

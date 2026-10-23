@@ -257,10 +257,16 @@ export async function submitJudgmentAction(input: {
   dueDate?: string;
   /** 拆解卡上对每个因素点的偏向（给挑刺看）。 */
   reasoning?: string;
+  /** AI 先判的练习：点了「行」（agree）还是「不行」（override）、是哪一天的题。AI 判的什么由服务器自己读。 */
+  draft?: { date: string; mode: "agree" | "override" };
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const userId = await requireUserId();
   try {
-    await submitJudgment({ userId, ...input });
+    const draft =
+      input.draft && (input.draft.mode === "agree" || input.draft.mode === "override") && /^\d{4}-\d{2}-\d{2}$/.test(input.draft.date)
+        ? { date: input.draft.date, mode: input.draft.mode }
+        : undefined;
+    await submitJudgment({ userId, ...input, draft });
     revalidatePath("/signals");
     if (input.signalId) revalidatePath(`/signals/${input.signalId}`);
     if (input.questionId) revalidatePath(`/signals/questions/${input.questionId}`);

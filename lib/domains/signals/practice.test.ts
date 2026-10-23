@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  confidenceFor,
   displayQuestion,
+  draftVerdict,
   dueJudgments,
+  isBlindPracticeDate,
   isNodeBet,
   nodeBetQuestion,
+  overrideReasoning,
   tallyEvidenceDisagreement,
   tallyJudgments,
+  tallyModes,
   type JudgmentRow,
 } from "./practice-shared";
 
@@ -76,5 +81,42 @@ describe("tallyEvidenceDisagreement（自己判卷手松不松）", () => {
       row({ outcome: "hit" }),
     ];
     expect(tallyEvidenceDisagreement(rows)).toEqual({ checked: 4, hitButAgainst: 1, missButFor: 1 });
+  });
+});
+
+describe("练习的 AI 先判", () => {
+  it("把握按离五成多远分三档", () => {
+    expect(confidenceFor(0.55)).toBe("low");
+    expect(confidenceFor(0.3)).toBe("mid");
+    expect(confidenceFor(0.1)).toBe("high");
+  });
+
+  it("那一句由代码拼：会 / 不会 + 题目；反过来就是改判预填的那句", () => {
+    expect(draftVerdict(0.3, "日银会不会在 2027 年 3 月底前加息？")).toEqual({ will: false, sentence: "不会：日银会不会在 2027 年 3 月底前加息？", confidence: "mid" });
+    expect(draftVerdict(0.3, "X？", true).sentence).toBe("会：X？");
+    expect(draftVerdict(0.5, "X？").will).toBe(true);
+  });
+
+  it("周一的练习是先判题", () => {
+    expect(isBlindPracticeDate("2026-10-26")).toBe(true);
+    expect(isBlindPracticeDate("2026-10-27")).toBe(false);
+  });
+
+  it("按来路数，迁移前的算先判", () => {
+    const t = tallyModes([
+      { mode: "agree", outcome: "hit" },
+      { mode: "override", outcome: "miss" },
+      { mode: null, outcome: "pending" },
+      { mode: undefined, outcome: "hit" },
+    ]);
+    expect(t.agree).toEqual({ n: 1, hit: 1, miss: 0 });
+    expect(t.override).toEqual({ n: 1, hit: 0, miss: 1 });
+    expect(t.blind).toEqual({ n: 2, hit: 1, miss: 0 });
+  });
+
+  it("改判时告诉挑刺 AI 原来判的哪边、为什么", () => {
+    const r = overrideReasoning({ probability: 0.3, perspectives: [{ source: "ai_outside", probability: 0.3, reason: "这类事一般不发生" }], made_at: "" }, "X？");
+    expect(r).toContain("AI 先判的是「不会」");
+    expect(r).toContain("这类事一般不发生");
   });
 });

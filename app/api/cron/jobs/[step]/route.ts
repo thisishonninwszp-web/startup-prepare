@@ -16,6 +16,7 @@ import { monthlyArchive } from "@/lib/domains/signals/storage";
 import { refreshAppWatch } from "@/lib/domains/signals/app-watch";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
 import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
+import { ensurePracticeDraft } from "@/lib/domains/signals/practice-draft";
 
 /**
  * 外部信号的后台步骤，由 GitHub Actions（.github/workflows/signals-jobs.yml）定时一步一步调：
@@ -111,6 +112,19 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
       remaining += r.remaining;
     }
     return { done: remaining === 0 || did === 0, did, remaining };
+  },
+  // 今天练习题的 AI 先判（周一的先判题不出；报告还没出来就记一句，下一轮再出）
+  practice: async (users, today) => {
+    let did = 0;
+    const notes: string[] = [];
+    for (const u of users) {
+      try {
+        if (await ensurePracticeDraft(u, today)) did += 1;
+      } catch (e) {
+        notes.push(e instanceof Error ? e.message : String(e));
+      }
+    }
+    return { done: true, did, note: notes.join("；") || undefined };
   },
   // 历史回测的题库（全站共用，不分人；.github/workflows/signals-history.yml 每 3 小时调）：进候选、准备题目、AI 当时会说几成
   history: async (_users, today) => runHistoryStep(today, START_BEFORE_MS),

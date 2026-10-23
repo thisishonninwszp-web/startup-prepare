@@ -151,7 +151,7 @@ function ForecastTodo({ f }: { f: TodayForecast }) {
             <Link href="/signals/forecast" className="font-medium text-primary underline-offset-4 hover:underline">
               {f.toForecast.length} 道题等你判断
             </Link>
-            <span className="ml-2 text-xs text-muted-foreground">先说你觉得几成，再看 AI 和市场</span>
+            <span className="ml-2 text-xs text-muted-foreground">AI 先判好了，你点行不行</span>
           </p>
           <ul className="mt-1 space-y-1 text-sm leading-7">
             {f.toForecast.slice(0, 3).map((q) => (

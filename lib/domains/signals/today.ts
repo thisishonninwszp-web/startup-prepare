@@ -1,5 +1,5 @@
-import { boardSections, loadForecastBoard, sidesOf, type ForecastQuestion } from "./forecast";
-import { drillProgress } from "./backtest";
+import { boardSections, loadForecastBoard, shownAi, sidesOf, type ForecastQuestion } from "./forecast";
+import { aiCalibration, drillProgress } from "./backtest";
 import { loadExperimentBoard } from "./experiments";
 import { followedSignals, storyUpdates } from "./memory";
 import { dueRecalls, type RecallItem } from "./recall";
@@ -21,6 +21,8 @@ export type TodayForecast = {
   /** 自己的实验：能先猜的几道、到期了等他填周刊数的几道。 */
   experiments: { proposals: number; waiting: number } | null;
   toForecast: ForecastQuestion[];
+  /** 邮件里一键的那一道：等判断的第一道、是不是先判题、卡片上显示的 AI 数（AI 没判是 null）。 */
+  quick: { q: ForecastQuestion; blind: boolean; ai: number | null } | null;
   toConfirm: number;
   justResolved: { q: ForecastQuestion; me: number | null; ai: number | null; market: number | null }[];
 };
@@ -58,10 +60,14 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
   let forecast: TodayForecast | null = null;
   if (board && board !== "missing-schema") {
     const s = boardSections(board, today);
+    const first = s.toForecast[0];
+    const raw = first ? board.forecasts.find((f) => f.question_id === first.id && f.source === "ai")?.probability ?? null : null;
+    const platt = raw === null ? null : await aiCalibration().catch(logged("calibration", null));
     forecast = {
       drill: drill && drill !== "missing-schema" ? { today: drill.today, left: drill.left } : null,
       experiments: experiments && experiments !== "missing-schema" ? { proposals: experiments.proposals.length, waiting: experiments.waiting.length } : null,
       toForecast: s.toForecast,
+      quick: first ? { q: first, blind: s.blind.has(first.id), ai: raw === null ? null : shownAi(raw, platt) } : null,
       toConfirm: s.toConfirm.length,
       justResolved: s.justResolved.slice(0, 3).map((q) => ({ q, ...sidesOf(board.forecasts, q.id) })),
     };

@@ -13,7 +13,7 @@ import type { DigestPick } from "./digest";
 import { cleanBriefItem } from "./filler";
 import { signFlowCard } from "./flow-card-shared";
 import { followReasonText } from "./memory-shared";
-import { MY_TIERS, pct } from "./forecast-shared";
+import { MY_TIERS, pct, tiersBeside } from "./forecast-shared";
 import { actionSecret, actionUrl, signAction, type ActionKind } from "@/lib/action-links";
 import { loadTodayPersonal } from "./today";
 import { DB_LIMIT_BYTES, storageReport } from "./storage";
@@ -69,7 +69,8 @@ export type DailyEmailInput = {
   /** 数据库用了免费版上限的百分之几（到 STORAGE_WARN_PCT 才提醒；只发给主账号）。 */
   storagePct?: number | null;
   /** 等他判断的第一道题：点一档就记上（每一档一个链接）。 */
-  forecastQuick?: { title: string; links: { label: string; url: string }[] } | null;
+  /** 预测题点一下就记：lead 是那一句开头（先判题 / AI 说几成）。 */
+  forecastQuick?: { lead: string; title: string; links: { label: string; url: string }[] } | null;
   /** 预测题里等他做的：等判断几道（第一道的题目）、生意题等确认几道。每人一份。 */
   forecastTodo?: { toForecast: number; first: string | null; toConfirm: number } | null;
   url: string | null;
@@ -260,7 +261,7 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   const forecastBits: string[] = [];
   if (input.forecastQuick) {
     forecastBits.push(
-      para(`先说你的判断：${input.forecastQuick.title}`, "font-size:14px;font-weight:600;margin-bottom:6px;"),
+      para(`${input.forecastQuick.lead}${input.forecastQuick.title}`, "font-size:14px;font-weight:600;margin-bottom:6px;"),
       `<p style="margin:0 0 10px;font-size:13px;line-height:2.2;">${input.forecastQuick.links
         .map((l) => `<a href="${esc(l.url)}" style="color:${C.accent};text-decoration:none;border:1px solid ${C.accent};border-radius:999px;padding:2px 9px;margin-right:2px;white-space:nowrap;">${esc(l.label)}</a>`)
         // 几个之间留空格：手机上一行放不下时才能换行
@@ -487,8 +488,18 @@ async function personalParts(
     const tap = (k: ActionKind, target: string, v: string) => (base && secret ? actionUrl(base, signAction({ u: userId, k, t: target, v }, secret)) : null);
     const recallItem = t.recall?.items[0];
     const recallUrl = recallItem ? tap("recall", recallItem.signal_id, "") : null;
-    const first = f?.toForecast[0];
-    const tiers = first ? MY_TIERS.map((p) => ({ label: pct(p), url: tap("forecast", first.id, String(p)) })) : [];
+    // 预测那一键：先判题（或 AI 还没判）照旧一排档；别的题 AI 先判，「行」或点你觉得的几成（AI 那个数两边的档）
+    const quick = f?.quick ?? null;
+    const aiFirst = quick && !quick.blind && quick.ai !== null ? quick.ai : null;
+    const links = !quick
+      ? []
+      : aiFirst === null
+        ? MY_TIERS.map((p) => ({ label: pct(p), url: tap("forecast", quick.q.id, String(p)) }))
+        : [
+            { label: `行（${pct(aiFirst)}）`, url: tap("forecast", quick.q.id, "agree") },
+            ...[...tiersBeside(aiFirst, "lower"), ...tiersBeside(aiFirst, "higher")].map((p) => ({ label: pct(p), url: tap("forecast", quick.q.id, String(p)) })),
+          ];
+    const lead = aiFirst === null ? "这道先自己判（每周一道）：" : `AI 说 ${pct(aiFirst)} 会，行不行？点「行」，或者点你觉得的几成 —— `;
     return {
       recall: recallItem && recallUrl ? { title: recallItem.title ?? "（没有标题）", reason: recallItem.reason, url: recallUrl } : null,
       markLinks: Object.fromEntries(
@@ -498,7 +509,7 @@ async function personalParts(
           return important && mine ? [[id, { important, mine }]] : [];
         })
       ),
-      forecastQuick: first && tiers.every((x) => x.url) ? { title: first.title, links: tiers as { label: string; url: string }[] } : null,
+      forecastQuick: quick && links.every((x) => x.url) ? { lead, title: quick.q.title, links: links as { label: string; url: string }[] } : null,
       stories: Array.isArray(t.stories)
         ? t.stories.slice(0, 3).map((s) => ({
             title: s.followed.title ?? "（没有标题）",
