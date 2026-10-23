@@ -9,8 +9,12 @@ import { daysBetween, isBracketQuestion, isJapanQuestion } from "./forecast-shar
 
 /** 只收这天以后开的市场（AI 的知识停在 2025 年 1 月，留一个月余量）。 */
 export const HISTORY_EARLIEST = "2025-03-01";
-/** 题库攒到这么多道就不再加（一道要调四次 AI，约 0.0075 美元；500 道约 4 美元，学校准要 100 道就够）。 */
-export const HISTORY_TARGET = 500;
+/**
+ * 题库攒到这么多道就不再加（一道要调四次 AI，约 0.0075 美元；1000 道约 7–8 美元）。
+ * 原来是 500（学校准 100 道就够）；2026-10-23 他定了先让 AI 变准，要拿题库比几种做法谁准，
+ * 差别常常只有 0.01–0.02，题少了分不出是做法好还是运气，所以改成 1000。
+ */
+export const HISTORY_TARGET = 1000;
 /** 「今天」那天市场已经几乎定了的不收（太容易，学不到东西）。 */
 export const HISTORY_MIN_P = 0.03;
 export const HISTORY_MAX_P = 0.97;
