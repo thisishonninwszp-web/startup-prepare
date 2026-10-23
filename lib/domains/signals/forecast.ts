@@ -390,6 +390,13 @@ async function isBlindQuestion(pool: string, q: ForecastQuestion): Promise<boole
   return (data?.[0] as { id: string } | undefined)?.id === q.id;
 }
 
+/** 卡片和邮件上给他看的那个 AI 数（有可用的回测校准就用校准后的）；AI 还没判是 null。pool 是出题的那个账号。 */
+export async function displayedAi(questionId: string, pool: string): Promise<number | null> {
+  const { data } = await supabaseAdmin.from("forecasts").select("probability").eq("question_id", questionId).eq("source", "ai").eq("user_id", pool).maybeSingle();
+  if (!data) return null;
+  return shownAi(Number(data.probability), await aiCalibration().catch(() => null));
+}
+
 /**
  * 他对一道题表态：先判题点自己的几成（mode blind）；别的题 AI 先判，「行」= 记成卡片上显示的 AI 数（agree），
  * 点一档 = 改判（override，可以带一句为什么）。显示的数由服务器按回测校准重算，不信浏览器。
@@ -414,10 +421,9 @@ export async function setMyForecast(
     return { probability: choice, mode: "blind" };
   }
 
-  const { data: aiRow } = await supabaseAdmin.from("forecasts").select("probability").eq("question_id", questionId).eq("source", "ai").eq("user_id", pool).maybeSingle();
-  if (!aiRow) throw new Error("AI 还没判这道题，过半天再来");
+  const shown = await displayedAi(questionId, pool);
+  if (shown === null) throw new Error("AI 还没判这道题，过半天再来");
   if (choice !== "agree" && !(choice > 0 && choice < 1)) throw new Error("概率不对");
-  const shown = shownAi(Number(aiRow.probability), await aiCalibration().catch(() => null));
   const agree = choice === "agree" || Math.abs(choice - shown) < 0.005;
   const probability = agree ? shown : (choice as number);
   const mode: ForecastMode = agree ? "agree" : "override";
