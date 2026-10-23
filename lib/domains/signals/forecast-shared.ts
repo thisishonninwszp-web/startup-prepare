@@ -4,7 +4,10 @@
  *
  * 原则 1 例外四（经用户同意，2026-10-22）：对世界事件的预测可以有概率和分数 ——
  * 只用于 AI、他、市场对世界事件的预测；分数全部由代码算、能看到是哪几道题；样本不够只显示件数；对想法/机会仍然不打分。
+ * AI 先判、他点行不行（经用户明确裁决，2026-10-23）：点「行」的不算他的分；每周一道先判题照旧先押再看。
  */
+
+import { applyPlatt, type Platt } from "./calibration-shared";
 
 export type ForecastKind = "market" | "data" | "business" | "arrival" | "policy";
 /** base：统计基准（代码从历史数出来的比例，政策题、数据题有）。 */
@@ -66,7 +69,16 @@ export type ForecastQuestion = {
   created_at: string;
 };
 
-export type Forecast = { question_id: string; source: ForecastSource; probability: number; reason: string | null; made_at: string };
+/** 他那一条（source = me）怎么来的：blind 先判（看不到 AI）、agree 点了「行」、override 改了一档。迁移 099 以前的为空，算先判。 */
+export type ForecastMode = "blind" | "agree" | "override";
+
+export type Forecast = { question_id: string; source: ForecastSource; probability: number; reason: string | null; made_at: string; mode?: ForecastMode | null };
+
+export function modeOf(f: Pick<Forecast, "mode">): ForecastMode {
+  return f.mode ?? "blind";
+}
+
+export const MODE_LABELS: Record<ForecastMode, string> = { blind: "先判", agree: "同意 AI", override: "改判" };
 
 export type PendingResolution = {
   suggested: "yes" | "no" | "unclear";
@@ -80,6 +92,44 @@ export const MY_TIERS = [0.05, 0.15, 0.3, 0.5, 0.7, 0.85, 0.95] as const;
 
 export function pct(p: number): string {
   return `${Math.round(p * 100)}%`;
+}
+
+/** 东京时间那一周的周一 0 点（UTC 的 ISO）。created_at 是 UTC 的 ISO。 */
+export function tokyoWeekStart(iso: string): string {
+  const tokyo = new Date(Date.parse(iso) + 9 * 3_600_000);
+  const offset = (tokyo.getUTCDay() + 6) % 7;
+  return new Date(Date.UTC(tokyo.getUTCFullYear(), tokyo.getUTCMonth(), tokyo.getUTCDate() - offset) - 9 * 3_600_000).toISOString();
+}
+
+/**
+ * 每周一道先判题：东京时间每一周里最早进账本的那一道（同时进的按 id）。
+ * 先判题照旧先点自己的几成、看不到 AI；别的题 AI 先判、他点行不行。服务器那边的 isBlindQuestion 按同一条规则认。
+ */
+export function blindQuestionIds(questions: Pick<ForecastQuestion, "id" | "created_at">[]): Set<string> {
+  const first = new Map<string, Pick<ForecastQuestion, "id" | "created_at">>();
+  for (const q of questions) {
+    const week = tokyoWeekStart(q.created_at);
+    const cur = first.get(week);
+    const t = Date.parse(q.created_at);
+    if (!cur || t < Date.parse(cur.created_at) || (t === Date.parse(cur.created_at) && q.id < cur.id)) first.set(week, q);
+  }
+  return new Set(Array.from(first.values()).map((q) => q.id));
+}
+
+/** 卡片上显示的 AI 数（他点「行」就记这个数）：有可用的回测校准就用校准后的，取两位小数。 */
+export function shownAi(ai: number, platt: Platt | null): number {
+  const p = platt ? applyPlatt(ai, platt) : ai;
+  return Math.round(Math.min(0.99, Math.max(0.01, p)) * 100) / 100;
+}
+
+/** 点「不行，更高 / 更低」时给的档：只给那一边的。 */
+export function tiersBeside(shown: number, side: "higher" | "lower"): number[] {
+  return MY_TIERS.filter((p) => (side === "higher" ? p > shown + 0.005 : p < shown - 0.005));
+}
+
+/** 记分用：「你」那一方只留某几种来路（点「行」的不算你的分，那是 AI 的）；别的方原样留。 */
+export function withMyModes(forecasts: Forecast[], modes: ForecastMode[]): Forecast[] {
+  return forecasts.filter((f) => f.source !== "me" || modes.includes(modeOf(f)));
 }
 
 // ── 市场 ────────────────────────────────────────────────────────────────────
@@ -289,8 +339,10 @@ export function isDue(q: Pick<ForecastQuestion, "status" | "resolve_on">, today:
 }
 
 export type BoardSections = {
-  /** 等他判断：还开着、他没判断过、没先看答案、还没到期。 */
+  /** 等他判断：还开着、他没判断过、没跳过（没先看答案）、还没到期；不是先判题的要 AI 判过。 */
   toForecast: ForecastQuestion[];
+  /** 哪几道是每周一道的先判题（blindQuestionIds）。 */
+  blind: Set<string>;
   /** 生意题到期了、程序查好了证据，等出题的主账号确认（别的账号看不到这一组）。 */
   toConfirm: ForecastQuestion[];
   /** 他判断过（或先看了答案）、还没对账的。 */
@@ -309,14 +361,19 @@ export function boardSections(
 ): BoardSections {
   const { questions, forecasts } = board;
   const mine = new Set(forecasts.filter((f) => f.source === "me").map((f) => f.question_id));
-  const toForecast = questions.filter((q) => q.status === "open" && !q.revealed_at && !mine.has(q.id) && daysBetween(today, q.resolve_on) > 0);
+  const blind = blindQuestionIds(questions);
+  const withAi = new Set(forecasts.filter((f) => f.source === "ai").map((f) => f.question_id));
+  // 先判题照旧先点；别的题等 AI 判完才放进来（后台一天两次，半天内判完）
+  const toForecast = questions.filter(
+    (q) => q.status === "open" && !q.revealed_at && !mine.has(q.id) && daysBetween(today, q.resolve_on) > 0 && (blind.has(q.id) || withAi.has(q.id))
+  );
   const toConfirm = board.canConfirm ? questions.filter((q) => q.status === "open" && needsConfirm(q.kind) && q.pending) : [];
   const open = questions.filter((q) => q.status === "open" && (q.revealed_at || mine.has(q.id)) && !(board.canConfirm && needsConfirm(q.kind) && q.pending));
   const done = questions.filter((q) => q.status !== "open").sort((a, b) => (b.resolved_at ?? "").localeCompare(a.resolved_at ?? ""));
   const justResolved = done.filter(
     (q) => q.resolved_at && daysBetween(q.resolved_at.slice(0, 10), today) <= recentDays && (mine.has(q.id) || q.revealed_at)
   );
-  return { toForecast, toConfirm, open, done, justResolved };
+  return { toForecast, blind, toConfirm, open, done, justResolved };
 }
 
 /** 这道题各方给的几成（没有的那方是 null）。 */
