@@ -251,6 +251,43 @@ ${PERSPECTIVE_RULES[p]}
 
 export type PerspectiveForecast = { probability: number; reason: string };
 
+/**
+ * 三种思路各搜各的（2026-10-23）：原来三种思路看同一份搜索结果，资料里有一句「市场定价八成」，三个就都说八成，
+ * 唱反调也只是把同一句再说一遍。这里先写三条不同的搜索词：基准率找这一类事一般多常发生、只看这件事找最新进展、
+ * 唱反调专找反方资料。每种思路只看自己那一份。
+ */
+export type PerspectiveQueries = Record<Perspective, string>;
+
+const QUERIES_PROMPT = `给你一道预测题（题目、怎么才算「会」、截止日、出题时的背景）。写三条上网搜索词，分别给三种思路用：
+- outside：找「这一类事」过去一般多常发生的资料（基准率）。不要写这件事的专名，写这一类的说法，比如「央行 连续加息 间隔」「スタートアップ 日本進出 撤退 割合」。
+- inside：找这件事现在走到哪一步的最新资料（写专名）。
+- devil：找会让大多数人判断错的反方资料 —— 推迟、阻碍、风险、反对的声音；如果大家都觉得不会，就找被低估的推力。
+每条 3 到 8 个词，用最可能搜到好资料的语言：日本的事用日文，中国的事用中文，国际市场、美国的事用英文。
+
+只输出 JSON：{"outside":"…","inside":"…","devil":"…"}`;
+
+export function parsePerspectiveQueries(value: unknown): PerspectiveQueries {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const pick = (k: Perspective) => {
+    const q = typeof v[k] === "string" ? (v[k] as string).trim() : "";
+    if (q.length < 2 || q.length > 80) throw new Error(`${k} 的搜索词没写或太长`);
+    return q;
+  };
+  return { outside: pick("outside"), inside: pick("inside"), devil: pick("devil") };
+}
+
+export async function planPerspectiveQueries(input: { title: string; criteria: string; resolveOn: string; context: string }): Promise<PerspectiveQueries> {
+  return executeAiJson(
+    { operation: "forecast_queries", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
+    () => ({
+      model: MODEL,
+      contents: [`题目：${input.title}`, `怎么才算「会」：${input.criteria}`, `截止日：${input.resolveOn}`, `出题时的背景：${input.context || "（没有）"}`].join("\n"),
+      config: { systemInstruction: QUERIES_PROMPT, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 300 },
+    }),
+    parsePerspectiveQueries
+  );
+}
+
 export function parsePerspectiveForecast(value: unknown): PerspectiveForecast {
   const v = (value ?? {}) as Record<string, unknown>;
   const p = typeof v.probability === "number" ? v.probability : Number(v.probability);

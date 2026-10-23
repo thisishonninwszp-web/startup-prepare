@@ -4,6 +4,7 @@ import {
   draftResolution,
   forecastFromPerspective,
   planArrivalQuestion,
+  planPerspectiveQueries,
   planBusinessQuestions,
   translateMarketQuestion,
   type Perspective,
@@ -260,6 +261,30 @@ async function questionsWithoutAi(userId: string): Promise<ForecastQuestion[]> {
  * 市场题不给 AI 看市场的概率。三个里至少两个押成了才存中间值。
  * 不按固定道数做：开始下一道之前看已经用了多久，过了 startBeforeMs 就停（一道要二三十秒，Vercel 一次最多 60 秒）。
  */
+type ViewInput = { title: string; criteria: string; resolveOn: string; today: string; context: string };
+
+/**
+ * 三种思路各押一个（各搜各的，2026-10-23 换的）：先让 AI 写三条搜索词（基准率 / 这件事的最新进展 / 反方资料），
+ * 每种思路只看自己那一份。原来三种思路看同一份，资料里一句「市场定价八成」就三个都说八成。
+ * 换之前在他开着的 8 道题上对比过：三种思路平均拉开 0.206 → 0.231，三个一模一样的从 2 道变 0 道，
+ * 市场题的中间值离市场价没变远（0.087 → 0.077，只有 2 道）。写搜索词失败就退回原来那一条搜索词、三个共用。
+ */
+export async function forecastViews(input: ViewInput, fallbackQuery: string): Promise<{ source: ForecastSource; probability: number; reason: string }[]> {
+  const toSources = (r: { title: string; url: string; content: string }[]) => r.map((s) => ({ title: s.title, url: s.url, content: s.content }));
+  const queries = await planPerspectiveQueries(input).catch((e) => {
+    console.error("perspective queries", e);
+    return null;
+  });
+  const own = queries
+    ? await Promise.all(PERSPECTIVES.map(({ p }) => webSearch(queries[p], 5).then(toSources).catch(() => [])))
+    : await webSearch(fallbackQuery, 5)
+        .then(toSources)
+        .catch(() => [])
+        .then((shared) => PERSPECTIVES.map(() => shared));
+  const results = await Promise.allSettled(PERSPECTIVES.map(({ p }, i) => forecastFromPerspective(p, { ...input, sources: own[i] })));
+  return results.flatMap((r, i) => (r.status === "fulfilled" ? [{ source: PERSPECTIVES[i].source, probability: r.value.probability, reason: r.value.reason }] : []));
+}
+
 export async function forecastPending(userId: string, today: string, startBeforeMs = 20_000): Promise<{ did: number; remaining: number }> {
   const started = Date.now();
   const todo = await questionsWithoutAi(userId);
@@ -267,10 +292,7 @@ export async function forecastPending(userId: string, today: string, startBefore
   for (const q of todo) {
     if (did > 0 && Date.now() - started > startBeforeMs) break;
     const query = q.original_title ?? (q.source.headline as string | undefined) ?? q.title;
-    const sources = (await webSearch(query, 5).catch(() => [])).map((s) => ({ title: s.title, url: s.url, content: s.content }));
-    const input = { title: q.title, criteria: q.criteria, resolveOn: q.resolve_on, today, context: q.context ?? "", sources };
-    const results = await Promise.allSettled(PERSPECTIVES.map(({ p }) => forecastFromPerspective(p, input)));
-    const ok = results.flatMap((r, i) => (r.status === "fulfilled" ? [{ source: PERSPECTIVES[i].source, probability: r.value.probability, reason: r.value.reason }] : []));
+    const ok = await forecastViews({ title: q.title, criteria: q.criteria, resolveOn: q.resolve_on, today, context: q.context ?? "" }, query);
     if (ok.length < 2) continue;
     const median = medianProbability(ok.map((o) => o.probability));
     if (median === null) continue;
