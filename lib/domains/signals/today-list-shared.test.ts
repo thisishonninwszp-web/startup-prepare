@@ -11,7 +11,7 @@ const fq = (id: string, blind = false, ai: number | null = 0.3): ListForecast =>
   anchor: ai === null ? null : { source: "ai", probability: ai },
   three: [],
 });
-const base: ListCandidates = { practice: null, forecasts: [], confirms: [], dues: [], recalls: [], experiments: [] };
+const base: ListCandidates = { practice: null, forecasts: [], confirms: [], dues: [], recalls: [], experiments: [], doors: [] };
 const draft = (probability: number) => ({ probability, perspectives: [], made_at: "" });
 
 describe("一分钟清单", () => {
@@ -93,6 +93,15 @@ describe("一分钟清单", () => {
   });
 
   it("各种的上限", () => {
-    expect(LIST_CAPS).toEqual({ practice: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 });
+    expect(LIST_CAPS).toEqual({ practice: 1, door: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 });
+  });
+
+  it("做好的假门排在练习后面，估 20 秒；邮件里写价格填了没有", () => {
+    const d = { signalId: "g", side: "japan" as const, lang: "ja" as const, draft: { title: "家事代行", lead: "", points: [], audience: "" }, price: null, priceBasis: null };
+    const { items } = pickListItems({ ...base, forecasts: [fq("a")], doors: [d, { ...d, signalId: "g2" }] });
+    expect(items.map((i) => i.kind)).toEqual(["door", "forecast"]);
+    expect(listSeconds(items)).toBe(26);
+    expect(previewLine(items[0]).note).toBe("做好了，差一个价格");
+    expect(previewLine({ kind: "door", d: { ...d, price: "1,280円" } }).note).toBe("做好了，价格先填了 1,280円");
   });
 });

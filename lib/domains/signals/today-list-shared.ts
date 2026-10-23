@@ -5,6 +5,8 @@
 import { ANCHOR_LABELS, pct, type Anchor, type Forecast, type ForecastKind, type PendingResolution } from "./forecast-shared";
 import { CONFIDENCE_LEVELS, draftVerdict, type HorizonKey, type PracticeDraft } from "./practice-shared";
 import type { InferenceEvidence } from "./inference-shared";
+import type { FakeDoorDraft } from "./fake-door-shared";
+import type { GapSide } from "./gaps-shared";
 
 /** anchor：先摆出来的那个数（市场价 / 统计基准 / AI，见 anchorOf）；先判题不摆，是 null。 */
 export type ListForecast = { id: string; title: string; kind: ForecastKind; resolve_on: string; criteria: string; blind: boolean; anchor: Anchor | null; three: Forecast[] };
@@ -24,6 +26,8 @@ export type ListConfirm = { id: string; title: string; criteria: string; resolve
 export type ListDue = { id: string; predictionId: string; question: string; judgment: string; dueAt: string; evidence: InferenceEvidence[] | null };
 export type ListRecall = { signalId: string; title: string; reason: string; dueOn: string };
 export type ListExperiment = { kind: string; targetId: string; platform: string; label: string; question: string; dueOn: string };
+/** 后台先做好的假门（见 door-prep.ts）：整页的字、先填的价格和出处（没有数据是 null，要他填）。 */
+export type ListDoor = { signalId: string; side: GapSide; lang: "ja" | "zh"; draft: FakeDoorDraft; price: string | null; priceBasis: string | null };
 
 export type ListItem =
   | ListPractice
@@ -31,7 +35,8 @@ export type ListItem =
   | { kind: "confirm"; q: ListConfirm }
   | { kind: "due"; j: ListDue }
   | { kind: "recall"; r: ListRecall }
-  | { kind: "experiment"; p: ListExperiment };
+  | { kind: "experiment"; p: ListExperiment }
+  | { kind: "door"; d: ListDoor };
 
 export type ListCandidates = {
   practice: ListPractice | null;
@@ -40,17 +45,19 @@ export type ListCandidates = {
   dues: ListDue[];
   recalls: ListRecall[];
   experiments: ListExperiment[];
+  doors: ListDoor[];
 };
 
 /** 一天最多几件、每一种最多几件（多出来的留到明天，不堆）。 */
 export const LIST_MAX = 8;
-export const LIST_CAPS = { practice: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 } as const;
+export const LIST_CAPS = { practice: 1, door: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 } as const;
 
-/** 按顺序取：练习 → 预测题（先判题排第一；不是先判题、又没有先摆出来的数的不放）→ 到期确认 → 到期的判断 → 回想 → 实验先猜。 */
+/** 按顺序取：练习 → 做好的假门（拿「愿付钱」证据的唯一一条路，排在前面）→ 预测题（先判题排第一；不是先判题、又没有先摆出来的数的不放）→ 到期确认 → 到期的判断 → 回想 → 实验先猜。 */
 export function pickListItems(c: ListCandidates): { items: ListItem[]; more: number } {
   const forecasts = [...c.forecasts.filter((q) => q.blind), ...c.forecasts.filter((q) => !q.blind && q.anchor !== null)];
   const groups: [ListItem[], number][] = [
     [c.practice ? [c.practice] : [], LIST_CAPS.practice],
+    [c.doors.map((d) => ({ kind: "door" as const, d })), LIST_CAPS.door],
     [forecasts.map((q) => ({ kind: "forecast" as const, q })), LIST_CAPS.forecast],
     [c.confirms.map((q) => ({ kind: "confirm" as const, q })), LIST_CAPS.confirm],
     [c.dues.map((j) => ({ kind: "due" as const, j })), LIST_CAPS.due],
@@ -66,12 +73,20 @@ export function pickListItems(c: ListCandidates): { items: ListItem[]; more: num
   return { items, more: total - items.length };
 }
 
-/** 估几秒（只是让他知道很短）：练习 10 秒，别的 6 秒。 */
+/** 估几秒（只是让他知道很短）：练习 10 秒、假门 20 秒（要把那一页读一遍），别的 6 秒。 */
 export function listSeconds(items: ListItem[]): number {
-  return items.reduce((s, i) => s + (i.kind === "practice" ? 10 : 6), 0);
+  return items.reduce((s, i) => s + (i.kind === "practice" ? 10 : i.kind === "door" ? 20 : 6), 0);
 }
 
-const KIND_NAMES: Record<ListItem["kind"], string> = { practice: "练习", forecast: "预测", confirm: "到期确认", due: "到期的判断", recall: "回想", experiment: "你的实验" };
+const KIND_NAMES: Record<ListItem["kind"], string> = {
+  practice: "练习",
+  door: "假门",
+  forecast: "预测",
+  confirm: "到期确认",
+  due: "到期的判断",
+  recall: "回想",
+  experiment: "你的实验",
+};
 
 const clip = (s: string, n = 28) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
@@ -101,5 +116,7 @@ export function previewLine(item: ListItem): { label: string; title: string; not
       return { label, title: clip(item.r.title), note: item.r.reason };
     case "experiment":
       return { label, title: clip(item.p.label), note: "先猜一下" };
+    case "door":
+      return { label, title: clip(item.d.draft.title), note: item.d.price ? `做好了，价格先填了 ${item.d.price}` : "做好了，差一个价格" };
   }
 }

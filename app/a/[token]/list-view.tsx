@@ -11,9 +11,11 @@ import { CONFIDENCE_LEVELS, deadlineLabel, draftVerdict, HORIZONS, MISS_REASONS,
 import { RECALL_LABELS, type RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { RecallReveal } from "@/lib/domains/signals/recall";
 import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
-import type { ListConfirm, ListDue, ListExperiment, ListForecast, ListItem, ListPractice, ListRecall } from "@/lib/domains/signals/today-list-shared";
+import type { ListConfirm, ListDoor, ListDue, ListExperiment, ListForecast, ListItem, ListPractice, ListRecall } from "@/lib/domains/signals/today-list-shared";
 import {
   listConfirmAction,
+  listDoorDismissAction,
+  listDoorPublishAction,
   listExperimentAction,
   listForecastAction,
   listPracticeAction,
@@ -55,11 +57,11 @@ function Kind({ children }: { children: React.ReactNode }) {
 }
 
 /** 三种思路各说了几成、为什么（折起来，点开才看）。 */
-function Views({ views }: { views: { source: Forecast["source"]; probability: number; reason: string | null }[] }) {
+function Views({ views, summary = "为什么（三种思路各说了几成）" }: { views: { source: Forecast["source"]; probability: number; reason: string | null }[]; summary?: string }) {
   if (views.length === 0) return null;
   return (
     <details className="mt-1 text-xs">
-      <summary className="cursor-pointer text-muted-foreground">为什么（三种思路各说了几成）</summary>
+      <summary className="cursor-pointer text-muted-foreground">{summary}</summary>
       <ul className="mt-1 space-y-1">
         {views.map((v) => (
           <li key={v.source}>
@@ -173,7 +175,7 @@ function ForecastCard({ token, q, onDone }: { token: string; q: ListForecast; on
             {ANCHOR_LABELS[q.anchor.source]}：<span className="font-mono">{pct(q.anchor.probability)}</span> 会
           </p>
           <p className="text-xs text-muted-foreground">{ANCHOR_NOTES[q.anchor.source]}</p>
-          <Views views={q.three} />
+          <Views views={q.three} summary={q.anchor.source === "ai" ? undefined : "AI 怎么看（三种思路各说了几成）"} />
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" disabled={pending} onClick={() => act(() => listForecastAction(token, q.id, "agree"))}>
               行
@@ -386,6 +388,49 @@ function RecallCard({ token, r, onDone }: { token: string; r: ListRecall; onDone
   );
 }
 
+/**
+ * 假门：后台先做好的那一页，他从头到尾看一遍，价格确认（先填的可以改，没填的要填），点「发布」才有公开页。
+ * 「还没有这个服务、现在不收钱、邮箱只联系一次」由代码加在页面上，这里不用写。
+ */
+function DoorCard({ token, d, onDone }: { token: string; d: ListDoor; onDone: Done }) {
+  const { pending, error, act } = useAct(onDone);
+  const [price, setPrice] = useState(d.price ?? "");
+  const ready = /\d/.test(price.trim());
+  return (
+    <>
+      <Kind>假门 · {d.lang === "ja" ? "日文页，给日本这边的陌生人看" : "中文页，给中国那边的人看"}</Kind>
+      <p className="font-medium leading-7">{d.draft.title}</p>
+      <p className="mt-1 text-sm leading-7">{d.draft.lead}</p>
+      {d.draft.points.length > 0 && (
+        <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm leading-7">
+          {d.draft.points.map((x, i) => (
+            <li key={i}>{x}</li>
+          ))}
+        </ul>
+      )}
+      {d.draft.audience && <p className="mt-1 text-xs text-muted-foreground">适合：{d.draft.audience}</p>}
+      <div className="mt-3 space-y-1">
+        <p className="text-xs text-muted-foreground">预计价格（陌生人看着价格还愿意留邮箱，才算「愿付钱」的证据）</p>
+        <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder={d.lang === "ja" ? "比如 月額 980円" : "比如 每月 49 元"} maxLength={30} />
+        <p className="text-xs leading-6 text-muted-foreground">{d.priceBasis ? `先填的是：${d.priceBasis}。` : "没有现成的价格数据，你填一个。"}</p>
+      </div>
+      <p className="mt-2 text-xs leading-6 text-muted-foreground">发布后页面上会自动加上：还没有这个服务、现在不收钱、邮箱只联系一次、随时可以取消。</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" disabled={pending || !ready} onClick={() => act(() => listDoorPublishAction(token, d.signalId, d.side, price))}>
+          {pending ? "在发布……" : "发布"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={pending} onClick={() => act(() => listDoorDismissAction(token, d.signalId, d.side))}>
+          不要
+        </Button>
+        <Link href={`/signals/gaps/door?side=${d.side}&signal=${d.signalId}`} className="text-xs text-primary underline-offset-4 hover:underline">
+          想改字，去网站上改 →
+        </Link>
+      </div>
+      <ErrorLine error={error} />
+    </>
+  );
+}
+
 function ExperimentCard({ token, p, onDone }: { token: string; p: ListExperiment; onDone: Done }) {
   const { pending, error, act } = useAct(onDone);
   return (
@@ -459,6 +504,8 @@ export function TodayListView({
               <DueCard token={token} j={it.j} onDone={finish(i)} />
             ) : it.kind === "recall" ? (
               <RecallCard token={token} r={it.r} onDone={finish(i)} />
+            ) : it.kind === "door" ? (
+              <DoorCard token={token} d={it.d} onDone={finish(i)} />
             ) : (
               <ExperimentCard token={token} p={it.p} onDone={finish(i)} />
             )}
