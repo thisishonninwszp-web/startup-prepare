@@ -20,7 +20,10 @@ export function PracticeComposer({
   knownTags,
   defaultHorizon,
   deadline,
+  withForm = true,
 }: {
+  /** false：只拆、不带写判断的表单（AI 先判的日子，交判断走上面的「行 / 不行」）。 */
+  withForm?: boolean;
   /** 这道题是哪一天报告里的（拆解卡存在那一天的报告里）。 */
   date: string;
   initialBreakdown: Breakdown | null;
@@ -119,19 +122,21 @@ export function PracticeComposer({
             </p>
           )}
           <p className="mt-1 text-xs leading-6 text-muted-foreground">
-            几个因素指向不同方向时，判断就是在掂量哪个更重 —— 想清楚了再写下面那句。
+            几个因素指向不同方向时，判断就是在掂量哪个更重 —— {withForm ? "想清楚了再写下面那句。" : "想清楚了，回上面点行不行。"}
           </p>
         </div>
       )}
 
-      <JudgmentForm
-        signalId={signalId}
-        question={question}
-        knownTags={knownTags}
-        defaultHorizon={defaultHorizon}
-        deadline={deadline}
-        reasoning={leanSummary(breakdown, leans)}
-      />
+      {withForm && (
+        <JudgmentForm
+          signalId={signalId}
+          question={question}
+          knownTags={knownTags}
+          defaultHorizon={defaultHorizon}
+          deadline={deadline}
+          reasoning={leanSummary(breakdown, leans)}
+        />
+      )}
     </div>
   );
 }

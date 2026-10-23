@@ -16,7 +16,10 @@ import type { EarlierMention } from "@/lib/domains/signals/followups";
 import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
 import { emailConfig } from "@/lib/domains/signals/notify";
 import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
-import { deadlineLabel, HORIZONS, type HorizonKey } from "@/lib/domains/signals/practice-shared";
+import { deadlineLabel, HORIZONS, isBlindPracticeDate, JUDGMENT_MODE_LABELS, type HorizonKey, type PracticeDraft } from "@/lib/domains/signals/practice-shared";
+import { ensurePracticeDraft } from "@/lib/domains/signals/practice-draft";
+import type { SignalDetail } from "@/lib/domains/signals/analysis";
+import { PracticeDraftCard } from "./practice-draft-card";
 import { practiceHorizon, questionDeadline } from "@/lib/ai";
 import { countPendingSignals, getDailyReport, type DailyReport, type ReportSection } from "./queries";
 import { GenerateBriefButton } from "./brief-panel";
@@ -563,6 +566,103 @@ function DueJudgments({ rows }: { rows: JudgmentRow[] }) {
   );
 }
 
+type PracticeProps = {
+  /** 这份报告是哪一天的（拆解卡、AI 先判存在那一天的报告里）。 */
+  date: string;
+  practice: NonNullable<ReportSection["practice"]>;
+  title: string;
+  summary: string;
+  history: SignalDetail["history"] | null;
+  knownTags: string[];
+  horizon: HorizonKey;
+  deadline?: string;
+};
+
+/** 自己先判（周一的练习、以前的日子、AI 没判出来的时候）：照原来的样子，可以先看历史、先拆一拆再写。 */
+function BlindPractice({ date, practice, title, summary, history, knownTags, horizon, deadline }: PracticeProps) {
+  return (
+    <details className="mt-4">
+      <summary className="cursor-pointer text-sm font-medium text-primary">开始写判断 →</summary>
+      <div className="mt-4 space-y-5">
+        <div>
+          <p className="text-sm text-muted-foreground">读这一条：</p>
+          <p className="mt-1 text-base font-medium leading-8">{title}</p>
+          {summary && <p className="mt-1 text-sm leading-7">{summary}</p>}
+        </div>
+        <div>
+          <p className="mb-2 text-sm leading-7 text-muted-foreground">
+            写判断前，推荐先看看这类事过去通常怎样。看完再想「这次有什么不同」。
+          </p>
+          <HistoryPanel signalId={practice.signal_id} initial={history} />
+        </div>
+        <p className="text-sm leading-7 text-muted-foreground">
+          {deadline
+            ? `题目问的是到${deadlineLabel(deadline)}，对账就按这个日子（多留一周等消息出来）。觉得不对就换一档。`
+            : `这道题${HORIZONS[horizon].label.replace("后", "")}左右见分晓，期限已经替你选好了；觉得不对就改。`}
+        </p>
+        <PracticeComposer
+          date={date}
+          initialBreakdown={practice.breakdown ?? null}
+          signalId={practice.signal_id}
+          question={practice.question}
+          knownTags={knownTags}
+          defaultHorizon={horizon}
+          deadline={deadline}
+        />
+      </div>
+    </details>
+  );
+}
+
+/** AI 先判了：上面点行 / 不行，下面「想自己想一想」折着历史参照和拆解卡（只拆、不带表单）。 */
+function DraftPractice({ draft, ...props }: PracticeProps & { draft: PracticeDraft }) {
+  const { date, practice, history, knownTags, horizon, deadline } = props;
+  return (
+    <>
+      <PracticeDraftCard
+        date={date}
+        signalId={practice.signal_id}
+        question={practice.question}
+        draft={draft}
+        knownTags={knownTags}
+        defaultHorizon={horizon}
+        deadline={deadline}
+      />
+      <details className="mt-4">
+        <summary className="cursor-pointer text-sm text-muted-foreground">想自己想一想</summary>
+        <div className="mt-4 space-y-5">
+          <HistoryPanel signalId={practice.signal_id} initial={history} label="看历史上类似的事" />
+          <PracticeComposer
+            date={date}
+            initialBreakdown={practice.breakdown ?? null}
+            signalId={practice.signal_id}
+            question={practice.question}
+            knownTags={knownTags}
+            defaultHorizon={horizon}
+            deadline={deadline}
+            withForm={false}
+          />
+        </div>
+      </details>
+    </>
+  );
+}
+
+/** 今天的题还没有 AI 先判（后台 7:30 还没跑到）：现在出，二三十秒；出不来就自己判。 */
+async function PracticeDraftLoader({ poolUserId, ...props }: PracticeProps & { poolUserId: string }) {
+  const draft = await ensurePracticeDraft(poolUserId, props.date).catch((e) => {
+    console.error("practice draft", e);
+    return null;
+  });
+  if (draft) return <DraftPractice draft={draft} {...props} />;
+  return (
+    <>
+      <p className="mt-4 text-xs text-muted-foreground">AI 这次没判出来，这道你自己判。</p>
+      <BlindPractice {...props} />
+    </>
+  );
+}
+
 async function PracticeCard({
   practice,
   title,
@@ -570,8 +670,10 @@ async function PracticeCard({
   judgment,
   knownTags,
   date,
+  isToday,
+  poolUserId,
 }: {
-  /** 这份报告是哪一天的（拆解卡存在那一天的报告里）。 */
+  /** 这份报告是哪一天的（拆解卡、AI 先判存在那一天的报告里）。 */
   date: string;
   practice: NonNullable<ReportSection["practice"]>;
   title: string;
@@ -579,6 +681,10 @@ async function PracticeCard({
   position: number;
   judgment: JudgmentRow | null;
   knownTags: string[];
+  /** 只有今天的题会现出 AI 先判（以前的日子没出过就自己判）。 */
+  isToday: boolean;
+  /** 报告是哪个账号的（朋友读主账号那份），AI 先判存在那份上。 */
+  poolUserId: string;
 }) {
   const detail = await getSignalDetail(practice.signal_id);
   const usable = detail && detail !== "missing-schema" ? detail : null;
@@ -587,10 +693,14 @@ async function PracticeCard({
     practice.horizon && practice.horizon in HORIZONS ? (practice.horizon as HorizonKey) : practiceHorizon(practice.question, undefined, tokyoToday());
   const deadlineDate = questionDeadline(practice.question, tokyoToday());
   const deadline = deadlineDate ? deadlineDate.toISOString().slice(0, 10) : undefined;
-  const summary = usable?.summary ?? "";
+  // 经用户明确裁决（2026-10-23）：AI 先判、他点行不行；每周一的练习照旧先自己判
+  const blindDay = isBlindPracticeDate(date);
+  const props: PracticeProps = { date, practice, title, summary: usable?.summary ?? "", history: usable?.history ?? null, knownTags, horizon, deadline };
   return (
     <section className="mb-8 rounded-lg border bg-card p-5">
-      <h2 className="text-lg font-semibold">今天的练习：先判断，再看答案</h2>
+      <h2 className="text-lg font-semibold">
+        {judgment ? "今天的练习" : blindDay ? "今天的练习（周一）：先自己判，再看 AI 的" : "今天的练习：AI 先判了，你看行不行"}
+      </h2>
       <p className="mt-3 border-l-2 border-primary pl-3 text-base font-medium leading-8">{practice.question}</p>
       <p className="mt-2 text-xs leading-6 text-muted-foreground">
         出自
@@ -609,12 +719,12 @@ async function PracticeCard({
       {judgment ? (
         <>
           <p className="mt-4 text-sm leading-7">
-            <span className="text-muted-foreground">你写了：</span>
+            <span className="text-muted-foreground">{judgment.mode === undefined ? "你写了：" : `${JUDGMENT_MODE_LABELS[judgment.mode ?? "blind"]}：`}</span>
             {judgment.judgment}
             <span className="ml-1 font-mono text-xs text-muted-foreground">· {formatDueDate(judgment.due_at)}对账</span>
           </p>
           <details className="mt-2 text-sm">
-            <summary className="cursor-pointer text-muted-foreground">看 AI 怎么拆、到时候看什么</summary>
+            <summary className="cursor-pointer text-muted-foreground">{judgment.mode === "agree" ? "到时候看什么" : "看 AI 怎么拆、到时候看什么"}</summary>
             <div className="mt-3">
               <JudgmentView judgment={judgment} showQuestion={false} />
               <p className="mt-4 leading-7 text-muted-foreground">到时候看什么：{practice.check_how}</p>
@@ -629,37 +739,16 @@ async function PracticeCard({
             </div>
           </details>
         </>
+      ) : blindDay ? (
+        <BlindPractice {...props} />
+      ) : practice.ai_draft ? (
+        <DraftPractice draft={practice.ai_draft} {...props} />
+      ) : isToday ? (
+        <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">AI 在查资料、判这道题……二三十秒</p>}>
+          <PracticeDraftLoader poolUserId={poolUserId} {...props} />
+        </Suspense>
       ) : (
-        <details className="mt-4">
-          <summary className="cursor-pointer text-sm font-medium text-primary">开始写判断 →</summary>
-          <div className="mt-4 space-y-5">
-            <div>
-              <p className="text-sm text-muted-foreground">读这一条：</p>
-              <p className="mt-1 text-base font-medium leading-8">{title}</p>
-              {summary && <p className="mt-1 text-sm leading-7">{summary}</p>}
-            </div>
-            <div>
-              <p className="mb-2 text-sm leading-7 text-muted-foreground">
-                写判断前，推荐先看看这类事过去通常怎样。看完再想「这次有什么不同」。
-              </p>
-              <HistoryPanel signalId={practice.signal_id} initial={usable?.history ?? null} />
-            </div>
-            <p className="text-sm leading-7 text-muted-foreground">
-              {deadline
-                ? `题目问的是到${deadlineLabel(deadline)}，对账就按这个日子（多留一周等消息出来）。觉得不对就换一档。`
-                : `这道题${HORIZONS[horizon].label.replace("后", "")}左右见分晓，期限已经替你选好了；觉得不对就改。`}
-            </p>
-            <PracticeComposer
-              date={date}
-              initialBreakdown={practice.breakdown ?? null}
-              signalId={practice.signal_id}
-              question={practice.question}
-              knownTags={knownTags}
-              defaultHorizon={horizon}
-              deadline={deadline}
-            />
-          </div>
-        </details>
+        <BlindPractice {...props} />
       )}
     </section>
   );
@@ -838,6 +927,8 @@ export default async function SignalsReportPage({
                   position={practiceIndex + 1}
                   judgment={practiceJudgment}
                   knownTags={knownTags(judgments)}
+                  isToday={isToday}
+                  poolUserId={view.sourceUserId}
                 />
               )}
               {isToday && report.news && !practice && (
