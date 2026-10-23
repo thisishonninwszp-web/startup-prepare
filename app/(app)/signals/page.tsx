@@ -812,7 +812,8 @@ export default async function SignalsReportPage({
   const practiceItem = practiceIndex >= 0 ? newsPicks[practiceIndex] : null;
   const practiceJudgment =
     practice && judgments ? judgments.find((j) => j.signal_id === practice.signal_id) ?? null : null;
-  const hiddenSignalId = practice && judgments && !practiceJudgment ? practice.signal_id : null;
+  // 先判的日子（周一）才把那一条的解读藏到判完；AI 先判的日子 AI 的判断已经摆着了，再藏只是多一道手续
+  const hiddenSignalId = practice && judgments && !practiceJudgment && isBlindPracticeDate(date) ? practice.signal_id : null;
   const mail = emailConfig();
   const hasAnySection = report !== "missing-schema" && SECTIONS.some((s) => report[s.kind]);
 

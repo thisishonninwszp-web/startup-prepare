@@ -1,5 +1,5 @@
 import { boardSections, loadForecastBoard, shownAi, sidesOf, type ForecastQuestion } from "./forecast";
-import { aiCalibration, drillProgress } from "./backtest";
+import { drillProgress } from "./backtest";
 import { loadExperimentBoard } from "./experiments";
 import { followedSignals, storyUpdates } from "./memory";
 import { dueRecalls, type RecallItem } from "./recall";
@@ -62,12 +62,11 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
     const s = boardSections(board, today);
     const first = s.toForecast[0];
     const raw = first ? board.forecasts.find((f) => f.question_id === first.id && f.source === "ai")?.probability ?? null : null;
-    const platt = raw === null ? null : await aiCalibration().catch(logged("calibration", null));
     forecast = {
       drill: drill && drill !== "missing-schema" ? { today: drill.today, left: drill.left } : null,
       experiments: experiments && experiments !== "missing-schema" ? { proposals: experiments.proposals.length, waiting: experiments.waiting.length } : null,
       toForecast: s.toForecast,
-      quick: first ? { q: first, blind: s.blind.has(first.id), ai: raw === null ? null : shownAi(raw, platt) } : null,
+      quick: first ? { q: first, blind: s.blind.has(first.id), ai: raw === null ? null : shownAi(raw, null) } : null,
       toConfirm: s.toConfirm.length,
       justResolved: s.justResolved.slice(0, 3).map((q) => ({ q, ...sidesOf(board.forecasts, q.id) })),
     };

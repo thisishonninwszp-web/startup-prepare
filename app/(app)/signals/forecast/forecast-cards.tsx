@@ -95,7 +95,7 @@ export function Answers({ q, forecasts, calibration }: { q: ForecastQuestion; fo
  * 别的题：摆出 AI 的数，「行」= 记成这个数，「不行」在那一边改一档（可以带一句为什么），「跳过」不记；市场的数点完才给看。
  * 每周一道的先判题（或 AI 还没判的）：照旧先点一档、看不到 AI 和市场；也可以先看答案，但看了这道就不能再判断。
  */
-export function ForecastCard({ q, blind, ai, calibrated, three }: { q: ForecastQuestion; blind: boolean; ai: number | null; calibrated: boolean; three: Forecast[] }) {
+export function ForecastCard({ q, blind, ai, three }: { q: ForecastQuestion; blind: boolean; ai: number | null; three: Forecast[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +119,7 @@ export function ForecastCard({ q, blind, ai, calibrated, three }: { q: ForecastQ
       <li className="rounded-lg border border-border bg-card p-4">
         <QuestionHead q={q} />
         <p className="mt-3 text-sm">
-          AI：<span className="font-mono">{pct(ai)}</span> 会{calibrated ? "（按回测校准）" : ""}
+          AI：<span className="font-mono">{pct(ai)}</span> 会
         </p>
         <ThreeViews three={three} summary="为什么（三种思路各说了几成）" />
         <div className="mt-2 flex flex-wrap gap-2">
