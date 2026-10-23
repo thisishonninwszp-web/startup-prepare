@@ -157,6 +157,12 @@ export type IssuePick = {
   sources: { title: string; url: string }[];
   /** 点选的三问（早期版本没有，判断是手写的）。 */
   stance?: PickStance;
+  /**
+   * AI 先替他填的「两年内会不会」（到日本题上 AI 说的几成，≥ 五成算会）和那个数；没有到日本题就没有。
+   * 服务器生成时重新取，不信浏览器；发出去记进判断账本时，没改就是「同意 AI」、改了是「改判」。
+   */
+  ai_will?: "will" | "wont";
+  ai_p?: number;
   /** 他补的那句（原样）。 */
   note?: string;
   /** 发出去的"我的判断"：点选拼成的那句 + 他补的那句。 */
@@ -464,4 +470,38 @@ export function decideIssueBet(
     outcome: bet.will === "will" ? "miss" : "hit",
     note: `自动对账：到期时（${near.checked_on} 重查）这边还是没有 —— ${near.japan}${src ? `（出处：${src.title || src.url} ${src.url}）` : ""}`,
   };
+}
+
+// ── AI 先挑好、先填好（经用户同意，2026-10-23） ─────────────────────────────
+
+/** 到日本题上 AI 说的几成 → 先填的「会 / 不会」（≥ 五成算会）。 */
+export function aiWill(p: number): "will" | "wont" {
+  return p >= 0.5 ? "will" : "wont";
+}
+
+export type IssueSuggestion = { side: GapSide; signal_id: string; headline: string; here: string; will?: "will" | "wont"; ai: number | null };
+
+/**
+ * 这一期先替他挑哪几条：有到日本题的在前（能先填「会不会」），再按听到的原话多少、再按新的先。
+ * 只是先挑，他可以全换掉；最多 ISSUE_MAX_PICKS 条。
+ */
+export function rankIssueSuggestions(
+  candidates: { side: GapSide; signal_id: string; headline: string; here: string; date: string }[],
+  ai: Map<string, number>,
+  quotes: Map<string, number>
+): IssueSuggestion[] {
+  const key = (c: { side: GapSide; signal_id: string }) => `${c.side}:${c.signal_id}`;
+  return [...candidates]
+    .sort((a, b) => {
+      const byAi = Number(ai.has(key(b))) - Number(ai.has(key(a)));
+      if (byAi !== 0) return byAi;
+      const byQuotes = (quotes.get(key(b)) ?? 0) - (quotes.get(key(a)) ?? 0);
+      if (byQuotes !== 0) return byQuotes;
+      return b.date.localeCompare(a.date);
+    })
+    .slice(0, ISSUE_MAX_PICKS)
+    .map((c) => {
+      const p = ai.get(key(c));
+      return { side: c.side, signal_id: c.signal_id, headline: c.headline, here: c.here, ai: p ?? null, ...(p !== undefined ? { will: aiWill(p) } : {}) };
+    });
 }

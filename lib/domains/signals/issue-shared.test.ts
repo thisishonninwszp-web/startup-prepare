@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  aiWill,
+  rankIssueSuggestions,
   assembleDrafts,
   decideIssueBet,
   gapDemand,
@@ -271,3 +273,20 @@ describe("周刊每一篇的数据", () => {
   });
 });
 
+
+describe("周刊：AI 先挑好、先填好", () => {
+  const c = (id: string, date: string) => ({ side: "japan" as const, signal_id: id, headline: `条${id}`, here: "日本", date });
+  it("有到日本题的在前，再按原话多少，再按新的先；最多 3 条", () => {
+    const ai = new Map([["japan:b", 0.62], ["japan:d", 0.3]]);
+    const quotes = new Map([["japan:c", 7]]);
+    const s = rankIssueSuggestions([c("a", "2026-10-20"), c("b", "2026-10-10"), c("c", "2026-10-11"), c("d", "2026-10-21")], ai, quotes);
+    expect(s.map((x) => x.signal_id)).toEqual(["d", "b", "c"]);
+    expect(s[0]).toMatchObject({ will: "wont", ai: 0.3 });
+    expect(s[1]).toMatchObject({ will: "will", ai: 0.62 });
+    expect(s[2].will).toBeUndefined();
+  });
+  it("五成算会", () => {
+    expect(aiWill(0.5)).toBe("will");
+    expect(aiWill(0.49)).toBe("wont");
+  });
+});
