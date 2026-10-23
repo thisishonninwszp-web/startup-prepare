@@ -19,13 +19,17 @@ import { REPORT_SECTION_KINDS } from "./feeds";
 import type { BriefItem } from "./brief";
 import { getMarket, searchMarkets } from "./markets";
 import { sharedViewFor, signalUserIds } from "./users";
+import { aiCalibration } from "./backtest";
 import {
   needsConfirm,
   daysBetween,
   isJapanQuestion,
   medianProbability,
   pickMarkets,
+  shownAi,
+  tokyoWeekStart,
   type Forecast,
+  type ForecastMode,
   type ForecastQuestion,
   type ForecastSource,
   type MarketRef,
@@ -42,6 +46,7 @@ export * from "./forecast-shared";
  */
 
 export const FORECAST_MISSING = "迁移 091 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/091_signal_memory_forecasts.sql。";
+export const MODE_MISSING = "迁移 099 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/099_ai_first_judgment.sql，之后才能点「行 / 不行」。";
 export const MEMBERS_MISSING = "迁移 092 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/092_signal_members.sql。";
 
 function revealsMissing(error: { message: string } | null): boolean {
@@ -54,6 +59,15 @@ function missing(error: { message: string } | null): boolean {
 
 const QUESTION_COLUMNS =
   "id, kind, title, original_title, criteria, resolve_on, category, source, context, status, outcome, resolved_at, resolution_note, resolution_url, pending, revealed_at, created_at";
+
+const FORECAST_COLUMNS = "question_id, user_id, source, probability, reason, made_at";
+
+/** 先带 mode 查（迁移 099），没跑就不带：老记录本来就全是先判。 */
+async function selectForecasts(userIds: string[]) {
+  const withMode = await supabaseAdmin.from("forecasts").select(`${FORECAST_COLUMNS}, mode`).in("user_id", userIds);
+  if (!withMode.error || !/mode/.test(withMode.error.message)) return withMode;
+  return supabaseAdmin.from("forecasts").select(FORECAST_COLUMNS).in("user_id", userIds);
+}
 
 const clamp = (p: number) => Math.min(0.99, Math.max(0.01, p));
 
@@ -72,7 +86,7 @@ export async function loadForecastBoard(userId: string): Promise<ForecastBoard |
   const { sourceUserId: pool, shared } = await sharedViewFor(userId);
   const [q, f, r] = await Promise.all([
     supabaseAdmin.from("forecast_questions").select(QUESTION_COLUMNS).eq("user_id", pool).order("resolve_on"),
-    supabaseAdmin.from("forecasts").select("question_id, user_id, source, probability, reason, made_at").in("user_id", Array.from(new Set([pool, userId]))),
+    selectForecasts(Array.from(new Set([pool, userId]))),
     supabaseAdmin.from("forecast_reveals").select("question_id").eq("user_id", userId),
   ]);
   const error = q.error ?? f.error;
@@ -95,15 +109,28 @@ export async function loadForecastBoard(userId: string): Promise<ForecastBoard |
   return { questions, forecasts, shared, canConfirm: !shared };
 }
 
-async function insertForecasts(userId: string, questionId: string, rows: { source: ForecastSource; probability: number; reason?: string | null }[]): Promise<void> {
+async function insertForecasts(
+  userId: string,
+  questionId: string,
+  rows: { source: ForecastSource; probability: number; reason?: string | null; mode?: ForecastMode }[]
+): Promise<void> {
   if (rows.length === 0) return;
-  const payload = rows.map((r) => ({ question_id: questionId, user_id: userId, source: r.source, probability: clamp(r.probability), reason: r.reason ?? null }));
+  // 只有他那一条带 mode：写 AI、市场、基准的照旧，099 没跑也不受影响
+  const payload = rows.map((r) => ({
+    question_id: questionId,
+    user_id: userId,
+    source: r.source,
+    probability: clamp(r.probability),
+    reason: r.reason ?? null,
+    ...(r.mode ? { mode: r.mode } : {}),
+  }));
   let { error } = await supabaseAdmin.from("forecasts").upsert(payload, { onConflict: "question_id,user_id,source", ignoreDuplicates: true });
   // 迁移 092 没跑时唯一键还是 (question_id, source)
   if (error && /no unique or exclusion constraint/.test(error.message)) {
     ({ error } = await supabaseAdmin.from("forecasts").upsert(payload, { onConflict: "question_id,source", ignoreDuplicates: true }));
   }
-  if (error) throw new Error(missing(error) ? FORECAST_MISSING : error.message);
+  // 099 没跑时报的是「forecasts 没有 mode 这一列」，先认它，别当成 091 没跑
+  if (error) throw new Error(/\bmode\b/.test(error.message) ? MODE_MISSING : missing(error) ? FORECAST_MISSING : error.message);
 }
 
 // ── 进题 ────────────────────────────────────────────────────────────────────
@@ -209,7 +236,7 @@ export async function createBusinessQuestions(userId: string, today: string): Pr
 
 // ── AI 押 ───────────────────────────────────────────────────────────────────
 
-const PERSPECTIVES: { p: Perspective; source: ForecastSource }[] = [
+export const PERSPECTIVES: { p: Perspective; source: ForecastSource }[] = [
   { p: "outside", source: "ai_outside" },
   { p: "inside", source: "ai_inside" },
   { p: "devil", source: "ai_devil" },
@@ -344,18 +371,56 @@ async function hasRevealed(userId: string, q: ForecastQuestion, shared: boolean)
   return !!data;
 }
 
-/** 他说出自己的判断（几成可能）：题还开着、没到期、没先看过 AI 和市场、没判断过。 */
-export async function setMyForecast(userId: string, questionId: string, probability: number, today: string): Promise<void> {
-  const { q, shared } = await poolQuestion(userId, questionId);
-  if (q.status !== "open" || daysBetween(today, q.resolve_on) <= 0) throw new Error("这道题已经到期了，不能再判断");
-  if (await hasRevealed(userId, q, shared)) throw new Error("你已经先看过 AI 和市场的答案了，这道题不能再判断（免得被带偏）");
-  const { data } = await supabaseAdmin.from("forecasts").select("id").eq("question_id", questionId).eq("source", "me").eq("user_id", userId).maybeSingle();
-  if (data) throw new Error("这道题你已经判断过了");
-  if (!(probability > 0 && probability < 1)) throw new Error("概率不对");
-  await insertForecasts(userId, questionId, [{ source: "me", probability }]);
+/** 这道是不是那一周的先判题：东京时间那一周里最早进这一池的那道（和 blindQuestionIds 同一条规则）。 */
+async function isBlindQuestion(pool: string, q: ForecastQuestion): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("forecast_questions")
+    .select("id")
+    .eq("user_id", pool)
+    .gte("created_at", tokyoWeekStart(q.created_at))
+    .order("created_at")
+    .order("id")
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return (data?.[0] as { id: string } | undefined)?.id === q.id;
 }
 
-/** 他先不判断、直接看答案：记下来，这道题以后不能再判断。 */
+/**
+ * 他对一道题表态：先判题点自己的几成（mode blind）；别的题 AI 先判，「行」= 记成卡片上显示的 AI 数（agree），
+ * 点一档 = 改判（override，可以带一句为什么）。显示的数由服务器按回测校准重算，不信浏览器。
+ * 题还开着、没到期、没跳过（没先看答案）、没表过态才行；表了不能改。
+ */
+export async function setMyForecast(
+  userId: string,
+  questionId: string,
+  choice: number | "agree",
+  today: string,
+  note = ""
+): Promise<{ probability: number; mode: ForecastMode }> {
+  const { q, pool, shared } = await poolQuestion(userId, questionId);
+  if (q.status !== "open" || daysBetween(today, q.resolve_on) <= 0) throw new Error("这道题已经到期了，不能再判断");
+  if (await hasRevealed(userId, q, shared)) throw new Error("这道题你跳过了（或先看了答案），不能再判断");
+  const { data } = await supabaseAdmin.from("forecasts").select("id").eq("question_id", questionId).eq("source", "me").eq("user_id", userId).maybeSingle();
+  if (data) throw new Error("这道题你已经判断过了");
+
+  if (await isBlindQuestion(pool, q)) {
+    if (choice === "agree" || !(choice > 0 && choice < 1)) throw new Error("这道是每周一道的先判题：先点你自己觉得的几成");
+    await insertForecasts(userId, questionId, [{ source: "me", probability: choice, mode: "blind" }]);
+    return { probability: choice, mode: "blind" };
+  }
+
+  const { data: aiRow } = await supabaseAdmin.from("forecasts").select("probability").eq("question_id", questionId).eq("source", "ai").eq("user_id", pool).maybeSingle();
+  if (!aiRow) throw new Error("AI 还没判这道题，过半天再来");
+  if (choice !== "agree" && !(choice > 0 && choice < 1)) throw new Error("概率不对");
+  const shown = shownAi(Number(aiRow.probability), await aiCalibration().catch(() => null));
+  const agree = choice === "agree" || Math.abs(choice - shown) < 0.005;
+  const probability = agree ? shown : (choice as number);
+  const mode: ForecastMode = agree ? "agree" : "override";
+  await insertForecasts(userId, questionId, [{ source: "me", probability, mode, reason: mode === "override" ? note.trim().slice(0, 200) || null : null }]);
+  return { probability, mode };
+}
+
+/** 他跳过这道（或先看了答案）：记下来，这道题以后不能再判断。 */
 export async function revealQuestion(userId: string, questionId: string): Promise<void> {
   const { q, pool, shared } = await poolQuestion(userId, questionId);
   const { error } = await supabaseAdmin.from("forecast_reveals").upsert({ question_id: q.id, user_id: userId }, { onConflict: "question_id,user_id", ignoreDuplicates: true });
