@@ -11,10 +11,11 @@ import {
   tallyEvidenceDisagreement,
   tallyJudgments,
   tallyMissReasons,
+  tallyModes,
 } from "@/lib/domains/signals/practice";
 import { listUserFlaggedSteps } from "@/lib/domains/signals/inference";
 import { listAnsweredDrills, tallyDrillMissReasons } from "@/lib/domains/signals/drills";
-import type { MissReason } from "@/lib/domains/signals/practice-shared";
+import { JUDGMENT_MODE_LABELS, type MissReason } from "@/lib/domains/signals/practice-shared";
 import { ResolveJudgment } from "../judgment-forms";
 import { OutcomeEvidenceView } from "../outcome-evidence";
 import { formatDueDate, JudgmentView, outcomeLabel } from "../judgment-view";
@@ -103,6 +104,7 @@ function Ledger({
   const due = dueJudgments(judgments);
   const resolvedCount = tally.hit + tally.miss;
   const disagreement = tallyEvidenceDisagreement(judgments);
+  const modes = tallyModes(judgments);
 
   return (
     <>
@@ -116,6 +118,21 @@ function Ledger({
           ? `已经对过账的只有 ${resolvedCount} 条，太少，现在看不出你准不准。先攒着。`
           : "只记次数，不算准确率：一个数字会让你忘了每一条是怎么错的。往下翻着看。"}
       </p>
+
+      {modes.agree.n + modes.override.n > 0 && (
+        <section className="mb-10">
+          <h2 className="text-base font-semibold">哪些是你的判断</h2>
+          <ul className="mt-2 space-y-1 font-mono text-sm">
+            {(["agree", "override", "blind"] as const).map((m) => (
+              <li key={m}>
+                <span className="font-sans">{JUDGMENT_MODE_LABELS[m]}</span> {modes[m].n} 条
+                {modes[m].hit + modes[m].miss > 0 ? `（看对 ${modes[m].hit}、看错 ${modes[m].miss}）` : ""}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">同意 AI 的那几条，对了错了说的是 AI 准不准；你改判的和先判的，说的才是你。</p>
+        </section>
+      )}
 
       {disagreement.checked > 0 && (
         <section className="mb-10">
