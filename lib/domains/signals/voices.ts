@@ -179,6 +179,13 @@ export async function analyzeGapVoices(userId: string, signalId: string, side: G
   return analysis;
 }
 
+/** 改那一条听一听结果里先做好的假门（写之前重读最新的，只动这一样）。还没听过的不能做。 */
+export async function saveDoorDraft(userId: string, signalId: string, side: GapSide, doorDraft: GapVoices["door_draft"]): Promise<void> {
+  const prev = await loadOneGapVoices(userId, signalId, side);
+  if (!prev) throw new Error("这一条还没听过，做不了假门");
+  await saveGapVoices(userId, signalId, side, { ...prev, door_draft: doorDraft });
+}
+
 /** 查过的那几条（键见 transferKey）。表还没建时返回空。 */
 export async function loadGapVoices(userId: string): Promise<Map<string, GapVoices>> {
   const { data, error } = await supabaseAdmin.from("signal_gap_voices").select("signal_id, side, analysis").eq("user_id", userId);

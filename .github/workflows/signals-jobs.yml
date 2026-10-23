@@ -1,4 +1,4 @@
-# 外部信号的后台活（算新闻的指纹、预测题进账本、AI 押题、到期对账、练习题的 AI 先判、到期判断的证据）。
+# 外部信号的后台活（算新闻的指纹、预测题进账本、AI 押题、到期对账、练习题的 AI 先判、到期判断的证据、假门先做好）。
 # Vercel 免费版只有两个定时任务，量大的活放在这里：
 # 这里不跑项目代码，只按顺序一次次调线上的 /api/cron/jobs/<step>，每次最多 300 秒（Fluid Compute），没做完就再调。
 # 只需要一个仓库 Secret：CRON_SECRET（和 Vercel 里的同一个值）。
@@ -24,7 +24,7 @@ jobs:
           call() {
             curl -sS --max-time 310 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/jobs/$1" || echo '{"done":true,"note":"没连上"}'
           }
-          for step in embed indicators resolve markets business forecast practice due; do
+          for step in embed indicators resolve markets business forecast practice due prep; do
             for i in $(seq 1 15); do
               out=$(call "$step")
               echo "$step #$i $out"

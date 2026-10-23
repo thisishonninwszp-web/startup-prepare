@@ -39,7 +39,8 @@ export function emailConfig(env: Record<string, string | undefined> = process.en
   return { ready: true, from: env.GMAIL_USER!, to: env.NOTIFY_EMAIL_TO || env.GMAIL_USER! };
 }
 
-function appUrl(env: Record<string, string | undefined> = process.env): string | null {
+/** 网站的地址（邮件里的链接、一分钟清单里假门的公开页地址都用它）；没配是 null。 */
+export function appUrl(env: Record<string, string | undefined> = process.env): string | null {
   if (env.APP_URL) return env.APP_URL.replace(/\/$/, "");
   if (env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${env.VERCEL_PROJECT_PRODUCTION_URL}`;
   return null;

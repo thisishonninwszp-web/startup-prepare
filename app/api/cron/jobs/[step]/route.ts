@@ -18,6 +18,7 @@ import { runHistoryStep } from "@/lib/domains/signals/backtest";
 import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
 import { ensurePracticeDraft } from "@/lib/domains/signals/practice-draft";
 import { prefetchDueEvidence } from "@/lib/domains/signals/practice";
+import { prepStep } from "@/lib/domains/signals/door-prep";
 
 /**
  * 外部信号的后台步骤，由 GitHub Actions（.github/workflows/signals-jobs.yml）定时一步一步调：
@@ -121,6 +122,21 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     for (const u of users) {
       try {
         if (await ensurePracticeDraft(u, today)) did += 1;
+      } catch (e) {
+        notes.push(e instanceof Error ? e.message : String(e));
+      }
+    }
+    return { done: true, did, note: notes.join("；") || undefined };
+  },
+  // 假门 AI 先做好：自动听一听（一天一条），原话够了就把假门那一页写好、价格按数据先填（一分钟清单里点发布）
+  prep: async (users) => {
+    let did = 0;
+    const notes: string[] = [];
+    for (const u of users) {
+      try {
+        const r = await prepStep(u);
+        did += r.did;
+        notes.push(r.note);
       } catch (e) {
         notes.push(e instanceof Error ? e.message : String(e));
       }
