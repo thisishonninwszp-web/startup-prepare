@@ -139,3 +139,11 @@ describe("点一下就完成的链接", () => {
     expect(plain).not.toContain("标一下");
   });
 });
+
+describe("数据库快满了提醒", () => {
+  const base = { date: "2026-10-23", practice: null, overview: null, sections: [], dueCount: 0, freshQuestions: [], url: "https://app.example" };
+  it("用到 60% 才提", () => {
+    expect(buildDailyEmail({ ...base, storagePct: 59 }).text).not.toContain("数据库已经用了");
+    expect(buildDailyEmail({ ...base, storagePct: 61 }).text).toContain("数据库已经用了免费版上限（500MB）的 61%");
+  });
+});

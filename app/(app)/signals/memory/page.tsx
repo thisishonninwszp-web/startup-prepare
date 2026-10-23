@@ -193,7 +193,7 @@ export default async function MemoryPage() {
               .slice(0, 4)
               .map((t) => `${t.name} ${(t.bytes / 1024 / 1024).toFixed(1)}MB`)
               .join("、")}
-            。
+            。新闻每个月大约多 85MB；用到 60% 时早上的邮件会提醒，到时候再按实际情况决定整理旧数据还是升级。
           </p>
         ) : (
           <p className="text-sm leading-7 text-muted-foreground">迁移 098 跑完之后，这里显示数据库实际多大。</p>

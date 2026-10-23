@@ -6,10 +6,8 @@ import {
   planArrivalQuestion,
   planBusinessQuestions,
   translateMarketQuestion,
-  translateQuestionToEnglish,
   type Perspective,
 } from "@/lib/ai";
-import { createManifoldMarket, manifoldKey, manifoldProbability, resolveManifoldMarket } from "./manifold-publish";
 import { loadGapRechecks, openGapsWithSide } from "./gaps";
 import { openRelevantPolicies, policyHistory, policyOutcome } from "./policy";
 import { baseProbability, lagSummary, POLICY_MIN_HISTORY, policyResolveOn, shortPolicyTitle } from "./policy-shared";
@@ -22,7 +20,6 @@ import type { BriefItem } from "./brief";
 import { getMarket, searchMarkets } from "./markets";
 import { sharedViewFor, signalUserIds } from "./users";
 import {
-  type ForecastKind,
   needsConfirm,
   daysBetween,
   isJapanQuestion,
@@ -272,8 +269,6 @@ export async function resolveDue(userId: string, today: string, startBeforeMs = 
   await suggestEarlyArrivals(userId, board.questions, today);
   // 政策题没到期、但已经公布了：直接对账（公布日是 e-Gov 上写着的，不用他确认）
   await settleEarlyPolicies(userId, board.questions, today);
-  // 放到 Manifold 的题：放了一周取一次大家给的几成；这边对完账的替他在 Manifold 上结算
-  await syncManifold(userId, board, today).catch((e) => console.error("manifold sync", e));
   let did = 0;
   let tried = 0;
   for (const q of due) {
@@ -626,53 +621,6 @@ async function settleEarlyPolicies(userId: string, questions: ForecastQuestion[]
       resolution_note: `${r.promulgate_date} 公布（e-Gov 意见征集结果公示）`,
       resolution_url: r.url,
     });
-  }
-}
-
-// ── 放到 Manifold ───────────────────────────────────────────────────────────
-
-/** 能放到 Manifold 的几种题（市场题本来就在市场上，数据题自己就能对账）。 */
-const PUBLISHABLE: ForecastKind[] = ["business", "arrival", "policy"];
-
-/** 放了几天以后取一次大家给的几成（太早只有几个人押）。 */
-const CROWD_AFTER_DAYS = 7;
-
-export function canPublish(q: Pick<ForecastQuestion, "kind" | "status" | "source">): boolean {
-  return PUBLISHABLE.includes(q.kind) && q.status === "open" && !q.source.manifold;
-}
-
-/**
- * 他点了「放到 Manifold」：只有出题的主账号能放；他先判断过（或先看了答案）才能放 —— 免得被陌生人的数带偏；
- * 题目由 AI 译成英文，开盘五成。
- */
-export async function publishToManifold(userId: string, questionId: string, today: string): Promise<{ url: string }> {
-  const key = manifoldKey();
-  if (!key) throw new Error("还没配 MANIFOLD_API_KEY：在 Manifold 注册、生成 API Key，放进 Vercel 的环境变量里");
-  const { q, shared } = await poolQuestion(userId, questionId);
-  if (shared) throw new Error("题是主账号出的，由主账号来放");
-  if (!canPublish(q)) throw new Error("这道题不能放（已经放过、已经对账，或者是市场题、数据题）");
-  const { data: mine } = await supabaseAdmin.from("forecasts").select("id").eq("question_id", questionId).eq("user_id", userId).eq("source", "me").maybeSingle();
-  if (!mine && !(await hasRevealed(userId, q, shared))) throw new Error("先说你自己的判断，再放出去给别人判断");
-  const en = await translateQuestionToEnglish({ title: q.title, criteria: q.criteria, resolveOn: q.resolve_on });
-  const market = await createManifoldMarket({ question: en.question, description: `${en.description}\n\n(Question from a personal forecasting log in Japan.)`, closeOn: q.resolve_on }, key);
-  await resolveQuestion(userId, questionId, { source: { ...q.source, manifold: { id: market.id, url: market.url, published_on: today } } });
-  return { url: market.url };
-}
-
-/** 放了一周取一次大家给的几成（存成「市场」那一方，和他、AI 一起记分）；这边对完账的替他在 Manifold 上结算。 */
-async function syncManifold(userId: string, board: ForecastBoard, today: string): Promise<void> {
-  const key = manifoldKey();
-  for (const q of board.questions.filter((x) => x.source.manifold)) {
-    const m = q.source.manifold as NonNullable<ForecastQuestion["source"]["manifold"]>;
-    if (q.status === "open") {
-      const hasCrowd = board.forecasts.some((f) => f.question_id === q.id && f.source === "market");
-      if (hasCrowd || daysBetween(m.published_on, today) < CROWD_AFTER_DAYS) continue;
-      const p = await manifoldProbability(m.id);
-      if (p !== null) await insertForecasts(userId, q.id, [{ source: "market", probability: p, reason: `Manifold 上放了 ${CROWD_AFTER_DAYS} 天时大家给的几成` }]);
-    } else if (key && !m.resolved) {
-      await resolveManifoldMarket(m.id, q.status === "void" ? "CANCEL" : q.outcome ? "YES" : "NO", key);
-      await resolveQuestion(userId, q.id, { source: { ...q.source, manifold: { ...m, resolved: true } } });
-    }
   }
 }
 

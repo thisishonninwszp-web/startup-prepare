@@ -156,41 +156,6 @@ export async function planArrivalQuestion(gap: { headline: string; background: s
   );
 }
 
-// ── 放到 Manifold：题目译成英文 ─────────────────────────────────────────────
-
-export type EnglishQuestion = { question: string; description: string };
-
-const ENGLISH_PROMPT = `Translate this forecasting question (Chinese) for an English-speaking prediction market.
-- question: one line, ends with "?", at most 110 characters, keeps the deadline (e.g. "by end of March 2027"). Same meaning, no extra conditions.
-- description: the resolution criteria in 1-3 plain sentences (resolves YES if ...; otherwise NO), keeping company / product / agency names. Mention that it is about Japan where relevant.
-No opinions, no probabilities.
-
-Output JSON only: {"question":"…","description":"…"}`;
-
-export function parseEnglishQuestion(value: unknown): EnglishQuestion {
-  const v = (value ?? {}) as Record<string, unknown>;
-  const question = typeof v.question === "string" ? v.question.trim() : "";
-  const description = typeof v.description === "string" ? v.description.trim() : "";
-  if (!question.endsWith("?") || question.length > 120 || question.length < 15) throw new Error("question 不对");
-  if (!description || description.length > 800) throw new Error("description 不对");
-  if (/[\u4e00-\u9fff]/.test(question)) throw new Error("question 里还有中文");
-  if (/\d{1,3}\s*%/.test(`${question}${description}`)) throw new Error("写了概率");
-  return { question, description };
-}
-
-export async function translateQuestionToEnglish(input: { title: string; criteria: string; resolveOn: string }): Promise<EnglishQuestion> {
-  const contents = `题目：${input.title}\n怎么才算「会」：${input.criteria}\n截止：${input.resolveOn}`;
-  return executeAiJson(
-    { operation: "forecast_to_english", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
-    () => ({
-      model: MODEL,
-      contents,
-      config: { systemInstruction: ENGLISH_PROMPT, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 600 },
-    }),
-    parseEnglishQuestion
-  );
-}
-
 // ── 从新闻出生意题 ─────────────────────────────────────────────────────────
 
 export type BusinessQuestionDraft = { signalId: string; headline: string; title: string; criteria: string; resolveOn: string; category: string };

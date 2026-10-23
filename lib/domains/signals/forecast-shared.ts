@@ -54,8 +54,6 @@ export type ForecastQuestion = {
     wiki_title?: string;
     value0?: number;
     target?: string;
-    /** 放到 Manifold 以后：题目编号、网址、哪天放的、在 Manifold 上结算过没有。 */
-    manifold?: { id: string; url: string; published_on: string; resolved?: boolean };
   };
   context: string | null;
   status: "open" | "resolved" | "void";

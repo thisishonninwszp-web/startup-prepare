@@ -16,7 +16,7 @@ import {
 } from "@/lib/domains/signals/memory";
 import { sharedViewFor } from "@/lib/domains/signals/users";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { confirmResolution, publishToManifold, revealQuestion, setMyForecast } from "@/lib/domains/signals/forecast";
+import { confirmResolution, revealQuestion, setMyForecast } from "@/lib/domains/signals/forecast";
 import { saveExperimentForecast } from "@/lib/domains/signals/experiments";
 import { rateRecall, recallReveal, type RecallReveal } from "@/lib/domains/signals/recall";
 import { setSharePref } from "@/lib/domains/signals/compare";
@@ -164,18 +164,6 @@ export async function setSharePrefAction(share: boolean): Promise<{ ok: true } |
     return { ok: true };
   } catch (error) {
     return { ok: false, message: message(error, "没改成") };
-  }
-}
-
-/** 他点了「放到 Manifold」（发出去是公开的，所以一次一道、他点了才发）。 */
-export async function publishToManifoldAction(questionId: string): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
-  try {
-    const userId = await requireUserId();
-    const r = await publishToManifold(userId, questionId, tokyoToday());
-    revalidatePath("/signals/forecast");
-    return { ok: true, url: r.url };
-  } catch (error) {
-    return { ok: false, message: message(error, "没放上去") };
   }
 }
 

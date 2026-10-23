@@ -8,7 +8,7 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
 import { KIND_LABELS, MY_TIERS, pct, SOURCE_LABELS, type Forecast, type ForecastQuestion } from "@/lib/domains/signals/forecast-shared";
 import { applyPlatt, type Platt } from "@/lib/domains/signals/calibration-shared";
-import { confirmResolutionAction, publishToManifoldAction, revealQuestionAction, setMyForecastAction } from "../memory-actions";
+import { confirmResolutionAction, revealQuestionAction, setMyForecastAction } from "../memory-actions";
 
 const OFFLINE = "没连上服务器（网络断了一下），过一会儿再试。";
 
@@ -165,51 +165,5 @@ export function ConfirmCard({ q, forecasts }: { q: ForecastQuestion; forecasts: 
       </div>
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </li>
-  );
-}
-
-/**
- * 放到 Manifold，让陌生人也来判断（发出去是公开的；出一道花 50 mana，不是真钱）。
- * 放了一周以后取一次大家给的几成，当成「市场」那一方和你、AI 一起记分；这边对完账替你在 Manifold 上结算。
- */
-export function PublishManifold({ questionId, url, ready }: { questionId: string; url?: string; ready: boolean }) {
-  const [link, setLink] = useState<string | null>(url ?? null);
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  if (link) {
-    return (
-      <p className="mt-1 text-xs">
-        <a href={link} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
-          Manifold 上的这道题 ↗
-        </a>
-        <span className="ml-2 text-muted-foreground">放了一周以后，大家给的几成会记成「市场」</span>
-      </p>
-    );
-  }
-  if (!ready) return <p className="mt-1 text-xs text-muted-foreground">想让陌生人也来判断：在 Vercel 加 MANIFOLD_API_KEY 以后，这里会有「放到 Manifold」。</p>;
-  return (
-    <div className="mt-1">
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-7 px-2 text-xs"
-        disabled={pending}
-        onClick={() =>
-          startTransition(async () => {
-            setError(null);
-            try {
-              const r = await publishToManifoldAction(questionId);
-              if (r.ok) setLink(r.url);
-              else setError(r.message);
-            } catch {
-              setError(OFFLINE);
-            }
-          })
-        }
-      >
-        {pending ? "在译成英文、放上去……" : "放到 Manifold，让陌生人也判断（公开，花 50 mana）"}
-      </Button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
   );
 }

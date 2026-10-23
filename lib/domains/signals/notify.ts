@@ -16,6 +16,7 @@ import { followReasonText } from "./memory-shared";
 import { MY_TIERS, pct } from "./forecast-shared";
 import { actionSecret, actionUrl, signAction, type ActionKind } from "@/lib/action-links";
 import { loadTodayPersonal } from "./today";
+import { DB_LIMIT_BYTES, storageReport } from "./storage";
 
 /**
  * 每天早上的提醒邮件：报告好了以后发一封到他的邮箱，带上今天的练习题。
@@ -65,12 +66,23 @@ export type DailyEmailInput = {
   recall?: { title: string; reason: string; url: string } | null;
   /** 点一下就标上的链接（signal_id → 两个链接），每人一份口令。 */
   markLinks?: Record<string, { important: string; mine: string }>;
+  /** 数据库用了免费版上限的百分之几（到 STORAGE_WARN_PCT 才提醒；只发给主账号）。 */
+  storagePct?: number | null;
   /** 等他判断的第一道题：点一档就记上（每一档一个链接）。 */
   forecastQuick?: { title: string; links: { label: string; url: string }[] } | null;
   /** 预测题里等他做的：等判断几道（第一道的题目）、生意题等确认几道。每人一份。 */
   forecastTodo?: { toForecast: number; first: string | null; toConfirm: number } | null;
   url: string | null;
 };
+
+/** 数据库用到上限的这么多就在邮件里提醒（每月约多 85MB，60% 时大约还剩两个月）。 */
+export const STORAGE_WARN_PCT = 60;
+
+function storageWarning(pct: number | null | undefined): string | null {
+  return pct !== null && pct !== undefined && pct >= STORAGE_WARN_PCT
+    ? `数据库已经用了免费版上限（500MB）的 ${pct}%：该决定怎么整理旧数据（或者升级）了，记忆页最下面有各张表多大。`
+    : null;
+}
 
 /** 每月 2 号提醒下载上个月的备份（1 号早上的后台任务刚打包好）。 */
 export function isArchiveDay(date: string): boolean {
@@ -164,6 +176,8 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     if (input.url) lines.push(`${input.url}/signals/week`);
     lines.push("");
   }
+  const warn = storageWarning(input.storagePct);
+  if (warn) lines.push(warn, ...(input.url ? [`${input.url}/signals/memory#storage`] : []), "");
   if (isArchiveDay(input.date) && input.url) lines.push("上个月的存档打包好了：下载一份放在自己电脑上，就是完整的离线备份。", `${input.url}/signals/memory#storage`, "");
   if (input.url) lines.push(`打开今天的报告：${input.url}/signals`);
   return { subject, text: lines.join("\n").trim() };
@@ -276,6 +290,8 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
     parts.push(para("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。"));
     if (input.url) parts.push(link(`${input.url}/signals/slow`, "慢变量"), link(`${input.url}/signals/week`, "上一周的周报"));
   }
+  const warn = storageWarning(input.storagePct);
+  if (warn) parts.push(para(warn, "font-weight:600;"), ...(input.url ? [link(`${input.url}/signals/memory#storage`, "看各张表多大")] : []));
   if (isArchiveDay(input.date) && input.url) {
     parts.push(para("上个月的存档打包好了：下载一份放在自己电脑上，就是完整的离线备份。", `font-size:14px;color:${C.muted};`), link(`${input.url}/signals/memory#storage`, "去下载"));
   }
@@ -351,6 +367,9 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
     freshQuestions,
     fastAlerts: fast.map(describeMove),
     issueReminder,
+    storagePct: await storageReport()
+      .then((r) => (r ? Math.round((r.total / DB_LIMIT_BYTES) * 100) : null))
+      .catch(() => null),
     url: appUrl(),
   };
 }
@@ -452,6 +471,7 @@ export async function sendMemberEmails(ownerId: string, date = tokyoToday()): Pr
       dueCount: dueJudgments(judgments).length,
       freshQuestions: [],
       issueReminder: null,
+      storagePct: null,
     };
     const { subject, text } = buildDailyEmail(input);
     try {

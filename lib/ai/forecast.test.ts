@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  parseEnglishQuestion,
   parseArrivalDraft,
   parseHistoryPreparation,
   parseArchiveAnswer,
@@ -94,14 +93,5 @@ describe("到日本题", () => {
   });
   it("不许写概率", () => {
     expect(() => parseArrivalDraft({ ...ok, criteria: "有 60% 的可能。" }, "2026-10-23")).toThrow();
-  });
-});
-
-describe("放到 Manifold 的英文题目", () => {
-  it("一行、问号结尾、不超过 120 字、没有中文、没有概率", () => {
-    const ok = { question: "Will a large Japanese UGC platform launch an editor-picked originals feature by end of January 2028?", description: "Resolves YES if a major platform in Japan officially launches it; otherwise NO." };
-    expect(parseEnglishQuestion(ok)).toEqual(ok);
-    expect(() => parseEnglishQuestion({ ...ok, question: "日本会不会？" })).toThrow();
-    expect(() => parseEnglishQuestion({ ...ok, description: "About 60% likely." })).toThrow();
   });
 });

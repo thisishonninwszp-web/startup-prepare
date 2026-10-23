@@ -17,9 +17,7 @@ import {
   SOURCE_LABELS,
   type ForecastSource,
 } from "@/lib/domains/signals/forecast";
-import { Answers, ConfirmCard, ForecastCard, PublishManifold } from "./forecast-cards";
-import { canPublish } from "@/lib/domains/signals/forecast";
-import { manifoldKey } from "@/lib/domains/signals/manifold-publish";
+import { Answers, ConfirmCard, ForecastCard } from "./forecast-cards";
 import { ExperimentRow, ProposalCard } from "./experiment-cards";
 import { compareBoard } from "@/lib/domains/signals/compare";
 import { CompareSection } from "../compare-section";
@@ -128,7 +126,6 @@ export default async function ForecastPage() {
     return null;
   });
   const calibration = report ? usableCalibration(report) : null;
-  const manifoldReady = manifoldKey() !== null;
 
   return (
     <PageContainer width="narrow">
@@ -292,9 +289,6 @@ export default async function ForecastPage() {
                           {needsConfirm(q.kind) && q.pending ? " · 到期了，等出题的人确认" : ""}
                         </p>
                         <Answers q={q} forecasts={forecasts} calibration={calibration} />
-                        {board.canConfirm && (canPublish(q) || q.source.manifold) && (
-                          <PublishManifold questionId={q.id} url={q.source.manifold?.url} ready={manifoldReady} />
-                        )}
                       </li>
                     ))}
                   </ul>
