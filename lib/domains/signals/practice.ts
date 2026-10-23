@@ -351,6 +351,13 @@ export async function listJudgments(userId: string): Promise<JudgmentRow[]> {
   return ((data ?? []) as unknown as Record<string, unknown>[]).map(flatten);
 }
 
+/** 到期了（或 withinHours 小时内到期）、还没对账的判断，早到期的在前，带着查过的证据；一分钟清单和后台先查证据用。 */
+export async function pendingDueJudgments(userId: string, withinHours = 0): Promise<JudgmentRow[]> {
+  const rows = await listJudgments(userId);
+  const cutoff = Date.now() + withinHours * 3_600_000;
+  return rows.filter((r) => r.outcome === "pending" && new Date(r.due_at).getTime() <= cutoff).sort((a, b) => a.due_at.localeCompare(b.due_at));
+}
+
 export async function resolveJudgment(
   userId: string,
   predictionId: string,
