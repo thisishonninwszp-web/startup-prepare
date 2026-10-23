@@ -351,6 +351,22 @@ export async function listJudgments(userId: string): Promise<JudgmentRow[]> {
   return ((data ?? []) as unknown as Record<string, unknown>[]).map(flatten);
 }
 
+/**
+ * 后台先查到期判断的证据（一分钟清单的卡上要摆着）：到期了或 36 小时内到期、还没查过的，按时间预算一条条查。
+ * 查到一条都没有也会存一份空的，不会反复查同一条。迁移 064 没跑（outcome_evidence 是 undefined）就一条也不查。
+ */
+export async function prefetchDueEvidence(userId: string, startBeforeMs: number, max = 4): Promise<{ did: number; remaining: number }> {
+  const started = Date.now();
+  const todo = (await pendingDueJudgments(userId, 36)).filter((j) => j.outcome_evidence === null);
+  let did = 0;
+  for (const j of todo.slice(0, max)) {
+    if (did > 0 && Date.now() - started > startBeforeMs) break;
+    await checkOutcomeEvidence(userId, j.id).catch((e) => console.error("due evidence", e));
+    did += 1;
+  }
+  return { did, remaining: Math.max(0, todo.length - did) };
+}
+
 /** 到期了（或 withinHours 小时内到期）、还没对账的判断，早到期的在前，带着查过的证据；一分钟清单和后台先查证据用。 */
 export async function pendingDueJudgments(userId: string, withinHours = 0): Promise<JudgmentRow[]> {
   const rows = await listJudgments(userId);

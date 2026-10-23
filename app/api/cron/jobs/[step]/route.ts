@@ -17,6 +17,7 @@ import { refreshAppWatch } from "@/lib/domains/signals/app-watch";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
 import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
 import { ensurePracticeDraft } from "@/lib/domains/signals/practice-draft";
+import { prefetchDueEvidence } from "@/lib/domains/signals/practice";
 
 /**
  * 外部信号的后台步骤，由 GitHub Actions（.github/workflows/signals-jobs.yml）定时一步一步调：
@@ -125,6 +126,17 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
       }
     }
     return { done: true, did, note: notes.join("；") || undefined };
+  },
+  // 到期判断的证据先查好（一分钟清单的卡上要摆着；晚上 7 点那一轮查好，第二天早上就有）
+  due: async (users) => {
+    let did = 0;
+    let remaining = 0;
+    for (const u of users) {
+      const r = await prefetchDueEvidence(u, START_BEFORE_MS);
+      did += r.did;
+      remaining += r.remaining;
+    }
+    return { done: remaining === 0 || did === 0, did, remaining };
   },
   // 历史回测的题库（全站共用，不分人；.github/workflows/signals-history.yml 每 3 小时调）：进候选、准备题目、AI 当时会说几成
   history: async (_users, today) => runHistoryStep(today, START_BEFORE_MS),
