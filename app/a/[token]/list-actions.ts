@@ -17,6 +17,7 @@ import { saveFakeDoor } from "@/lib/domains/signals/fake-door";
 import { loadGapVoices, saveDoorDraft } from "@/lib/domains/signals/voices";
 import { transferKey, type GapSide } from "@/lib/domains/signals/gaps-shared";
 import { appUrl } from "@/lib/domains/signals/notify";
+import { dropCandidate, getPosting, pickPosting } from "@/lib/domains/jobs/postings";
 
 /**
  * 一分钟清单那一页的按钮（不用登录，口令认人）：每个都先验口令（种类 list），做的是口令里那个账号的事。
@@ -190,5 +191,29 @@ export async function listExperimentAction(token: string, pick: { kind: Experime
     return { ok: true, message: `记上了：你 ${pct(Number(probability))}。` };
   } catch (error) {
     return fail(error, "没记上");
+  }
+}
+
+/** 岗位：「挑进来」= 和求职页的「要这个」一样（挂到公司档案、跟底稿对照）；只认他自己的候选。 */
+export async function listJobPickAction(token: string, postingId: string): Promise<Result> {
+  try {
+    const { u } = who(token);
+    const posting = await getPosting(u, String(postingId ?? ""));
+    if (!posting || posting.picked_at) throw new Error("这个岗位已经不在候选里了");
+    await pickPosting(u, posting.id);
+    return { ok: true, message: `挑进来了：${posting.company_name}。对照和改職務経歴書在求职页。` };
+  } catch (error) {
+    return fail(error, "没挑上");
+  }
+}
+
+/** 岗位：「不要」= 和求职页的「不要」一样（候选直接删；要了的不在这里删）。 */
+export async function listJobDropAction(token: string, postingId: string): Promise<Result> {
+  try {
+    const { u } = who(token);
+    await dropCandidate(u, String(postingId ?? ""));
+    return { ok: true, message: "不要了。" };
+  } catch (error) {
+    return fail(error, "没删掉");
   }
 }

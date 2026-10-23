@@ -11,12 +11,14 @@ import { CONFIDENCE_LEVELS, deadlineLabel, draftVerdict, HORIZONS, MISS_REASONS,
 import { RECALL_LABELS, type RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { RecallReveal } from "@/lib/domains/signals/recall";
 import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
-import type { ListConfirm, ListDoor, ListDue, ListExperiment, ListForecast, ListIssue, ListItem, ListPractice, ListRecall } from "@/lib/domains/signals/today-list-shared";
+import type { ListConfirm, ListDoor, ListDue, ListExperiment, ListForecast, ListIssue, ListItem, ListJob, ListPractice, ListRecall } from "@/lib/domains/signals/today-list-shared";
 import {
   listConfirmAction,
   listDoorDismissAction,
   listDoorPublishAction,
   listExperimentAction,
+  listJobDropAction,
+  listJobPickAction,
   listForecastAction,
   listPracticeAction,
   listRecallRateAction,
@@ -459,6 +461,34 @@ function IssueCard({ i, onDone }: { i: ListIssue; onDone: Done }) {
   );
 }
 
+/** 岗位：只摆事实（招哪种人、最少几年是招聘页原话、能不能官网直接应募），他点「挑进来」或「不要」。 */
+function JobCard({ token, j, onDone }: { token: string; j: ListJob; onDone: Done }) {
+  const { pending, error, act } = useAct(onDone);
+  return (
+    <>
+      <Kind>岗位 · {j.category}</Kind>
+      <p className="font-medium leading-7">
+        {j.company} · {j.title}
+      </p>
+      <p className="mt-1 text-xs leading-6 text-muted-foreground">{[j.hireType, j.experience, j.route].filter(Boolean).join(" · ")}</p>
+      {j.url && (
+        <a href={j.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline-offset-4 hover:underline">
+          看招聘页 ↗
+        </a>
+      )}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button size="sm" disabled={pending} onClick={() => act(() => listJobPickAction(token, j.id))}>
+          {pending ? "在挑……" : "挑进来"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={pending} onClick={() => act(() => listJobDropAction(token, j.id))}>
+          不要
+        </Button>
+      </div>
+      <ErrorLine error={error} />
+    </>
+  );
+}
+
 function ExperimentCard({ token, p, onDone }: { token: string; p: ListExperiment; onDone: Done }) {
   const { pending, error, act } = useAct(onDone);
   return (
@@ -536,6 +566,8 @@ export function TodayListView({
               <DoorCard token={token} d={it.d} onDone={finish(i)} />
             ) : it.kind === "issue" ? (
               <IssueCard i={it.i} onDone={finish(i)} />
+            ) : it.kind === "job" ? (
+              <JobCard token={token} j={it.j} onDone={finish(i)} />
             ) : (
               <ExperimentCard token={token} p={it.p} onDone={finish(i)} />
             )}
