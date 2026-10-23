@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parsePerspectiveQueries,
   parseArrivalDraft,
   parseHistoryPreparation,
   parseArchiveAnswer,
@@ -93,5 +94,17 @@ describe("到日本题", () => {
   });
   it("不许写概率", () => {
     expect(() => parseArrivalDraft({ ...ok, criteria: "有 60% 的可能。" }, "2026-10-23")).toThrow();
+  });
+});
+
+describe("三种思路各搜各的：搜索词", () => {
+  it("三条都要有、不能太长", () => {
+    expect(parsePerspectiveQueries({ outside: "央行 连续加息 间隔", inside: "日銀 12月 利上げ", devil: "日銀 利上げ 見送り 理由" })).toEqual({
+      outside: "央行 连续加息 间隔",
+      inside: "日銀 12月 利上げ",
+      devil: "日銀 利上げ 見送り 理由",
+    });
+    expect(() => parsePerspectiveQueries({ outside: "a b", inside: "c d" })).toThrow();
+    expect(() => parsePerspectiveQueries({ outside: "x".repeat(81), inside: "c d", devil: "e f" })).toThrow();
   });
 });
