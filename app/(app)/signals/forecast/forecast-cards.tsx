@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
 import {
+  ANCHOR_LABELS,
+  ANCHOR_NOTES,
   KIND_LABELS,
   MODE_LABELS,
   modeOf,
@@ -14,6 +16,7 @@ import {
   pct,
   SOURCE_LABELS,
   tiersBeside,
+  type Anchor,
   type Forecast,
   type ForecastQuestion,
 } from "@/lib/domains/signals/forecast-shared";
@@ -91,11 +94,12 @@ export function Answers({ q, forecasts, calibration }: { q: ForecastQuestion; fo
 }
 
 /**
- * 等你判断（经用户明确裁决，2026-10-23：AI 先判、你点行不行）。
- * 别的题：摆出 AI 的数，「行」= 记成这个数，「不行」在那一边改一档（可以带一句为什么），「跳过」不记；市场的数点完才给看。
+ * 等你判断（经用户明确裁决，2026-10-23：先摆出最准的那个数、你点行不行）。
+ * 别的题：摆出那个数（市场题是市场价、政策题和数据题是统计基准、别的是 AI），「行」= 记成这个数，
+ * 「不行」在那一边改一档（可以带一句为什么），「跳过」不记；别的几方点完才给看。
  * 每周一道的先判题（或 AI 还没判的）：照旧先点一档、看不到 AI 和市场；也可以先看答案，但看了这道就不能再判断。
  */
-export function ForecastCard({ q, blind, ai, three }: { q: ForecastQuestion; blind: boolean; ai: number | null; three: Forecast[] }) {
+export function ForecastCard({ q, blind, anchor, three }: { q: ForecastQuestion; blind: boolean; anchor: Anchor | null; three: Forecast[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -112,16 +116,17 @@ export function ForecastCard({ q, blind, ai, three }: { q: ForecastQuestion; bli
         setError(OFFLINE);
       }
     });
-  if (!blind && ai !== null) {
-    const higher = tiersBeside(ai, "higher");
-    const lower = tiersBeside(ai, "lower");
+  if (!blind && anchor) {
+    const higher = tiersBeside(anchor.probability, "higher");
+    const lower = tiersBeside(anchor.probability, "lower");
     return (
       <li className="rounded-lg border border-border bg-card p-4">
         <QuestionHead q={q} />
         <p className="mt-3 text-sm">
-          AI：<span className="font-mono">{pct(ai)}</span> 会
+          {ANCHOR_LABELS[anchor.source]}：<span className="font-mono">{pct(anchor.probability)}</span> 会
         </p>
-        <ThreeViews three={three} summary="为什么（三种思路各说了几成）" />
+        <p className="text-xs text-muted-foreground">{ANCHOR_NOTES[anchor.source]}</p>
+        <ThreeViews three={three} summary={anchor.source === "ai" ? "为什么（三种思路各说了几成）" : "AI 怎么看（三种思路各说了几成）"} />
         <div className="mt-2 flex flex-wrap gap-2">
           <Button size="sm" disabled={pending} onClick={() => act(() => setMyForecastAction(q.id, "agree"))}>
             行
@@ -149,10 +154,10 @@ export function ForecastCard({ q, blind, ai, three }: { q: ForecastQuestion; bli
                 </Button>
               ))}
             </div>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="一句：你看到了什么 AI 没看到的（可以不写，先写再点档）" maxLength={200} />
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="一句：你看到了什么它没看到的（可以不写，先写再点档）" maxLength={200} />
           </div>
         )}
-        <p className="mt-1 text-xs text-muted-foreground">市场怎么说，点完再给你看。</p>
+        <p className="mt-1 text-xs text-muted-foreground">别的几方怎么说，点完再给你看。</p>
         {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
       </li>
     );

@@ -25,8 +25,9 @@ import {
   isJapanQuestion,
   medianProbability,
   pickMarkets,
-  shownAi,
+  anchorOf,
   tokyoWeekStart,
+  type Anchor,
   type Forecast,
   type ForecastMode,
   type ForecastQuestion,
@@ -390,19 +391,20 @@ async function isBlindQuestion(pool: string, q: ForecastQuestion): Promise<boole
 }
 
 /**
- * 卡片和邮件上给他看、他点「行」就记的那个 AI 数：线上 AI 上网查过以后说的原数；AI 还没判是 null。pool 是出题的那个账号。
- * 不套回测校准：校准是不上网的 AI 在回测里学的（2026-10-23 实测 a≈0.13，把 5%–95% 全挤到 38%–58%），
- * 套上去每道题都是「四五成」，点「行」就没有意义了；校准后的数只在表过态以后的那一行旁边写着。
+ * 卡片和邮件上先摆出来、他点「行」就记的那个数（anchorOf：市场题是市场价，政策题、数据题是统计基准，别的是 AI）；
+ * 哪个都没有是 null。pool 是出题的那个账号。
+ * AI 的数用上网查过以后的原数，不套回测校准：校准是不上网的 AI 在回测里学的（2026-10-23 实测 a≈0.13，
+ * 把 5%–95% 全挤到 38%–58%），套上去每道题都是「四五成」；校准后的数只在表过态以后的那一行旁边写着。
  */
-export async function displayedAi(questionId: string, pool: string): Promise<number | null> {
-  const { data } = await supabaseAdmin.from("forecasts").select("probability").eq("question_id", questionId).eq("source", "ai").eq("user_id", pool).maybeSingle();
-  if (!data) return null;
-  return shownAi(Number(data.probability), null);
+export async function displayedAnchor(q: Pick<ForecastQuestion, "id" | "kind">, pool: string): Promise<Anchor | null> {
+  const { data, error } = await supabaseAdmin.from("forecasts").select("question_id, source, probability").eq("question_id", q.id).eq("user_id", pool).in("source", ["market", "base", "ai"]);
+  if (error) throw new Error(error.message);
+  return anchorOf(q, ((data ?? []) as { question_id: string; source: ForecastSource; probability: number }[]).map((x) => ({ ...x, probability: Number(x.probability) })));
 }
 
 /**
- * 他对一道题表态：先判题点自己的几成（mode blind）；别的题 AI 先判，「行」= 记成卡片上显示的 AI 数（agree），
- * 点一档 = 改判（override，可以带一句为什么）。显示的数由服务器按回测校准重算，不信浏览器。
+ * 他对一道题表态：先判题点自己的几成（mode blind）；别的题先摆出最准的那个数，「行」= 记成那个数（agree），
+ * 点一档 = 改判（override，可以带一句为什么）。那个数由服务器重新取，不信浏览器。
  * 题还开着、没到期、没跳过（没先看答案）、没表过态才行；表了不能改。
  */
 export async function setMyForecast(
@@ -424,8 +426,9 @@ export async function setMyForecast(
     return { probability: choice, mode: "blind" };
   }
 
-  const shown = await displayedAi(questionId, pool);
-  if (shown === null) throw new Error("AI 还没判这道题，过半天再来");
+  const anchor = await displayedAnchor(q, pool);
+  if (anchor === null) throw new Error("AI 还没判这道题，过半天再来");
+  const shown = anchor.probability;
   if (choice !== "agree" && !(choice > 0 && choice < 1)) throw new Error("概率不对");
   const agree = choice === "agree" || Math.abs(choice - shown) < 0.005;
   const probability = agree ? shown : (choice as number);

@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { practiceHorizon, questionDeadline } from "@/lib/ai";
 import { loadBriefPractice } from "./breakdown";
-import { boardSections, displayedAi, loadForecastBoard } from "./forecast";
+import { anchorOf, boardSections, loadForecastBoard } from "./forecast";
 import { dueRecalls } from "./recall";
 import { loadExperimentBoard } from "./experiments";
 import { listJudgments, pendingDueJudgments } from "./practice";
@@ -58,18 +58,17 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
 
   if (board && board !== "missing-schema") {
     const s = boardSections(board, today);
-    c.forecasts = await Promise.all(
-      s.toForecast.map(async (q) => ({
-        id: q.id,
-        title: q.title,
-        kind: q.kind,
-        resolve_on: q.resolve_on,
-        criteria: q.criteria,
-        blind: s.blind.has(q.id),
-        ai: s.blind.has(q.id) ? null : await displayedAi(q.id, view.sourceUserId).catch(() => null),
-        three: board.forecasts.filter((f) => f.question_id === q.id && THREE_VIEWS.includes(f.source)),
-      }))
-    );
+    // board 里 AI、市场、基准都是出题那一池的（loadForecastBoard 已经分好了），先摆的数直接从这里算
+    c.forecasts = s.toForecast.map((q) => ({
+      id: q.id,
+      title: q.title,
+      kind: q.kind,
+      resolve_on: q.resolve_on,
+      criteria: q.criteria,
+      blind: s.blind.has(q.id),
+      anchor: s.blind.has(q.id) ? null : anchorOf(q, board.forecasts),
+      three: board.forecasts.filter((f) => f.question_id === q.id && THREE_VIEWS.includes(f.source)),
+    }));
     c.confirms = s.toConfirm.flatMap((q) => (q.pending ? [{ id: q.id, title: q.title, criteria: q.criteria, resolve_on: q.resolve_on, pending: q.pending }] : []));
   }
 

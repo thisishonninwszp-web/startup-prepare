@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { actionSecret, verifyAction } from "@/lib/action-links";
 import { MARK_LABELS, type MarkKind } from "@/lib/domains/signals/memory-shared";
 import { pct } from "@/lib/domains/signals/forecast-shared";
-import { displayedAi } from "@/lib/domains/signals/forecast";
+import { ANCHOR_LABELS, displayedAnchor } from "@/lib/domains/signals/forecast";
 import { listSeconds, loadTodayList, tapsThisWeek } from "@/lib/domains/signals/today-list";
 import { ConfirmTap, RecallTap } from "./tap";
 import { TodayListView } from "./list-view";
@@ -48,16 +48,17 @@ export default async function TapPage({ params }: { params: { token: string } })
   if (p.k === "forecast") {
     // agree：在邮件里点了「行」，同意 AI 的判断（记成哪个数由服务器按 AI 的数算）
     const agree = p.v === "agree";
-    const { data: q } = await supabaseAdmin.from("forecast_questions").select("title, criteria, resolve_on, user_id").eq("id", p.t).maybeSingle();
-    // 和邮件、预测页上显示的是同一个数（有回测校准用校准后的）
-    const ai = q ? await displayedAi(p.t, q.user_id as string).catch(() => null) : null;
+    const { data: q } = await supabaseAdmin.from("forecast_questions").select("title, criteria, resolve_on, user_id, kind").eq("id", p.t).maybeSingle();
+    // 和邮件、预测页上先摆出来的是同一个数（市场价 / 统计基准 / AI）
+    const anchor = q ? await displayedAnchor({ id: p.t, kind: q.kind }, q.user_id as string).catch(() => null) : null;
+    const said = anchor ? `${ANCHOR_LABELS[anchor.source]}说的 ${pct(anchor.probability)}` : null;
     return shell(
       <>
         <p className="text-xs text-muted-foreground">预测题 · {q?.resolve_on ?? ""} 截止</p>
         <h1 className="mt-1 text-lg font-semibold leading-8">{q?.title ?? "这道题找不到了"}</h1>
         {q?.criteria && <p className="mt-1 text-sm leading-7 text-muted-foreground">怎么才算「会」：{q.criteria}</p>}
         <p className="mb-4 mt-4 text-sm">
-          {agree ? `你点了「行」：同意 AI 说的${ai !== null ? ` ${pct(ai)} 会` : ""}。` : `你的判断：${pct(Number(p.v))}${ai !== null ? `（AI 说 ${pct(ai)}）` : ""}。`}
+          {agree ? `你点了「行」：同意${said ? `${said} 会` : "先摆出来的那个数"}。` : `你的判断：${pct(Number(p.v))}${said ? `（${said}）` : ""}。`}
           记上以后就不能改了。
         </p>
         <ConfirmTap token={params.token} label={agree ? "同意，记上" : `就是 ${pct(Number(p.v))}，记上`} />

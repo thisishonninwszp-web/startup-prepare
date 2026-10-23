@@ -16,6 +16,8 @@ import {
   tokyoWeekStart,
   withMyModes,
   blindQuestionIds,
+  anchorOf,
+  overrideVsAnchor,
   type Forecast,
   type ForecastQuestion,
   type MarketCandidate,
@@ -217,5 +219,59 @@ describe("先判题和来路", () => {
     expect(withMyModes(all, ["blind", "override"]).map((x) => x.source)).toEqual(["ai", "market"]);
     // 迁移前的（没有 mode）算先判
     expect(withMyModes([f("me", null)], ["blind"])).toHaveLength(1);
+  });
+});
+
+describe("先摆出来的那个数", () => {
+  const f = (question_id: string, source: Forecast["source"], probability: number, mode?: Forecast["mode"]): Forecast => ({ question_id, source, probability, reason: null, made_at: "", mode });
+
+  it("市场题先摆市场价，政策题、数据题先摆统计基准，别的摆 AI；没有就退回 AI", () => {
+    const fs = [f("m", "market", 0.45), f("m", "ai", 0.3), f("p", "base", 0.62), f("p", "ai", 0.5), f("b", "ai", 0.333), f("m2", "ai", 0.4)];
+    expect(anchorOf({ id: "m", kind: "market" }, fs)).toEqual({ source: "market", probability: 0.45 });
+    expect(anchorOf({ id: "p", kind: "policy" }, fs)).toEqual({ source: "base", probability: 0.62 });
+    expect(anchorOf({ id: "b", kind: "business" }, fs)).toEqual({ source: "ai", probability: 0.33 });
+    expect(anchorOf({ id: "m2", kind: "market" }, fs)).toEqual({ source: "ai", probability: 0.4 });
+    expect(anchorOf({ id: "none", kind: "arrival" }, fs)).toBeNull();
+  });
+
+  it("改判的那几次：你和先摆出来的数谁更近", () => {
+    const qs = [
+      { id: "a", kind: "market" as const, status: "resolved" as const, outcome: true },
+      { id: "b", kind: "market" as const, status: "resolved" as const, outcome: false },
+      { id: "c", kind: "market" as const, status: "open" as const, outcome: null },
+    ];
+    const fs = [
+      f("a", "market", 0.4),
+      f("a", "me", 0.7, "override"),
+      f("b", "market", 0.3),
+      f("b", "me", 0.5, "override"),
+      f("c", "market", 0.5),
+      f("c", "me", 0.9, "override"),
+    ];
+    expect(overrideVsAnchor(qs, fs)).toMatchObject({ n: 2, meBetter: 1, anchorBetter: 1, tie: 0, meBrier: null });
+  });
+
+  it("市场题一进来就有市场价，不用等 AI 也能进「等你判断」", () => {
+    const q = (id: string, created_at: string): ForecastQuestion => ({
+      id,
+      kind: "market",
+      title: id,
+      original_title: null,
+      criteria: "",
+      resolve_on: "2026-12-31",
+      category: null,
+      source: {},
+      context: null,
+      status: "open",
+      outcome: null,
+      resolved_at: null,
+      resolution_note: null,
+      resolution_url: null,
+      pending: null,
+      revealed_at: null,
+      created_at,
+    });
+    const s = boardSections({ questions: [q("first", "2026-10-19T16:00:00Z"), q("m", "2026-10-20T01:00:00Z")], forecasts: [f("m", "market", 0.45)], canConfirm: true }, "2026-10-22");
+    expect(s.toForecast.map((x) => x.id)).toEqual(["first", "m"]);
   });
 });

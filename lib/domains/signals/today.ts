@@ -1,4 +1,4 @@
-import { boardSections, loadForecastBoard, shownAi, sidesOf, type ForecastQuestion } from "./forecast";
+import { anchorOf, boardSections, loadForecastBoard, sidesOf, type Anchor, type ForecastQuestion } from "./forecast";
 import { drillProgress } from "./backtest";
 import { loadExperimentBoard } from "./experiments";
 import { followedSignals, storyUpdates } from "./memory";
@@ -21,8 +21,8 @@ export type TodayForecast = {
   /** 自己的实验：能先猜的几道、到期了等他填周刊数的几道。 */
   experiments: { proposals: number; waiting: number } | null;
   toForecast: ForecastQuestion[];
-  /** 邮件里一键的那一道：等判断的第一道、是不是先判题、卡片上显示的 AI 数（AI 没判是 null）。 */
-  quick: { q: ForecastQuestion; blind: boolean; ai: number | null } | null;
+  /** 邮件里一键的那一道：等判断的第一道、是不是先判题、先摆出来的那个数（先判题是 null）。 */
+  quick: { q: ForecastQuestion; blind: boolean; anchor: Anchor | null } | null;
   toConfirm: number;
   justResolved: { q: ForecastQuestion; me: number | null; ai: number | null; market: number | null }[];
 };
@@ -61,12 +61,11 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
   if (board && board !== "missing-schema") {
     const s = boardSections(board, today);
     const first = s.toForecast[0];
-    const raw = first ? board.forecasts.find((f) => f.question_id === first.id && f.source === "ai")?.probability ?? null : null;
     forecast = {
       drill: drill && drill !== "missing-schema" ? { today: drill.today, left: drill.left } : null,
       experiments: experiments && experiments !== "missing-schema" ? { proposals: experiments.proposals.length, waiting: experiments.waiting.length } : null,
       toForecast: s.toForecast,
-      quick: first ? { q: first, blind: s.blind.has(first.id), ai: raw === null ? null : shownAi(raw, null) } : null,
+      quick: first ? { q: first, blind: s.blind.has(first.id), anchor: s.blind.has(first.id) ? null : anchorOf(first, board.forecasts) } : null,
       toConfirm: s.toConfirm.length,
       justResolved: s.justResolved.slice(0, 3).map((q) => ({ q, ...sidesOf(board.forecasts, q.id) })),
     };
