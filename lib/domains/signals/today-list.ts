@@ -10,6 +10,8 @@ import { weekStartOf } from "./issue-shared";
 import { sharedViewFor } from "./users";
 import { isIssueDay, pickListItems, type ListCandidates, type ListItem } from "./today-list-shared";
 import { getIssue, suggestIssuePicks } from "./issue";
+import { listPostings } from "@/lib/domains/jobs/postings";
+import { atsOf, ATS_SITES, boardOf, BOARD_SITES, categoryLabel, HIRE_TYPES, hireTypeOrder } from "@/lib/domains/jobs/shared";
 import { loadGapVoices } from "./voices";
 import { loadFakeDoorStats } from "./fake-door";
 import { doorLang } from "./fake-door-shared";
@@ -106,6 +108,35 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
       const picks = await suggestIssuePicks(userId).catch(quiet("issue", []));
       c.issue = { picks: picks.map((p) => ({ headline: p.headline, ai: p.ai, ...(p.will ? { will: p.will } : {}) })) };
     }
+  }
+  // 搜到、还没决定的岗位（主账号才有）：按求职页同一个事实顺序 —— 中途在前、新的在前；只摆事实，不打分
+  if (!view.shared) {
+    const postings = await listPostings(userId).catch(quiet("jobs", { picked: [], candidates: [] }));
+    // 同一家同一个职位名的（同一个岗位挂在几个地方）只放一个，免得占两格
+    const seen = new Set<string>();
+    c.jobs = [...postings.candidates]
+      .sort((a, b) => hireTypeOrder(a.facts.hire_type) - hireTypeOrder(b.facts.hire_type) || b.created_at.localeCompare(a.created_at))
+      .filter((p) => {
+        const k = `${p.company_name}|${p.title}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .map((p) => {
+        const ats = atsOf(p.url);
+        const board = boardOf(p.url);
+        const min = p.facts.experience?.min_years;
+        return {
+          id: p.id,
+          company: p.company_name,
+          title: p.title,
+          category: categoryLabel(p.category),
+          hireType: HIRE_TYPES[p.facts.hire_type ?? "unclear"],
+          experience: min === null || min === undefined ? null : min === 0 ? "不要经验" : `最少 ${min} 年`,
+          route: ats ? `官网可直接应募（${ATS_SITES[ats].label}）` : board ? `要在 ${BOARD_SITES[board].label} 上投` : null,
+          url: p.url,
+        };
+      });
   }
   return pickListItems(c);
 }

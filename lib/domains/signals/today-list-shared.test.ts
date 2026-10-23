@@ -93,7 +93,15 @@ describe("一分钟清单", () => {
   });
 
   it("各种的上限", () => {
-    expect(LIST_CAPS).toEqual({ practice: 1, door: 1, issue: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 });
+    expect(LIST_CAPS).toEqual({ practice: 1, door: 1, issue: 1, job: 2, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 });
+  });
+
+  it("岗位：排在周刊后面、预测题前面，一天两个，只摆事实", () => {
+    const j = (id: string) => ({ id, company: "某社", title: "データアナリスト", category: "分析", hireType: "中途", experience: "最少 1 年", route: null, url: null });
+    const { items, more } = pickListItems({ ...base, forecasts: [fq("a")], jobs: [j("1"), j("2"), j("3")] });
+    expect(items.map((i) => i.kind)).toEqual(["job", "job", "forecast"]);
+    expect(more).toBe(1);
+    expect(previewLine(items[0])).toEqual({ label: "岗位", title: "某社 · データアナリスト", note: "中途 · 最少 1 年" });
   });
 
   it("这周的周刊：周四到周日才放，排在假门后面", () => {
