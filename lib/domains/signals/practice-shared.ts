@@ -58,6 +58,63 @@ export const CONFIDENCE_LEVELS = {
 } as const;
 export type ConfidenceKey = keyof typeof CONFIDENCE_LEVELS;
 
+/** 判断怎么来的：blind 先判（看不到 AI）、agree 点了「行」同意 AI、override 点了「不行」改判。迁移 099 以前的为空，算先判。 */
+export type JudgmentMode = "blind" | "agree" | "override";
+
+export const JUDGMENT_MODE_LABELS: Record<JudgmentMode, string> = { blind: "你自己先判的", agree: "你同意 AI 的", override: "你改判的" };
+
+/** AI 先判、他表态的判断都带这个标签（账本按标签数的时候分得开）。 */
+export const AI_FIRST_TAG = "AI 先判";
+
+/** 练习题的 AI 先判（经用户明确裁决，2026-10-23）：三种思路各说几成、代码取中间（存在那一天报告的 practice.ai_draft）。 */
+export type PracticeDraft = {
+  probability: number;
+  perspectives: { source: "ai_outside" | "ai_inside" | "ai_devil"; probability: number; reason: string }[];
+  made_at: string;
+};
+
+/** 几成可能换成三档把握：离五成越远越有把握。 */
+export function confidenceFor(p: number): ConfidenceKey {
+  const d = Math.max(p, 1 - p);
+  return d < 0.63 ? "low" : d < 0.8 ? "mid" : "high";
+}
+
+/** AI 先判的那一句（代码拼，不让 AI 另写）；flip = 反过来，就是他点「不行」时预填的那句。 */
+export function draftVerdict(p: number, question: string, flip = false): { will: boolean; sentence: string; confidence: ConfidenceKey } {
+  const will = p >= 0.5 !== flip;
+  return { will, sentence: `${will ? "会" : "不会"}：${question.trim()}`, confidence: confidenceFor(p) };
+}
+
+/** 每周一的练习是先判题（东京日期 YYYY-MM-DD）：照旧先自己判、可以先拆一拆。 */
+export function isBlindPracticeDate(date: string): boolean {
+  return new Date(`${date}T00:00:00Z`).getUTCDay() === 1;
+}
+
+/** 判断账本按来路数：几条、看对几条、看错几条（只数次数，不算比率）。 */
+export function tallyModes(rows: { mode?: JudgmentMode | null; outcome: JudgmentRow["outcome"] }[]): Record<JudgmentMode, { n: number; hit: number; miss: number }> {
+  const out: Record<JudgmentMode, { n: number; hit: number; miss: number }> = {
+    blind: { n: 0, hit: 0, miss: 0 },
+    agree: { n: 0, hit: 0, miss: 0 },
+    override: { n: 0, hit: 0, miss: 0 },
+  };
+  for (const r of rows) {
+    const t = out[r.mode ?? "blind"];
+    t.n += 1;
+    if (r.outcome === "hit") t.hit += 1;
+    if (r.outcome === "miss") t.miss += 1;
+  }
+  return out;
+}
+
+const PERSPECTIVE_NAMES: Record<PracticeDraft["perspectives"][number]["source"], string> = { ai_outside: "先看基准率", ai_inside: "只看这件事", ai_devil: "唱反调" };
+
+/** 改判时交给挑刺的那一段（走 critiqueJudgment 的 reasoning）：AI 原来判的哪边、三种思路的理由。 */
+export function overrideReasoning(draft: PracticeDraft, question: string): string {
+  const v = draftVerdict(draft.probability, question);
+  const views = draft.perspectives.map((x) => `${PERSPECTIVE_NAMES[x.source]}说 ${Math.round(x.probability * 100)}%：${x.reason}`).join("；");
+  return `AI 先判的是「${v.will ? "会" : "不会"}」（${Math.round(draft.probability * 100)}%），他不同意、改判了。AI 的理由：${views}`;
+}
+
 export const GENERIC_QUESTION = "这件事接下来会怎样？写一句几个月后能说清对错的话。";
 
 export type JudgmentRow = {
@@ -83,6 +140,8 @@ export type JudgmentRow = {
   miss_reason?: MissReason | null;
   /** 到期时上网查到的"现在实际怎样"。null：还没查；undefined：迁移 064 没跑、这一列还不存在。 */
   outcome_evidence?: OutcomeEvidence | null;
+  /** 怎么来的（迁移 099 之前没有这一列：undefined；跑过、为空的是以前记的，都算先判）。 */
+  mode?: JudgmentMode | null;
 };
 
 /** 到期时上网查到的事实，原文由代码逐字核对过；stance 是对他那句判断而言的。查过但一条没查到时 evidence 为空。 */
