@@ -2,7 +2,7 @@
 
 import { actionSecret, verifyAction, type ActionPayload } from "@/lib/action-links";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { loadForecastBoard, pct, setMyForecast } from "@/lib/domains/signals/forecast";
+import { loadForecastBoard, MODE_LABELS, pct, setMyForecast } from "@/lib/domains/signals/forecast";
 import { marksFor, setMark, type MarkKind } from "@/lib/domains/signals/memory";
 import { rateRecall, recallReveal, type RecallReveal } from "@/lib/domains/signals/recall";
 import type { RecallResult } from "@/lib/domains/signals/recall-shared";
@@ -20,7 +20,7 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-/** 标新闻、给预测题点一档。 */
+/** 标新闻、给预测题点「行」或点一档。 */
 export async function confirmTapAction(token: string): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
   try {
     const secret = actionSecret();
@@ -34,8 +34,7 @@ export async function confirmTapAction(token: string): Promise<{ ok: true; messa
       return { ok: true, message: "标上了。以后会在「你在跟的事」里接上它的后续，过一周还会问你一次还记不记得。" };
     }
     if (p.k === "forecast") {
-      const probability = Number(p.v);
-      await setMyForecast(p.u, p.t, probability, tokyoToday());
+      const r = await setMyForecast(p.u, p.t, p.v === "agree" ? "agree" : Number(p.v), tokyoToday());
       const board = await loadForecastBoard(p.u);
       const of = (s: string) => (board === "missing-schema" ? undefined : board.forecasts.find((f) => f.question_id === p.t && f.source === s));
       const ai = of("ai");
@@ -43,7 +42,7 @@ export async function confirmTapAction(token: string): Promise<{ ok: true; messa
       const base = of("base");
       return {
         ok: true,
-        message: [`记上了：你 ${pct(probability)}`, ai ? `AI ${pct(ai.probability)}` : "AI 还没判断", market ? `市场 ${pct(market.probability)}` : null, base ? `统计基准 ${pct(base.probability)}` : null]
+        message: [`记上了：你 ${pct(r.probability)}（${MODE_LABELS[r.mode]}）`, ai ? `AI ${pct(ai.probability)}` : "AI 还没判断", market ? `市场 ${pct(market.probability)}` : null, base ? `统计基准 ${pct(base.probability)}` : null]
           .filter(Boolean)
           .join(" · "),
       };
