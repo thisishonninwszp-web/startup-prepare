@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { recordOpen } from "@/lib/domains/signals/opens";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
@@ -79,6 +80,8 @@ export default async function SignalDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) notFound();
+  // 被动记录：打开了这一条（从邮件里点进来的带 from=email）；记不上不拦着
+  await recordOpen(user.id, params.id, searchParams.from === "email" ? "email" : "detail").catch(() => {});
 
   const [detail, judgment, inference, nodeBets, gapOptions, marks, story] = await Promise.all([
     getSignalDetail(params.id),

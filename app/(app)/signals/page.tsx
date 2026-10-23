@@ -43,6 +43,7 @@ import { getFeedback } from "@/lib/domains/signals/feedback";
 import { describeMove, unusualFastMoves } from "@/lib/domains/signals/fast";
 import { Badge } from "@/components/ui/badge";
 import { FlowView } from "./flow-view";
+import { TrackOpen } from "./track-open";
 
 export const dynamic = "force-dynamic";
 // 「现在生成」「写下判断」的 server action 跟着页面的时长上限走，默认 10 秒不够。
@@ -185,6 +186,7 @@ function ReportItem({
     <li>
       <details id={`item-${item.signal_id}`} className="group scroll-mt-16">
         <summary className="flex cursor-pointer list-none gap-3 py-3 transition-colors duration-150 hover:text-primary">
+          <TrackOpen signalId={item.signal_id} />
           <span className="mt-0.5 font-mono text-xs text-muted-foreground">{String(n).padStart(2, "0")}</span>
           <span className="min-w-0 flex-1">
             <span className="text-base font-medium leading-7">{item.headline}</span>

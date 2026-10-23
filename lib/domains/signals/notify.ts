@@ -279,7 +279,7 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
         st.updates
           .map((u) =>
             input.url
-              ? `<p style="margin:0 0 4px 12px;font-size:14px;line-height:1.7;"><a href="${esc(`${input.url}/signals/${u.id}`)}" style="color:${C.accent};">→ ${esc(u.title)}</a></p>`
+              ? `<p style="margin:0 0 4px 12px;font-size:14px;line-height:1.7;"><a href="${esc(`${input.url}/signals/${u.id}?from=email`)}" style="color:${C.accent};">→ ${esc(u.title)}</a></p>`
               : para(`→ ${u.title}`, "font-size:14px;margin-left:12px;margin-bottom:4px;")
           )
           .join("")
