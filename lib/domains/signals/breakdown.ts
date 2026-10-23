@@ -16,7 +16,8 @@ export * from "./breakdown-shared";
 /** 每个因素搜几篇资料。 */
 const RESULTS_PER_FACTOR = 3;
 
-async function loadPractice(userId: string, date: string): Promise<BriefPracticeRow> {
+/** 那一天「今天的世界」那一份里的练习题（拆解卡、AI 先判都存在它上面）。 */
+export async function loadBriefPractice(userId: string, date: string): Promise<BriefPracticeRow> {
   const { data, error } = await supabaseAdmin
     .from("signal_briefs")
     .select("practice")
@@ -30,10 +31,12 @@ async function loadPractice(userId: string, date: string): Promise<BriefPractice
   return practice;
 }
 
-async function savePractice(userId: string, date: string, practice: BriefPracticeRow): Promise<void> {
+/** 改那天练习的某几样：写之前重读最新的再合并（拆解卡和 AI 先判可能前后脚写，免得互相冲掉）。 */
+export async function patchBriefPractice(userId: string, date: string, patch: Partial<BriefPracticeRow>): Promise<void> {
+  const fresh = await loadBriefPractice(userId, date);
   const { error } = await supabaseAdmin
     .from("signal_briefs")
-    .update({ practice })
+    .update({ practice: { ...fresh, ...patch } })
     .eq("user_id", userId)
     .eq("brief_date", date)
     .eq("kind", "news");
@@ -42,7 +45,7 @@ async function savePractice(userId: string, date: string, practice: BriefPractic
 
 /** 拆过就直接返回；没拆就现在拆（二三十秒）。 */
 export async function ensurePracticeBreakdown(userId: string, date: string): Promise<Breakdown> {
-  const practice = await loadPractice(userId, date);
+  const practice = await loadBriefPractice(userId, date);
   if (practice.breakdown) return practice.breakdown;
 
   const detail = await getSignalDetail(practice.signal_id);
@@ -64,17 +67,17 @@ export async function ensurePracticeBreakdown(userId: string, date: string): Pro
     factors: plan.map((f, i) => ({ factor: f.factor, mechanism: f.mechanism, indicator: f.indicator, ...readings[i] })),
     generated_at: new Date().toISOString(),
   };
-  await savePractice(userId, date, { ...practice, breakdown });
+  await patchBriefPractice(userId, date, { breakdown });
   return breakdown;
 }
 
 /** 记下他对每个因素点的偏向（和 factors 一一对应）。 */
 export async function saveBreakdownLeans(userId: string, date: string, leans: (Lean | null)[]): Promise<void> {
-  const practice = await loadPractice(userId, date);
+  const practice = await loadBriefPractice(userId, date);
   if (!practice.breakdown) throw new Error("还没拆过");
   const clean = practice.breakdown.factors.map((_, i) => {
     const l = leans[i];
     return l && l in LEANS ? l : null;
   });
-  await savePractice(userId, date, { ...practice, breakdown: { ...practice.breakdown, leans: clean } });
+  await patchBriefPractice(userId, date, { breakdown: { ...practice.breakdown, leans: clean } });
 }
