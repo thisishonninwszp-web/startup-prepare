@@ -129,6 +129,11 @@ async function insertForecasts(
   if (error && /no unique or exclusion constraint/.test(error.message)) {
     ({ error } = await supabaseAdmin.from("forecasts").upsert(payload, { onConflict: "question_id,source", ignoreDuplicates: true }));
   }
+  // 099 没跑：先判的不用这一列（为空就算先判），去掉再写一次；同意 AI、改判的写不进去
+  if (error && /\bmode\b/.test(error.message) && rows.every((r) => !r.mode || r.mode === "blind")) {
+    const plain = payload.map(({ question_id, user_id, source, probability, reason }) => ({ question_id, user_id, source, probability, reason }));
+    ({ error } = await supabaseAdmin.from("forecasts").upsert(plain, { onConflict: "question_id,user_id,source", ignoreDuplicates: true }));
+  }
   // 099 没跑时报的是「forecasts 没有 mode 这一列」，先认它，别当成 091 没跑
   if (error) throw new Error(/\bmode\b/.test(error.message) ? MODE_MISSING : missing(error) ? FORECAST_MISSING : error.message);
 }
