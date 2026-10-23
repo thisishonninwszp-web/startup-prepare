@@ -122,6 +122,61 @@ export function shownAi(ai: number, platt: Platt | null): number {
   return Math.round(Math.min(0.99, Math.max(0.01, p)) * 100) / 100;
 }
 
+/**
+ * 先摆出来、他点「行」就记的那个数从哪来（经用户同意，2026-10-23）：用手上最准的那一个 ——
+ * 市场题是市场价（押钱的人给的，回测里比 AI 准得多：0.214 对 0.294），政策题、数据题是统计基准（代码从历史数的比例），
+ * 别的（生意题、到日本题）只有 AI。AI 照样每道都判、照样记分；他改判的那几次，比的是这个数。
+ */
+export type AnchorSource = "market" | "base" | "ai";
+export type Anchor = { source: AnchorSource; probability: number };
+
+export const ANCHOR_LABELS: Record<AnchorSource, string> = { market: "市场", base: "统计基准", ai: "AI" };
+/** 卡片上那个数下面的一句：这个数是怎么来的。 */
+export const ANCHOR_NOTES: Record<AnchorSource, string> = {
+  market: "预测市场上押钱的人给的数",
+  base: "按历史数出来的比例（算法写在题目下面）",
+  ai: "AI 上网查过以后、三种思路取中间",
+};
+
+/** 这道题先摆哪个数；哪个都没有（AI 还没判、又没有市场价和基准）是 null。 */
+export function anchorOf(q: Pick<ForecastQuestion, "id" | "kind">, forecasts: Pick<Forecast, "question_id" | "source" | "probability">[]): Anchor | null {
+  const pick = (source: AnchorSource): Anchor | null => {
+    const f = forecasts.find((x) => x.question_id === q.id && x.source === source);
+    return f ? { source, probability: shownAi(f.probability, null) } : null;
+  };
+  if (q.kind === "market") return pick("market") ?? pick("ai");
+  if (q.kind === "policy" || q.kind === "data") return pick("base") ?? pick("ai");
+  return pick("ai");
+}
+
+export type VsAnchor = { n: number; meBetter: number; anchorBetter: number; tie: number; meBrier: number | null; anchorBrier: number | null };
+
+/** 你改判的那几次：你和先摆出来的那个数，谁离结果更近（对过账的）；满 MIN_SCORED 道才给两边平均分。 */
+export function overrideVsAnchor(questions: Pick<ForecastQuestion, "id" | "kind" | "status" | "outcome">[], forecasts: Forecast[]): VsAnchor {
+  let n = 0;
+  let meBetter = 0;
+  let anchorBetter = 0;
+  let tie = 0;
+  let sm = 0;
+  let sa = 0;
+  for (const q of questions) {
+    if (q.status !== "resolved" || q.outcome === null) continue;
+    const me = forecasts.find((f) => f.question_id === q.id && f.source === "me" && modeOf(f) === "override");
+    const anchor = anchorOf(q, forecasts);
+    if (!me || !anchor) continue;
+    const bm = brier(me.probability, q.outcome);
+    const ba = brier(anchor.probability, q.outcome);
+    n += 1;
+    sm += bm;
+    sa += ba;
+    if (Math.abs(bm - ba) < 1e-9) tie += 1;
+    else if (bm < ba) meBetter += 1;
+    else anchorBetter += 1;
+  }
+  const show = n >= MIN_SCORED;
+  return { n, meBetter, anchorBetter, tie, meBrier: show ? Math.round((sm / n) * 1000) / 1000 : null, anchorBrier: show ? Math.round((sa / n) * 1000) / 1000 : null };
+}
+
 /** 点「不行，更高 / 更低」时给的档：只给那一边的。 */
 export function tiersBeside(shown: number, side: "higher" | "lower"): number[] {
   return MY_TIERS.filter((p) => (side === "higher" ? p > shown + 0.005 : p < shown - 0.005));
@@ -339,7 +394,7 @@ export function isDue(q: Pick<ForecastQuestion, "status" | "resolve_on">, today:
 }
 
 export type BoardSections = {
-  /** 等他判断：还开着、他没判断过、没跳过（没先看答案）、还没到期；不是先判题的要 AI 判过。 */
+  /** 等他判断：还开着、他没判断过、没跳过（没先看答案）、还没到期；不是先判题的要有先摆出来的那个数（anchorOf）。 */
   toForecast: ForecastQuestion[];
   /** 哪几道是每周一道的先判题（blindQuestionIds）。 */
   blind: Set<string>;
@@ -362,10 +417,9 @@ export function boardSections(
   const { questions, forecasts } = board;
   const mine = new Set(forecasts.filter((f) => f.source === "me").map((f) => f.question_id));
   const blind = blindQuestionIds(questions);
-  const withAi = new Set(forecasts.filter((f) => f.source === "ai").map((f) => f.question_id));
-  // 先判题照旧先点；别的题等 AI 判完才放进来（后台一天两次，半天内判完）
+  // 先判题照旧先点；别的题要有先摆出来的数（市场题一进来就有市场价；生意题、到日本题等 AI 判完，后台一天两次）
   const toForecast = questions.filter(
-    (q) => q.status === "open" && !q.revealed_at && !mine.has(q.id) && daysBetween(today, q.resolve_on) > 0 && (blind.has(q.id) || withAi.has(q.id))
+    (q) => q.status === "open" && !q.revealed_at && !mine.has(q.id) && daysBetween(today, q.resolve_on) > 0 && (blind.has(q.id) || anchorOf(q, forecasts) !== null)
   );
   const toConfirm = board.canConfirm ? questions.filter((q) => q.status === "open" && needsConfirm(q.kind) && q.pending) : [];
   const open = questions.filter((q) => q.status === "open" && (q.revealed_at || mine.has(q.id)) && !(board.canConfirm && needsConfirm(q.kind) && q.pending));
