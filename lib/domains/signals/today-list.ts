@@ -8,7 +8,12 @@ import { listJudgments, pendingDueJudgments } from "./practice";
 import { HORIZONS, isBlindPracticeDate, type HorizonKey } from "./practice-shared";
 import { weekStartOf } from "./issue-shared";
 import { sharedViewFor } from "./users";
-import { pickListItems, type ListCandidates, type ListItem } from "./today-list-shared";
+import { isIssueDay, pickListItems, type ListCandidates, type ListItem } from "./today-list-shared";
+import { getIssue, suggestIssuePicks } from "./issue";
+import { loadGapVoices } from "./voices";
+import { loadFakeDoorStats } from "./fake-door";
+import { doorLang } from "./fake-door-shared";
+import type { GapSide } from "./gaps-shared";
 
 export * from "./today-list-shared";
 
@@ -27,7 +32,7 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
       console.error(`today-list: ${what}`, e);
       return fallback;
     };
-  const [practice, board, dues, recalls, experiments, judgments] = await Promise.all([
+  const [practice, board, dues, recalls, experiments, judgments, voices, doorStats] = await Promise.all([
     // 那一天没有报告或者没出练习题是常事，不记错
     loadBriefPractice(view.sourceUserId, today).catch(() => null),
     loadForecastBoard(userId).catch(quiet("forecast", null)),
@@ -35,9 +40,19 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
     dueRecalls(userId, view.shared, today, 5).catch(quiet("recall", null)),
     loadExperimentBoard(userId, today).catch(quiet("experiments", null)),
     listJudgments(userId).catch(quiet("judgments", [])),
+    loadGapVoices(userId).catch(quiet("voices", new Map<string, never>())),
+    loadFakeDoorStats(userId).catch(quiet("doors", new Map<string, never>())),
   ]);
 
-  const c: ListCandidates = { practice: null, forecasts: [], confirms: [], dues: [], recalls: [], experiments: [] };
+  const c: ListCandidates = { practice: null, forecasts: [], confirms: [], dues: [], recalls: [], experiments: [], doors: [] };
+
+  // 后台先做好的假门：他没说不要、还没发布（这一条还没有假门）的
+  for (const [key, v] of Array.from(voices)) {
+    const prep = v.door_draft;
+    if (!prep || prep.dismissed_at || doorStats.has(key)) continue;
+    const [side, signalId] = [key.slice(0, key.indexOf(":")) as GapSide, key.slice(key.indexOf(":") + 1)];
+    c.doors.push({ signalId, side, lang: doorLang(side), draft: prep.draft, price: prep.price, priceBasis: prep.price_basis });
+  }
 
   // 练习：他还没对这道题下过判断才放
   if (practice && !judgments.some((j) => j.signal_id === practice.signal_id && j.question === practice.question)) {
@@ -83,6 +98,14 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
   c.recalls = (recalls?.items ?? []).map((r) => ({ signalId: r.signal_id, title: r.title ?? "（没有标题）", reason: r.reason, dueOn: r.due_on }));
   if (experiments && experiments !== "missing-schema") {
     c.experiments = experiments.proposals.map((p) => ({ kind: p.kind, targetId: p.targetId, platform: p.platform, label: p.label, question: p.question, dueOn: p.dueOn }));
+  }
+  // 这周的周刊（周四到周日、这一周还没写，主账号才有）：AI 先挑好几条、先填「会不会」，点去网站上看、生成
+  if (isIssueDay(today) && !view.shared) {
+    const issue = await getIssue(userId).catch(() => "missing-schema" as const);
+    if (issue === null || (issue !== "missing-schema" && issue.content.picks.length === 0)) {
+      const picks = await suggestIssuePicks(userId).catch(quiet("issue", []));
+      c.issue = { picks: picks.map((p) => ({ headline: p.headline, ai: p.ai, ...(p.will ? { will: p.will } : {}) })) };
+    }
   }
   return pickListItems(c);
 }

@@ -13,6 +13,10 @@ import { RECALL_LABELS, type RecallResult } from "@/lib/domains/signals/recall-s
 import { saveExperimentForecast } from "@/lib/domains/signals/experiments";
 import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
 import { sharedViewFor } from "@/lib/domains/signals/users";
+import { saveFakeDoor } from "@/lib/domains/signals/fake-door";
+import { loadGapVoices, saveDoorDraft } from "@/lib/domains/signals/voices";
+import { transferKey, type GapSide } from "@/lib/domains/signals/gaps-shared";
+import { appUrl } from "@/lib/domains/signals/notify";
 
 /**
  * 一分钟清单那一页的按钮（不用登录，口令认人）：每个都先验口令（种类 list），做的是口令里那个账号的事。
@@ -137,6 +141,42 @@ export async function listRecallRateAction(token: string, signalId: string, resu
     await ownRecall(u, signalId);
     const next = await rateRecall(u, signalId, result, tokyoToday());
     return { ok: true, message: `记上了：${RECALL_LABELS[result]}。${next} 再问你一次。` };
+  } catch (error) {
+    return fail(error, "没记上");
+  }
+}
+
+/** 后台先做好的那一份（他账号下、那一条的听一听结果里；没有、或者他说过不要，就不认）。 */
+async function ownDoorDraft(u: string, signalId: string, side: GapSide) {
+  if (!["japan", "us", "china"].includes(side)) throw new Error("链接不对");
+  const prep = (await loadGapVoices(u)).get(transferKey(side, signalId))?.door_draft;
+  if (!prep || prep.dismissed_at) throw new Error("这个假门已经不在清单里了");
+  return prep;
+}
+
+/**
+ * 假门：他看过整页、价格确认过（代码先填的可以改，没填的要他填），点「发布」才有公开页（saveFakeDoor，价格规矩照旧查）。
+ * 发布这一下是他点的；发出去的页面上「还没有这个服务、现在不收钱、邮箱只联系一次」由代码加。
+ */
+export async function listDoorPublishAction(token: string, signalId: string, side: GapSide, price: string): Promise<Result> {
+  try {
+    const { u } = who(token);
+    const prep = await ownDoorDraft(u, signalId, side);
+    const door = await saveFakeDoor(u, { kind: "gap", signalId, side }, { ...prep.draft, price: String(price ?? "").trim(), operator: "" });
+    const base = appUrl();
+    return { ok: true, message: `发布了。${base ? `公开页：${base}/soon/${door.token}` : ""} 把链接放进周刊、小红书主页简介，有人留邮箱会出现在本周行动里。` };
+  } catch (error) {
+    return fail(error, "没发布上");
+  }
+}
+
+/** 假门：他说不要 —— 不再放进清单，也不再为这一条做。 */
+export async function listDoorDismissAction(token: string, signalId: string, side: GapSide): Promise<Result> {
+  try {
+    const { u } = who(token);
+    const prep = await ownDoorDraft(u, signalId, side);
+    await saveDoorDraft(u, signalId, side, { ...prep, dismissed_at: new Date().toISOString() });
+    return { ok: true, message: "不要了，这一条以后不再做假门。" };
   } catch (error) {
     return fail(error, "没记上");
   }

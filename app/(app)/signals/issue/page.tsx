@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { getIssue, issueCandidates, issueCounts, listIssues, loadIssueMetrics, weekStartOf } from "@/lib/domains/signals/issue";
+import { getIssue, issueCandidates, issueCounts, listIssues, loadIssueMetrics, suggestIssuePicks, weekStartOf } from "@/lib/domains/signals/issue";
 import { IssueMetrics } from "./issue-metrics";
 import { getPublicToken } from "@/lib/domains/signals/public-record";
 import { loadIssueDoors, loadOpenDoorLinks } from "@/lib/domains/signals/fake-door";
@@ -44,6 +44,9 @@ export default async function IssuePage({ searchParams }: { searchParams: { pick
     loadIssueMetrics(user.id).catch(() => new Map()),
   ]);
   const deepRow = pickedDeep && pickedDeep !== "missing-schema" ? pickedDeep : null;
+  // 这一周还没写、也不是从一条讲透跳过来的：AI 先替他挑好几条、按到日本题先填「会不会」（经用户同意，2026-10-23）
+  const empty = current === null || (current !== "missing-schema" && current.content.picks.length === 0);
+  const suggested = empty && !include ? await suggestIssuePicks(user.id, candidates.gaps).catch(() => []) : [];
   // 挑条时每条已经出过的示意图（没出过、迁移没跑的不放）
   const images: Record<string, GapImage> = {};
   await Promise.all(
@@ -95,6 +98,7 @@ export default async function IssuePage({ searchParams }: { searchParams: { pick
                 : null
             }
             images={images}
+            suggested={suggested}
           />
           {current && current.published.length > 0 && current.content.picks.length > 0 && (
             <IssueMetrics

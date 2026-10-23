@@ -30,6 +30,9 @@ import {
   upsertMetric,
   validMetric,
   type IssueMetric,
+  aiWill,
+  rankIssueSuggestions,
+  type IssueSuggestion,
 } from "./issue-shared";
 
 export * from "./issue-shared";
@@ -135,6 +138,39 @@ const ISSUE_COLUMNS = "id, week_start, updated_at, content, drafts, published, r
 const MISSING_089 = "迁移 089 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/089_signal_issue_metrics.sql。";
 
 /** 每一期每一篇的数据（键是 issue id）。089 没跑、表没建都返回空。 */
+/**
+ * 到日本题上 AI 说的几成（键见 transferKey）：到日本题问的就是「这边会不会正式出现这个」、截止一到两年，
+ * 和周刊第一问是同一件事，周刊挑条时拿它先替他填「两年内会不会」。迁移 091/096 没跑或者没有就是空的。
+ */
+async function arrivalAi(userId: string): Promise<Map<string, number>> {
+  const { data: qs, error } = await supabaseAdmin.from("forecast_questions").select("id, source").eq("user_id", userId).eq("kind", "arrival");
+  if (error || !qs || qs.length === 0) return new Map();
+  const { data: fs } = await supabaseAdmin
+    .from("forecasts")
+    .select("question_id, probability")
+    .eq("user_id", userId)
+    .eq("source", "ai")
+    .in("question_id", qs.map((q) => q.id as string));
+  const p = new Map(((fs ?? []) as { question_id: string; probability: number }[]).map((f) => [f.question_id, Number(f.probability)]));
+  const out = new Map<string, number>();
+  for (const q of qs as { id: string; source: { side?: string; signal_id?: string } }[]) {
+    const v = p.get(q.id);
+    if (v !== undefined && q.source?.signal_id && q.source.side) out.set(transferKey(q.source.side as GapSide, q.source.signal_id), v);
+  }
+  return out;
+}
+
+/** 这一期先替他挑好的几条和先填的「会不会」（规则见 rankIssueSuggestions）。 */
+export async function suggestIssuePicks(userId: string, candidates?: IssueCandidate[]): Promise<IssueSuggestion[]> {
+  const [gaps, ai, voices] = await Promise.all([
+    candidates ? Promise.resolve(candidates) : issueCandidates(userId).then((c) => c.gaps),
+    arrivalAi(userId),
+    loadGapVoices(userId),
+  ]);
+  const quotes = new Map(Array.from(voices).map(([k, v]) => [k, v.quotes.length]));
+  return rankIssueSuggestions(gaps, ai, quotes);
+}
+
 export async function loadIssueMetrics(userId: string): Promise<Map<string, IssueMetric[]>> {
   const { data, error } = await supabaseAdmin.from("signal_issues").select("id, metrics").eq("user_id", userId);
   if (error) {
@@ -193,8 +229,8 @@ function findBoardGap(board: Awaited<ReturnType<typeof listGapBoard>>, side: Gap
   return { arrived, gap: (arrived ?? open) as JapanGap | undefined };
 }
 
-/** 一条讲透里攒的料：存下的那边查一查、类别算出的同类基准、对上的官报决算。 */
-type PickExtra = { deep: GapDeep | undefined; benchmark: string | undefined; kanpo: string[] };
+/** 一条讲透里攒的料：存下的那边查一查、类别算出的同类基准、对上的官报决算；到日本题上 AI 说的几成（先填「会不会」用的）。 */
+type PickExtra = { deep: GapDeep | undefined; benchmark: string | undefined; kanpo: string[]; ai?: number };
 
 /** 从清单里按 id 取一条差距，拼成这一期的一条（事实全从服务器拿）。 */
 function buildPick(
@@ -232,6 +268,7 @@ function buildPick(
     ...(transfer ? { conditions: transfer.conditions.map((c) => ({ name: c.name, holds: c.holds, here: c.here })) } : {}),
     sources,
     stance,
+    ...(extra.ai !== undefined ? { ai_will: aiWill(extra.ai), ai_p: extra.ai } : {}),
     ...(note.trim() ? { note: note.trim() } : {}),
     // 判断由服务器按他点的选项拼（不信浏览器传来的那句话）
     judgment: stanceSentence(stance, gapPlaces(side).here, note),
@@ -254,13 +291,14 @@ export async function composeAndSaveIssue(
   const stances = input.picks.map((p) => validStance(p.stance));
   if (stances.some((s) => s === null)) throw new Error("每条都先点一下：两年内会不会出现");
   if (input.picks.some((p) => p.note.trim().length > ISSUE_NOTE_MAX)) throw new Error(`补的那句最多 ${ISSUE_NOTE_MAX} 字`);
-  const [board, transfers, candidates, voices, deeps, cases] = await Promise.all([
+  const [board, transfers, candidates, voices, deeps, cases, ai] = await Promise.all([
     listGapBoard(userId, tokyoToday()),
     loadGapTransfers(userId),
     issueCandidates(userId, input.picks),
     loadGapVoices(userId),
     loadGapDeeps(userId),
     listTransferCases(userId).catch(() => "missing-schema" as const),
+    arrivalAi(userId).catch(() => new Map<string, number>()),
   ]);
   // 一条讲透里攒的料：类别 → 同类基准；对上的官报决算（查不到就少这一样，不拦着写）
   const extras = await Promise.all(
@@ -272,7 +310,7 @@ export async function composeAndSaveIssue(
         deep?.category && cases !== "missing-schema" && gapPlaces(p.side).here === "日本"
           ? baseSentence(deep.category, categoryBase(countedCases(cases).filter((c) => c.category === deep.category)))
           : undefined;
-      return { deep, benchmark, kanpo: kanpo ? kanpoLines(kanpo) : [] };
+      return { deep, benchmark, kanpo: kanpo ? kanpoLines(kanpo) : [], ai: ai.get(transferKey(p.side, p.signal_id)) };
     })
   );
   const picks = input.picks.map((p, i) => buildPick(board, transfers, voices, p.side, p.signal_id, stances[i]!, p.note, extras[i]));
@@ -364,6 +402,8 @@ async function recordIssueBets(userId: string, issue: Issue): Promise<IssueRecor
         question,
         judgment: p.judgment,
         tags: ["周刊"],
+        // AI 先填过「会不会」的：没改是同意 AI，改了是改判（迁移 099 的列）；没先填的照旧（为空算先判）
+        ...(p.ai_will ? { mode: p.ai_will === will ? "agree" : "override" } : {}),
       })
       .select("id")
       .single();

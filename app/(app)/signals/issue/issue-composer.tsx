@@ -27,6 +27,7 @@ import {
   type IssueBet,
   type IssuePlatform,
   type PickStance,
+  type IssueSuggestion,
 } from "@/lib/domains/signals/issue-shared";
 import type { IssueCandidate } from "@/lib/domains/signals/issue";
 import { ATLAS_CATEGORIES, baseSentence, type AtlasCategory, type CategoryBase } from "@/lib/domains/signals/atlas-shared";
@@ -171,7 +172,10 @@ export function IssueComposer({
   issueDoors,
   preselect,
   images,
+  suggested,
 }: {
+  /** AI 先替他挑好的几条（这一周还没写时才有）：有到日本题的先填了「会不会」。 */
+  suggested: IssueSuggestion[];
   /** 每条已经出过的示意图（键见 keyOf）。 */
   images: Record<string, GapImage>;
   /** 开着的日文假门（键见 keyOf）：note 版文末放登记页的链接。 */
@@ -195,8 +199,12 @@ export function IssueComposer({
     if (preselect && !(keyOf(preselect) in base) && Object.keys(base).length < ISSUE_MAX_PICKS) {
       base[keyOf(preselect)] = { stance: preselect.stance, note: preselect.note, category: preselect.category };
     }
+    // 这一周还没写：先放 AI 挑好的几条（能改、能全换掉）
+    if (Object.keys(base).length === 0) for (const s of suggested) base[keyOf(s)] = { stance: s.will ? { will: s.will } : {}, note: "" };
     return base;
   });
+  const fromAi = !initial?.content.picks.length && !preselect && suggested.length > 0;
+  const aiOf = new Map(suggested.map((s) => [keyOf(s), s]));
   const [betIds, setBetIds] = useState<string[]>((initial?.content.bets ?? []).map((b) => b.id));
   const [opening, setOpening] = useState(initial?.content.opening ?? "");
   const [issue, setIssue] = useState<Issue | null>(initial);
@@ -267,6 +275,12 @@ export function IssueComposer({
           最近两周清单里的。每条点三下就是你的判断 —— 发出去的就是这句话，别人写不出来的也就是这句话。
           第一问选了「会」或「不会」的，发出去时自动记进判断账本，{STANCE_YEARS} 年后对账。
         </p>
+        {fromAi && (
+          <p className="mt-3 rounded-md bg-muted/60 px-3 py-2 text-sm leading-7">
+            AI 先替你挑了 {suggested.length} 条：有到日本题的，按它上面 AI 说的几成先填了「会不会」（五成以上算会）。
+            发出去的是你的判断 —— 不同意就改，阻碍和谁先做可以不填。没改的记进判断账本时标「同意 AI」。
+          </p>
+        )}
         {gaps.length === 0 ? (
           <p className="mt-3 text-sm leading-7 text-muted-foreground">这两周清单里没有新的。去差距清单扫一轮再来。</p>
         ) : (
@@ -318,6 +332,11 @@ export function IssueComposer({
                             </p>
                           )}
                         </>
+                      )}
+                      {aiOf.get(k)?.ai != null && (
+                        <p className="text-xs text-muted-foreground">
+                          AI 先填的：到日本题上 AI 说 {Math.round((aiOf.get(k)!.ai as number) * 100)}% 会
+                        </p>
                       )}
                       <OptionRow
                         label={`${STANCE_YEARS} 年内${g.here}会不会出现？`}

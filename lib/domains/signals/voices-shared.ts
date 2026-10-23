@@ -1,4 +1,5 @@
 import type { Attention } from "./attention-shared";
+import type { DoorDraftPrep } from "./door-prep-shared";
 
 /**
  * 差距清单 · 这边有人在为这个头疼吗：浏览器端也要用的部分。不碰数据库、不碰 AI。
@@ -46,6 +47,8 @@ export type GapVoices = {
   attention?: Attention;
   /** 以前量过的几次（旧的在前，不含这一次）：每次重新听、再量一次，上一次的几个总数挪进来，攒成随时间的线。 */
   history?: AttentionPoint[];
+  /** 后台先做好的假门（还没发布；他没说不要时进一分钟清单）。重新听一次就没了，原话够了会再做。见 door-prep.ts。 */
+  door_draft?: DoorDraftPrep;
   created_at: string;
 };
 
