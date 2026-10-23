@@ -72,6 +72,11 @@ export type DailyEmailInput = {
   url: string | null;
 };
 
+/** 每月 2 号提醒下载上个月的备份（1 号早上的后台任务刚打包好）。 */
+export function isArchiveDay(date: string): boolean {
+  return date.slice(8, 10) === "02";
+}
+
 /** 慢变量一周看一次：周一的邮件里提一句。 */
 export function isMonday(date: string): boolean {
   return new Date(`${date}T12:00:00+09:00`).getUTCDay() === 1;
@@ -159,6 +164,7 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     if (input.url) lines.push(`${input.url}/signals/week`);
     lines.push("");
   }
+  if (isArchiveDay(input.date) && input.url) lines.push("上个月的存档打包好了：下载一份放在自己电脑上，就是完整的离线备份。", `${input.url}/signals/memory#storage`, "");
   if (input.url) lines.push(`打开今天的报告：${input.url}/signals`);
   return { subject, text: lines.join("\n").trim() };
 }
@@ -269,6 +275,9 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   if (isMonday(input.date)) {
     parts.push(para("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。"));
     if (input.url) parts.push(link(`${input.url}/signals/slow`, "慢变量"), link(`${input.url}/signals/week`, "上一周的周报"));
+  }
+  if (isArchiveDay(input.date) && input.url) {
+    parts.push(para("上个月的存档打包好了：下载一份放在自己电脑上，就是完整的离线备份。", `font-size:14px;color:${C.muted};`), link(`${input.url}/signals/memory#storage`, "去下载"));
   }
   if (input.url) parts.push(link(`${input.url}/signals`, "打开今天的报告"));
   return `<!doctype html><html><body style="margin:0;padding:24px 16px;background:${C.paper};font-family:-apple-system,'PingFang SC','Hiragino Sans','Noto Sans SC',sans-serif;"><div style="max-width:600px;margin:0 auto;">${parts.join("")}</div></body></html>`;

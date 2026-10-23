@@ -18,6 +18,8 @@ import {
 import { sharedViewFor } from "@/lib/domains/signals/users";
 import { StoryList } from "../today-blocks";
 import { RecallCard } from "../recall-card";
+import { DB_LIMIT_BYTES, listArchives, storageReport } from "@/lib/domains/signals/storage";
+import { BackupButton } from "./backup-button";
 import { dueRecalls } from "@/lib/domains/signals/recall";
 
 /** 「你在跟的事」看最近多少天的后续。 */
@@ -43,6 +45,7 @@ export default async function MemoryPage() {
     console.error("memory: followed", e);
     return [];
   });
+  const [storage, archives] = await Promise.all([storageReport().catch(() => null), listArchives().catch(() => [])]);
   const [coverage, marks, recall, recent, stories] = await Promise.all([
     archiveCoverage().catch(() => null),
     recentMarks(user.id, 30).catch(() => null),
@@ -179,6 +182,42 @@ export default async function MemoryPage() {
             ))}
           </ul>
         )}
+      </section>
+      <section id="storage" className="mt-10 border-t pt-6">
+        <h2 className="mb-1 text-base font-semibold">存储和备份</h2>
+        {storage ? (
+          <p className="text-sm leading-7">
+            数据库现在 <span className="font-mono">{(storage.total / 1024 / 1024).toFixed(1)}MB</span>（免费版上限 500MB，用了{" "}
+            {Math.round((storage.total / DB_LIMIT_BYTES) * 100)}%）。最大的几张表：
+            {storage.tables
+              .slice(0, 4)
+              .map((t) => `${t.name} ${(t.bytes / 1024 / 1024).toFixed(1)}MB`)
+              .join("、")}
+            。
+          </p>
+        ) : (
+          <p className="text-sm leading-7 text-muted-foreground">迁移 098 跑完之后，这里显示数据库实际多大。</p>
+        )}
+        <p className="mt-2 text-xs leading-6 text-muted-foreground">
+          每月头几天，后台把上个月抓到的新闻原样打包（压缩）存进文件存储（免费 1GB，和数据库分开算）。下载一份放在自己电脑上，就是完整的离线备份。
+        </p>
+        {archives.length > 0 && (
+          <ul className="mt-2 space-y-1 text-sm">
+            {archives.map((a) => (
+              <li key={a.month}>
+                <span className="mr-2 font-mono text-xs">{a.month}</span>
+                {a.url ? (
+                  <a href={a.url} className="text-primary underline-offset-4 hover:underline">
+                    下载（{Math.max(1, Math.round(a.bytes / 1024))}KB）
+                  </a>
+                ) : (
+                  <span className="text-xs text-muted-foreground">链接没生成，刷新一下</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <BackupButton />
       </section>
     </PageContainer>
   );

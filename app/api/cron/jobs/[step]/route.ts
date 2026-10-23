@@ -12,6 +12,7 @@ import {
   resolveDue,
 } from "@/lib/domains/signals/forecast";
 import { refreshPolicy } from "@/lib/domains/signals/policy";
+import { monthlyArchive } from "@/lib/domains/signals/storage";
 import { refreshAppWatch } from "@/lib/domains/signals/app-watch";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
 import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
@@ -85,6 +86,12 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
       notes.push(`App 查了 ${r.checked} 个`);
     } catch (e) {
       notes.push(`App：${e instanceof Error ? e.message : String(e)}`);
+    }
+    try {
+      const a = await monthlyArchive(today);
+      if (a) notes.push(`打包了 ${a}`);
+    } catch (e) {
+      notes.push(`打包：${e instanceof Error ? e.message : String(e)}`);
     }
     try {
       const p = await refreshPolicy(today, 120_000);

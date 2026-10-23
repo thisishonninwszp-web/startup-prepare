@@ -16,9 +16,11 @@ import {
 } from "@/lib/domains/signals/memory";
 import { sharedViewFor } from "@/lib/domains/signals/users";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { confirmResolution, revealQuestion, setMyForecast } from "@/lib/domains/signals/forecast";
+import { confirmResolution, publishToManifold, revealQuestion, setMyForecast } from "@/lib/domains/signals/forecast";
 import { saveExperimentForecast } from "@/lib/domains/signals/experiments";
 import { rateRecall, recallReveal, type RecallReveal } from "@/lib/domains/signals/recall";
+import { setSharePref } from "@/lib/domains/signals/compare";
+import { exportMonth } from "@/lib/domains/signals/storage";
 import type { RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
 
@@ -149,5 +151,42 @@ export async function rateRecallAction(signalId: string, result: RecallResult): 
     return { ok: true, next };
   } catch (error) {
     return { ok: false, message: message(error, "没记上") };
+  }
+}
+
+/** 一起练：公开 / 不公开我的分数。 */
+export async function setSharePrefAction(share: boolean): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const userId = await requireUserId();
+    await setSharePref(userId, share);
+    revalidatePath("/signals/forecast");
+    revalidatePath("/signals/calibrate");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: message(error, "没改成") };
+  }
+}
+
+/** 他点了「放到 Manifold」（发出去是公开的，所以一次一道、他点了才发）。 */
+export async function publishToManifoldAction(questionId: string): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
+  try {
+    const userId = await requireUserId();
+    const r = await publishToManifold(userId, questionId, tokyoToday());
+    revalidatePath("/signals/forecast");
+    return { ok: true, url: r.url };
+  } catch (error) {
+    return { ok: false, message: message(error, "没放上去") };
+  }
+}
+
+/** 现在就把这个月（到今天为止）打包一份（同一个月再打包会覆盖）。 */
+export async function exportThisMonthAction(): Promise<{ ok: true; rows: number } | { ok: false; message: string }> {
+  try {
+    await requireUserId();
+    const r = await exportMonth(tokyoToday().slice(0, 7));
+    revalidatePath("/signals/memory");
+    return { ok: true, rows: r.rows };
+  } catch (error) {
+    return { ok: false, message: message(error, "没打包成") };
   }
 }

@@ -17,8 +17,12 @@ import {
   SOURCE_LABELS,
   type ForecastSource,
 } from "@/lib/domains/signals/forecast";
-import { Answers, ConfirmCard, ForecastCard } from "./forecast-cards";
+import { Answers, ConfirmCard, ForecastCard, PublishManifold } from "./forecast-cards";
+import { canPublish } from "@/lib/domains/signals/forecast";
+import { manifoldKey } from "@/lib/domains/signals/manifold-publish";
 import { ExperimentRow, ProposalCard } from "./experiment-cards";
+import { compareBoard } from "@/lib/domains/signals/compare";
+import { CompareSection } from "../compare-section";
 import { loadExperimentBoard, type ExperimentBoard } from "@/lib/domains/signals/experiments";
 import { BIN_MIN } from "@/lib/domains/signals/calibration-shared";
 import Link from "next/link";
@@ -119,7 +123,12 @@ export default async function ForecastPage() {
       return null;
     }),
   ]);
+  const compare = await compareBoard(user.id).catch((e) => {
+    console.error("forecast: compare", e);
+    return null;
+  });
   const calibration = report ? usableCalibration(report) : null;
+  const manifoldReady = manifoldKey() !== null;
 
   return (
     <PageContainer width="narrow">
@@ -269,6 +278,8 @@ export default async function ForecastPage() {
                 </p>
               </section>
 
+              {compare && <CompareSection board={compare} kind="live" />}
+
               {open.length > 0 && (
                 <section className="mb-10">
                   <h2 className="mb-3 text-base font-semibold">判断过、还没对账的（{open.length}）</h2>
@@ -281,6 +292,9 @@ export default async function ForecastPage() {
                           {needsConfirm(q.kind) && q.pending ? " · 到期了，等出题的人确认" : ""}
                         </p>
                         <Answers q={q} forecasts={forecasts} calibration={calibration} />
+                        {board.canConfirm && (canPublish(q) || q.source.manifold) && (
+                          <PublishManifold questionId={q.id} url={q.source.manifold?.url} ready={manifoldReady} />
+                        )}
                       </li>
                     ))}
                   </ul>

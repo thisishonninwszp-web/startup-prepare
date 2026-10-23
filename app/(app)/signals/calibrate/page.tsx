@@ -9,6 +9,8 @@ import { pct } from "@/lib/domains/signals/forecast-shared";
 import { DAILY_DRILL, HISTORY_TARGET } from "@/lib/domains/signals/history-shared";
 import { drillProgress, historyBacktest, nextDrillQuestion } from "@/lib/domains/signals/backtest";
 import { DrillCard } from "./drill-card";
+import { compareBoard } from "@/lib/domains/signals/compare";
+import { CompareSection } from "../compare-section";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +41,15 @@ export default async function CalibratePage() {
   if (!user) notFound();
 
   const today = tokyoToday();
-  const [question, progress, report] = await Promise.all([nextDrillQuestion(user.id), drillProgress(user.id, today), historyBacktest().catch(() => null)]);
+  const [question, progress, report, compare] = await Promise.all([
+    nextDrillQuestion(user.id),
+    drillProgress(user.id, today),
+    historyBacktest().catch(() => null),
+    compareBoard(user.id).catch((e) => {
+      console.error("calibrate: compare", e);
+      return null;
+    }),
+  ]);
 
   return (
     <PageContainer width="narrow">
@@ -159,6 +169,8 @@ export default async function CalibratePage() {
               </>
             )}
           </section>
+
+          {compare && <CompareSection board={compare} kind="drill" />}
 
           <p className="mt-10 text-xs leading-6 text-muted-foreground">
             平均分是每道题（说的几成 − 结果）² 的平均，结果「会」算 1、「不会」算 0。分数满 {SCORE_MIN} 道、每一格满 {BIN_MIN} 道才显示。这些数字只用于对世界事件的预测，不给想法打分。
