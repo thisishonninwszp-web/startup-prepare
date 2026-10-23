@@ -15,6 +15,20 @@ function missing(error: { message: string } | null): boolean {
   return !!error && /signal_prefs|does not exist|schema cache/.test(error.message);
 }
 
+type MineRow = { user_id: string; question_id: string; probability: number; mode?: string | null };
+
+/** 各人「你」那一方的预测，点「行」同意 AI 的不算（那是 AI 的分）；迁移 099 没跑时没有 mode，老记录全是先判。 */
+async function myForecasts(users: string[]): Promise<{ data: MineRow[]; error: { message: string } | null }> {
+  const query = (cols: string) => (a: number, b: number) =>
+    supabaseAdmin.from("forecasts").select(cols).eq("source", "me").in("user_id", users).order("question_id").range(a, b) as unknown as PromiseLike<{
+      data: MineRow[] | null;
+      error: { message: string } | null;
+    }>;
+  let rows = await selectAll<MineRow>(query("user_id, question_id, probability, mode"));
+  if (rows.error && /mode/.test(rows.error.message)) rows = await selectAll<MineRow>(query("user_id, question_id, probability"));
+  return { data: rows.data.filter((f) => f.mode !== "agree"), error: rows.error };
+}
+
 export async function setSharePref(userId: string, share: boolean): Promise<void> {
   const { error } = await supabaseAdmin.from("signal_prefs").upsert({ user_id: userId, share_scores: share, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) throw new Error(missing(error) ? PREFS_MISSING : error.message);
@@ -63,9 +77,7 @@ export async function compareBoard(userId: string): Promise<CompareBoard | null>
           supabaseAdmin.from("forecast_questions").select("id, outcome").eq("user_id", owner).eq("status", "resolved").order("id").range(a, b)
         )
       : Promise.resolve({ data: [] as { id: string; outcome: boolean | null }[], error: null }),
-    selectAll<{ user_id: string; question_id: string; probability: number }>((a, b) =>
-      supabaseAdmin.from("forecasts").select("user_id, question_id, probability").eq("source", "me").in("user_id", users).order("question_id").range(a, b)
-    ),
+    myForecasts(users),
     selectAll((a, b) =>
       supabaseAdmin
         .from("forecast_history_answers")
