@@ -15,7 +15,8 @@ import {
   modeOf,
   pct,
   scoreBySource,
-  shownAi,
+  anchorOf,
+  overrideVsAnchor,
   SOURCE_LABELS,
   withMyModes,
   type ForecastSource,
@@ -134,7 +135,7 @@ export default async function ForecastPage() {
       <PageHeader
         eyebrow="Forecasts"
         title="预测"
-        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场给的几成可能当对照）、从今天新闻里出的生意题（到期程序查证据，出题的人确认）。每道题 AI 先用三种思路各给一个、取中间，你看行不行；每周一道你先自己判。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
+        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场给的几成可能当对照）、从今天新闻里出的生意题（到期程序查证据，出题的人确认）。每道题先摆出最准的那个数（市场价、统计基准，都没有就是 AI 三种思路取中间），你看行不行；每周一道你先自己判。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
       />
 
       {board === "missing-schema" ? (
@@ -156,6 +157,7 @@ export default async function ForecastPage() {
             { label: "你（改判的）", ...scoreBySource(questions, overrideMine, ["me"])[0] },
             ...scoreBySource(questions, others, ["ai", "market", "base", "ai_outside", "ai_inside", "ai_devil"]).map((s) => ({ label: SOURCE_LABELS[s.source], ...s })),
           ];
+          const vs = overrideVsAnchor(questions, forecasts);
           const pairs = [
             { label: "你改判的那几次：你 对 AI", h: headToHead(questions, overrideMine, "me", "ai") },
             { label: "你先判的：你 对 AI", h: headToHead(questions, blindMine, "me", "ai") },
@@ -188,13 +190,12 @@ export default async function ForecastPage() {
                 ) : (
                   <ul className="space-y-4">
                     {toForecast.map((q) => {
-                      const raw = forecasts.find((f) => f.question_id === q.id && f.source === "ai")?.probability ?? null;
                       return (
                         <ForecastCard
                           key={q.id}
                           q={q}
                           blind={blind.has(q.id)}
-                          ai={raw === null ? null : shownAi(raw, null)}
+                          anchor={blind.has(q.id) ? null : anchorOf(q, forecasts)}
                           three={forecasts.filter((f) => f.question_id === q.id && THREE_VIEWS.includes(f.source))}
                         />
                       );
@@ -202,7 +203,7 @@ export default async function ForecastPage() {
                   </ul>
                 )}
                 <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                  AI 先判好了：同意就点「行」，觉得它高了低了就点「不行」改一档，不想判就跳过。每周有一道先自己判、判完再看 AI 的 —— 那道量的是你自己准不准。点「行」的不算你的分，那是 AI 的。表了态不能改。
+                  先摆出来的是手上最准的那个数：市场题是市场价，政策题和数据题是统计基准，别的是 AI。同意就点「行」，觉得它高了低了就点「不行」改一档，不想判就跳过。每周有一道先自己判、判完再看 AI 的 —— 那道量的是你自己准不准。点「行」的不算你的分，那是 AI 的。表了态不能改。
                   {board.shared ? " 大家共用同一批题，但你的判断和分数只有你自己看得到。" : ""}
                 </p>
               </section>
@@ -261,6 +262,18 @@ export default async function ForecastPage() {
                   </tbody>
                 </table>
                 <ul className="mt-3 space-y-1 text-sm leading-7">
+                  <li>
+                    <span className="text-muted-foreground">你改判的那几次：你 对 先摆出来的那个数：</span>
+                    {vs.n === 0 ? (
+                      "还没有改判过、又对过账的题"
+                    ) : (
+                      <>
+                        {vs.n} 道里你更近 {vs.meBetter} 道、它更近 {vs.anchorBetter} 道
+                        {vs.tie > 0 ? `、一样 ${vs.tie} 道` : ""}
+                        {vs.meBrier !== null && vs.anchorBrier !== null ? `（平均分 ${vs.meBrier.toFixed(3)} 对 ${vs.anchorBrier.toFixed(3)}）` : ""}
+                      </>
+                    )}
+                  </li>
                   {pairs.map(({ label, h }) => (
                     <li key={label}>
                       <span className="text-muted-foreground">{label}：</span>
@@ -277,7 +290,7 @@ export default async function ForecastPage() {
                   ))}
                 </ul>
                 <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                  你点「行」同意 AI 的 {agreed} 道不算进上面任何一份「你」的分 —— 那是 AI 的分。改判的那一行最值得看：你出手改判时，比 AI 准还是比它差。
+                  你点「行」同意 AI 的 {agreed} 道不算进上面任何一份「你」的分 —— 那是 AI 的分。最上面那一行最值得看：你出手改判时，比先摆出来的那个数准还是差。
                 </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   {bins.map(({ label, bins: rows }) => (

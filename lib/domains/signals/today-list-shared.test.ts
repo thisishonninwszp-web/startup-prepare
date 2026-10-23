@@ -8,7 +8,7 @@ const fq = (id: string, blind = false, ai: number | null = 0.3): ListForecast =>
   resolve_on: "2027-03-31",
   criteria: "",
   blind,
-  ai,
+  anchor: ai === null ? null : { source: "ai", probability: ai },
   three: [],
 });
 const base: ListCandidates = { practice: null, forecasts: [], confirms: [], dues: [], recalls: [], experiments: [] };
@@ -68,6 +68,7 @@ describe("一分钟清单", () => {
   it("邮件里那一行：哪一种、题目截短、AI 怎么说", () => {
     expect(previewLine({ kind: "forecast", q: fq("a") })).toEqual({ label: "预测", title: "题a", note: "AI：30%" });
     expect(previewLine({ kind: "forecast", q: fq("b", true, null) }).note).toBe("这道先自己判");
+    expect(previewLine({ kind: "forecast", q: { ...fq("m"), anchor: { source: "market", probability: 0.45 } } }).note).toBe("市场：45%");
     expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "draft", draft: draft(0.3), horizon: "3m" }).note).toBe("AI：不会 · 有点把握");
     expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "waiting", draft: null, horizon: "3m" }).note).toBe("AI 还没判完");
     expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "blind", draft: null, horizon: "3m" }).note).toBe("周一：先自己判");

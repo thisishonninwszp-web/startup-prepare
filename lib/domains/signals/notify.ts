@@ -13,7 +13,7 @@ import type { DigestPick } from "./digest";
 import { cleanBriefItem } from "./filler";
 import { signFlowCard } from "./flow-card-shared";
 import { followReasonText } from "./memory-shared";
-import { MY_TIERS, pct, tiersBeside } from "./forecast-shared";
+import { ANCHOR_LABELS, MY_TIERS, pct, tiersBeside } from "./forecast-shared";
 import { actionSecret, actionUrl, LIST_TTL_DAYS, signAction, type ActionKind } from "@/lib/action-links";
 import { listSeconds, loadTodayList, previewLine } from "./today-list";
 import { loadTodayPersonal } from "./today";
@@ -540,7 +540,8 @@ async function personalParts(
     const recallUrl = recallItem ? tap("recall", recallItem.signal_id, "") : null;
     // 预测那一键：先判题（或 AI 还没判）照旧一排档；别的题 AI 先判，「行」或点你觉得的几成（AI 那个数两边的档）
     const quick = f?.quick ?? null;
-    const aiFirst = quick && !quick.blind && quick.ai !== null ? quick.ai : null;
+    const anchor = quick && !quick.blind ? quick.anchor : null;
+    const aiFirst = anchor ? anchor.probability : null;
     const links = !quick
       ? []
       : aiFirst === null
@@ -549,7 +550,7 @@ async function personalParts(
             { label: `行（${pct(aiFirst)}）`, url: tap("forecast", quick.q.id, "agree") },
             ...[...tiersBeside(aiFirst, "lower"), ...tiersBeside(aiFirst, "higher")].map((p) => ({ label: pct(p), url: tap("forecast", quick.q.id, String(p)) })),
           ];
-    const lead = aiFirst === null ? "这道先自己判（每周一道）：" : `AI 说 ${pct(aiFirst)} 会，行不行？点「行」，或者点你觉得的几成 —— `;
+    const lead = !anchor ? "这道先自己判（每周一道）：" : `${ANCHOR_LABELS[anchor.source]}说 ${pct(anchor.probability)} 会，行不行？点「行」，或者点你觉得的几成 —— `;
     // 一分钟清单：今天要他点的几件（和那一页同一个取法），一个签好的链接；取不到就不放，邮件照旧
     const today = await loadTodayList(userId, date).catch((e) => {
       console.error("email: list", e);

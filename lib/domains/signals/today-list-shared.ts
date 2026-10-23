@@ -2,11 +2,12 @@
  * 一分钟清单（经用户同意，2026-10-23）：早上的邮件最上面一框 + 点开的那一页，今天要他点的都在这里，每件点一下。
  * 这里是不碰数据库的部分：有哪几种、什么顺序、各取几件、估几秒、邮件里那一行怎么写。邮件和清单页用同一套。
  */
-import { pct, type Forecast, type ForecastKind, type PendingResolution } from "./forecast-shared";
+import { ANCHOR_LABELS, pct, type Anchor, type Forecast, type ForecastKind, type PendingResolution } from "./forecast-shared";
 import { CONFIDENCE_LEVELS, draftVerdict, type HorizonKey, type PracticeDraft } from "./practice-shared";
 import type { InferenceEvidence } from "./inference-shared";
 
-export type ListForecast = { id: string; title: string; kind: ForecastKind; resolve_on: string; criteria: string; blind: boolean; ai: number | null; three: Forecast[] };
+/** anchor：先摆出来的那个数（市场价 / 统计基准 / AI，见 anchorOf）；先判题不摆，是 null。 */
+export type ListForecast = { id: string; title: string; kind: ForecastKind; resolve_on: string; criteria: string; blind: boolean; anchor: Anchor | null; three: Forecast[] };
 
 export type ListPractice = {
   kind: "practice";
@@ -45,9 +46,9 @@ export type ListCandidates = {
 export const LIST_MAX = 8;
 export const LIST_CAPS = { practice: 1, forecast: 3, confirm: 2, due: 2, recall: 2, experiment: 1 } as const;
 
-/** 按顺序取：练习 → 预测题（先判题排第一；AI 没判又不是先判题的不放）→ 到期确认 → 到期的判断 → 回想 → 实验先猜。 */
+/** 按顺序取：练习 → 预测题（先判题排第一；不是先判题、又没有先摆出来的数的不放）→ 到期确认 → 到期的判断 → 回想 → 实验先猜。 */
 export function pickListItems(c: ListCandidates): { items: ListItem[]; more: number } {
-  const forecasts = [...c.forecasts.filter((q) => q.blind), ...c.forecasts.filter((q) => !q.blind && q.ai !== null)];
+  const forecasts = [...c.forecasts.filter((q) => q.blind), ...c.forecasts.filter((q) => !q.blind && q.anchor !== null)];
   const groups: [ListItem[], number][] = [
     [c.practice ? [c.practice] : [], LIST_CAPS.practice],
     [forecasts.map((q) => ({ kind: "forecast" as const, q })), LIST_CAPS.forecast],
@@ -85,7 +86,7 @@ export function previewLine(item: ListItem): { label: string; title: string; not
       return { label, title: clip(item.question), note: `AI：${v.will ? "会" : "不会"} · ${CONFIDENCE_LEVELS[v.confidence].label}` };
     }
     case "forecast":
-      return { label, title: clip(item.q.title), note: item.q.blind || item.q.ai === null ? "这道先自己判" : `AI：${pct(item.q.ai)}` };
+      return { label, title: clip(item.q.title), note: item.q.blind || !item.q.anchor ? "这道先自己判" : `${ANCHOR_LABELS[item.q.anchor.source]}：${pct(item.q.anchor.probability)}` };
     case "confirm": {
       const s = item.q.pending.suggested;
       return { label, title: clip(item.q.title), note: `程序查到：${s === "yes" ? "看起来「会」" : s === "no" ? "看起来「不会」" : "说不清"}` };

@@ -42,10 +42,12 @@ export async function confirmTapAction(token: string): Promise<{ ok: true; messa
       const base = of("base");
       return {
         ok: true,
-        // AI 那个数写原始的和校准后的，免得「你 49%（同意 AI）· AI 60%」看着对不上
         message: [
           `记上了：你 ${pct(r.probability)}（${MODE_LABELS[r.mode]}）`,
-          ai ? `AI ${pct(ai.probability)}${r.mode === "agree" && Math.abs(ai.probability - r.probability) >= 0.005 ? `（按回测校准是 ${pct(r.probability)}）` : ""}` : "AI 还没判断", market ? `市场 ${pct(market.probability)}` : null, base ? `统计基准 ${pct(base.probability)}` : null]
+          ai ? `AI ${pct(ai.probability)}` : "AI 还没判断",
+          market ? `市场 ${pct(market.probability)}` : null,
+          base ? `统计基准 ${pct(base.probability)}` : null,
+        ]
           .filter(Boolean)
           .join(" · "),
       };

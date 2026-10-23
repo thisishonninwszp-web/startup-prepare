@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatReportDate } from "@/lib/domains/signals/format";
-import { MY_TIERS, pct, SOURCE_LABELS, tiersBeside, type Forecast } from "@/lib/domains/signals/forecast-shared";
+import { ANCHOR_LABELS, ANCHOR_NOTES, MY_TIERS, pct, SOURCE_LABELS, tiersBeside, type Forecast } from "@/lib/domains/signals/forecast-shared";
 import { CONFIDENCE_LEVELS, deadlineLabel, draftVerdict, HORIZONS, MISS_REASONS, type MissReason } from "@/lib/domains/signals/practice-shared";
 import { RECALL_LABELS, type RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { RecallReveal } from "@/lib/domains/signals/recall";
@@ -162,7 +162,7 @@ function ForecastCard({ token, q, onDone }: { token: string; q: ListForecast; on
       <Kind>预测 · {q.resolve_on} 截止</Kind>
       <p className="font-medium leading-7">{q.title}</p>
       {q.criteria && <p className="text-xs leading-6 text-muted-foreground">怎么才算「会」：{q.criteria}</p>}
-      {q.blind || q.ai === null ? (
+      {q.blind || !q.anchor ? (
         <div className="mt-2">
           <p className="text-xs text-muted-foreground">这道先自己判，判完再看 AI 的（每周一道）。你觉得「会」的可能有多大？</p>
           <div className="mt-1 flex flex-wrap gap-1">{MY_TIERS.map((p) => tier(p))}</div>
@@ -170,19 +170,20 @@ function ForecastCard({ token, q, onDone }: { token: string; q: ListForecast; on
       ) : (
         <div className="mt-2">
           <p className="text-sm">
-            AI：<span className="font-mono">{pct(q.ai)}</span> 会
+            {ANCHOR_LABELS[q.anchor.source]}：<span className="font-mono">{pct(q.anchor.probability)}</span> 会
           </p>
+          <p className="text-xs text-muted-foreground">{ANCHOR_NOTES[q.anchor.source]}</p>
           <Views views={q.three} />
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" disabled={pending} onClick={() => act(() => listForecastAction(token, q.id, "agree"))}>
               行
             </Button>
-            {tiersBeside(q.ai, "higher").length > 0 && (
+            {tiersBeside(q.anchor.probability, "higher").length > 0 && (
               <Button size="sm" variant={side === "higher" ? "secondary" : "outline"} disabled={pending} onClick={() => setSide(side === "higher" ? null : "higher")}>
                 不行，更高
               </Button>
             )}
-            {tiersBeside(q.ai, "lower").length > 0 && (
+            {tiersBeside(q.anchor.probability, "lower").length > 0 && (
               <Button size="sm" variant={side === "lower" ? "secondary" : "outline"} disabled={pending} onClick={() => setSide(side === "lower" ? null : "lower")}>
                 不行，更低
               </Button>
@@ -193,8 +194,8 @@ function ForecastCard({ token, q, onDone }: { token: string; q: ListForecast; on
           </div>
           {side && (
             <div className="mt-2 space-y-2">
-              <div className="flex flex-wrap gap-1">{tiersBeside(q.ai, side).map((p) => tier(p, true))}</div>
-              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="一句：你看到了什么 AI 没看到的（可以不写，先写再点档）" maxLength={200} />
+              <div className="flex flex-wrap gap-1">{tiersBeside(q.anchor.probability, side).map((p) => tier(p, true))}</div>
+              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="一句：你看到了什么它没看到的（可以不写，先写再点档）" maxLength={200} />
             </div>
           )}
         </div>
