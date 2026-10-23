@@ -19,7 +19,8 @@ export type RecallItem = { signal_id: string; title: string | null; fetched_at: 
 /** 把在跟的、还没进回想的加进来（第一次在他做那件事一周后问）。迁移没跑返回 false。 */
 async function syncRecall(userId: string, shared: boolean): Promise<boolean> {
   const [followed, existing] = await Promise.all([
-    followedSignals(userId, shared),
+    // 只是点开看过的不进回想（不是他自己说在意的）
+    followedSignals(userId, shared).then((fs) => fs.filter((f) => f.reason !== "opened")),
     supabaseAdmin.from("recall_reviews").select("signal_id").eq("user_id", userId).limit(1000),
   ]);
   if (existing.error) {

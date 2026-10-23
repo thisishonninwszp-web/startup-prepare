@@ -23,6 +23,7 @@ import { setSharePref } from "@/lib/domains/signals/compare";
 import { exportMonth } from "@/lib/domains/signals/storage";
 import type { RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { ExperimentKind } from "@/lib/domains/signals/experiments-shared";
+import { recordOpen } from "@/lib/domains/signals/opens";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -178,5 +179,15 @@ export async function exportThisMonthAction(): Promise<{ ok: true; rows: number 
     return { ok: true, rows: r.rows };
   } catch (error) {
     return { ok: false, message: message(error, "没打包成") };
+  }
+}
+
+/** 报告里展开了一条（被动记录，迁移 100）：记不上就算了，不报错、不刷新页面。 */
+export async function recordOpenAction(signalId: string): Promise<void> {
+  try {
+    const userId = await requireUserId();
+    await recordOpen(userId, String(signalId ?? ""), "report");
+  } catch {
+    // 没登录、迁移没跑：顺手记的，不打扰
   }
 }

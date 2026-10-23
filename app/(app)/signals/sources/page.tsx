@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { BarList } from "@/components/ui/bar-list";
 import { tallyFeedback } from "@/lib/domains/signals/feedback";
 import { decisionCounts, DROPPED_DAYS, droppedSentences, HEALTH_DAYS, sourceHealth, type SourceHealth } from "@/lib/domains/signals/source-health";
+import { openCounts } from "@/lib/domains/signals/opens";
 import { tavilyUsage } from "@/lib/external";
 import { googleSearchCount } from "@/lib/web-search";
 import { envStatus } from "@/lib/domains/signals/env-status";
@@ -35,13 +36,15 @@ export default async function SourcesPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const [feedback, health, google, tavily, dropped, decided] = await Promise.all([
+  const [feedback, health, google, tavily, dropped, decided, opened] = await Promise.all([
     tallyFeedback(user.id, HEALTH_DAYS),
     sourceHealth(user.id),
     googleSearchCount().catch(() => null),
     tavilyUsage(),
     droppedSentences(user.id).catch(() => []),
     decisionCounts(user.id).catch(() => new Map<string, number>()),
+    // 被动记录（迁移 100）：每个源最近这段时间他点开过几条
+    openCounts(user.id, HEALTH_DAYS).catch(() => new Map<string, number>()),
   ]);
   const anyFeedback = feedback.some((f) => f.useful + f.useless > 0);
   const keys = envStatus(process.env);
@@ -187,7 +190,7 @@ export default async function SourcesPage() {
                   <span className="ml-2 text-xs text-muted-foreground">{SECTION_NAMES[r.kind]}</span>
                 </span>
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  抓到 {r.fetched} · 挑中 {r.picked} · 进了决定 {decided.get(r.source) ?? 0}
+                  抓到 {r.fetched} · 挑中 {r.picked} · 你点开 {opened.get(r.source) ?? 0} · 进了决定 {decided.get(r.source) ?? 0}
                 </span>
               </div>
               {verdict(r, decided.get(r.source) ?? 0) && (

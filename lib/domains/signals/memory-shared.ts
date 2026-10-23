@@ -100,7 +100,8 @@ export function interestGroups(marks: { signal_id: string; source: string; title
 // ── 在跟的事 ────────────────────────────────────────────────────────────────
 
 /** 他怎么表示过在意这一条：标过、记成了观察、写过判断（做过的比说过的可信，三样都算）。 */
-export type FollowReason = "mark" | "observation" | "judgment";
+/** opened：没标、没写，但点开看过两天以上（迁移 100，被动记录；比别的弱，只接后来的消息、不进回想）。 */
+export type FollowReason = "mark" | "observation" | "judgment" | "opened";
 
 export type Followed = {
   signal_id: string;
@@ -116,7 +117,7 @@ export type Followed = {
 
 /** 多种理由指向同一条时留一个：标记（带着他写的为什么）优先，其次判断，再次观察；时间取最近的那次。 */
 export function mergeFollowed(rows: Omit<Followed, "title" | "source" | "fetched_at">[]): Omit<Followed, "title" | "source" | "fetched_at">[] {
-  const rank: Record<FollowReason, number> = { mark: 0, judgment: 1, observation: 2 };
+  const rank: Record<FollowReason, number> = { mark: 0, judgment: 1, observation: 2, opened: 3 };
   const byId = new Map<string, Omit<Followed, "title" | "source" | "fetched_at">>();
   for (const r of rows) {
     const prev = byId.get(r.signal_id);
@@ -167,6 +168,7 @@ export function groupStoryUpdates(rows: StoryRow[], followed: Followed[], perSto
 export function followReasonText(f: Pick<Followed, "reason" | "mark">): string {
   if (f.reason === "mark" && f.mark) return `你标了「${MARK_LABELS[f.mark]}」`;
   if (f.reason === "judgment") return "你写过判断";
+  if (f.reason === "opened") return "你点开看过好几回";
   return "你记成了观察";
 }
 

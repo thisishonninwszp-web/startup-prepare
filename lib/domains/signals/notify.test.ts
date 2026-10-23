@@ -113,7 +113,7 @@ describe("每人一份的几块：在跟的事、回想、预测题", () => {
 
   it("HTML 版：新消息带链接；没有这几块就什么都不多", () => {
     const html = buildDailyEmailHtml(input, {});
-    expect(html).toContain('href="https://app.example/signals/u1"');
+    expect(html).toContain('href="https://app.example/signals/u1?from=email"');
     expect(html).toContain("去判断");
     const plain = buildDailyEmailHtml(base, {});
     expect(plain).not.toContain("你在跟的事");

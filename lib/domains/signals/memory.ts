@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { recentOpens, repeatOpened } from "./opens";
 import { executeEmbedding } from "@/lib/ai-gateway";
 import { answerFromArchive, type ArchiveStatement } from "@/lib/ai";
 import { isGithubSource } from "./feeds";
@@ -272,12 +273,14 @@ export const STORIES_MISSING = "迁移 093 还没跑：在 Supabase 的 SQL Edit
  */
 export async function followedSignals(userId: string, shared: boolean): Promise<Followed[]> {
   const since = new Date(Date.now() - FOLLOW_DAYS * 86_400_000).toISOString();
-  const [marks, judgments, kept] = await Promise.all([
+  const [marks, judgments, kept, opens] = await Promise.all([
     supabaseAdmin.from("signal_marks").select("signal_id, mark, note, created_at").eq("user_id", userId).gte("created_at", since).limit(200),
     supabaseAdmin.from("signal_judgments").select("signal_id, created_at").eq("user_id", userId).not("signal_id", "is", null).gte("created_at", since).limit(200),
     shared
       ? supabaseAdmin.from("signal_user_states").select("signal_id, created_at").eq("user_id", userId).eq("status", "promoted").gte("created_at", since).limit(200)
       : supabaseAdmin.from("external_signals").select("id, fetched_at").eq("status", "promoted").gte("fetched_at", since).limit(200),
+    // 点开看过两天以上的也算（被动记录，迁移 100 没跑是空的）
+    recentOpens(userId, FOLLOW_DAYS).catch(() => []),
   ]);
   const rows = [
     ...((marks.error ? [] : marks.data ?? []) as Mark[]).map((m) => ({ signal_id: m.signal_id, reason: "mark" as const, mark: m.mark, note: m.note, at: m.created_at })),
@@ -295,6 +298,7 @@ export async function followedSignals(userId: string, shared: boolean): Promise<
       note: null,
       at: (k.created_at ?? k.fetched_at) as string,
     })),
+    ...repeatOpened(opens).map((o) => ({ signal_id: o.signal_id, reason: "opened" as const, mark: null, note: null, at: o.at })),
   ];
   const merged = mergeFollowed(rows).slice(0, FOLLOW_LIMIT);
   if (merged.length === 0) return [];
