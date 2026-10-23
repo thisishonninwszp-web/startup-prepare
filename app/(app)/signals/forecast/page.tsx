@@ -194,8 +194,7 @@ export default async function ForecastPage() {
                           key={q.id}
                           q={q}
                           blind={blind.has(q.id)}
-                          ai={raw === null ? null : shownAi(raw, calibration)}
-                          calibrated={!!calibration}
+                          ai={raw === null ? null : shownAi(raw, null)}
                           three={forecasts.filter((f) => f.question_id === q.id && THREE_VIEWS.includes(f.source))}
                         />
                       );
