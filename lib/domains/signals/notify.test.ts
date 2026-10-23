@@ -171,3 +171,44 @@ describe("按报纸排的 HTML 版", () => {
     expect(readingMinutes("短")).toBe(1);
   });
 });
+
+describe("一分钟清单", () => {
+  const base = {
+    date: "2026-10-24",
+    practice: { question: "日银会不会加息？", headline: "日银" },
+    overview: null,
+    sections: [],
+    dueCount: 1,
+    freshQuestions: [],
+    url: "https://app.example",
+  };
+  const list = {
+    url: "https://app.example/a/list",
+    seconds: 16,
+    more: 2,
+    lines: [
+      { label: "练习", title: "日银会不会加息？", note: "AI：会 · 很有把握" },
+      { label: "预测", title: "美元兑日元会不会高于 150？", note: "AI：30%" },
+    ],
+  };
+  it("有清单：最上面一框、一个按钮，练习和到期判断不再单列", () => {
+    const html = buildDailyEmailHtml({ ...base, list }, {});
+    expect(html).toContain("今天要你点的 2 件 · 大约 16 秒");
+    expect(html).toContain('href="https://app.example/a/list"');
+    expect(html).toContain("还有 2 件留到明天");
+    expect(html).toContain("AI：会 · 很有把握");
+    expect(html).not.toContain("先写下你的判断，再看 AI 怎么拆");
+    expect(html).not.toContain("条判断到期了");
+  });
+  it("标题和纯文字版开头也先说要点几件", () => {
+    const { subject, text } = buildDailyEmail({ ...base, list });
+    expect(subject).toContain("今天要你点的 2 件（大约 16 秒）");
+    expect(text.startsWith("今天要你点的 2 件 · 大约 16 秒")).toBe(true);
+    expect(text).toContain("一分钟点完：https://app.example/a/list");
+    expect(text).not.toContain("先写下你的判断");
+  });
+  it("没有清单（拿不到口令）或今天没有要点的：照旧", () => {
+    expect(buildDailyEmailHtml(base, {})).toContain("先写下你的判断，再看 AI 怎么拆");
+    expect(buildDailyEmailHtml({ ...base, list: { ...list, lines: [] } }, {})).toContain("先写下你的判断，再看 AI 怎么拆");
+  });
+});
