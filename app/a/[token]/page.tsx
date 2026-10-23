@@ -11,6 +11,9 @@ import { ConfirmTap, RecallTap } from "./tap";
 import { TodayListView } from "./list-view";
 
 export const dynamic = "force-dynamic";
+// 这一页不读登录态（不碰 cookies），只写 dynamic 时 Supabase 的读取还会被 Next 缓存住：
+// 一分钟清单点完再打开，点过的还在（2026-10-23 本机试出来的）。明说每次都现取。
+export const fetchCache = "force-no-store";
 export const metadata: Metadata = { title: "IdeaOS", robots: { index: false, follow: false } };
 
 /**
