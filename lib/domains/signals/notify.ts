@@ -14,7 +14,8 @@ import { cleanBriefItem } from "./filler";
 import { signFlowCard } from "./flow-card-shared";
 import { followReasonText } from "./memory-shared";
 import { MY_TIERS, pct, tiersBeside } from "./forecast-shared";
-import { actionSecret, actionUrl, signAction, type ActionKind } from "@/lib/action-links";
+import { actionSecret, actionUrl, LIST_TTL_DAYS, signAction, type ActionKind } from "@/lib/action-links";
+import { listSeconds, loadTodayList, previewLine } from "./today-list";
 import { loadTodayPersonal } from "./today";
 import { DB_LIMIT_BYTES, storageReport } from "./storage";
 
@@ -71,6 +72,11 @@ export type DailyEmailInput = {
   /** 等他判断的第一道题：点一档就记上（每一档一个链接）。 */
   /** 预测题点一下就记：lead 是那一句开头（先判题 / AI 说几成）。 */
   forecastQuick?: { lead: string; title: string; links: { label: string; url: string }[] } | null;
+  /**
+   * 一分钟清单：今天要他点的几件（邮件里只给一眼）和那一页的链接。每人一份。
+   * 拿不到口令（没配密钥或网址）或者取清单出错为 null，邮件照旧（回想、预测、练习各自单列）。
+   */
+  list?: { url: string; seconds: number; more: number; lines: { label: string; title: string; note: string }[] } | null;
   /** 预测题里等他做的：等判断几道（第一道的题目）、生意题等确认几道。每人一份。 */
   forecastTodo?: { toForecast: number; first: string | null; toConfirm: number } | null;
   url: string | null;
@@ -109,6 +115,11 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 /** 一段话的第一句（邮件里各条只放一句）。 */
+/** 有一分钟清单、而且今天有要点的。 */
+function hasList(input: DailyEmailInput): input is DailyEmailInput & { list: NonNullable<DailyEmailInput["list"]> } {
+  return !!input.list && input.list.lines.length > 0;
+}
+
 export function firstSentence(text: string): string {
   return text.match(/^[^。！？]+[。！？]?/)?.[0] ?? text;
 }
@@ -116,10 +127,20 @@ export function firstSentence(text: string): string {
 /** 邮件正文（纯文本）。像一张便条：先说今天要做的一件事，再列标题，点进去看。 */
 export function buildDailyEmail(input: DailyEmailInput): { subject: string; text: string } {
   const date = formatReportDate(input.date);
-  const subject = input.practice
-    ? `${date}的报告 · 今天的练习：${input.practice.question.slice(0, 40)}`
-    : `${date}的报告好了`;
+  const list = hasList(input) ? input.list : null;
+  // 有清单：标题就说今天要点几件（收件箱里一眼看见很短）
+  const subject = list
+    ? `${date} · 今天要你点的 ${list.lines.length} 件（大约 ${list.seconds} 秒）`
+    : input.practice
+      ? `${date}的报告 · 今天的练习：${input.practice.question.slice(0, 40)}`
+      : `${date}的报告好了`;
   const lines: string[] = [];
+  if (list) {
+    lines.push(`今天要你点的 ${list.lines.length} 件 · 大约 ${list.seconds} 秒`);
+    for (const l of list.lines) lines.push(`· ${l.label}：${l.title}　${l.note}`);
+    if (list.more > 0) lines.push(`还有 ${list.more} 件留到明天。`);
+    lines.push(`一分钟点完：${list.url}`, "");
+  }
   if (input.digest) lines.push(input.digest, "");
   if (input.top && input.top.length > 0) {
     lines.push("最值得点开的几条");
@@ -134,17 +155,20 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     }
     lines.push("");
   }
-  if (input.recall) {
+  // 有清单时回想、练习、到期判断、预测都在清单里，不再单列
+  if (input.recall && !list) {
     const r = input.recall;
     lines.push("回想", `${r.reason}：${r.title}`, "  先别往下看：当时你为什么在意？后来怎样了？想好了再点开看答案：", `  ${r.url}`, "");
   }
-  if (input.practice) {
+  if (input.practice && !list) {
     lines.push("今天的练习", `读这一条：${input.practice.headline}`, `问题：${input.practice.question}`, "先写下你的判断，再看 AI 怎么拆。", "");
   }
   if (input.fastAlerts && input.fastAlerts.length > 0) lines.push("这一周动得不寻常的：", ...input.fastAlerts.map((a) => `· ${a}`), "");
-  if (input.dueCount > 0) lines.push(`有 ${input.dueCount} 条判断到期了，去对一下账。`, "");
-  for (const line of forecastTodoLines(input.forecastTodo)) lines.push(line);
-  if (input.forecastTodo) lines.push(...(input.url ? [`${input.url}/signals/forecast`] : []), "");
+  if (!list) {
+    if (input.dueCount > 0) lines.push(`有 ${input.dueCount} 条判断到期了，去对一下账。`, "");
+    for (const line of forecastTodoLines(input.forecastTodo)) lines.push(line);
+    if (input.forecastTodo) lines.push(...(input.url ? [`${input.url}/signals/forecast`] : []), "");
+  }
   for (const q of input.freshQuestions) {
     lines.push(`你在追的「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`);
   }
@@ -233,9 +257,12 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   const sections = input.sections.filter((s) => s.items.length > 0);
   const sectionCount = sections.reduce((n, s) => n + s.items.length, 0);
 
-  // 「给你的」一框：要他动手的都放这里
+  // 一分钟清单：今天要他点的都在那一页，「给你的」里回想、预测、练习、到期判断不再单列
+  const list = hasList(input) ? input.list : null;
+
+  // 「给你的」一框：要他动手的都放这里（有清单时只剩要读的：在跟的事、在追的问题）
   const mine: string[] = [];
-  if (input.recall) {
+  if (input.recall && !list) {
     const r = input.recall;
     mine.push(
       kicker("回想", C.ink) +
@@ -259,7 +286,7 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
     mine.push(kicker("你在跟的事，有新消息", C.ink) + rows.join(""));
   }
   const forecastBits: string[] = [];
-  if (input.forecastQuick) {
+  if (input.forecastQuick && !list) {
     forecastBits.push(
       para(`${input.forecastQuick.lead}${input.forecastQuick.title}`, "font-size:14px;font-weight:600;margin-bottom:6px;"),
       `<p style="margin:0 0 10px;font-size:13px;line-height:2.2;">${input.forecastQuick.links
@@ -268,11 +295,13 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
         .join(" ")}</p>`
     );
   }
-  for (const line of forecastTodoLines(input.forecastTodo)) forecastBits.push(para(line, "font-size:14px;margin-bottom:4px;"));
-  if (input.dueCount > 0) forecastBits.push(para(`有 ${input.dueCount} 条判断到期了，去对一下账。`, "font-size:14px;margin-bottom:4px;"));
-  if (input.forecastTodo && input.url) forecastBits.push(link(`${input.url}/signals/forecast`, "去判断 →"));
+  if (!list) {
+    for (const line of forecastTodoLines(input.forecastTodo)) forecastBits.push(para(line, "font-size:14px;margin-bottom:4px;"));
+    if (input.dueCount > 0) forecastBits.push(para(`有 ${input.dueCount} 条判断到期了，去对一下账。`, "font-size:14px;margin-bottom:4px;"));
+    if (input.forecastTodo && input.url) forecastBits.push(link(`${input.url}/signals/forecast`, "去判断 →"));
+  }
   if (forecastBits.length > 0) mine.push(kicker("预测", C.ink) + forecastBits.join(""));
-  if (input.practice) {
+  if (input.practice && !list) {
     mine.push(
       kicker("今天的练习", C.ink) +
         para(`读这一条：${input.practice.headline}`, "font-size:14px;margin-bottom:4px;") +
@@ -289,7 +318,11 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
 
   const parts: string[] = [];
   // 收件箱列表里预览的那一行
-  const preheader = input.digest ? firstSentence(input.digest) : input.top?.[0]?.headline ?? "";
+  const preheader = list
+    ? `今天要你点的 ${list.lines.length} 件，大约 ${list.seconds} 秒。${input.digest ? firstSentence(input.digest) : ""}`
+    : input.digest
+      ? firstSentence(input.digest)
+      : input.top?.[0]?.headline ?? "";
   if (preheader) parts.push(`<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(preheader)}</div>`);
 
   // 报头
@@ -300,6 +333,23 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
       `</tr></table>`,
     `<p style="margin:6px 0 22px;font-size:12px;color:${C.muted};">约 ${readingMinutes(text)} 分钟读完${(input.top?.length ?? 0) > 0 ? ` · 头版 ${input.top?.length} 条` : ""}${mine.length > 0 ? ` · 给你的 ${mine.length} 件` : ""}${sectionCount > 0 ? ` · ${sections.length} 个版面 ${sectionCount} 条` : ""}</p>`
   );
+
+  // 一分钟清单：报头下面第一眼就是它；邮件里只给一眼，一个按钮点开那一页
+  if (list) {
+    parts.push(
+      `<div style="margin:0 0 22px;padding:16px 18px;background:${C.tint};border-left:3px solid ${C.accent};border-radius:6px;">` +
+        para(`今天要你点的 ${list.lines.length} 件 · 大约 ${list.seconds} 秒`, "font-size:16px;font-weight:700;margin-bottom:8px;") +
+        list.lines
+          .map(
+            (l) =>
+              `<p style="margin:0 0 4px;font-size:14px;line-height:1.7;color:${C.ink};">· ${esc(l.label)}：${esc(l.title)}<span style="color:${C.muted};">　${esc(l.note)}</span></p>`
+          )
+          .join("") +
+        (list.more > 0 ? para(`还有 ${list.more} 件留到明天。`, `font-size:12px;color:${C.muted};margin:6px 0 0;`) : "") +
+        `<p style="margin:12px 0 0;"><a href="${esc(list.url)}" style="display:inline-block;background:${C.accent};color:${C.card};text-decoration:none;font-size:15px;font-weight:700;padding:8px 18px;border-radius:6px;">一分钟点完 →</a></p>` +
+        `</div>`
+    );
+  }
 
   // 头版
   if (input.digest || (input.top && input.top.length > 0)) {
@@ -478,7 +528,7 @@ async function personalParts(
   userId: string,
   date: string,
   signalIds: string[]
-): Promise<Pick<DailyEmailInput, "stories" | "recall" | "forecastTodo" | "markLinks" | "forecastQuick">> {
+): Promise<Pick<DailyEmailInput, "stories" | "recall" | "forecastTodo" | "markLinks" | "forecastQuick" | "list">> {
   try {
     const t = await loadTodayPersonal(userId, date);
     const f = t.forecast;
@@ -500,7 +550,15 @@ async function personalParts(
             ...[...tiersBeside(aiFirst, "lower"), ...tiersBeside(aiFirst, "higher")].map((p) => ({ label: pct(p), url: tap("forecast", quick.q.id, String(p)) })),
           ];
     const lead = aiFirst === null ? "这道先自己判（每周一道）：" : `AI 说 ${pct(aiFirst)} 会，行不行？点「行」，或者点你觉得的几成 —— `;
+    // 一分钟清单：今天要他点的几件（和那一页同一个取法），一个签好的链接；取不到就不放，邮件照旧
+    const today = await loadTodayList(userId, date).catch((e) => {
+      console.error("email: list", e);
+      return null;
+    });
+    const listUrl = base && secret ? actionUrl(base, signAction({ u: userId, k: "list", t: date, v: "" }, secret, Date.now(), LIST_TTL_DAYS)) : null;
+    const list = today && listUrl ? { url: listUrl, seconds: listSeconds(today.items), more: today.more, lines: today.items.map(previewLine) } : null;
     return {
+      list,
       recall: recallItem && recallUrl ? { title: recallItem.title ?? "（没有标题）", reason: recallItem.reason, url: recallUrl } : null,
       markLinks: Object.fromEntries(
         signalIds.flatMap((id) => {

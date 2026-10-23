@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionSecret, signAction, verifyAction } from "./action-links";
+import { actionSecret, LIST_TTL_DAYS, signAction, verifyAction } from "./action-links";
 
 describe("邮件里点一下就完成的链接", () => {
   const p = { u: "user-1", k: "forecast" as const, t: "q-1", v: "0.7" };
@@ -16,6 +16,12 @@ describe("邮件里点一下就完成的链接", () => {
     const token = signAction(p, "secret", 0);
     expect(verifyAction(token, "secret", 6 * 86_400_000)).not.toBeNull();
     expect(verifyAction(token, "secret", 8 * 86_400_000)).toBeNull();
+  });
+  it("清单的口令：认得出来，过期就不认", () => {
+    const now = Date.parse("2026-10-24T00:00:00Z");
+    const token = signAction({ u: "user-1", k: "list", t: "2026-10-24", v: "" }, "secret", now, LIST_TTL_DAYS);
+    expect(verifyAction(token, "secret", now)?.k).toBe("list");
+    expect(verifyAction(token, "secret", now + (LIST_TTL_DAYS + 1) * 86_400_000)).toBeNull();
   });
   it("密钥：先用 ACTION_SECRET，没配用 CRON_SECRET", () => {
     expect(actionSecret({ CRON_SECRET: "c" })).toBe("c");

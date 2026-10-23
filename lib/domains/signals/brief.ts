@@ -543,6 +543,8 @@ const DIGEST_TIME_BUDGET_MS = 180_000;
 /** 发邮件之前给夜里抓到的算指纹：跑到这个时间以内才算，一次最多这么多条（「你在跟的事，有新消息」要靠它）。 */
 const EMBED_TIME_BUDGET_MS = 220_000;
 const EMBED_BEFORE_EMAIL = 800;
+/** 练习的 AI 先判：跑到这个时间以内才开始出（一道最多三四十秒，300 秒上限里留足发邮件的时间）。 */
+const PRACTICE_DRAFT_BUDGET_MS = 200_000;
 const MORNING_KINDS = ["news", "calendar", "voices", "tools"] as const;
 
 /** 给该跑的账号（见 signalUserIds：配了 IDEAOS_USER_EMAIL 只给那一个），生成这几节。 */
@@ -582,6 +584,17 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
       await generateDigest(userIds[0], tokyoToday());
     } catch (e) {
       failed.push(`今日总览：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // 练习的 AI 先判赶在邮件前出，邮件和一分钟清单里就有那一句；来不及就跳过，7:30 后台会补（周一先判，不出）
+  // practice-draft 经 analysis 又引用这个文件，用到时再加载，免得互相引用
+  if (userIds.length > 0 && Date.now() - startedAt < PRACTICE_DRAFT_BUDGET_MS) {
+    try {
+      const { ensurePracticeDraft } = await import("./practice-draft");
+      await ensurePracticeDraft(userIds[0], tokyoToday());
+    } catch (e) {
+      failed.push(`练习的 AI 先判：${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

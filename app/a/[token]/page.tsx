@@ -6,9 +6,14 @@ import { actionSecret, verifyAction } from "@/lib/action-links";
 import { MARK_LABELS, type MarkKind } from "@/lib/domains/signals/memory-shared";
 import { pct } from "@/lib/domains/signals/forecast-shared";
 import { displayedAi } from "@/lib/domains/signals/forecast";
+import { listSeconds, loadTodayList, tapsThisWeek } from "@/lib/domains/signals/today-list";
 import { ConfirmTap, RecallTap } from "./tap";
+import { TodayListView } from "./list-view";
 
 export const dynamic = "force-dynamic";
+// 这一页不读登录态（不碰 cookies），只写 dynamic 时 Supabase 的读取还会被 Next 缓存住：
+// 一分钟清单点完再打开，点过的还在（2026-10-23 本机试出来的）。明说每次都现取。
+export const fetchCache = "force-no-store";
 export const metadata: Metadata = { title: "IdeaOS", robots: { index: false, follow: false } };
 
 /**
@@ -26,12 +31,18 @@ export default async function TapPage({ params }: { params: { token: string } })
   if (!p) {
     return shell(
       <p className="text-sm leading-7 text-muted-foreground">
-        这个链接过期了（七天内有效）或者不对。
+        这个链接过期了（单件的七天内有效，一分钟清单三天）或者不对。
         <Link href="/signals" className="ml-1 text-primary underline-offset-4 hover:underline">
           回网站上做
         </Link>
       </p>
     );
+  }
+
+  // 一分钟清单：每次打开都现取（在网站上点过的不再出现）；只读，按钮各自再验口令
+  if (p.k === "list") {
+    const [list, taps] = await Promise.all([loadTodayList(p.u, p.t), tapsThisWeek(p.u, p.t).catch(() => null)]);
+    return shell(<TodayListView token={params.token} day={p.t} items={list.items} more={list.more} seconds={listSeconds(list.items)} taps={taps} />);
   }
 
   if (p.k === "forecast") {
