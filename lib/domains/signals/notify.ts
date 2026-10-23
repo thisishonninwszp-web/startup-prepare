@@ -192,110 +192,202 @@ function forecastTodoLines(todo: DailyEmailInput["forecastTodo"]): string[] {
   return out;
 }
 
-/** 邮件颜色：由 app/globals.css 的语义 token 换算成 hex（邮件客户端不一定认 hsl() 和 CSS 变量）。 */
-const EMAIL_COLOR = { paper: "#faf9f7", card: "#ffffff", ink: "#211f1c", accent: "#dd4913", muted: "#706b66", rule: "#e1dfdb" };
+/** 邮件颜色：由 app/globals.css 的语义 token 换算成 hex（邮件客户端不一定认 hsl() 和 CSS 变量）。tint 是「给你的」那一框的底色。 */
+const EMAIL_COLOR = { paper: "#faf9f7", card: "#ffffff", ink: "#211f1c", accent: "#dd4913", muted: "#706b66", rule: "#e1dfdb", tint: "#fbf1ec" };
 
 function esc(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** 前两句（头版卡片上的背景不用全文）。 */
+function firstSentences(text: string, n = 2): string {
+  const parts = text.match(/[^。！？!?]+[。！？!?]?/g) ?? [text];
+  return parts.slice(0, n).join("").trim();
+}
+
+/** 读完大约几分钟（中文一分钟读五百字上下，按纯文字版的长度算）。 */
+export function readingMinutes(text: string): number {
+  return Math.max(1, Math.round(text.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, "").length / 500));
+}
+
 /**
- * HTML 版邮件：最值得点开的几条带背景和一图看懂（images：signal_id → 附件的 cid，没有的就不放图），各节每条标题 + 一句话。
- * 只用行内样式（邮件客户端不认外部样式和 flex）。和纯文字版同一个顺序 —— 改一个记得改另一个。
+ * HTML 版邮件：按报纸排，内容和纯文字版一样，只是让人扫一眼就知道今天有什么、哪里要细看 ——
+ * 报头（日期、几分钟读完、各块几条）→ 头版（今日总览、最值得点开的几条带一图看懂、本周异动）→
+ * 「给你的」一框（回想、在跟的事、预测、练习、在追的问题：要他动手的都在这里）→ 各版（每节一条粗线开头，每条粗体标题加一句话）→ 提醒。
+ * 只用行内样式和表格（邮件客户端不认外部样式和 flex）。images：signal_id → 附件的 cid，没有的就不放图。
  */
 export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<string, string>): string {
   const C = EMAIL_COLOR;
   const para = (text: string, style = "") => `<p style="margin:0 0 12px;font-size:15px;line-height:1.75;color:${C.ink};${style}">${esc(text)}</p>`;
-  const head = (text: string) => `<p style="margin:28px 0 8px;font-size:13px;color:${C.muted};">${esc(text)}</p>`;
+  const kicker = (text: string, color = C.accent) =>
+    `<p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.08em;color:${color};">${esc(text)}</p>`;
   const link = (href: string, text: string) => `<p style="margin:0 0 12px;font-size:14px;"><a href="${esc(href)}" style="color:${C.accent};">${esc(text)}</a></p>`;
   // 点一下就标上（进记忆、进「在跟的事」、以后会回想）
-  const markLine = (m: { important: string; mine: string }) =>
-    `<p style="margin:0 0 8px;font-size:12px;color:${C.muted};">标一下：<a href="${esc(m.important)}" style="color:${C.muted};">重要</a> · <a href="${esc(m.mine)}" style="color:${C.muted};">跟我有关</a></p>`;
-  const parts: string[] = [];
-  if (input.digest) parts.push(para(input.digest));
-  if (input.top && input.top.length > 0) {
-    parts.push(head("最值得点开的几条"));
-    for (const t of input.top) {
-      parts.push(`<div style="margin:0 0 20px;padding:14px 16px;border:1px solid ${C.rule};border-radius:8px;background:${C.card};">`);
-      parts.push(para(t.headline, "font-weight:600;"), para(t.background));
-      const marks = input.markLinks?.[t.signal_id];
-      if (marks) parts.push(markLine(marks));
-      const cid = images[t.signal_id];
-      if (cid) parts.push(`<img src="cid:${esc(cid)}" alt="一图看懂" width="560" style="display:block;width:100%;max-width:560px;height:auto;border-radius:6px;" />`);
-      parts.push("</div>");
-    }
-  }
-  if (input.stories && input.stories.length > 0) {
-    parts.push(head("你在跟的事，有新消息"));
-    for (const s of input.stories) {
-      parts.push(para(`· ${s.title}（${s.reason}）`, "margin-bottom:2px;"));
-      for (const u of s.updates) {
-        parts.push(
-          input.url
-            ? `<p style="margin:0 0 4px 16px;font-size:14px;line-height:1.7;"><a href="${esc(`${input.url}/signals/${u.id}`)}" style="color:${C.accent};">→ ${esc(u.title)}</a></p>`
-            : para(`→ ${u.title}`, "font-size:14px;margin-left:16px;")
-        );
-      }
-    }
-  }
+  const markInline = (m: { important: string; mine: string }) =>
+    `<span style="font-size:12px;color:${C.muted};white-space:nowrap;"> · 标一下：<a href="${esc(m.important)}" style="color:${C.muted};">重要</a> / <a href="${esc(m.mine)}" style="color:${C.muted};">跟我有关</a></span>`;
+  const markLine = (m: { important: string; mine: string }) => `<p style="margin:0 0 4px;">${markInline(m).replace(" · ", "")}</p>`;
+  const rule = `<div style="height:1px;background:${C.rule};margin:14px 0;"></div>`;
+
+  const { text } = buildDailyEmail(input);
+  const sections = input.sections.filter((s) => s.items.length > 0);
+  const sectionCount = sections.reduce((n, s) => n + s.items.length, 0);
+
+  // 「给你的」一框：要他动手的都放这里
+  const mine: string[] = [];
   if (input.recall) {
     const r = input.recall;
-    parts.push(
-      head("回想"),
-      para(`${r.reason}：${r.title}`, "font-weight:600;"),
-      para("先别往下看：当时你为什么在意？后来怎样了？在心里说一遍。", `font-size:14px;color:${C.muted};`),
-      link(r.url, "想好了，看答案")
+    mine.push(
+      kicker("回想", C.ink) +
+        para(`${r.reason}：${r.title}`, "font-weight:600;margin-bottom:4px;") +
+        para("先别往下看：当时你为什么在意？后来怎样了？在心里说一遍。", `font-size:14px;color:${C.muted};margin-bottom:6px;`) +
+        link(r.url, "想好了，看答案 →")
     );
   }
-  if (input.practice) {
-    parts.push(head("今天的练习"), para(`读这一条：${input.practice.headline}`), para(`问题：${input.practice.question}`), para("先写下你的判断，再看 AI 怎么拆。", `color:${C.muted};`));
+  if (input.stories && input.stories.length > 0) {
+    const rows = input.stories.map(
+      (st) =>
+        para(`${st.title}（${st.reason}）`, "font-weight:600;margin-bottom:2px;") +
+        st.updates
+          .map((u) =>
+            input.url
+              ? `<p style="margin:0 0 4px 12px;font-size:14px;line-height:1.7;"><a href="${esc(`${input.url}/signals/${u.id}`)}" style="color:${C.accent};">→ ${esc(u.title)}</a></p>`
+              : para(`→ ${u.title}`, "font-size:14px;margin-left:12px;margin-bottom:4px;")
+          )
+          .join("")
+    );
+    mine.push(kicker("你在跟的事，有新消息", C.ink) + rows.join(""));
   }
-  if (input.fastAlerts && input.fastAlerts.length > 0) parts.push(head("这一周动得不寻常的"), ...input.fastAlerts.map((a) => para(`· ${a}`)));
-  if (input.dueCount > 0) parts.push(para(`有 ${input.dueCount} 条判断到期了，去对一下账。`));
-  for (const line of forecastTodoLines(input.forecastTodo)) parts.push(para(line));
+  const forecastBits: string[] = [];
   if (input.forecastQuick) {
-    parts.push(para(`先说你的判断（点一下，确认就记上）：${input.forecastQuick.title}`, "font-size:14px;margin-bottom:4px;"));
-    parts.push(
-      `<p style="margin:0 0 12px;font-size:14px;">${input.forecastQuick.links
-        .map((l) => `<a href="${esc(l.url)}" style="color:${C.accent};margin-right:10px;">${esc(l.label)}</a>`)
-        .join("")}</p>`
+    forecastBits.push(
+      para(`先说你的判断：${input.forecastQuick.title}`, "font-size:14px;font-weight:600;margin-bottom:6px;"),
+      `<p style="margin:0 0 10px;font-size:13px;line-height:2.2;">${input.forecastQuick.links
+        .map((l) => `<a href="${esc(l.url)}" style="color:${C.accent};text-decoration:none;border:1px solid ${C.accent};border-radius:999px;padding:2px 9px;margin-right:2px;white-space:nowrap;">${esc(l.label)}</a>`)
+        // 几个之间留空格：手机上一行放不下时才能换行
+        .join(" ")}</p>`
     );
   }
-  if (input.forecastTodo && input.url) parts.push(link(`${input.url}/signals/forecast`, "去判断"));
-  for (const q of input.freshQuestions) parts.push(para(`你在追的「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`));
-  if (input.overview) parts.push(para(input.overview));
-  for (const s of input.sections) {
-    if (s.items.length === 0) continue;
-    parts.push(head(`【${s.title}】`));
-    for (const item of s.items) {
-      parts.push(para(`· ${item.headline}`, "margin-bottom:2px;"));
-      const marks = item.signal_id ? input.markLinks?.[item.signal_id] : undefined;
+  for (const line of forecastTodoLines(input.forecastTodo)) forecastBits.push(para(line, "font-size:14px;margin-bottom:4px;"));
+  if (input.dueCount > 0) forecastBits.push(para(`有 ${input.dueCount} 条判断到期了，去对一下账。`, "font-size:14px;margin-bottom:4px;"));
+  if (input.forecastTodo && input.url) forecastBits.push(link(`${input.url}/signals/forecast`, "去判断 →"));
+  if (forecastBits.length > 0) mine.push(kicker("预测", C.ink) + forecastBits.join(""));
+  if (input.practice) {
+    mine.push(
+      kicker("今天的练习", C.ink) +
+        para(`读这一条：${input.practice.headline}`, "font-size:14px;margin-bottom:4px;") +
+        para(`问题：${input.practice.question}`, "font-size:14px;font-weight:600;margin-bottom:4px;") +
+        para("先写下你的判断，再看 AI 怎么拆。", `font-size:13px;color:${C.muted};`)
+    );
+  }
+  if (input.freshQuestions.length > 0) {
+    mine.push(
+      kicker("你在追的问题", C.ink) +
+        input.freshQuestions.map((q) => para(`「${q.question}」：和上一轮比，新冒出来 ${q.freshCount} 条证据。`, "font-size:14px;margin-bottom:4px;")).join("")
+    );
+  }
+
+  const parts: string[] = [];
+  // 收件箱列表里预览的那一行
+  const preheader = input.digest ? firstSentence(input.digest) : input.top?.[0]?.headline ?? "";
+  if (preheader) parts.push(`<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(preheader)}</div>`);
+
+  // 报头
+  parts.push(
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:2px solid ${C.ink};"><tr>` +
+      `<td style="padding:0 0 6px;font-size:22px;font-weight:700;color:${C.ink};">IdeaOS 早报</td>` +
+      `<td align="right" style="padding:0 0 6px;font-size:13px;color:${C.muted};">${esc(formatReportDate(input.date))}</td>` +
+      `</tr></table>`,
+    `<p style="margin:6px 0 22px;font-size:12px;color:${C.muted};">约 ${readingMinutes(text)} 分钟读完${(input.top?.length ?? 0) > 0 ? ` · 头版 ${input.top?.length} 条` : ""}${mine.length > 0 ? ` · 给你的 ${mine.length} 件` : ""}${sectionCount > 0 ? ` · ${sections.length} 个版面 ${sectionCount} 条` : ""}</p>`
+  );
+
+  // 头版
+  if (input.digest || (input.top && input.top.length > 0)) {
+    parts.push(kicker("头版"));
+    if (input.digest) {
+      input.digest
+        .split(/\n+/)
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .forEach((p, i) => parts.push(para(p, i === 0 ? "font-size:17px;line-height:1.7;font-weight:600;" : "")));
+    }
+    for (const t of input.top ?? []) {
+      parts.push(`<div style="margin:6px 0 16px;padding:14px 16px;border:1px solid ${C.rule};border-radius:8px;background:${C.card};">`);
+      parts.push(para(t.headline, "font-size:16px;font-weight:700;margin-bottom:6px;"), para(firstSentences(t.background), `font-size:14px;color:${C.muted};margin-bottom:8px;`));
+      const cid = images[t.signal_id];
+      if (cid) parts.push(`<img src="cid:${esc(cid)}" alt="一图看懂" width="560" style="display:block;width:100%;max-width:560px;height:auto;border-radius:6px;margin-bottom:6px;" />`);
+      const marks = input.markLinks?.[t.signal_id];
       if (marks) parts.push(markLine(marks));
-      if (item.background) parts.push(para(firstSentence(item.background), `font-size:14px;color:${C.muted};`));
-      if (item.surprise) parts.push(para(`↳ 意外：原本以为${item.surprise.expected}，结果${item.surprise.actual}。为什么？`, "font-size:14px;"));
-      if (item.related_question) parts.push(para(`↳ 跟你在追的「${item.related_question.question}」有关`, "font-size:14px;"));
+      parts.push("</div>");
+    }
+    if (input.fastAlerts && input.fastAlerts.length > 0) {
+      parts.push(
+        `<div style="margin:0 0 16px;padding:10px 14px;border-left:3px solid ${C.rule};">${kicker("这一周动得不寻常的", C.muted)}${input.fastAlerts
+          .map((a) => para(a, "font-size:14px;margin-bottom:4px;"))
+          .join("")}</div>`
+      );
     }
   }
-  if (input.issueReminder) {
+
+  // 给你的
+  if (mine.length > 0) {
     parts.push(
-      para(
-        input.issueReminder === "unwritten"
-          ? "今天周五，这周的周刊还没写。挑一两条、每条点三下就是判断，十分钟的事。"
-          : "今天周五，这周的周刊写好了，还没发出去。"
-      )
+      `<div style="margin:22px 0;padding:16px 18px;background:${C.tint};border-left:3px solid ${C.accent};border-radius:6px;">${kicker("给你的")}${mine.join(rule)}</div>`
     );
-    if (input.url) parts.push(link(`${input.url}/signals/issue`, "去写周刊"));
+  }
+
+  // 各版
+  for (const sec of sections) {
+    parts.push(
+      `<div style="margin:26px 0 10px;border-top:2px solid ${C.ink};padding-top:6px;"><span style="font-size:15px;font-weight:700;color:${C.ink};">${esc(sec.title)}</span><span style="font-size:12px;color:${C.muted};margin-left:8px;">${sec.items.length} 条</span></div>`
+    );
+    if (sec === sections[0] && input.overview && sec.title === "今天的世界") parts.push(para(input.overview, `font-size:14px;color:${C.muted};`));
+    sec.items.forEach((item, i) => {
+      const marks = item.signal_id ? input.markLinks?.[item.signal_id] : undefined;
+      parts.push(
+        `<div style="margin:0 0 12px;">` +
+          `<p style="margin:0 0 2px;font-size:15px;line-height:1.6;font-weight:600;color:${C.ink};"><span style="font-family:Menlo,monospace;font-size:12px;font-weight:400;color:${C.muted};margin-right:6px;">${String(i + 1).padStart(2, "0")}</span>${esc(item.headline)}</p>` +
+          (item.background || marks
+            ? `<p style="margin:0;font-size:13.5px;line-height:1.65;color:${C.muted};">${item.background ? esc(firstSentence(item.background)) : ""}${marks ? markInline(marks) : ""}</p>`
+            : "") +
+          (item.surprise
+            ? `<p style="margin:2px 0 0;font-size:13.5px;line-height:1.65;color:${C.accent};">↳ 意外：原本以为${esc(item.surprise.expected)}，结果${esc(item.surprise.actual)}。为什么？</p>`
+            : "") +
+          (item.related_question ? `<p style="margin:2px 0 0;font-size:13.5px;line-height:1.65;color:${C.ink};">↳ 跟你在追的「${esc(item.related_question.question)}」有关</p>` : "") +
+          `</div>`
+      );
+    });
+  }
+  // 「今天的世界」那一节没有条目、导语还在的话，单独放
+  if (input.overview && !(sections[0]?.title === "今天的世界")) parts.push(para(input.overview, `font-size:14px;color:${C.muted};`));
+
+  // 提醒
+  const notes: string[] = [];
+  const warn = storageWarning(input.storagePct);
+  if (warn) notes.push(para(warn, "font-size:14px;font-weight:600;margin-bottom:4px;") + (input.url ? link(`${input.url}/signals/memory#storage`, "看各张表多大") : ""));
+  if (input.issueReminder) {
+    notes.push(
+      para(
+        input.issueReminder === "unwritten" ? "今天周五，这周的周刊还没写。挑一两条、每条点三下就是判断，十分钟的事。" : "今天周五，这周的周刊写好了，还没发出去。",
+        "font-size:14px;margin-bottom:4px;"
+      ) + (input.url ? link(`${input.url}/signals/issue`, "去写周刊") : "")
+    );
   }
   if (isMonday(input.date)) {
-    parts.push(para("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。"));
-    if (input.url) parts.push(link(`${input.url}/signals/slow`, "慢变量"), link(`${input.url}/signals/week`, "上一周的周报"));
+    notes.push(
+      para("今天是周一，看一眼慢变量：人口、劳动年龄人口、物价、汇率，这一周又往哪边挪了一点。", "font-size:14px;margin-bottom:4px;") +
+        (input.url ? link(`${input.url}/signals/slow`, "慢变量") + link(`${input.url}/signals/week`, "上一周的周报") : "")
+    );
   }
-  const warn = storageWarning(input.storagePct);
-  if (warn) parts.push(para(warn, "font-weight:600;"), ...(input.url ? [link(`${input.url}/signals/memory#storage`, "看各张表多大")] : []));
   if (isArchiveDay(input.date) && input.url) {
-    parts.push(para("上个月的存档打包好了：下载一份放在自己电脑上，就是完整的离线备份。", `font-size:14px;color:${C.muted};`), link(`${input.url}/signals/memory#storage`, "去下载"));
+    notes.push(para("上个月的存档打包好了：下载一份放在自己电脑上，就是完整的离线备份。", "font-size:14px;margin-bottom:4px;") + link(`${input.url}/signals/memory#storage`, "去下载"));
   }
-  if (input.url) parts.push(link(`${input.url}/signals`, "打开今天的报告"));
+  if (notes.length > 0) parts.push(`<div style="margin:26px 0 0;padding:14px 16px;background:${C.card};border:1px solid ${C.rule};border-radius:6px;">${kicker("提醒", C.muted)}${notes.join(rule)}</div>`);
+
+  if (input.url) {
+    parts.push(
+      `<p style="margin:28px 0 8px;text-align:center;"><a href="${esc(`${input.url}/signals`)}" style="display:inline-block;padding:10px 22px;border:1px solid ${C.ink};border-radius:999px;color:${C.ink};text-decoration:none;font-size:14px;">打开今天的报告</a></p>`
+    );
+  }
   return `<!doctype html><html><body style="margin:0;padding:24px 16px;background:${C.paper};font-family:-apple-system,'PingFang SC','Hiragino Sans','Noto Sans SC',sans-serif;"><div style="max-width:600px;margin:0 auto;">${parts.join("")}</div></body></html>`;
 }
 

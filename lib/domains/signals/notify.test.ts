@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDailyEmail, buildDailyEmailHtml, emailConfig, firstSentence, isFriday, isMonday } from "./notify";
+import { buildDailyEmail, buildDailyEmailHtml, emailConfig, firstSentence, isFriday, isMonday, readingMinutes } from "./notify";
 
 describe("早上的提醒邮件", () => {
   it("没配就说缺什么；收信地址不填就发给自己", () => {
@@ -145,5 +145,28 @@ describe("数据库快满了提醒", () => {
   it("用到 60% 才提", () => {
     expect(buildDailyEmail({ ...base, storagePct: 59 }).text).not.toContain("数据库已经用了");
     expect(buildDailyEmail({ ...base, storagePct: 61 }).text).toContain("数据库已经用了免费版上限（500MB）的 61%");
+  });
+});
+
+describe("按报纸排的 HTML 版", () => {
+  const base = { date: "2026-10-23", practice: null, overview: null, dueCount: 0, freshQuestions: [], url: "https://app.example" };
+  it("报头有日期、几分钟读完、各块几条；收件箱预览是总览的第一句", () => {
+    const html = buildDailyEmailHtml(
+      { ...base, digest: "今天最重要的是日银加息。其次是PHP漏洞。", sections: [{ title: "今天的世界", items: [{ headline: "A" }, { headline: "B" }] }] },
+      {}
+    );
+    expect(html).toContain("IdeaOS 早报");
+    expect(html).toContain("10月23日");
+    expect(html).toMatch(/约 \d+ 分钟读完/);
+    expect(html).toContain("1 个版面 2 条");
+    expect(html).toContain('display:none;max-height:0;overflow:hidden;opacity:0;">今天最重要的是日银加息。');
+  });
+  it("「给你的」一框只在有要他动手的事时出现", () => {
+    expect(buildDailyEmailHtml({ ...base, sections: [] }, {})).not.toContain("给你的");
+    expect(buildDailyEmailHtml({ ...base, sections: [], dueCount: 2 }, {})).toContain("给你的");
+  });
+  it("几分钟读完：五百字一分钟，至少一分钟", () => {
+    expect(readingMinutes("字".repeat(1600))).toBe(3);
+    expect(readingMinutes("短")).toBe(1);
   });
 });
