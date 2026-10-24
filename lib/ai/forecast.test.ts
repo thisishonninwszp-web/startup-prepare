@@ -7,6 +7,8 @@ import {
   parseBusinessQuestions,
   parseMarketTranslation,
   parsePerspectiveForecast,
+  longestSharedRun,
+  parseReferenceClass,
   parseResolutionDraft,
   verifiedExcerpts,
 } from "./forecast";
@@ -106,5 +108,25 @@ describe("三种思路各搜各的：搜索词", () => {
     });
     expect(() => parsePerspectiveQueries({ outside: "a b", inside: "c d" })).toThrow();
     expect(() => parsePerspectiveQueries({ outside: "x".repeat(81), inside: "c d", devil: "e f" })).toThrow();
+  });
+
+  it("reference class: 一类事说成一句；同类只留名字和年份，写了结果、晚于那天的不收", () => {
+    const r = parseReferenceClass(
+      {
+        kind: "一台新游戏机发售头一年，在日本卖得比在美洲多。",
+        examples: ["Switch（2017）", "PS5（2020）日本卖得更少", "Switch 3（2027）", "Wii U"],
+      },
+      "2025-07-01"
+    );
+    expect(r).toEqual({ kind: "一台新游戏机发售头一年，在日本卖得比在美洲多", examples: ["Switch（2017）"] });
+    expect(() => parseReferenceClass({ kind: "短", examples: [] }, "2025-07-01")).toThrow();
+    expect(() => parseReferenceClass({ kind: "新主机头一年日本卖得多的可能性", examples: [] }, "2025-07-01")).toThrow("可能性");
+  });
+
+  it("reference class: 只是把题目换个说法的不收", () => {
+    const title = "日本会不会在 2027 年底前出现一位女性首相？";
+    expect(longestSharedRun("日本在三年内出现一位女性首相", title)).toBeGreaterThanOrEqual(6);
+    expect(() => parseReferenceClass({ kind: "日本在三年内出现一位女性首相", examples: [] }, "2025-07-29", title)).toThrow("换了个说法");
+    expect(parseReferenceClass({ kind: "一个从没有过女性首脑的大国，两三年内出现第一位", examples: [] }, "2025-07-29", title).kind).toContain("大国");
   });
 });

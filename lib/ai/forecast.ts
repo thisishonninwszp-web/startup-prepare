@@ -107,6 +107,78 @@ export async function prepareHistoryQuestion(input: { question: string; descript
   );
 }
 
+// ── 校准练习的「这一类事」：说成一类具体的事，再给几个以前的同类 ───────────────
+
+/**
+ * 校准练习第一步问「这一类事一般几成会发生」，他不知道「一类」指什么（2026-10-24）。
+ * kind：去掉这件事的专名和日子，说成一类常见的事；examples：那天以前的几个同类，只给名字和年份、不给结果 —— 结果他自己回想。
+ */
+export type ReferenceClass = { kind: string; examples: string[] };
+
+const referencePrompt = (asOf: string) => `下面是一道预测题，假设今天是 ${asOf}。他要先想「像这样的事，一般有几成会发生」，再看这件事本身；可他不知道「像这样的事」指什么。帮他说清楚：
+- kind：把这件事放大成一类以前发生过很多次、数得出来的事，一句短话（8 到 40 字）。
+  要把题目里的主角（国家、公司、人、产品）和具体日子换成它所属的那一类 —— 不是把题目换个说法再说一遍。
+  例：「Switch 2 到 2025 年底在日本卖得会不会比美洲多」→「一台新游戏机发售头一年，在日本卖得比在美洲多」；
+  「日本会不会在 2027 年底前出现女性首相」→「一个从没有过女性首脑的大国，两三年内出现第一位」；
+  「美联储会不会在 9 月降息」→「市场普遍预期要降息的那次议息会议，真的降了」。
+- examples：2 到 3 个在 ${asOf} 以前就有结果的同类，每个只写名字和年份（例：「Switch（2017）」「PS5（2020）」）。不写结果、不写数字、不写谁赢了 —— 结果让他自己回想。尽量既有后来发生了的、也有没发生的（只举发生了的，他会以为这类事很常见），但不说哪个是哪个。想不出真实的同类就给空数组，不要编。
+用简体中文，名字可以保留原文。不写可能性，不写你的看法。
+只输出 JSON：{"kind":"…","examples":["…"]}`;
+
+/** 两句话里最长的一段相同的字（去掉空白和标点）：kind 跟题目连着六个字一样，多半只是把题目换了个说法。 */
+export function longestSharedRun(a: string, b: string): number {
+  const clean = (t: string) => t.replace(/[\s\p{P}]/gu, "");
+  const x = clean(a);
+  const y = clean(b);
+  let best = 0;
+  for (let i = 0; i < x.length; i++) {
+    for (let j = 0; j < y.length; j++) {
+      let k = 0;
+      while (i + k < x.length && j + k < y.length && x[i + k] === y[j + k]) k++;
+      if (k > best) best = k;
+    }
+  }
+  return best;
+}
+
+const MAX_SHARED_WITH_TITLE = 6;
+
+/** 写了结果的同类不收（「Switch（2017）日本卖得更多」）：结果要他自己想。 */
+const EXAMPLE_OUTCOME = /卖得|超过|多于|少于|更多|更少|成功|失败|赢|输|通过|没有|发生|上涨|下跌|%/;
+
+export function parseReferenceClass(value: unknown, asOf: string, title = ""): ReferenceClass {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const kind = typeof v.kind === "string" ? v.kind.trim().replace(/[。.]$/, "") : "";
+  if (kind.length < 6 || kind.length > 50) throw new Error("kind 太短或太长");
+  if (title && longestSharedRun(kind, title) >= MAX_SHARED_WITH_TITLE) throw new Error("kind 只是把题目换了个说法");
+  if (/\d+\s*[%％]|几成|概率|可能性/.test(kind)) throw new Error("kind 写了可能性");
+  assertChineseAllowingNames([kind]);
+  const asOfYear = Number(asOf.slice(0, 4));
+  const examples = (Array.isArray(v.examples) ? v.examples : [])
+    .filter((e): e is string => typeof e === "string")
+    .map((e) => e.trim())
+    .filter((e) => {
+      const years = (e.match(/(19|20)\d{2}/g) ?? []).map(Number);
+      return e.length > 0 && e.length <= 30 && years.length > 0 && years.every((y) => y <= asOfYear) && !EXAMPLE_OUTCOME.test(e);
+    })
+    .slice(0, 3);
+  return { kind, examples };
+}
+
+export async function planReferenceClass(input: { title: string; criteria: string; asOf: string }): Promise<ReferenceClass> {
+  return executeAiJson(
+    { operation: "forecast_history_reference", module: "unknown", outputMode: "json", timeoutMs: 15_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents:
+        [`题目：${input.title}`, `怎么才算「会」：${input.criteria}`].join("\n") +
+        (attempt === 1 ? "\n\n上一次的 kind 跟题目太像了：把主角和日子换成它所属的那一类，说成以前发生过很多次的事。" : ""),
+      config: { systemInstruction: referencePrompt(input.asOf), responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 512 }, maxOutputTokens: 800 },
+    }),
+    (value) => parseReferenceClass(value, input.asOf, input.title)
+  );
+}
+
 // ── 到日本题：差距清单里的一条到某天会不会在日本出现 ───────────────────────────
 
 export type ArrivalDraft = { title: string; criteria: string; resolveOn: string; category: AtlasCategoryKey };

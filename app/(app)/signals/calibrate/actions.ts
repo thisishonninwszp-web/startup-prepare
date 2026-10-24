@@ -1,10 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { answerDrill, type DrillReveal } from "@/lib/domains/signals/backtest";
 
-/** 交一道校准练习（或者说「我记得结果」），返回揭晓。 */
+/**
+ * 交一道校准练习（或者说「我记得结果」），返回揭晓。
+ * 这里不刷新页面：一刷新，下一道就把这张卡换掉，揭晓一闪就没了（2026-10-24 他碰到的）；
+ * 揭晓下面的「下一道」才刷新。
+ */
 export async function answerDrillAction(
   questionId: string,
   input: { baseRate: number | null; probability: number | null; knew: boolean }
@@ -16,7 +19,6 @@ export async function answerDrillAction(
     } = await supabase.auth.getUser();
     if (!user) throw new Error("未登录");
     const reveal = await answerDrill(user.id, questionId, input);
-    revalidatePath("/signals/calibrate");
     return { ok: true, reveal };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "没交上" };

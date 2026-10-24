@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { selectAll } from "@/lib/supabase-all";
-import { forecastFromPerspective, prepareHistoryQuestion, type Perspective } from "@/lib/ai";
+import { forecastFromPerspective, planReferenceClass, prepareHistoryQuestion, type Perspective, type ReferenceClass } from "@/lib/ai";
 import { medianProbability } from "./forecast-shared";
 import { gdeltNews } from "./gdelt";
 import {
@@ -160,7 +160,10 @@ async function prepareOne(row: PendingRow): Promise<boolean> {
     context: "",
     sources: news.map((n) => ({ title: n.title, url: n.url, content: `${n.date} ${n.domain}：${n.title}` })),
   };
-  const results = await Promise.allSettled(PERSPECTIVES.map((persp) => forecastFromPerspective(persp, input)));
+  const [results, ref] = await Promise.all([
+    Promise.allSettled(PERSPECTIVES.map((persp) => forecastFromPerspective(persp, input))),
+    planReferenceClass({ title: prepared.title, criteria: prepared.criteria, asOf: row.as_of }).catch(() => null),
+  ]);
   const ok = results.flatMap((r, i) => (r.status === "fulfilled" ? [{ key: PERSPECTIVES[i], p: r.value.probability, reason: r.value.reason }] : []));
   const median = ok.length >= 2 ? medianProbability(ok.map((o) => o.p)) : null;
   if (median === null) return skip(row.id, "AI 没判断成").then(() => false);
@@ -174,7 +177,7 @@ async function prepareOne(row: PendingRow): Promise<boolean> {
       category: prepared.category,
       market_prob: p,
       news,
-      ai: { ...Object.fromEntries(ok.map((o) => [o.key, { p: o.p, reason: o.reason }])), median, v: PREPARE_VERSION },
+      ai: { ...Object.fromEntries(ok.map((o) => [o.key, { p: o.p, reason: o.reason }])), median, v: PREPARE_VERSION, ...(ref ? { ref } : {}) },
       prepared_at: new Date().toISOString(),
     })
     .eq("id", row.id);
@@ -212,8 +215,9 @@ async function countStatus(status: "ready" | "pending"): Promise<number> {
 export async function runHistoryStep(today: string, startBeforeMs: number): Promise<{ done: boolean; did: number; remaining: number; note?: string }> {
   const started = Date.now();
   await redoOldPreparations();
+  const refs = await backfillReferences(started, Math.min(startBeforeMs, REFERENCE_BUDGET_MS));
   const ready = await countStatus("ready");
-  if (ready >= HISTORY_TARGET) return { done: true, did: 0, remaining: 0, note: `题库满了（${ready} 道）` };
+  if (ready >= HISTORY_TARGET) return { done: refs.remaining === 0 || refs.did === 0, did: 0, remaining: refs.remaining, note: `题库满了（${ready} 道）；补「这一类事」${refs.did} 道` };
   const pendingRows = async () => {
     const { data, error } = await supabaseAdmin
       .from("forecast_history")
@@ -243,9 +247,54 @@ export async function runHistoryStep(today: string, startBeforeMs: number): Prom
   return { done: remaining === 0 || ready + did >= HISTORY_TARGET, did, remaining };
 }
 
+// ── 「这一类事」：校准练习第一步说清楚问的是哪一类（2026-10-24） ─────────────────
+
+/** 一次后台最多花多久补老题的「这一类事」（剩下的时间留给准备新题）。 */
+const REFERENCE_BUDGET_MS = 90_000;
+/** 一次并排补几道（一道一次不上网的 AI 调用，两三秒）。 */
+const REFERENCE_PARALLEL = 5;
+
+type RefRow = { id: string; title: string; criteria: string; as_of: string; ai: AiView };
+
+/** 补一道的「这一类事」，存在 ai.ref（不加列）。补不出来返回 null，练习页退回一句通用的说明。 */
+async function saveReference(row: RefRow): Promise<ReferenceClass | null> {
+  const ref = await planReferenceClass({ title: row.title, criteria: row.criteria, asOf: row.as_of }).catch(() => null);
+  if (!ref) return null;
+  const { error } = await supabaseAdmin.from("forecast_history").update({ ai: { ...row.ai, ref } }).eq("id", row.id);
+  if (error) console.error("history reference", error.message);
+  return ref;
+}
+
+/** 后台：老题还没有「这一类事」的，按练习出题的顺序（跟日本、中国、经济有关的先）补，几道一起。 */
+async function backfillReferences(started: number, budgetMs: number): Promise<{ did: number; remaining: number }> {
+  const { data, error, count } = await supabaseAdmin
+    .from("forecast_history")
+    .select("id, title, criteria, as_of, ai", { count: "exact" })
+    .eq("status", "ready")
+    .is("ai->>ref", null)
+    .order("priority", { ascending: false })
+    .limit(150);
+  if (error) throw new Error(missing(error) ? HISTORY_MISSING : error.message);
+  const rows = ((data ?? []) as RefRow[]).filter((r) => r.ai && r.title && r.criteria);
+  let did = 0;
+  for (let i = 0; i < rows.length; i += REFERENCE_PARALLEL) {
+    if (Date.now() - started > budgetMs) break;
+    const saved = await Promise.all(rows.slice(i, i + REFERENCE_PARALLEL).map(saveReference));
+    did += saved.filter(Boolean).length;
+  }
+  return { did, remaining: Math.max(0, (count ?? rows.length) - did) };
+}
+
 // ── 校准练习 ────────────────────────────────────────────────────────────────
 
-export type AiView = { median: number; outside?: { p: number; reason: string }; inside?: { p: number; reason: string }; devil?: { p: number; reason: string } };
+export type AiView = {
+  median: number;
+  outside?: { p: number; reason: string };
+  inside?: { p: number; reason: string };
+  devil?: { p: number; reason: string };
+  /** 「这一类事」：说成一类具体的事 + 那天以前的几个同类（只有名字和年份）。 */
+  ref?: ReferenceClass;
+};
 
 /** 练习时给他看的：不带实际结算日（提前结算的题，结算日就透露了答案）。 */
 export type DrillQuestion = {
@@ -255,6 +304,8 @@ export type DrillQuestion = {
   category: string | null;
   as_of: string;
   news: HistoryNews[];
+  /** 第一步「这一类事」问的是哪一类（没补出来是 null）。 */
+  ref: ReferenceClass | null;
 };
 
 export type DrillReveal = {
@@ -295,9 +346,12 @@ export async function nextDrillQuestion(userId: string): Promise<DrillQuestion |
     .filter((r) => !answered.has(r.id))
     .sort((a, b) => b.priority - a.priority || order(a.id, userId) - order(b.id, userId))[0];
   if (!next) return null;
-  const { data, error: rowError } = await supabaseAdmin.from("forecast_history").select("id, title, criteria, category, as_of, news").eq("id", next.id).single();
+  const { data, error: rowError } = await supabaseAdmin.from("forecast_history").select("id, title, criteria, category, as_of, news, ai").eq("id", next.id).single();
   if (rowError) throw new Error(rowError.message);
-  return { ...(data as Omit<DrillQuestion, "news">), news: ((data as { news: HistoryNews[] | null }).news ?? []) as HistoryNews[] };
+  const row = data as Omit<DrillQuestion, "news" | "ref"> & { news: HistoryNews[] | null; ai: AiView };
+  // 后台还没补到这道：现在补（两三秒），补不出来就用通用的说明
+  const ref = row.ai?.ref ?? (await saveReference({ id: row.id, title: row.title, criteria: row.criteria, as_of: row.as_of, ai: row.ai }));
+  return { id: row.id, title: row.title, criteria: row.criteria, category: row.category, as_of: row.as_of, news: row.news ?? [], ref };
 }
 
 const isTier = (p: number | null) => p === null || (Number.isFinite(p) && p > 0 && p < 1);

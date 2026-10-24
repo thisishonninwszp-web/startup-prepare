@@ -78,7 +78,19 @@ export function DrillCard({ q }: { q: DrillQuestion }) {
 
       {!reveal && (
         <>
-          <p className="mt-4 text-xs text-muted-foreground">① 先别看细节：这一类事（同类的公司、同类的政策、类似的期限）一般几成会发生？</p>
+          {q.ref ? (
+            <div className="mt-4 text-xs leading-6 text-muted-foreground">
+              <p>
+                ① 先别看这件事的细节，把它当成一类常见的事：<span className="font-medium text-foreground">「{q.ref.kind}」</span>
+                。像这样的事，一般几成会发生？
+              </p>
+              {q.ref.examples.length > 0 && <p>可以想想以前的：{q.ref.examples.join("、")} —— 各是什么结果，你自己回想。</p>}
+            </div>
+          ) : (
+            <p className="mt-4 text-xs leading-6 text-muted-foreground">
+              ① 先别看这件事的细节：把题目里的名字和日子去掉，像这样的事一般几成会发生？想不出同类的就跳过。
+            </p>
+          )}
           {tiers((p) => {
             setBase(p);
             setBaseDone(true);
