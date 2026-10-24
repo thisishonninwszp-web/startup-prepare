@@ -9,6 +9,10 @@ import {
   groundBrief,
   linkPicksToQuestions,
   linkPicksToReader,
+  practiceProblem,
+  reworkPractice,
+  type BriefCandidate,
+  type BriefPractice,
   type SignalReader,
   type AnalogCheck,
   type CompareSide,
@@ -321,12 +325,47 @@ export async function loadBriefCandidates(kind: SignalKind) {
 }
 
 /** 返回 null 表示最近一天半没有可挑的条目（还没抓过），什么都没生成。 */
+/** 最近 7 天这个人的报告里出过的练习题（只拿题目）。 */
+async function recentPracticeQuestions(userId: string): Promise<string[]> {
+  const since = new Date(Date.parse(`${tokyoToday()}T00:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10);
+  const { data, error } = await supabaseAdmin
+    .from("signal_briefs")
+    .select("practice")
+    .eq("user_id", userId)
+    .eq("kind", "news")
+    .gte("brief_date", since)
+    .lt("brief_date", tokyoToday());
+  if (error) return [];
+  return ((data ?? []) as { practice: { question?: string } | null }[]).flatMap((r) => (r.practice?.question ? [r.practice.question] : []));
+}
+
+/** 练习题过一遍 practiceProblem；不合格就重出一道，重出也不行就留着原来那道（总比当天没有练习好），只记一笔。 */
+async function checkedPractice(practice: BriefPractice | null, candidates: BriefCandidate[], recent: string[]): Promise<BriefPractice | null> {
+  if (!practice) return null;
+  const today = tokyoToday();
+  const problem = practiceProblem(practice, today);
+  if (!problem) return practice;
+  const news = candidates[practice.index];
+  try {
+    // 先按新闻标题搜一次，给它今天的现状（它记得的可能过时了）
+    const sources = await webSearch(news.title, 4).catch(() => []);
+    const redo = await reworkPractice({ newsTitle: news.title, newsSummary: news.text, practice, problem, today, recent, sources });
+    return { index: practice.index, ...redo };
+  } catch (e) {
+    console.error(`practice rework failed（${problem}）`, e);
+    return practice;
+  }
+}
+
 export async function generateBrief(userId: string, kind: SignalKind): Promise<BriefItem[] | null> {
   const { rows, candidates } = await loadBriefCandidates(kind);
   if (rows.length === 0) return null;
-  // 第一步：只看标题和简介挑 5 条、起草（不给 AI 看任何关于他的信息）
-  const draft = await generateSignalBrief(kind, candidates);
-  const { more, practice } = draft;
+  // 第一步：只看标题和简介挑 5 条、起草（不给 AI 看任何关于他的信息；最近几天的练习题只给题目，免得连着几天问同一件事）
+  const recentPractice = kind === "news" ? await recentPracticeQuestions(userId) : [];
+  const draft = await generateSignalBrief(kind, candidates, { recentPractice });
+  const { more } = draft;
+  // 练习题没通过检查（题目就是新闻本身、一周后就揭晓、用了说不清的词）就按同一条新闻重出一道，和下面读正文并行
+  const practicePromise = checkedPractice(draft.practice, candidates, recentPractice);
 
   // "日本这边有没有"要先上网搜再写，是最慢的一段：草稿一出来就开始，和下面读正文、重写并行。
   // 用的是草稿的标题和背景（只根据标题和简介写的），对"日本有没有"够用了。
@@ -469,6 +508,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
     });
   }
 
+  const practice = await practicePromise;
   const { error: saveError } = await supabaseAdmin
     .from("signal_briefs")
     .upsert(

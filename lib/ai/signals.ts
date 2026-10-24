@@ -679,7 +679,10 @@ export type Brief = {
   practice: BriefPractice | null;
 };
 
-const practiceInstruction = (today: string) => `再出一道今天的练习题（practice）。他在练"读新闻、下判断、事后对账"。今天是 ${today}。
+const recentLine = (recent: string[]) =>
+  recent.length > 0 ? `- 最近几天出过的题（不要再出同一件事，换一条新闻或换一个角度）：${recent.map((q) => `「${q}」`).join("")}\n` : "";
+
+const practiceInstruction = (today: string, recent: string[] = []) => `再出一道今天的练习题（practice）。他在练"读新闻、下判断、事后对账"。今天是 ${today}。
 - 从你挑的 5 条里选一条"关键不确定"的事（index 用候选序号）：
   ①重要：结果会影响很多人或企业；②真的可能往两个方向走：有理由会，也有理由不会。
   不选已经定了的事（已经通过的法规、已经公布的日程、已经发生的结果）—— 那些只需要知道，不需要判断。
@@ -687,13 +690,112 @@ const practiceInstruction = (today: string) => `再出一道今天的练习题�
 - whyUncertain：一句话说清它为什么两个方向都有可能，各给一个理由（"会，因为……；不会，因为……"）。
 - horizon：多久能见分晓，只能是 "1m"（一个月）、"3m"（三个月）、"6m"（半年）之一。优先出三个月内就能见分晓的题；
   事情本身要一年以上才有结果的话，就问它半年内会出现的一个具体苗头（某个公告、某个数字、某家公司的动作），不要直接问一年后。
+- 不要问新闻里说的那件事本身会不会发生：新闻说「可能宣布 X」「计划做 X」「据报道将 X」，就不要问「会不会宣布 X」——
+  那只是在问这条报道准不准，几天就揭晓，用不着判断。往后一步问：如果新闻里这件事成了，接下来最关键、两个方向都有理由的那一步会不会发生。
+  例：新闻「日银可能宣布物价已达 2% 目标」→ 不问「会不会宣布达到 2%」，问它之后那一步，比如「到 2027 年 1 月底，日银会不会再加息一次？」
+  不要问已经发生过的事（你记得的情况可能过时了，拿不准现状就问新闻里写明了现状的那部分）。
 - question：一个几个月内能用事实检验的问题，问"会怎样"而不是"你怎么看"。要能回答成一句具体的话。
+  截止日离今天至少一个月。不用「显著」「明显」「大幅」「某个区间」这种到时候说不清算不算的词，写具体的动作或具体的数。
   题目里的时间点必须落在 horizon 以内，写成具体的月份（今天是 ${today}，horizon 是 3m 的话就问"到某年某月底"，不要写"到明年底"）。
   句式："到某个时间点，某个具体的对象会不会做某件事？"或"到某个时间点，某个数字会不会过某条线？"
   对象、事件、数字都从这条新闻里来，不要套用别的新闻。
   不要："你怎么看这件事？"
 - checkHow：到时候去看什么来判断对错，一句话（看哪类新闻、哪个数字、哪家公司的公告）。
-`;
+${recentLine(recent)}`;
+
+/** 练习题的截止日离今天至少几天：一周后就揭晓的，多半只是在问报道准不准。 */
+export const PRACTICE_MIN_DAYS = 28;
+/** 到时候说不清算不算的词。 */
+const PRACTICE_VAGUE = /显著|明显|大幅|某个|某种|一定程度|较大|较多|广泛/;
+/** 「会」的理由引的是报道本身。 */
+const PRACTICE_REPORT_CITED = /报道|据称|据悉|消息人士|知情人士|传出|新闻(说|称|显示)/;
+
+/**
+ * 练习题哪里不合格（2026-10-24 他碰到：「日银可能宣布物价已达 2%」的新闻，出的题是「到 10 月底日银会不会明确表示达到 2%」——
+ * 题目就是新闻本身，一周后就揭晓）。合格返回 null。
+ */
+export function practiceProblem(p: { question: string; whyUncertain?: string }, today: string): string | null {
+  const deadline = questionDeadline(p.question, today);
+  if (deadline && (deadline.getTime() - Date.parse(`${today}T00:00:00Z`)) / 86_400_000 < PRACTICE_MIN_DAYS) return "截止日离今天不到一个月";
+  if (PRACTICE_VAGUE.test(p.question)) return "题目里有到时候说不清算不算的词（显著、明显、某个……）";
+  const yes = p.whyUncertain?.match(/(?<!不)会[，,]?\s*因为([^；;]*)/)?.[1] ?? "";
+  if (PRACTICE_REPORT_CITED.test(yes)) return "「会」的理由是报道本身，题目只是在问这条新闻准不准";
+  return null;
+}
+
+const practiceReworkPrompt = (today: string, recent: string[]) => `他在练"读新闻、下判断、事后对账"。下面是今天练习题用的那条新闻、一道没通过检查的题和没通过的原因，还有今天上网查到的几份资料。按同一条新闻重出一道。今天是 ${today}。
+- 不要问新闻里说的那件事本身会不会发生（新闻说「可能宣布 X」「计划做 X」，就不要问「会不会宣布 X」—— 那只是在问报道准不准）。
+  往后一步：如果新闻里这件事成了，接下来最关键、两个方向都有理由的那一步，问那一步会不会发生。
+  例：新闻「日银可能宣布物价已达 2% 目标」→ 问它之后那一步，比如「到 2027 年 1 月底，日银会不会再加息一次？」
+- 你记得的情况可能已经过时了。题目和理由里写到的现状（现在的利率、价格、规则、谁在做什么）只能用新闻和资料里写的；
+  资料里看不出现状的，就不要出需要知道现状才说得清的题。不要问已经发生过的事。
+- 截止日离今天至少一个月、最多半年，写成具体的「到某年某月底」。
+- 问能用事实核对的：某个对象会不会做某件具体的事，或某个数字会不会过某条具体的线。不用「显著」「明显」「大幅」「某个区间」这种说不清的词。
+${recentLine(recent)}- whyUncertain：一句话，"会，因为……；不会，因为……"，理由不能是"报道说"。
+- horizon："1m"、"3m"、"6m" 之一。checkHow：到时候去看什么来判断对错，一句话。
+用简体中文。只输出 JSON：{"question":"…","checkHow":"…","whyUncertain":"…","horizon":"3m"}`;
+
+/** 题目里的数（年份、月份、日子不算）：重出的题写到的数必须在新闻或资料里，不许凭记忆写现状（试跑时它写了「利率上调到 0.2%」）。 */
+export function questionNumbers(question: string): string[] {
+  const rest = question.replace(/(19|20)\d{2}\s*年/g, "").replace(/\d{1,2}\s*月(底|末|初|中旬|上旬|下旬)?/g, "").replace(/\d{1,2}\s*日/g, "");
+  return Array.from(rest.matchAll(/\d+(?:\.\d+)?/g)).map((m) => m[0]);
+}
+
+export function parsePracticeRework(value: unknown, today: string, material = ""): Omit<BriefPractice, "index"> {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const question = typeof v.question === "string" ? v.question.trim() : "";
+  const checkHow = typeof v.checkHow === "string" ? v.checkHow.trim() : "";
+  const whyUncertain = typeof v.whyUncertain === "string" && v.whyUncertain.trim() ? v.whyUncertain.trim() : undefined;
+  if (!question || !checkHow) throw new Error("缺 question 或 checkHow");
+  const problem = practiceProblem({ question, whyUncertain }, today);
+  if (problem) throw new Error(problem);
+  // 日文资料常写全角数字（「２％」「０．５」）
+  const plain = material.replace(/\s+/g, "").replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  const invented = questionNumbers(question).find((n) => !plain.includes(n));
+  if (invented) throw new Error(`题目里的 ${invented} 新闻和资料里都没有`);
+  const texts = [question, checkHow, ...(whyUncertain ? [whyUncertain] : [])];
+  assertNoBanned(texts);
+  assertChinese(texts);
+  const aiHorizon = PRACTICE_HORIZON_DAYS.some(([k]) => k === v.horizon) ? (v.horizon as PracticeHorizon) : undefined;
+  return { question, checkHow, horizon: practiceHorizon(question, aiHorizon, today), ...(whyUncertain ? { whyUncertain } : {}) };
+}
+
+/** 练习题没通过 practiceProblem：按同一条新闻重出一道（只这一道，不重写整份报告）。 */
+export async function reworkPractice(input: {
+  newsTitle: string;
+  newsSummary: string;
+  practice: BriefPractice;
+  problem: string;
+  today: string;
+  recent: string[];
+  /** 今天按新闻标题搜到的资料：给它现状，免得按过时的记忆出题（2026-10-24 试跑时它问「日银会不会结束负利率」，那是 2024 年的事）。 */
+  sources: SearchSource[];
+}): Promise<Omit<BriefPractice, "index">> {
+  const contents = [
+    `新闻标题：${input.newsTitle}`,
+    `新闻简介：${input.newsSummary.slice(0, 600) || "（没有）"}`,
+    `没通过的题：${input.practice.question}`,
+    `当时写的为什么两个方向都可能：${input.practice.whyUncertain ?? "（没写）"}`,
+    `没通过的原因：${input.problem}`,
+    "",
+    "今天查到的资料：",
+    input.sources.length > 0 ? input.sources.map((s, i) => `[${i + 1}] ${s.title}\n${s.content.slice(0, 800)}`).join("\n\n") : "（没查到）",
+  ].join("\n");
+  return executeAiJson(
+    { operation: "signal_practice_rework", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
+    (attempt) => ({
+      model: MODEL,
+      contents: contents + (attempt === 1 ? "\n\n上一次重出的也没通过：截止日至少一个月以后，不问报道本身，不用说不清的词，题目里的数只能用新闻和资料里有的。" : ""),
+      config: {
+        systemInstruction: practiceReworkPrompt(input.today, input.recent),
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 512 },
+        maxOutputTokens: 1500,
+      },
+    }),
+    (value) => parsePracticeRework(value, input.today, [input.newsTitle, input.newsSummary, ...input.sources.map((s) => `${s.title} ${s.content}`)].join(" "))
+  );
+}
 
 /** 世界、一线、掏钱三节：每条标德鲁克的机会来源，以及是不是"有人试过的结果"。 */
 const OPPORTUNITY_INSTRUCTION = `每条 picks 再写两个可选字段：
@@ -861,7 +963,13 @@ function parsePractice(raw: unknown, picks: BriefPick[]): BriefPractice | null {
  * 挑法的几个旋钮（挑法盲测 /signals/lab 用；每天的报告用默认值）。
  * model：换更强的模型；thinkingBudget：先想再挑；textLength：每条候选给 AI 看多少字（读了正文时给多一些）。
  */
-export type BriefOptions = { model?: string; thinkingBudget?: number; textLength?: number };
+export type BriefOptions = {
+  model?: string;
+  thinkingBudget?: number;
+  textLength?: number;
+  /** 最近几天出过的练习题（只给题目，不给关于他的任何信息）：别连着几天问同一件事。 */
+  recentPractice?: string[];
+};
 
 export async function generateSignalBrief(kind: BriefKind, candidates: BriefCandidate[], options: BriefOptions = {}): Promise<Brief> {
   if (candidates.length === 0) return { overview: "", picks: [], more: [], practice: null };
@@ -876,7 +984,7 @@ ${SIGNAL_SHARED_RULES}
 
 另外写 overview：开头的一段总述，3 到 5 句，把挑出来的几条串起来讲${OVERVIEW_TOPIC[kind]}。第一句直接说今天最重要的那一件事是什么；每一句都要带一件具体的事（谁、做了什么）。不许用"持续演进""几个重要领域""值得注意的是"这类空开头，也不要逐条复述。
 
-${kind === "news" ? practiceInstruction(tokyoDate()) : ""}
+${kind === "news" ? practiceInstruction(tokyoDate(), options.recentPractice) : ""}
 ${kind === "news" || kind === "voices" || kind === "money" ? `${OPPORTUNITY_INSTRUCTION}\n${OVERVIEW_LENS}` : ""}
 ${kind === "tools" ? "" : DOMAIN_INSTRUCTION}
 ${MORE_INSTRUCTION}

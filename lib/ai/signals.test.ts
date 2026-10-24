@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseSlowThen, parseSlowWind, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, practiceProblem, parsePracticeRework, questionNumbers, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseSlowThen, parseSlowWind, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1479,5 +1479,45 @@ describe("慢变量：你手上的东西顺风还是逆风", () => {
     expect(() => parseSlowWind(link("到 2040 年会缺 1100 万人"), input)).toThrow();
     expect(() => parseSlowWind(link("有 80% 的可能更划算"), input)).toThrow();
     expect(() => parseSlowWind({}, input)).toThrow();
+  });
+});
+
+describe("练习题不合格就重出", () => {
+  const today = "2026-10-24";
+  it("practiceProblem：一周后就揭晓、说不清的词、「会」的理由是报道本身，都不合格", () => {
+    expect(
+      practiceProblem(
+        { question: "到2026年10月底，日本央行会不会明确表示物价上涨率已实际达到2%的目标？", whyUncertain: "会，因为报道称央行内部已在朝这个方向判断；不会，因为央行可能仍会保持谨慎。" },
+        today
+      )
+    ).toContain("不到一个月");
+    expect(practiceProblem({ question: "到2027年1月底，日本长期国债利率会不会稳定在某个区间内？" }, today)).toContain("说不清");
+    expect(
+      practiceProblem({ question: "到2027年1月底，日银会不会宣布物价已达2%目标？", whyUncertain: "会，因为据报道内部已有共识；不会，因为工资数据还不全。" }, today)
+    ).toContain("报道");
+  });
+
+  it("practiceProblem：「不会」那半句引报道不算；往后一步的题合格", () => {
+    expect(
+      practiceProblem({ question: "到2027年1月底，日银会不会把政策利率加到1%以上？", whyUncertain: "不会，因为据报道总裁偏谨慎；会，因为通胀连续高于2%。" }, today)
+    ).toBeNull();
+    expect(practiceProblem({ question: "到2027年1月底，日银会不会把政策利率加到1%以上？" }, today)).toBeNull();
+  });
+
+  it("parsePracticeRework：重出的也要过同一道检查", () => {
+    const ok = parsePracticeRework(
+      { question: "到2027年1月底，日银会不会把政策利率加到1%以上？", checkHow: "看日银 1 月会议的决定。", whyUncertain: "会，因为通胀连续高于2%；不会，因为经济接近零增长。", horizon: "3m" },
+      today,
+      "市場は政策金利が１％に達するかに注目"
+    );
+    expect(ok.question).toContain("1%以上");
+    expect(() => parsePracticeRework({ question: "到2026年10月底，日银会不会宣布达到2%？", checkHow: "看公告。" }, today)).toThrow("不到一个月");
+  });
+
+  it("parsePracticeRework：题目里的数（年月日不算）必须在新闻或资料里", () => {
+    expect(questionNumbers("到2027年1月底，日银会不会把利率上调到0.2%或更高？")).toEqual(["0.2"]);
+    const q = { question: "到2027年1月底，日银会不会把利率上调到0.2%或更高？", checkHow: "看日银的决定。", whyUncertain: "会，因为通胀高；不会，因为增长弱。" };
+    expect(() => parsePracticeRework(q, today, "日銀、基調物価2%到達を正式認定へ")).toThrow("0.2");
+    expect(parsePracticeRework(q, today, "政策金利は0.2%から引き上げ").question).toContain("0.2");
   });
 });
