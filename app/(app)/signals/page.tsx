@@ -17,7 +17,9 @@ import { formatReportDate, isReportDate } from "@/lib/domains/signals/format";
 import { emailConfig } from "@/lib/domains/signals/notify";
 import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
 import { deadlineLabel, HORIZONS, isBlindPracticeDate, JUDGMENT_MODE_LABELS, type HorizonKey, type PracticeDraft } from "@/lib/domains/signals/practice-shared";
-import { ensurePracticeDraft } from "@/lib/domains/signals/practice-draft";
+import { preparePractice } from "@/lib/domains/signals/practice-draft";
+import { ensurePracticeBreakdown } from "@/lib/domains/signals/breakdown";
+import { BreakdownFactors } from "@/components/breakdown-factors";
 import type { SignalDetail } from "@/lib/domains/signals/analysis";
 import { PracticeDraftCard } from "./practice-draft-card";
 import { practiceHorizon, questionDeadline } from "@/lib/ai";
@@ -610,15 +612,37 @@ function BlindPractice({ date, practice, title, summary, history, knownTags, hor
           knownTags={knownTags}
           defaultHorizon={horizon}
           deadline={deadline}
+          factorsAbove={!!practice.breakdown}
         />
       </div>
     </details>
   );
 }
 
-/** AI 先判了：上面点行 / 不行，下面「想自己想一想」折着历史参照和拆解卡（只拆、不带表单）。 */
+/**
+ * AI 先判了：上面点行 / 不行。拆解卡已经摆在题目下面（后台先拆好的），下面只留历史参照；
+ * 没拆出来的（老日子、拆失败）照旧在「想自己想一想」里能点「先拆一拆」。
+ */
 function DraftPractice({ draft, ...props }: PracticeProps & { draft: PracticeDraft }) {
   const { date, practice, history, knownTags, horizon, deadline } = props;
+  if (practice.breakdown) {
+    return (
+      <>
+        <PracticeDraftCard
+          date={date}
+          signalId={practice.signal_id}
+          question={practice.question}
+          draft={draft}
+          knownTags={knownTags}
+          defaultHorizon={horizon}
+          deadline={deadline}
+        />
+        <div className="mt-4">
+          <HistoryPanel signalId={practice.signal_id} initial={history} label="看历史上类似的事后来怎样" />
+        </div>
+      </>
+    );
+  }
   return (
     <>
       <PracticeDraftCard
@@ -650,19 +674,37 @@ function DraftPractice({ draft, ...props }: PracticeProps & { draft: PracticeDra
   );
 }
 
-/** 今天的题还没有 AI 先判（后台 7:30 还没跑到）：现在出，二三十秒；出不来就自己判。 */
+/** 今天的题还没有 AI 先判（后台 7:30 还没跑到）：AI 先判和拆解卡现在一起出，二三十秒；先判出不来就自己判。 */
 async function PracticeDraftLoader({ poolUserId, ...props }: PracticeProps & { poolUserId: string }) {
-  const draft = await ensurePracticeDraft(poolUserId, props.date).catch((e) => {
+  const ready = await preparePractice(poolUserId, props.date).catch((e) => {
     console.error("practice draft", e);
-    return null;
+    return { draft: null, breakdown: null, errors: [] };
   });
-  if (draft) return <DraftPractice draft={draft} {...props} />;
+  const withBreakdown = { ...props, practice: { ...props.practice, breakdown: props.practice.breakdown ?? ready.breakdown ?? undefined } };
+  const factors = !props.practice.breakdown && ready.breakdown ? <BreakdownFactors breakdown={ready.breakdown} /> : null;
+  if (ready.draft)
+    return (
+      <>
+        {factors}
+        <DraftPractice draft={ready.draft} {...withBreakdown} />
+      </>
+    );
   return (
     <>
+      {factors}
       <p className="mt-4 text-xs text-muted-foreground">AI 这次没判出来，这道你自己判。</p>
-      <BlindPractice {...props} />
+      <BlindPractice {...withBreakdown} />
     </>
   );
+}
+
+/** 已经有 AI 先判（或周一的先判题）、只是还没拆：现在拆，二三十秒；拆不出来就不摆。 */
+async function PracticeBreakdownLoader({ poolUserId, date }: { poolUserId: string; date: string }) {
+  const breakdown = await ensurePracticeBreakdown(poolUserId, date).catch((e) => {
+    console.error("practice breakdown", e);
+    return null;
+  });
+  return breakdown ? <BreakdownFactors breakdown={breakdown} /> : null;
 }
 
 async function PracticeCard({
@@ -718,6 +760,16 @@ async function PracticeCard({
         </p>
       )}
 
+      {/* 「从这几样想起」：题目下面、AI 的判断前面（经用户同意，2026-10-24）。还没先判的那种由 PracticeDraftLoader 一起出 */}
+      {!judgment &&
+        (practice.breakdown ? (
+          <BreakdownFactors breakdown={practice.breakdown} />
+        ) : isToday && (blindDay || practice.ai_draft) ? (
+          <Suspense fallback={<p className="mt-3 text-sm text-muted-foreground">AI 在拆这件事主要看哪几样……二三十秒</p>}>
+            <PracticeBreakdownLoader poolUserId={poolUserId} date={date} />
+          </Suspense>
+        ) : null)}
+
       {judgment ? (
         <>
           <p className="mt-4 text-sm leading-7">
@@ -746,7 +798,7 @@ async function PracticeCard({
       ) : practice.ai_draft ? (
         <DraftPractice draft={practice.ai_draft} {...props} />
       ) : isToday ? (
-        <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">AI 在查资料、判这道题……二三十秒</p>}>
+        <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">AI 在查资料、拆这件事主要看哪几样、判这道题……二三十秒</p>}>
           <PracticeDraftLoader poolUserId={poolUserId} {...props} />
         </Suspense>
       ) : (

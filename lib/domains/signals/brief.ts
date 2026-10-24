@@ -587,14 +587,15 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
     }
   }
 
-  // 练习的 AI 先判赶在邮件前出，邮件和一分钟清单里就有那一句；来不及就跳过，7:30 后台会补（周一先判，不出）
-  // practice-draft 经 analysis 又引用这个文件，用到时再加载，免得互相引用
+  // 练习的 AI 先判和拆解卡（「从这几样想起」）赶在邮件前并排出，一分钟清单里题目下面就有；来不及就跳过，7:30 后台会补
+  // （周一先判，不出 AI 先判，照样拆）。practice-draft 经 analysis 又引用这个文件，用到时再加载，免得互相引用
   if (userIds.length > 0 && Date.now() - startedAt < PRACTICE_DRAFT_BUDGET_MS) {
     try {
-      const { ensurePracticeDraft } = await import("./practice-draft");
-      await ensurePracticeDraft(userIds[0], tokyoToday());
+      const { preparePractice } = await import("./practice-draft");
+      const r = await preparePractice(userIds[0], tokyoToday());
+      for (const e of r.errors) failed.push(`今天的练习：${e}`);
     } catch (e) {
-      failed.push(`练习的 AI 先判：${e instanceof Error ? e.message : String(e)}`);
+      failed.push(`今天的练习：${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

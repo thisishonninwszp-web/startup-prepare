@@ -30,6 +30,7 @@ import { BIN_MIN } from "@/lib/domains/signals/calibration-shared";
 import Link from "next/link";
 import { describePlatt, SCORE_MIN, usableCalibration } from "@/lib/domains/signals/calibration-shared";
 import { historyBacktest } from "@/lib/domains/signals/backtest";
+import { loadQuestionBreakdowns } from "@/lib/domains/signals/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -129,13 +130,16 @@ export default async function ForecastPage() {
     return null;
   });
   const calibration = report ? usableCalibration(report) : null;
+  // 等判断的题先拆好的「从这几样想起」（后台 factors 一步；迁移 101 没跑是空的）
+  const breakdowns =
+    board === "missing-schema" ? new Map() : await loadQuestionBreakdowns(boardSections(board, today).toForecast.map((q) => q.id));
 
   return (
     <PageContainer width="narrow">
       <PageHeader
         eyebrow="Forecasts"
         title="预测"
-        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场给的几成可能当对照）、从今天新闻里出的生意题（到期程序查证据，出题的人确认）。每道题先摆出最准的那个数（市场价、统计基准，都没有就是 AI 三种思路取中间），你看行不行；每周一道你先自己判。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
+        description="每天进几道能对账的题：预测市场上的（到期平台自己结算，还带着市场给的几成可能当对照）、从今天新闻里出的生意题（到期程序查证据，出题的人确认）。每道题先摆出最准的那个数（市场价、统计基准，都没有就是 AI 从三个角度各估一个、取中间），你看行不行；每周一道你先自己判。对账多了，就看得出你、AI、市场谁更准，准在哪类题上。"
       />
 
       {board === "missing-schema" ? (
@@ -197,6 +201,7 @@ export default async function ForecastPage() {
                           blind={blind.has(q.id)}
                           anchor={blind.has(q.id) ? null : anchorOf(q, forecasts)}
                           three={forecasts.filter((f) => f.question_id === q.id && THREE_VIEWS.includes(f.source))}
+                          breakdown={breakdowns.get(q.id) ?? null}
                         />
                       );
                     })}

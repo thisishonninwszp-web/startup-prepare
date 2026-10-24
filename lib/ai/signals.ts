@@ -2837,21 +2837,12 @@ export function parseBreakdownPlan(value: unknown): BreakdownPlanItem[] {
   return out;
 }
 
-/** 这件事由哪几个因素决定、怎么起作用、去哪看（还没查现在的情况）。 */
-export async function planBreakdown(input: {
-  newsTitle: string;
-  newsSummary: string;
-  body: string;
-  question: string;
-  today: string;
-}): Promise<BreakdownPlanItem[]> {
-  const contents = [
-    `今天是 ${input.today}。`,
-    `新闻标题：${input.newsTitle}`,
-    `新闻简介：${input.newsSummary || "（没有）"}`,
-    `正文节选：${input.body ? input.body.slice(0, 1500) : "（拿不到正文）"}`,
-    `他要回答的问题：${input.question}`,
-  ].join("\n");
+/**
+ * 这件事由哪几个因素决定、怎么起作用、去哪看（还没查现在的情况）。
+ * material 是题目的来历，一行一样、自己带标签（练习题是新闻标题、简介、正文节选；预测题是怎么才算「会」、截止、出题时的背景）。
+ */
+export async function planBreakdown(input: { material: string[]; question: string; today: string }): Promise<BreakdownPlanItem[]> {
+  const contents = [`今天是 ${input.today}。`, ...input.material, `他要回答的问题：${input.question}`].join("\n");
   return executeAiJson(
     { operation: "practice_breakdown_plan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
     (attempt) => ({

@@ -1,6 +1,7 @@
 import { practiceHorizon, questionDeadline } from "@/lib/ai";
 import { getSignalDetail } from "./analysis";
-import { loadBriefPractice, patchBriefPractice } from "./breakdown";
+import type { BriefPracticeRow } from "./brief";
+import { ensurePracticeBreakdown, loadBriefPractice, patchBriefPractice, type Breakdown } from "./breakdown";
 import { forecastViews, medianProbability } from "./forecast";
 import { HORIZONS, isBlindPracticeDate, type HorizonKey, type PracticeDraft } from "./practice-shared";
 
@@ -36,4 +37,21 @@ export async function ensurePracticeDraft(userId: string, date: string): Promise
   const draft: PracticeDraft = { probability, perspectives, made_at: new Date().toISOString() };
   await patchBriefPractice(userId, date, { ai_draft: draft });
   return draft;
+}
+
+/**
+ * 今天的练习两样一起备好（2026-10-24）：AI 先判、拆解卡（「从这几样想起」，周一的先判题也拆 —— 拆解卡不带方向）。
+ * 两样并排出，写的是同一格 practice：前后脚写偶尔会冲掉一样，所以都好了以后再看一眼，缺的补写回去。
+ */
+export async function preparePractice(userId: string, date: string): Promise<{ draft: PracticeDraft | null; breakdown: Breakdown | null; errors: string[] }> {
+  const [draft, breakdown] = await Promise.allSettled([ensurePracticeDraft(userId, date), ensurePracticeBreakdown(userId, date)]);
+  const errors = [draft, breakdown].flatMap((r) => (r.status === "rejected" ? [r.reason instanceof Error ? r.reason.message : String(r.reason)] : []));
+  const fresh = await loadBriefPractice(userId, date).catch(() => null);
+  if (fresh) {
+    const patch: Partial<BriefPracticeRow> = {};
+    if (draft.status === "fulfilled" && draft.value && !fresh.ai_draft) patch.ai_draft = draft.value;
+    if (breakdown.status === "fulfilled" && !fresh.breakdown) patch.breakdown = breakdown.value;
+    if (Object.keys(patch).length > 0) await patchBriefPractice(userId, date, patch);
+  }
+  return { draft: draft.status === "fulfilled" ? draft.value : null, breakdown: breakdown.status === "fulfilled" ? breakdown.value : null, errors };
 }

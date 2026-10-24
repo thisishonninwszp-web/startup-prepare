@@ -20,14 +20,22 @@ export function needsConfirm(kind: ForecastKind): boolean {
   return kind === "business" || kind === "arrival";
 }
 export const SOURCE_LABELS: Record<ForecastSource, string> = {
-  ai_outside: "AI · 先看基准率",
-  ai_inside: "AI · 只看这件事",
-  ai_devil: "AI · 唱反调",
+  ai_outside: "AI · 同类的事一般怎样",
+  ai_inside: "AI · 这件事眼下到哪一步",
+  ai_devil: "AI · 专找容易看漏的",
   base: "统计基准",
   ai: "AI（三个取中间）",
   me: "你",
   market: "市场",
 };
+
+/**
+ * AI 那三个数是什么（2026-10-24，他看不懂「先看基准率 / 只看这件事 / 唱反调」）：折起来那一块的标题和第一句。
+ * 三个角度各查各的资料、各估一个数，摆出来的是中间那个 —— 免得被一份资料带跑。
+ */
+export const THREE_VIEWS_SUMMARY = "为什么：AI 从三个角度各估了几成";
+export const THREE_VIEWS_NOTE =
+  "三个角度各查各的资料、各估一个数，摆出来的是中间那个：① 同类的事过去一般多常发生；② 这件事眼下走到哪一步、还差什么；③ 大家容易看漏的阻碍或推力。";
 
 /** 出题时给的类别（AI 只能从这几个里挑）。 */
 export const FORECAST_CATEGORIES = ["日本经济", "日本政治社会", "中国", "中日关系", "科技", "世界"] as const;
@@ -135,7 +143,7 @@ export const ANCHOR_LABELS: Record<AnchorSource, string> = { market: "市场", b
 export const ANCHOR_NOTES: Record<AnchorSource, string> = {
   market: "预测市场上押钱的人给的数",
   base: "按历史数出来的比例（算法写在题目下面）",
-  ai: "AI 上网查过以后、三种思路取中间",
+  ai: "AI 上网查过以后，从三个角度各估一个、取中间",
 };
 
 /** 这道题先摆哪个数；哪个都没有（AI 还没判、又没有市场价和基准）是 null。 */

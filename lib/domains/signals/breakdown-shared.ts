@@ -38,6 +38,25 @@ export function leanSummary(breakdown: Breakdown | null | undefined, leans: (Lea
   return lines.join("；");
 }
 
+/**
+ * 预测题后台先拆哪几道（经用户同意，2026-10-24：光让他做题、没有思路，等于纯猜）：
+ * 和一分钟清单同一个顺序 —— 先判题在前，再是有先摆出来的数的；拆过的跳过；最多 limit 道（清单一天放 3 道，多拆几道备着）。
+ */
+export function breakdownQueue<Q extends { id: string }>(waiting: Q[], blind: Set<string>, hasAnchor: (q: Q) => boolean, done: Set<string>, limit: number): Q[] {
+  const ordered = [...waiting.filter((q) => blind.has(q.id)), ...waiting.filter((q) => !blind.has(q.id) && hasAnchor(q))];
+  return ordered.slice(0, limit).filter((q) => !done.has(q.id));
+}
+
+/** 预测题拿去拆的来历：怎么才算「会」、截止、出题时的背景。不给 AI 和市场的数（先判题也要拆，不能带方向）。 */
+export function questionMaterial(q: { criteria: string; resolve_on: string; context: string | null; original_title: string | null }): string[] {
+  return [
+    `怎么才算「会」：${q.criteria}`,
+    `截止：${q.resolve_on}`,
+    ...(q.original_title ? [`原题（英文）：${q.original_title}`] : []),
+    ...(q.context ? [`出题时的背景：${q.context.slice(0, 1500)}`] : []),
+  ];
+}
+
 /** 点了几个偏向会、几个偏向不会、几个看不出。只数次数。 */
 export function tallyLeans(leans: (Lean | null)[]): Record<Lean, number> {
   return {

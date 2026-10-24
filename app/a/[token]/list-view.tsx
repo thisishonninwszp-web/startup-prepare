@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { BreakdownFactors } from "@/components/breakdown-factors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatReportDate } from "@/lib/domains/signals/format";
-import { ANCHOR_LABELS, ANCHOR_NOTES, MY_TIERS, pct, SOURCE_LABELS, tiersBeside, type Forecast } from "@/lib/domains/signals/forecast-shared";
+import { ANCHOR_LABELS, ANCHOR_NOTES, MY_TIERS, pct, SOURCE_LABELS, THREE_VIEWS_NOTE, THREE_VIEWS_SUMMARY, tiersBeside, type Forecast } from "@/lib/domains/signals/forecast-shared";
 import { CONFIDENCE_LEVELS, deadlineLabel, draftVerdict, HORIZONS, MISS_REASONS, type MissReason } from "@/lib/domains/signals/practice-shared";
 import { RECALL_LABELS, type RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { RecallReveal } from "@/lib/domains/signals/recall";
@@ -58,12 +59,13 @@ function Kind({ children }: { children: React.ReactNode }) {
   return <p className="mb-1 text-xs text-muted-foreground">{children}</p>;
 }
 
-/** 三种思路各说了几成、为什么（折起来，点开才看）。 */
-function Views({ views, summary = "为什么（三种思路各说了几成）" }: { views: { source: Forecast["source"]; probability: number; reason: string | null }[]; summary?: string }) {
+/** AI 从三个角度各估了几成、为什么（折起来，点开才看）。 */
+function Views({ views, summary = THREE_VIEWS_SUMMARY }: { views: { source: Forecast["source"]; probability: number; reason: string | null }[]; summary?: string }) {
   if (views.length === 0) return null;
   return (
     <details className="mt-1 text-xs">
       <summary className="cursor-pointer text-muted-foreground">{summary}</summary>
+      <p className="mt-1 leading-6 text-muted-foreground">{THREE_VIEWS_NOTE}</p>
       <ul className="mt-1 space-y-1">
         {views.map((v) => (
           <li key={v.source}>
@@ -87,6 +89,7 @@ function PracticeCard({ token, item, onDone }: { token: string; item: ListPracti
     <>
       <Kind>今天的练习</Kind>
       <p className="font-medium leading-7">{item.question}</p>
+      {item.breakdown && <BreakdownFactors breakdown={item.breakdown} />}
       {item.mode === "waiting" && <p className="mt-2 text-sm text-muted-foreground">AI 还没判完，7:30 以后再打开这一页就有。</p>}
       {item.mode === "blind" && (
         <div className="mt-2 space-y-2">
@@ -96,9 +99,9 @@ function PracticeCard({ token, item, onDone }: { token: string; item: ListPracti
             {pending ? "在记……" : "写下"}
           </Button>
           <p className="text-xs text-muted-foreground">
-            想先拆一拆、看历史上类似的事，
+            {item.breakdown ? "想看看历史上类似的事后来怎样，" : "想先拆一拆、看历史上类似的事，"}
             <Link href="/signals" className="text-primary underline-offset-4 hover:underline">
-              去网站上做 →
+              去网站上 →
             </Link>
           </p>
         </div>
@@ -166,6 +169,7 @@ function ForecastCard({ token, q, onDone }: { token: string; q: ListForecast; on
       <Kind>预测 · {q.resolve_on} 截止</Kind>
       <p className="font-medium leading-7">{q.title}</p>
       {q.criteria && <p className="text-xs leading-6 text-muted-foreground">怎么才算「会」：{q.criteria}</p>}
+      {q.breakdown && <BreakdownFactors breakdown={q.breakdown} />}
       {q.blind || !q.anchor ? (
         <div className="mt-2">
           <p className="text-xs text-muted-foreground">这道先自己判，判完再看 AI 的（每周一道）。你觉得「会」的可能有多大？</p>
@@ -177,7 +181,7 @@ function ForecastCard({ token, q, onDone }: { token: string; q: ListForecast; on
             {ANCHOR_LABELS[q.anchor.source]}：<span className="font-mono">{pct(q.anchor.probability)}</span> 会
           </p>
           <p className="text-xs text-muted-foreground">{ANCHOR_NOTES[q.anchor.source]}</p>
-          <Views views={q.three} summary={q.anchor.source === "ai" ? undefined : "AI 怎么看（三种思路各说了几成）"} />
+          <Views views={q.three} summary={q.anchor.source === "ai" ? undefined : "AI 怎么看：从三个角度各估了几成"} />
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" disabled={pending} onClick={() => act(() => listForecastAction(token, q.id, "agree"))}>
               行

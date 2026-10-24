@@ -16,7 +16,8 @@ import { monthlyArchive } from "@/lib/domains/signals/storage";
 import { refreshAppWatch } from "@/lib/domains/signals/app-watch";
 import { runHistoryStep } from "@/lib/domains/signals/backtest";
 import { loadExperimentBoard } from "@/lib/domains/signals/experiments";
-import { ensurePracticeDraft } from "@/lib/domains/signals/practice-draft";
+import { preparePractice } from "@/lib/domains/signals/practice-draft";
+import { breakdownWaitingQuestions } from "@/lib/domains/signals/breakdown";
 import { prefetchDueEvidence } from "@/lib/domains/signals/practice";
 import { prepStep } from "@/lib/domains/signals/door-prep";
 
@@ -115,18 +116,33 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     }
     return { done: remaining === 0 || did === 0, did, remaining };
   },
-  // 今天练习题的 AI 先判（周一的先判题不出；报告还没出来就记一句，下一轮再出）
+  // 今天练习题的 AI 先判和拆解卡（周一的先判题不出 AI 先判、照样拆；报告还没出来就记一句，下一轮再出）
   practice: async (users, today) => {
     let did = 0;
     const notes: string[] = [];
     for (const u of users) {
       try {
-        if (await ensurePracticeDraft(u, today)) did += 1;
+        const r = await preparePractice(u, today);
+        if (r.draft || r.breakdown) did += 1;
+        notes.push(...r.errors);
       } catch (e) {
         notes.push(e instanceof Error ? e.message : String(e));
       }
     }
     return { done: true, did, note: notes.join("；") || undefined };
+  },
+  // 等他判断的预测题先拆好（「从这几样想起」，先判题在前，和一分钟清单同一个顺序）：按时间预算做
+  factors: async (users, today) => {
+    let did = 0;
+    let remaining = 0;
+    const notes: string[] = [];
+    for (const u of users) {
+      const r = await breakdownWaitingQuestions(u, today, START_BEFORE_MS);
+      did += r.did;
+      remaining += r.remaining;
+      if (r.note) notes.push(r.note);
+    }
+    return { done: remaining === 0 || did === 0, did, remaining, note: notes.join("；") || undefined };
   },
   // 假门 AI 先做好：自动听一听（一天一条），原话够了就把假门那一页写好、价格按数据先填（一分钟清单里点发布）
   prep: async (users) => {

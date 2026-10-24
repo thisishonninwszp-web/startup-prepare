@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
+import { BreakdownFactors } from "@/components/breakdown-factors";
+import type { Breakdown } from "@/lib/domains/signals/breakdown-shared";
 import {
   ANCHOR_LABELS,
   ANCHOR_NOTES,
@@ -15,6 +17,8 @@ import {
   MY_TIERS,
   pct,
   SOURCE_LABELS,
+  THREE_VIEWS_NOTE,
+  THREE_VIEWS_SUMMARY,
   tiersBeside,
   type Anchor,
   type Forecast,
@@ -56,12 +60,13 @@ function QuestionHead({ q }: { q: ForecastQuestion }) {
   );
 }
 
-/** AI 的三种思路各说了几成、为什么（折起来，点开才看）。 */
-function ThreeViews({ three, summary }: { three: Forecast[]; summary: string }) {
+/** AI 从三个角度各估了几成、为什么（折起来，点开才看）。 */
+function ThreeViews({ three, summary = THREE_VIEWS_SUMMARY }: { three: Forecast[]; summary?: string }) {
   if (three.length === 0) return null;
   return (
     <details className="text-xs">
       <summary className="cursor-pointer text-muted-foreground">{summary}</summary>
+      <p className="mt-1 leading-6 text-muted-foreground">{THREE_VIEWS_NOTE}</p>
       <ul className="mt-1 space-y-1">
         {three.map((f) => (
           <li key={f.source}>
@@ -88,7 +93,7 @@ export function Answers({ q, forecasts, calibration }: { q: ForecastQuestion; fo
   return (
     <div className="mt-2 text-sm leading-7">
       <p className="font-mono">{parts.join(" · ")}</p>
-      <ThreeViews three={three} summary="AI 的三种思路各说了几成、为什么" />
+      <ThreeViews three={three} />
     </div>
   );
 }
@@ -99,7 +104,20 @@ export function Answers({ q, forecasts, calibration }: { q: ForecastQuestion; fo
  * 「不行」在那一边改一档（可以带一句为什么），「跳过」不记；别的几方点完才给看。
  * 每周一道的先判题（或 AI 还没判的）：照旧先点一档、看不到 AI 和市场；也可以先看答案，但看了这道就不能再判断。
  */
-export function ForecastCard({ q, blind, anchor, three }: { q: ForecastQuestion; blind: boolean; anchor: Anchor | null; three: Forecast[] }) {
+export function ForecastCard({
+  q,
+  blind,
+  anchor,
+  three,
+  breakdown,
+}: {
+  q: ForecastQuestion;
+  blind: boolean;
+  anchor: Anchor | null;
+  three: Forecast[];
+  /** 「从这几样想起」：题目下面、先摆的数前面（后台先拆好的，没拆到是 null）。 */
+  breakdown: Breakdown | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -122,11 +140,12 @@ export function ForecastCard({ q, blind, anchor, three }: { q: ForecastQuestion;
     return (
       <li className="rounded-lg border border-border bg-card p-4">
         <QuestionHead q={q} />
+        {breakdown && <BreakdownFactors breakdown={breakdown} />}
         <p className="mt-3 text-sm">
           {ANCHOR_LABELS[anchor.source]}：<span className="font-mono">{pct(anchor.probability)}</span> 会
         </p>
         <p className="text-xs text-muted-foreground">{ANCHOR_NOTES[anchor.source]}</p>
-        <ThreeViews three={three} summary={anchor.source === "ai" ? "为什么（三种思路各说了几成）" : "AI 怎么看（三种思路各说了几成）"} />
+        <ThreeViews three={three} summary={anchor.source === "ai" ? undefined : "AI 怎么看：从三个角度各估了几成"} />
         <div className="mt-2 flex flex-wrap gap-2">
           <Button size="sm" disabled={pending} onClick={() => act(() => setMyForecastAction(q.id, "agree"))}>
             行
@@ -165,6 +184,7 @@ export function ForecastCard({ q, blind, anchor, three }: { q: ForecastQuestion;
   return (
     <li className="rounded-lg border border-border bg-card p-4">
       <QuestionHead q={q} />
+      {breakdown && <BreakdownFactors breakdown={breakdown} />}
       {blind && <p className="mt-3 text-xs leading-6 text-muted-foreground">这道先自己判，判完再看 AI 的。每周一道，量的是你自己准不准。</p>}
       <p className="mt-3 text-xs text-muted-foreground">到截止日，你觉得「会」的可能有多大？</p>
       <div className="mt-1 flex flex-wrap gap-1">

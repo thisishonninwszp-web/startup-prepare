@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { pct, SOURCE_LABELS } from "@/lib/domains/signals/forecast-shared";
+import { pct, SOURCE_LABELS, THREE_VIEWS_NOTE, THREE_VIEWS_SUMMARY } from "@/lib/domains/signals/forecast-shared";
 import { CONFIDENCE_LEVELS, deadlineLabel, draftVerdict, HORIZONS, type HorizonKey, type PracticeDraft } from "@/lib/domains/signals/practice-shared";
 import { submitJudgmentAction } from "./actions";
 import { JudgmentForm } from "./judgment-forms";
@@ -74,7 +74,8 @@ export function PracticeDraftCard({
         <span className="text-muted-foreground"> · {CONFIDENCE_LEVELS[v.confidence].label}（{due}对账）</span>
       </p>
       <details className="text-xs">
-        <summary className="cursor-pointer text-muted-foreground">为什么（三种思路各说了几成）</summary>
+        <summary className="cursor-pointer text-muted-foreground">{THREE_VIEWS_SUMMARY}</summary>
+        <p className="mt-1 leading-6 text-muted-foreground">{THREE_VIEWS_NOTE}</p>
         <ul className="mt-1 space-y-1">
           {draft.perspectives.map((x) => (
             <li key={x.source}>

@@ -21,9 +21,12 @@ export function PracticeComposer({
   defaultHorizon,
   deadline,
   withForm = true,
+  factorsAbove = false,
 }: {
   /** false：只拆、不带写判断的表单（AI 先判的日子，交判断走上面的「行 / 不行」）。 */
   withForm?: boolean;
+  /** true：拆解卡已经摆在题目下面了（后台先拆好的），这里只留每个因素点偏向的那一排，不再重复一遍。 */
+  factorsAbove?: boolean;
   /** 这道题是哪一天报告里的（拆解卡存在那一天的报告里）。 */
   date: string;
   initialBreakdown: Breakdown | null;
@@ -59,7 +62,29 @@ export function PracticeComposer({
 
   return (
     <div className="space-y-5">
-      {!breakdown ? (
+      {breakdown && factorsAbove ? (
+        <div>
+          <p className="text-sm font-medium">上面那几样，你觉得各偏向哪边？</p>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">可以不点。点了的，交判断时一起给挑刺看（哪个看反了、漏了）。</p>
+          <ol className="mt-2 space-y-2">
+            {breakdown.factors.map((f, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span>
+                  <span className="mr-1.5 font-mono text-xs text-muted-foreground">{i + 1}</span>
+                  {f.factor}
+                </span>
+                <span className="flex flex-wrap gap-1">
+                  {(Object.keys(LEANS) as Lean[]).map((l) => (
+                    <Button key={l} size="sm" variant={leans[i] === l ? "secondary" : "ghost"} onClick={() => pick(i, l)}>
+                      {LEANS[l]}
+                    </Button>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : !breakdown ? (
         <div>
           <p className="mb-2 text-sm leading-7 text-muted-foreground">
             不知道从哪想起？先拆一拆：这件事由哪几个因素决定、每个怎么起作用、现在是什么情况、去哪看。

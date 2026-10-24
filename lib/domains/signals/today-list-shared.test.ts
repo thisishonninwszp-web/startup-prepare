@@ -10,6 +10,7 @@ const fq = (id: string, blind = false, ai: number | null = 0.3): ListForecast =>
   blind,
   anchor: ai === null ? null : { source: "ai", probability: ai },
   three: [],
+  breakdown: null,
 });
 const base: ListCandidates = { practice: null, forecasts: [], confirms: [], dues: [], recalls: [], experiments: [], doors: [] };
 const draft = (probability: number) => ({ probability, perspectives: [], made_at: "" });
@@ -18,7 +19,7 @@ describe("一分钟清单", () => {
   it("按顺序取、各取几件、最多 8 件，剩下的数出来", () => {
     const c: ListCandidates = {
       ...base,
-      practice: { kind: "practice", date: "2026-10-24", signalId: "s", question: "日银会不会加息？", mode: "draft", draft: draft(0.85), horizon: "3m", deadline: "2026-12-31" },
+      practice: { kind: "practice", date: "2026-10-24", signalId: "s", question: "日银会不会加息？", mode: "draft", draft: draft(0.85), breakdown: null, horizon: "3m", deadline: "2026-12-31" },
       forecasts: [fq("a"), fq("b"), fq("c"), fq("d"), fq("blind", true, null)],
       recalls: [1, 2, 3].map((i) => ({ signalId: `r${i}`, title: `回想${i}`, reason: "你标过", dueOn: "2026-10-24" })),
     };
@@ -59,7 +60,7 @@ describe("一分钟清单", () => {
   it("估几秒：练习 10 秒，别的 6 秒", () => {
     const { items } = pickListItems({
       ...base,
-      practice: { kind: "practice", date: "d", signalId: "s", question: "q", mode: "blind", draft: null, horizon: "3m" },
+      practice: { kind: "practice", date: "d", signalId: "s", question: "q", mode: "blind", draft: null, breakdown: null, horizon: "3m" },
       forecasts: [fq("a")],
     });
     expect(listSeconds(items)).toBe(16);
@@ -69,9 +70,9 @@ describe("一分钟清单", () => {
     expect(previewLine({ kind: "forecast", q: fq("a") })).toEqual({ label: "预测", title: "题a", note: "AI：30%" });
     expect(previewLine({ kind: "forecast", q: fq("b", true, null) }).note).toBe("这道先自己判");
     expect(previewLine({ kind: "forecast", q: { ...fq("m"), anchor: { source: "market", probability: 0.45 } } }).note).toBe("市场：45%");
-    expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "draft", draft: draft(0.3), horizon: "3m" }).note).toBe("AI：不会 · 有点把握");
-    expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "waiting", draft: null, horizon: "3m" }).note).toBe("AI 还没判完");
-    expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "blind", draft: null, horizon: "3m" }).note).toBe("周一：先自己判");
+    expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "draft", draft: draft(0.3), breakdown: null, horizon: "3m" }).note).toBe("AI：不会 · 有点把握");
+    expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "waiting", draft: null, breakdown: null, horizon: "3m" }).note).toBe("AI 还没判完");
+    expect(previewLine({ kind: "practice", date: "d", signalId: "s", question: "q", mode: "blind", draft: null, breakdown: null, horizon: "3m" }).note).toBe("周一：先自己判");
     expect(
       previewLine({
         kind: "due",

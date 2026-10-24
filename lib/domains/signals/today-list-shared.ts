@@ -7,9 +7,21 @@ import { CONFIDENCE_LEVELS, draftVerdict, type HorizonKey, type PracticeDraft } 
 import type { InferenceEvidence } from "./inference-shared";
 import type { FakeDoorDraft } from "./fake-door-shared";
 import type { GapSide } from "./gaps-shared";
+import type { Breakdown } from "./breakdown-shared";
 
 /** anchor：先摆出来的那个数（市场价 / 统计基准 / AI，见 anchorOf）；先判题不摆，是 null。 */
-export type ListForecast = { id: string; title: string; kind: ForecastKind; resolve_on: string; criteria: string; blind: boolean; anchor: Anchor | null; three: Forecast[] };
+export type ListForecast = {
+  id: string;
+  title: string;
+  kind: ForecastKind;
+  resolve_on: string;
+  criteria: string;
+  blind: boolean;
+  anchor: Anchor | null;
+  three: Forecast[];
+  /** 「从这几样想起」：后台先拆好的（迁移 101；没拆到是 null，卡片上就只摆题目）。 */
+  breakdown: Breakdown | null;
+};
 
 export type ListPractice = {
   kind: "practice";
@@ -19,6 +31,8 @@ export type ListPractice = {
   /** draft：AI 先判了；blind：周一先自己判；waiting：AI 先判还没出（7:30 后台会补）。 */
   mode: "draft" | "blind" | "waiting";
   draft: PracticeDraft | null;
+  /** 「从这几样想起」：和 AI 先判一起在后台拆好（没拆到是 null）。 */
+  breakdown: Breakdown | null;
   horizon: HorizonKey;
   deadline?: string;
 };

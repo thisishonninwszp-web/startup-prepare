@@ -9,7 +9,7 @@ import { answerDrillAction } from "./actions";
 
 const OFFLINE = "没连上服务器（网络断了一下），过一会儿再试。";
 
-const PERSPECTIVE_LABELS = { outside: "先看基准率", inside: "只看这件事", devil: "唱反调" } as const;
+const PERSPECTIVE_LABELS = { outside: "同类的事一般怎样", inside: "这件事眼下到哪一步", devil: "专找容易看漏的" } as const;
 
 /**
  * 一道校准练习：假装今天是那一天，先写「这一类事一般几成会发生」，再写这件事几成，马上揭晓。
