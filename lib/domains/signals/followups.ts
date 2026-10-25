@@ -16,6 +16,8 @@ export type EarlierMention = {
   headline: string;
   /** 之前一共出现过几次（不算今天）。 */
   times: number;
+  /** 上一次报道的来源资料快照；只带公共背景和依据，不带读者的个性化分析。旧记录可以没有。 */
+  previous?: Pick<BriefItem, "background" | "grounded" | "basis" | "url">;
   /** 之前出现的那几次里，你写过判断的最近一条。 */
   judgment?: EarlierJudgment & { brief_date: string };
 };
@@ -44,6 +46,12 @@ export function findEarlierMentions(
       signal_id: hits[0].item.signal_id,
       headline: hits[0].item.headline,
       times: new Set(hits.map((h) => h.brief_date)).size,
+      previous: {
+        background: hits[0].item.background,
+        grounded: hits[0].item.grounded,
+        basis: hits[0].item.basis,
+        url: hits[0].item.url,
+      },
       judgment: judged ? { ...judgments.get(judged.item.signal_id)!, brief_date: judged.brief_date } : undefined,
     };
   }

@@ -1,7 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { selectAll } from "@/lib/supabase-all";
 import { followedSignals, marksFor, storyAround } from "./memory";
 import { cleanSnippet, followReasonText, type ArchiveHit } from "./memory-shared";
 import { addDays, FIRST_INTERVAL, nextInterval, type RecallResult } from "./recall-shared";
+import { loadReadingPreferences, reportEventsForSignals } from "./reading-preferences";
+import { partitionReadingItems } from "./reading-preferences-shared";
 
 /**
  * 回想（迁移 098）：他在跟的新闻（标过、记成观察、写过判断的）按间隔重复来问他。
@@ -41,19 +44,32 @@ async function syncRecall(userId: string, shared: boolean): Promise<boolean> {
 /** 今天该回想的（到期早的先）。迁移没跑返回 null。 */
 export async function dueRecalls(userId: string, shared: boolean, today: string, limit = 20): Promise<{ items: RecallItem[]; total: number } | null> {
   if (!(await syncRecall(userId, shared))) return null;
-  const { data, error, count } = await supabaseAdmin
-    .from("recall_reviews")
-    .select("signal_id, due_on, reviews, external_signals!inner(title, fetched_at)", { count: "exact" })
-    .eq("user_id", userId)
-    .lte("due_on", today)
-    .order("due_on", { ascending: true })
-    .limit(limit);
-  if (error) throw new Error(error.message);
   type Row = { signal_id: string; due_on: string; reviews: number; external_signals: { title: string | null; fetched_at: string } };
-  const rows = (data ?? []) as unknown as Row[];
+  const [{ data, error }, preferences] = await Promise.all([
+    selectAll<Row>(async (from, to) => {
+      const result = await supabaseAdmin
+        .from("recall_reviews")
+        .select("signal_id, due_on, reviews, external_signals!inner(title, fetched_at)")
+        .eq("user_id", userId)
+        .lte("due_on", today)
+        .order("due_on", { ascending: true })
+        .order("signal_id", { ascending: true })
+        .range(from, to);
+      return { data: result.data as unknown as Row[] | null, error: result.error };
+    }),
+    loadReadingPreferences(userId),
+  ]);
+  if (error) throw new Error(error.message);
+  // 历史排期保留；展示时按当前读者的静音设置筛掉，恢复关注后仍能继续回想。
+  // 先过滤再限额，避免静音记录占满首页名额；事件标签也从当前读者可见的报告取得。
+  const events = preferences.preferences.some((p) => p.preference === "mute")
+    ? await reportEventsForSignals(userId, data.map((row) => row.signal_id))
+    : new Map<string, string>();
+  const { visible } = partitionReadingItems(data.map((row) => ({ ...row, event: events.get(row.signal_id) })), preferences.preferences);
+  const rows = visible.slice(0, limit);
   const marks = await marksFor(userId, rows.map((r) => r.signal_id));
   return {
-    total: count ?? rows.length,
+    total: visible.length,
     items: rows.map((r) => {
       const m = marks.get(r.signal_id);
       return {

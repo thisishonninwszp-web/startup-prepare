@@ -447,11 +447,16 @@ export async function checkOutcomeEvidence(userId: string, judgmentId: string): 
   const judgment = data.judgment as string;
 
   const queries = await planOutcomeQueries({ newsTitle: data.news_title as string, question, judgment, madeOn, dueOn });
-  const [found, against] = await Promise.all([
-    webSearch(queries.query, OUTCOME_RESULTS_PER_SIDE).catch(() => []),
-    queries.counterQuery ? webSearch(queries.counterQuery, OUTCOME_RESULTS_PER_SIDE).catch(() => []) : Promise.resolve([]),
+  if (!queries.counterQuery.trim()) throw new Error("没有生成反对方向的检索词，这次检查不完整；此前的证据仍保留，请重试。");
+  const [found, against] = await Promise.allSettled([
+    webSearch(queries.query, OUTCOME_RESULTS_PER_SIDE),
+    webSearch(queries.counterQuery, OUTCOME_RESULTS_PER_SIDE),
   ]);
-  const sources = mergeSources([found, against], OUTCOME_RESULTS_PER_SIDE * 2);
+  if (found.status === "rejected" || against.status === "rejected") {
+    const failed = [found.status === "rejected" ? "支持方向" : null, against.status === "rejected" ? "反对方向" : null].filter(Boolean).join("和");
+    throw new Error(`${failed}的检索失败，这次检查不完整；此前的证据仍保留，不能据此认为没有反证，请重试。`);
+  }
+  const sources = mergeSources([found.value, against.value], OUTCOME_RESULTS_PER_SIDE * 2);
   const claim = `${madeOn} 写下的判断（${dueOn} 到期）：${judgment}\n问题：${question}\n只有 ${madeOn} 以后发生的事才算支持或反对；更早的事只能当背景。`;
   const evidence = await extractStepEvidence(claim, sources);
 

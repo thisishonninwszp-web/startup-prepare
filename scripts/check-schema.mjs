@@ -23,6 +23,9 @@ if (!baseUrl || !serviceKey) {
 }
 
 const coreProbes = [
+  ["signal_reading_preferences", "user_id,event_key,signal_id,event_label,preference,created_at,updated_at"],
+  ["signal_judgment_updates", "id,user_id,judgment_id,judgment,reason,source_url,created_at"],
+  ["signal_reading_sessions", "user_id,report_date,signal_ids,stopped_at"],
   ["observations", "id,user_id,raw_text,tags,created_at"],
   ["ideas", "id,user_id,status,tags,hypothesis,last_activity_at"],
   ["ai_sessions", "id,idea_id,observation_id,role,messages"],

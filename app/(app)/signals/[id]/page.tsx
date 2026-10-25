@@ -23,6 +23,9 @@ import { StoryAround } from "../story-around";
 import { marksFor, storyAround } from "@/lib/domains/signals/memory";
 import { sharedViewFor } from "@/lib/domains/signals/users";
 import { userSignalState } from "@/lib/domains/signals/user-states";
+import { loadReadingPreferences, reportEventsForSignals } from "@/lib/domains/signals/reading-preferences";
+import { preferenceForItem } from "@/lib/domains/signals/reading-preferences-shared";
+import { StoryPreferenceButtons } from "../story-preference-buttons";
 
 export const dynamic = "force-dynamic";
 // 第一次打开时要读原文 + 调 AI 写深读，默认 10 秒不够。
@@ -41,9 +44,9 @@ function AnalysisView({ analysis, signalId }: { analysis: SignalAnalysis; signal
   if (analysis.kind === "tools") {
     return (
       <div className="space-y-6">
-        <Block label="这是什么">{analysis.what}</Block>
-        <Block label="怎么用">{analysis.howToUse}</Block>
-        <Block label="适合谁">{analysis.whoFor}</Block>
+        <Block label="AI 整理 · 这是什么">{analysis.what}</Block>
+        <Block label="AI 解释 · 怎么用">{analysis.howToUse}</Block>
+        <Block label="AI 推断 · 适合谁">{analysis.whoFor}</Block>
         <Block label="你可以试">
           <p className="border-l-2 border-primary pl-3">{analysis.tryThis}</p>
         </Block>
@@ -52,9 +55,9 @@ function AnalysisView({ analysis, signalId }: { analysis: SignalAnalysis; signal
   }
   return (
     <div className="space-y-6">
-      <Block label="来龙去脉">{analysis.background}</Block>
-      <Block label="会落到谁身上">{analysis.chain}</Block>
-      <Block label="跟你">
+      <Block label="AI 整理 · 来龙去脉">{analysis.background}</Block>
+      <Block label="AI 推断 · 会落到谁身上">{analysis.chain}</Block>
+      <Block label="AI 判断的关联 · 跟你">
         <p className="border-l-2 border-primary pl-3">{analysis.forYou}</p>
       </Block>
       <Block label="能找谁聊">
@@ -83,7 +86,7 @@ export default async function SignalDetailPage({
   // 被动记录：打开了这一条（从邮件里点进来的带 from=email）；记不上不拦着
   await recordOpen(user.id, params.id, searchParams.from === "email" ? "email" : "detail").catch(() => {});
 
-  const [detail, judgment, inference, nodeBets, gapOptions, marks, story] = await Promise.all([
+  const [detail, judgment, inference, nodeBets, gapOptions, marks, story, preferences, events] = await Promise.all([
     getSignalDetail(params.id),
     // 迁移 055 没跑时没有判断练习，详情页照旧直接显示报告
     getJudgmentForSignal(user.id, params.id).catch((e: Error) => {
@@ -96,6 +99,8 @@ export default async function SignalDetailPage({
     // 记忆层（迁移 091）：没跑、没算过指纹时这两样空着
     marksFor(user.id, [params.id]).catch(() => new Map()),
     storyAround(params.id).catch(() => null),
+    loadReadingPreferences(user.id),
+    reportEventsForSignals(user.id, [params.id]),
   ]);
   // 「记成观察 / 只是知道了」每人一份：主账号看这条的状态，朋友的账号看他自己处理过没有
   const view = await sharedViewFor(user.id);
@@ -139,6 +144,7 @@ export default async function SignalDetailPage({
           )}
           <div className="mt-3">
             <MarkButtons signalId={detail.id} initial={marks.get(detail.id)?.mark ?? null} initialNote={marks.get(detail.id)?.note ?? null} />
+            <StoryPreferenceButtons signalId={detail.id} event={events.get(detail.id)} initial={preferenceForItem({ signal_id: detail.id, event: events.get(detail.id) }, preferences.preferences)} available={preferences.status === "ready"} />
           </div>
 
           {detail.summary && (
@@ -150,6 +156,16 @@ export default async function SignalDetailPage({
             </section>
           )}
 
+          {detail.excerpt ? (
+            <section className="mt-6 rounded-lg border p-4">
+              <h2 className="text-base font-semibold">{detail.kind === "tools" ? "来源资料 · README 开头" : "来源资料 · 原文开头"}</h2>
+              <p className="mt-2 whitespace-pre-line text-sm leading-7">{detail.excerpt}{detail.excerpt.length >= 1200 ? "…" : ""}</p>
+              <p className="mt-2 text-xs leading-6 text-muted-foreground">这是抓取的来源内容，来源的说法不等于已经独立证实；完整语境请回原文核对。</p>
+            </section>
+          ) : (
+            <p className="mt-4 text-xs leading-6 text-muted-foreground">这里暂未保存正文摘录。标题和发布方简介不能证明 AI 的解释，请按需打开原文核对。</p>
+          )}
+
           {judgment && (
             <section className="mt-10 rounded-lg border bg-card p-5">
               <h2 className="mb-4 text-base font-semibold">你的判断</h2>
@@ -159,9 +175,9 @@ export default async function SignalDetailPage({
 
           {gated ? (
             <section className="mt-10 rounded-lg border bg-card p-5">
-              <h2 className="text-base font-semibold">先写你的判断</h2>
+              <h2 className="text-base font-semibold">可以先写自己的判断</h2>
               <p className="mb-4 mt-1 text-sm leading-7 text-muted-foreground">
-                写完才看 AI 的报告。先自己想一遍，再对照，练的就是这一下。
+                想练判断，可以先留一句再对照 AI；今天只想读新闻，也可以直接看报告。
               </p>
               {detail.kind === "news" && (
                 <div className="mb-5">
@@ -180,7 +196,8 @@ export default async function SignalDetailPage({
             </section>
           ) : (
             <section className="mt-10 rounded-lg border bg-card p-5">
-              <h2 className="mb-5 text-base font-semibold">具体报告</h2>
+              <h2 className="mb-2 text-base font-semibold">AI 整理与推断</h2>
+              <p className="mb-5 text-xs leading-6 text-muted-foreground">背景整理、因果解释和个人关联由 AI 生成，仍需核实；相反证据可以在你的判断下主动查找。</p>
               {detail.analysis ? (
                 <AnalysisView analysis={detail.analysis} signalId={detail.id} />
               ) : (
@@ -203,18 +220,6 @@ export default async function SignalDetailPage({
             </section>
           )}
 
-          {detail.excerpt && (
-            <section className="mt-10">
-              <h2 className="text-base font-semibold">
-                {detail.kind === "tools" ? "README 开头" : "原文开头"}
-              </h2>
-              <p className="mt-2 whitespace-pre-line text-sm leading-7 text-muted-foreground">
-                {detail.excerpt}
-                {detail.excerpt.length >= 1200 ? "…" : ""}
-              </p>
-            </section>
-          )}
-
           {story && (
             <section className="mt-10 border-t pt-6">
               <h2 className="mb-3 text-base font-semibold">这件事以前、后来</h2>
@@ -223,10 +228,10 @@ export default async function SignalDetailPage({
           )}
 
           <section className="mt-10 border-t pt-6">
-            <h2 className="text-base font-semibold">这条去哪</h2>
+            <h2 className="text-base font-semibold">可选：接下来做什么</h2>
             <p className="mb-3 mt-1 text-xs leading-6 text-muted-foreground">
-              信息只有改变一个决定时才有用。看完选一个去处：补进某个想法还缺的那一格、记成观察、或者只是知道了就放下。
-              想下一个判断，就在上面「写判断」或往下推的某一步上记。
+              理解了就可以结束。想继续时，可以补进某个想法的缺口、记成观察，或留一个待对账的判断。
+              无需每条新闻都转成行动。
             </p>
             <p className="mb-2 text-sm font-medium">补进想法的缺口</p>
             <RouteToGap signalId={detail.id} options={gapOptions} />

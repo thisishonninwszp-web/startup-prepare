@@ -1,5 +1,6 @@
 import { CONFIDENCE_LEVELS, displayQuestion, JUDGMENT_MODE_LABELS, type JudgmentRow } from "@/lib/domains/signals/practice-shared";
 import { RetryFeedback } from "./judgment-forms";
+import { JudgmentUpdatesPanel } from "./judgment-updates-panel";
 
 const DATE = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric" });
 
@@ -56,6 +57,7 @@ export function JudgmentView({ judgment, showQuestion = true }: { judgment: Judg
           <RetryFeedback judgmentId={judgment.id} />
         )}
       </div>
+      <JudgmentUpdatesPanel judgmentId={judgment.id} originalDate={judgment.created_at} initialEvidence={judgment.outcome_evidence} />
     </div>
   );
 }

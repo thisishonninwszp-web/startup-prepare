@@ -46,15 +46,21 @@ import { describeMove, unusualFastMoves } from "@/lib/domains/signals/fast";
 import { Badge } from "@/components/ui/badge";
 import { FlowView } from "./flow-view";
 import { TrackOpen } from "./track-open";
+import { ReportEvidence } from "./report-evidence";
+import { OpenedBadge, ReadingProgress } from "./reading-progress";
+import { loadReadingSession } from "@/lib/domains/signals/reading-session";
+import { loadReadingPreferences } from "@/lib/domains/signals/reading-preferences";
+import { partitionReadingItems, preferenceForItem, type ReadingPreferencesState } from "@/lib/domains/signals/reading-preferences-shared";
+import { StoryPreferenceButtons } from "./story-preference-buttons";
+import { ReadingPreferencesPanel } from "./reading-preferences-panel";
 
 export const dynamic = "force-dynamic";
 // 「现在生成」「写下判断」的 server action 跟着页面的时长上限走，默认 10 秒不够。
 export const maxDuration = 60;
 
 /**
- * 每日报告页，从上到下：今日总览 → 到期的判断 → 今天的练习 → 五节（页签，一次看一节）。
- * 每条新闻默认只显示一行标题和几个小标签（意外、先例、跟你……），点开才展开背景和分析；
- * 展开后，日本这边、中国那边、先例、机会来源、原文依据再收在"更多"里 —— 内容不删，只是不全摊开。
+ * 每日报告保留总览、练习和五节精选。展开条目先看来源，再按需展开 AI；
+ * 个人静音只收起展示，原报告保留；阅读终点由用户主动保存，不把展开当作读完。
  */
 
 const SECTIONS: { kind: SignalKind; title: string; tab: string; forYouLabel: string; empty: string }[] = [
@@ -154,6 +160,7 @@ function ReportItem({
   hidden,
   earlier,
   mark,
+  preferences,
 }: {
   item: BriefItem;
   n: number;
@@ -162,6 +169,7 @@ function ReportItem({
   earlier?: EarlierMention;
   /** 他标过没有（展开以后可以直接标，不用点进详情页）。 */
   mark?: Mark;
+  preferences: ReadingPreferencesState;
 }) {
   // 中国那边只在"没有、没普及"时显示：中国早就有的（比如豆芽）只是噪音
   const showChina = !!item.china_side && /^(没有|有类似的)/.test(item.china_side);
@@ -192,6 +200,7 @@ function ReportItem({
           <span className="mt-0.5 font-mono text-xs text-muted-foreground">{String(n).padStart(2, "0")}</span>
           <span className="min-w-0 flex-1">
             <span className="text-base font-medium leading-7">{item.headline}</span>
+            <span className="ml-2"><OpenedBadge signalId={item.signal_id} /></span>
             {chips.length > 0 && (
               <span className="mt-1 flex flex-wrap gap-1">
                 {chips.map((c) => (
@@ -210,13 +219,23 @@ function ReportItem({
             <MarkButtons signalId={item.signal_id} initial={mark?.mark ?? null} initialNote={mark?.note ?? null} compact />
           </div>
           <p className="font-mono text-xs text-muted-foreground">{item.source}</p>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">入选方式：当天候选经来源平衡后，由 AI 选入通用精选。个人关联是后续分析，不是按你的点击次数选入。</p>
+          <div className="mt-2">
+            <StoryPreferenceButtons signalId={item.signal_id} event={item.event} initial={preferenceForItem(item, preferences.preferences)} available={preferences.status === "ready"} />
+          </div>
+          <ReportEvidence item={item} earlier={earlier} showBackground={false} />
+          {earlier && <EarlierLine mention={earlier} />}
+          <p className="mt-3 text-sm"><Link href={`/signals/${item.signal_id}`} className="text-primary hover:underline">先写一句自己的判断 →</Link></p>
           {hidden ? (
             <p className="mt-2 rounded-md bg-muted/60 px-3 py-2 text-sm leading-7 text-muted-foreground">
               这条是今天的练习题。先在上面写下你的判断，AI 的解读再出来。
             </p>
           ) : (
-            <>
+            <details className="mt-3 rounded-md border px-3 py-2">
+              <summary className="cursor-pointer text-sm font-medium">直接展开 AI 整理与推断</summary>
+              <p className="mt-2 text-xs leading-6 text-muted-foreground">背景是 AI 整理，影响、关联和类比属于解释或推断；不等于来源已证实的事实。</p>
               {item.flow && <FlowView flow={item.flow} />}
+              <h3 className="mt-3 text-xs font-medium text-muted-foreground">AI 整理的背景</h3>
               <p className="mt-2 text-base leading-8">{item.background}</p>
               {item.grounded === false && (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -224,7 +243,7 @@ function ReportItem({
                 </p>
               )}
               <p className="mt-2 text-sm leading-7">
-                <span className="text-muted-foreground">{forYouLabel}：</span>
+                <span className="text-muted-foreground">AI 推断 · {forYouLabel}：</span>
                 {item.for_you}
               </p>
 
@@ -242,10 +261,9 @@ function ReportItem({
                   </details>
                 </div>
               )}
-              {earlier && <EarlierLine mention={earlier} />}
               {item.related_question && (
                 <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
-                  <span className="text-muted-foreground">跟你在追的问题有关：</span>
+                  <span className="text-muted-foreground">AI 判断的关联 · 跟你在追的问题有关：</span>
                   <Link
                     href={`/signals/questions/${item.related_question.id}`}
                     className="text-primary underline-offset-4 hover:underline"
@@ -257,7 +275,7 @@ function ReportItem({
               )}
               {item.personal && (
                 <p className="mt-2 border-l-2 border-primary pl-3 text-sm leading-7">
-                  <span className="text-muted-foreground">{item.personal_edge ? "你的优势：" : "跟你："}</span>
+                  <span className="text-muted-foreground">AI 判断的关联 · {item.personal_edge ? "你的优势：" : "跟你："}</span>
                   {item.personal}
                 </p>
               )}
@@ -307,7 +325,7 @@ function ReportItem({
                   </div>
                 </details>
               )}
-            </>
+            </details>
           )}
           <p className="mt-2 flex gap-4 text-sm">
             <Link href={`/signals/${item.signal_id}`} className="text-primary underline-offset-4 hover:underline">
@@ -340,9 +358,11 @@ function ReportSectionView({
   date,
   feedback,
   marks,
+  preferences,
 }: {
   /** 他标过的（signal_id → 标记）。 */
   marks: Record<string, Mark>;
+  preferences: ReadingPreferencesState;
   section: (typeof SECTIONS)[number];
   data: ReportSection | null;
   isToday: boolean;
@@ -356,7 +376,8 @@ function ReportSectionView({
   /** 今天的练习题还没写判断时，这一条的 AI 解读先藏起来。 */
   hiddenSignalId: string | null;
 }) {
-  const picks = (data?.items ?? []).filter((i) => !i.extra);
+  const { visible, muted } = partitionReadingItems(data?.items ?? [], preferences.preferences);
+  const picks = visible.filter((i) => !i.extra);
   // 新工具和新可能分成两组：GitHub 仓库一组，降价、规制缓和、日本首次提供一组
   const groups =
     section.kind === "tools"
@@ -372,8 +393,8 @@ function ReportSectionView({
 
       {data && picks.length === 0 ? (
         <div className="mt-4">
-          {data.overview && <p className="text-base leading-8">{data.overview}</p>}
-          <p className="mt-2 text-sm leading-7 text-muted-foreground">这一批消息里没有能放进这一节的。宁可空着，也不硬凑。</p>
+          {muted.length === 0 && data.overview && <p className="text-base leading-8">{data.overview}</p>}
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">{muted.length ? "这一节的精选已按你的设置收起，可在下面查看或恢复。" : "这一批消息里没有能放进这一节的。宁可空着，也不硬凑。"}</p>
         </div>
       ) : !data ? (
         <div className="mt-4 rounded-lg border border-dashed bg-dotgrid px-6 py-8 text-center">
@@ -389,7 +410,7 @@ function ReportSectionView({
         </div>
       ) : (
         <>
-          {data.overview && <p className="mt-2 text-sm leading-7 text-muted-foreground">{data.overview}</p>}
+          {muted.length === 0 && data.overview && <details className="mt-2 text-sm leading-7 text-muted-foreground"><summary className="cursor-pointer">展开本节 AI 总览</summary><p className="mt-2">{data.overview}</p></details>}
           {groups.map((g, gi) => {
             const offset = groups.slice(0, gi).reduce((n, x) => n + x.items.length, 0);
             return (
@@ -405,19 +426,20 @@ function ReportSectionView({
                       hidden={item.signal_id === hiddenSignalId}
                       earlier={earlier[item.signal_id]}
                       mark={marks[item.signal_id]}
+                      preferences={preferences}
                     />
                   ))}
                 </ol>
               </div>
             );
           })}
-          {data.items.some((item) => item.extra) && (
+          {visible.some((item) => item.extra) && (
             <details className="mt-6">
               <summary className="cursor-pointer text-sm text-muted-foreground">
-                还有 {data.items.filter((item) => item.extra).length} 条也值得一看
+                可选探索：还有 {visible.filter((item) => item.extra).length} 条
               </summary>
               <ul className="mt-2 space-y-2">
-                {data.items
+                {visible
                   .filter((item) => item.extra)
                   .map((item) => (
                     <li key={item.signal_id} className="text-sm leading-7">
@@ -435,6 +457,14 @@ function ReportSectionView({
             {canGenerate && <GenerateBriefButton kind={section.kind} regenerate />}
           </div>
         </>
+      )}
+      {muted.length > 0 && (
+        <details className="mt-4 rounded-md border border-dashed p-3">
+          <summary className="cursor-pointer text-sm text-muted-foreground">已静音的内容（{muted.length} 条，按需查看或恢复）</summary>
+          <ol className="divide-y">
+            {muted.map((item, i) => <ReportItem key={item.signal_id} item={item} n={i + 1} forYouLabel={section.forYouLabel} hidden={item.signal_id === hiddenSignalId} earlier={earlier[item.signal_id]} mark={marks[item.signal_id]} preferences={preferences} />)}
+          </ol>
+        </details>
       )}
     </section>
   );
@@ -838,7 +868,7 @@ export default async function SignalsReportPage({
   const isToday = date === today;
   // 朋友的账号看主账号那一份（共用，去掉只关于主账号的几句）；自己就是主账号或没配主账号时看自己的
   const view = await sharedViewFor(user.id);
-  const [rawReport, newsCount, toolsCount, judgments, digest, feedback, fastAlerts] = await Promise.all([
+  const [rawReport, newsCount, toolsCount, judgments, digest, feedback, fastAlerts, preferences] = await Promise.all([
     getDailyReport(view.sourceUserId, date),
     countPendingSignals("news", undefined, view.shared ? user.id : undefined),
     countPendingSignals("tools", [GITHUB_SOURCE_PREFIX], view.shared ? user.id : undefined),
@@ -850,9 +880,15 @@ export default async function SignalsReportPage({
     getDigest(view.sourceUserId, date).catch(() => null),
     getFeedback(user.id, date),
     isToday ? unusualFastMoves().catch(() => []) : Promise.resolve([]),
+    loadReadingPreferences(user.id),
   ]);
 
   const report = rawReport !== "missing-schema" && view.shared ? publicReport(rawReport) : rawReport;
+  const allItems = report === "missing-schema" ? [] : SECTIONS.flatMap((s) => report[s.kind]?.items ?? []);
+  const selection = partitionReadingItems(allItems, preferences.preferences);
+  const selectedIds = [...new Set(selection.visible.filter((item) => !item.extra).map((item) => item.signal_id))];
+  const reading = report === "missing-schema" ? null : await loadReadingSession(user.id, date, selectedIds);
+  const hideOverview = selection.muted.length > 0;
   // 各节每一条他标过没有（展开以后能直接标）
   const marks = Object.fromEntries(
     await marksFor(
@@ -861,7 +897,7 @@ export default async function SignalsReportPage({
     ).catch(() => new Map<string, Mark>())
   );
   const practice = report !== "missing-schema" ? report.news?.practice ?? null : null;
-  const newsPicks = report !== "missing-schema" ? (report.news?.items ?? []).filter((i) => !i.extra) : [];
+  const newsPicks = report !== "missing-schema" ? partitionReadingItems(report.news?.items ?? [], preferences.preferences).visible.filter((i) => !i.extra) : [];
   const practiceIndex = practice ? newsPicks.findIndex((i) => i.signal_id === practice.signal_id) : -1;
   const practiceItem = practiceIndex >= 0 ? newsPicks[practiceIndex] : null;
   const practiceJudgment =
@@ -876,16 +912,17 @@ export default async function SignalsReportPage({
     report === "missing-schema"
       ? []
       : [
-          ...(digest && digest !== "missing-schema" ? ["今日总览", digest.summary] : []),
+          ...(!hideOverview && digest && digest !== "missing-schema" ? ["AI 今日总览", digest.summary] : []),
           ...SECTIONS.flatMap((section) => {
             const data = report[section.kind];
-            const items = (data?.items ?? []).filter((i) => !i.extra);
+            const { visible, muted } = partitionReadingItems(data?.items ?? [], preferences.preferences);
+            const items = visible.filter((i) => !i.extra);
             if (!data || items.length === 0) return [];
             return [
               section.title,
-              ...(data.overview ? [data.overview] : []),
+              ...(muted.length === 0 && data.overview ? ["以下是 AI 整理与推断。", data.overview] : []),
               ...items.map((i) =>
-                i.signal_id === hiddenSignalId ? `${i.headline}。这条是今天的练习题，先自己判断。` : `${i.headline}。${i.background}`
+                i.signal_id === hiddenSignalId ? `${i.headline}。这条是今天的练习题，先自己判断。` : `${i.headline}。以下是 AI 整理，解释仍需核验。${i.background}`
               ),
             ];
           }),
@@ -898,7 +935,7 @@ export default async function SignalsReportPage({
         title={isToday ? "今天" : `${formatReportDate(date)}的报告`}
         description={
           isToday
-            ? "五分钟看完：世界上发生了什么、你在跟的事有什么新消息、有什么等你判断。五节精选在最下面，按需翻。"
+            ? "看今天发生了什么，接着追踪昨天的事。先看来源，按需展开 AI 分析；理解了就可以结束。"
             : "那天的总览和五节精选。"
         }
       />
@@ -917,6 +954,7 @@ export default async function SignalsReportPage({
           全部工具 {toolsCount}
         </Link>
       </nav>
+      <ReadingPreferencesPanel state={preferences} />
       {report !== "missing-schema" && report.recentDates.length > 1 && (
         <nav className="mb-6 flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <span className="text-muted-foreground">往期：</span>
@@ -937,7 +975,7 @@ export default async function SignalsReportPage({
           数据库还差一步：迁移 053 或 054 没跑。到 Supabase 的 SQL Editor 执行 supabase/migrations/054_signal_reports.sql 之后再来。
         </div>
       ) : (
-        <>
+        <ReadingProgress key={date} date={date} ids={selectedIds} initial={reading!}>
           {fastAlerts.length > 0 && (
             <div className="mb-6 rounded-lg border border-border bg-card p-4 text-sm leading-7">
               <p className="font-medium">这一周动得不寻常的</p>
@@ -956,7 +994,14 @@ export default async function SignalsReportPage({
               这是大家共用的一份报告，每天早上自动生成。你的判断、标记、记成的观察都是你自己的，别人看不到。
             </p>
           )}
-          <DigestCard digest={digest === "missing-schema" ? null : digest} date={date} canGenerate={isToday && hasAnySection && !view.shared} />
+          {hideOverview ? (
+            <p className="mb-4 text-xs leading-6 text-muted-foreground">你的静音设置已应用；混合总览暂时收起，避免再次出现静音事件。下面按你的设置展示精选。</p>
+          ) : (
+            <details className="mb-4 rounded-lg border px-4 py-3">
+              <summary className="cursor-pointer text-sm font-medium">按需展开 AI 今日总览</summary>
+              <div className="mt-3"><DigestCard digest={digest === "missing-schema" ? null : digest} date={date} canGenerate={isToday && hasAnySection && !view.shared} /></div>
+            </details>
+          )}
           <div className="mb-8">
             <ListenButton paragraphs={listenScript} />
           </div>
@@ -1000,7 +1045,7 @@ export default async function SignalsReportPage({
             tabs={SECTIONS.map((section) => ({
               key: section.kind,
               label: section.tab,
-              count: (report[section.kind]?.items ?? []).filter((i) => !i.extra).length,
+              count: partitionReadingItems(report[section.kind]?.items ?? [], preferences.preferences).visible.filter((i) => !i.extra).length,
               content: (
                 <ReportSectionView
                   section={section}
@@ -1012,11 +1057,12 @@ export default async function SignalsReportPage({
                   date={date}
                   feedback={feedback[section.kind as keyof typeof feedback]}
                   marks={marks}
+                  preferences={preferences}
                 />
               ),
             }))}
           />
-        </>
+        </ReadingProgress>
       )}
 
       <footer className="mt-16 space-y-4 border-t pt-4">

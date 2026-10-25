@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { recentOpens, repeatOpened } from "./opens";
+import { loadReadingPreferences, reportEventsForSignals } from "./reading-preferences";
+import { applyReadingPreferences } from "./reading-preferences-shared";
 import { executeEmbedding } from "@/lib/ai-gateway";
 import { answerFromArchive, type ArchiveStatement } from "@/lib/ai";
 import { isGithubSource } from "./feeds";
@@ -267,13 +269,14 @@ const FOLLOW_LIMIT = 60;
 export const STORIES_MISSING = "迁移 093 还没跑：在 Supabase 的 SQL Editor 里执行 supabase/migrations/093_signal_today.sql。";
 
 /**
- * 他在跟的：最近 FOLLOW_DAYS 天里标过的、写过判断的、记成观察的新闻（做过的比说过的可信，三样都算）。
+ * 他在跟的：永久保留的主动关注，以及最近 FOLLOW_DAYS 天里标过、写过判断、记成观察、反复打开的新闻。
+ * 主动静音覆盖自动追踪；恢复默认后再按近期行为追踪。
  * shared：朋友的账号 —— 「记成观察」看他自己那一份（signal_user_states），不看主账号的状态。
  * 哪张表还没建就当那一样是空的。
  */
 export async function followedSignals(userId: string, shared: boolean): Promise<Followed[]> {
   const since = new Date(Date.now() - FOLLOW_DAYS * 86_400_000).toISOString();
-  const [marks, judgments, kept, opens] = await Promise.all([
+  const [marks, judgments, kept, opens, preferences] = await Promise.all([
     supabaseAdmin.from("signal_marks").select("signal_id, mark, note, created_at").eq("user_id", userId).gte("created_at", since).limit(200),
     supabaseAdmin.from("signal_judgments").select("signal_id, created_at").eq("user_id", userId).not("signal_id", "is", null).gte("created_at", since).limit(200),
     shared
@@ -281,6 +284,7 @@ export async function followedSignals(userId: string, shared: boolean): Promise<
       : supabaseAdmin.from("external_signals").select("id, fetched_at").eq("status", "promoted").gte("fetched_at", since).limit(200),
     // 点开看过两天以上的也算（被动记录，迁移 100 没跑是空的）
     recentOpens(userId, FOLLOW_DAYS).catch(() => []),
+    loadReadingPreferences(userId),
   ]);
   const rows = [
     ...((marks.error ? [] : marks.data ?? []) as Mark[]).map((m) => ({ signal_id: m.signal_id, reason: "mark" as const, mark: m.mark, note: m.note, at: m.created_at })),
@@ -301,14 +305,16 @@ export async function followedSignals(userId: string, shared: boolean): Promise<
     ...repeatOpened(opens).map((o) => ({ signal_id: o.signal_id, reason: "opened" as const, mark: null, note: null, at: o.at })),
   ];
   const merged = mergeFollowed(rows).slice(0, FOLLOW_LIMIT);
-  if (merged.length === 0) return [];
+  if (merged.length === 0) return applyReadingPreferences([], preferences.preferences).slice(0, FOLLOW_LIMIT);
   const { data, error } = await supabaseAdmin.from("external_signals").select("id, title, source, fetched_at").in("id", merged.map((m) => m.signal_id));
   if (error) throw new Error(error.message);
   const info = new Map(((data ?? []) as { id: string; title: string | null; source: string; fetched_at: string }[]).map((r) => [r.id, r]));
-  return merged.flatMap((m) => {
+  const automatic = merged.flatMap((m) => {
     const i = info.get(m.signal_id);
     return i ? [{ ...m, title: i.title ? cleanSnippet(i.title) : i.title, source: i.source, fetched_at: i.fetched_at }] : [];
   });
+  const events = preferences.preferences.length > 0 ? await reportEventsForSignals(userId, automatic.map((r) => r.signal_id)) : new Map<string, string>();
+  return applyReadingPreferences(automatic, preferences.preferences, events).slice(0, FOLLOW_LIMIT);
 }
 
 /** 他在跟的这几件事，since 以后有没有新消息（意思够近的）。迁移 093 没跑返回 null。 */

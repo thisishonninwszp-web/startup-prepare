@@ -29,4 +29,26 @@ describe("跟住一件事", () => {
     );
     expect(out).toEqual({});
   });
+
+  it("保留最近一份报道的背景和原文依据，供前后对照，不带个性化分析", () => {
+    const previous = {
+      ...item("old", "日银加息"),
+      background: "日银公布了利率决定。",
+      grounded: true,
+      basis: ["政策利率维持不变"],
+      url: "https://example.com/old",
+      personal: "主账号的处境",
+    };
+    const out = findEarlierMentions(
+      [item("today", "日银加息")],
+      [{ brief_date: "2026-10-24", items: [previous] }],
+      new Map()
+    );
+    expect(out.today.previous).toEqual({
+      background: previous.background,
+      grounded: true,
+      basis: previous.basis,
+      url: previous.url,
+    });
+  });
 });
