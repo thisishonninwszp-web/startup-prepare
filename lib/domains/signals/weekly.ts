@@ -26,6 +26,21 @@ export function lastWeekRange(today: string): { start: string; end: string } {
   return { start: shift(thisMonday, -7), end: shift(thisMonday, -1) };
 }
 
+/** today 所在这一周的周一。 */
+export function weekMonday(today: string): string {
+  const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
+  return shift(today, -((dow + 6) % 7));
+}
+
+export function isSunday(today: string): boolean {
+  return new Date(`${today}T12:00:00Z`).getUTCDay() === 0;
+}
+
+/** 最近一份能看的周报是哪一周：周日早上这一周七天的报告已经齐了（周末版），就是这一周；别的日子是上一周。 */
+export function latestWeekStart(today: string): string {
+  return isSunday(today) ? weekMonday(today) : lastWeekRange(today).start;
+}
+
 /** 这一周的周报；还没生成返回 null。 */
 export async function getWeekly(userId: string, weekStart: string): Promise<Weekly | null> {
   const { data, error } = await supabaseAdmin

@@ -30,6 +30,8 @@ export type TodayForecast = {
 export type TodayPersonal = {
   /** 他在跟几件事（0 = 还没标过、没记成观察、没写过判断）。 */
   followedCount: number;
+  /** 在跟的那几条（报纸上标「你在跟」用）。 */
+  followedIds: string[];
   /** null = 迁移 093 没跑；"error" = 这次没取到。 */
   stories: StoryUpdate[] | null | "error";
   /** 今天该回想的（最多 RECALL_PER_DAY 条）和一共几条到期；null = 迁移 098 没跑或这次没取到。 */
@@ -70,5 +72,5 @@ export async function loadTodayPersonal(userId: string, today: string): Promise<
       justResolved: s.justResolved.slice(0, 3).map((q) => ({ q, ...sidesOf(board.forecasts, q.id) })),
     };
   }
-  return { followedCount: followed?.length ?? 0, stories, recall, forecast };
+  return { followedCount: followed?.length ?? 0, followedIds: (followed ?? []).map((f) => f.signal_id), stories, recall, forecast };
 }

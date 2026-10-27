@@ -212,3 +212,52 @@ describe("一分钟清单", () => {
     expect(buildDailyEmailHtml({ ...base, list: { ...list, lines: [] } }, {})).toContain("先写下你的判断，再看 AI 怎么拆");
   });
 });
+
+describe("报纸标题、小标签、按习惯排的版面", () => {
+  const base = { date: "2026-10-27", practice: null, overview: null, dueCount: 0, freshQuestions: [], url: "https://app.example" };
+  const sections = [
+    { title: "今天的世界", kind: "news", items: [{ signal_id: "a", headline: "日本银行决定把政策利率提高到0.75%，是三十年来最高。", short: "日银加息至0.75%", tags: ["后续"] }] },
+    { title: "谁在掏钱", kind: "money", items: [{ signal_id: "b", headline: "某某融资", background: "第一句。第二句。", surprise: { expected: "不会", actual: "会", quote: "" } }] },
+    { title: "新工具和新可能", kind: "tools", items: [{ signal_id: "c", headline: "某个工具" }] },
+  ];
+  it("有短标题用短标题，原来那一句放下面；小标签：后续、你在跟、意外", () => {
+    const html = buildDailyEmailHtml({ ...base, sections, followedIds: ["a"] }, {});
+    expect(html).toMatch(/后续<\/span><span[^>]*>你在跟<\/span>日银加息至0\.75%/);
+    expect(html).toContain("日本银行决定把政策利率提高到0.75%");
+    expect(html).toMatch(/意外<\/span>某某融资/);
+  });
+  it("版面按他的习惯排，一直没碰过的放最后并写明", () => {
+    const html = buildDailyEmailHtml({ ...base, sections, sectionOrder: ["money", "news", "tools"], foldedSections: ["tools"] }, {});
+    expect(html.indexOf("谁在掏钱")).toBeLessThan(html.indexOf("今天的世界"));
+    expect(html.indexOf("新工具和新可能")).toBeGreaterThan(html.indexOf("今天的世界"));
+    expect(html).toContain("你最近一个月没点开过这一节，放在最后");
+  });
+});
+
+describe("周末版、听", () => {
+  const base = { date: "2026-10-25", practice: null, overview: null, dueCount: 0, freshQuestions: [], sections: [], url: "https://app.example" };
+  const weekend = {
+    weekStart: "2026-10-19",
+    summary: "这一周日银的事从周一响到周五。",
+    threads: [{ title: "日银加息", note: "周二传出、周四定了。", days: 3 }],
+  };
+  it("周日放这一周的周报：报头写周末版，几条线带几天都有，链到那一周", () => {
+    const html = buildDailyEmailHtml({ ...base, weekend }, {});
+    expect(html).toContain("周末版</span>");
+    expect(html).toContain("周末版 · 这一周（10/19–10/25）");
+    expect(html).toMatch(/日银加息<\/b><span[^>]*>3 天都有/);
+    expect(html).toContain("/signals/week?start=2026-10-19");
+    const { text } = buildDailyEmail({ ...base, weekend });
+    expect(text).toContain("· 日银加息（3 天都有）：周二传出、周四定了。");
+  });
+  it("没有周报（不是周日、或者没写成）就没有周末版", () => {
+    expect(buildDailyEmailHtml(base, {})).not.toContain("周末版");
+    expect(buildDailyEmailHtml({ ...base, weekend: { ...weekend, summary: "" } }, {})).not.toContain("周末版");
+  });
+  it("报头带「听」的链接和几分钟；纯文字版也有", () => {
+    const html = buildDailyEmailHtml({ ...base, listenUrl: "https://app.example/a/tok", listenMinutes: 6 }, {});
+    expect(html).toContain('href="https://app.example/a/tok"');
+    expect(html).toContain("▶ 听（约 6 分钟）");
+    expect(buildDailyEmail({ ...base, listenUrl: "https://app.example/a/tok", listenMinutes: 6 }).text).toContain("听今天的报告（约 6 分钟）：https://app.example/a/tok");
+  });
+});

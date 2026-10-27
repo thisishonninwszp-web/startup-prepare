@@ -37,6 +37,7 @@ import { loadSituationFacts } from "./reader-facts";
 import { sendDailyEmail, sendMemberEmails } from "./notify";
 import { generateDigest } from "./digest";
 import { embedBacklog } from "./memory";
+import { generateWeekly, getWeekly, isSunday, weekMonday } from "./weekly";
 import type { Breakdown } from "./breakdown-shared";
 import type { PracticeDraft } from "./practice-shared";
 
@@ -84,6 +85,8 @@ export type BriefItem = {
   domain?: PestleDomain;
   /** 这件事的短标签（去重用）。早期数据没有。 */
   event?: string;
+  /** 报纸那样的短标题（20 字以内）；没有就用 headline。2026-10-27 以前的没有。 */
+  short?: string;
   /** true = "也值得一看"那一行：只有 headline，没有 background / for_you。 */
   extra?: boolean;
   /**
@@ -472,6 +475,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
       personal_edge: personal.get(p.index)?.edge || undefined,
       domain: p.domain,
       event: p.event,
+      ...(p.short ? { short: p.short } : {}),
       grounded: grounded.has(p.index),
       basis: grounded.get(p.index)?.basis,
       flow: grounded.get(p.index)?.flow,
@@ -585,6 +589,8 @@ const EMBED_TIME_BUDGET_MS = 220_000;
 const EMBED_BEFORE_EMAIL = 800;
 /** 练习的 AI 先判：跑到这个时间以内才开始出（一道最多三四十秒，300 秒上限里留足发邮件的时间）。 */
 const PRACTICE_DRAFT_BUDGET_MS = 200_000;
+/** 周日的周末版：跑到这个时间以内才写这一周的周报（一次 AI，二三十秒）；来不及就不放，周一打开周报页时照旧会写。 */
+const WEEKLY_BUDGET_MS = 190_000;
 const MORNING_KINDS = ["news", "calendar", "voices", "tools"] as const;
 
 /** 给该跑的账号（见 signalUserIds：配了 IDEAOS_USER_EMAIL 只给那一个），生成这几节。 */
@@ -636,6 +642,16 @@ export async function runDailySignals(): Promise<DailySignalsOutcome> {
       for (const e of r.errors) failed.push(`今天的练习：${e}`);
     } catch (e) {
       failed.push(`今天的练习：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // 周日：这一周七天的报告齐了，先把周报写好，邮件按「周末版」放（周一的周报页直接用这一份，不再写一遍）
+  if (userIds.length > 0 && isSunday(tokyoToday()) && Date.now() - startedAt < WEEKLY_BUDGET_MS) {
+    try {
+      const weekStart = weekMonday(tokyoToday());
+      if (!(await getWeekly(userIds[0], weekStart))) await generateWeekly(userIds[0], weekStart);
+    } catch (e) {
+      failed.push(`周末版：${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
