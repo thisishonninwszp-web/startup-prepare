@@ -10,6 +10,7 @@ import {
   linkPicksToQuestions,
   linkPicksToReader,
   practiceProblem,
+  practiceRepeat,
   reworkPractice,
   type BriefCandidate,
   type BriefPractice,
@@ -342,18 +343,28 @@ async function recentPracticeQuestions(userId: string): Promise<string[]> {
   return ((data ?? []) as { practice: { question?: string } | null }[]).flatMap((r) => (r.practice?.question ? [r.practice.question] : []));
 }
 
-/** 练习题过一遍 practiceProblem；不合格就重出一道，重出也不行就留着原来那道（总比当天没有练习好），只记一笔。 */
-async function checkedPractice(practice: BriefPractice | null, candidates: BriefCandidate[], recent: string[]): Promise<BriefPractice | null> {
+/** 宏观新闻的标题（原文，日中英都有）：换新闻出题时跳过这些。 */
+const MACRO_TITLE = /日銀|日本銀行|央行|美联储|FRB|FOMC|\bFed\b|利上げ|利下げ|金利|為替|円安|円高|加息|降息|利率|汇率|国債|国债/;
+
+/**
+ * 练习题过一遍 practiceProblem；不合格就重出一道，重出也不行就留着原来那道（总比当天没有练习好），只记一笔。
+ * 跟最近的题重复、或又是央行的题：从今天挑的几条里换一条不是宏观的新闻再出（2026-10-30，五天全是日银、美联储）。
+ */
+async function checkedPractice(practice: BriefPractice | null, pickIndexes: number[], candidates: BriefCandidate[], recent: string[]): Promise<BriefPractice | null> {
   if (!practice) return null;
   const today = tokyoToday();
-  const problem = practiceProblem(practice, today);
+  const problem = practiceProblem(practice, today, recent);
   if (!problem) return practice;
-  const news = candidates[practice.index];
+  const other = practiceRepeat(practice.question, recent)
+    ? pickIndexes.find((i) => i !== practice.index && candidates[i] && !MACRO_TITLE.test(candidates[i].title))
+    : undefined;
+  const index = other ?? practice.index;
+  const news = candidates[index];
   try {
     // 先按新闻标题搜一次，给它今天的现状（它记得的可能过时了）
     const sources = await webSearch(news.title, 4).catch(() => []);
-    const redo = await reworkPractice({ newsTitle: news.title, newsSummary: news.text, practice, problem, today, recent, sources });
-    return { index: practice.index, ...redo };
+    const redo = await reworkPractice({ newsTitle: news.title, newsSummary: news.text, practice, problem, today, recent, sources, switched: index !== practice.index });
+    return { index, ...redo };
   } catch (e) {
     console.error(`practice rework failed（${problem}）`, e);
     return practice;
@@ -368,7 +379,7 @@ export async function generateBrief(userId: string, kind: SignalKind): Promise<B
   const draft = await generateSignalBrief(kind, candidates, { recentPractice });
   const { more } = draft;
   // 练习题没通过检查（题目就是新闻本身、一周后就揭晓、用了说不清的词）就按同一条新闻重出一道，和下面读正文并行
-  const practicePromise = checkedPractice(draft.practice, candidates, recentPractice);
+  const practicePromise = checkedPractice(draft.practice, draft.picks.map((p) => p.index), candidates, recentPractice);
 
   // "日本这边有没有"要先上网搜再写，是最慢的一段：草稿一出来就开始，和下面读正文、重写并行。
   // 用的是草稿的标题和背景（只根据标题和简介写的），对"日本有没有"够用了。

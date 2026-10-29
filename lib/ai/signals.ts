@@ -1,7 +1,7 @@
 import { type ExternalSignal, type RealityCheckResult, type TavilyResult } from "@/app/(app)/ideas/types";
 import { FIRST_INQUIRY_QUESTION } from "./core";
 import { executeAiJson, executeJev, type JevQuestion, type JevResult } from "@/lib/ai-gateway";
-import { MODEL, generateContent } from "./shared";
+import { longestSharedRun, MODEL, generateContent } from "./shared";
 import { INFERENCE_LENSES, TIER_VALUE, type InferenceBasis, type InferenceLens } from "@/lib/domains/signals/inference-shared";
 import { numbersIn } from "@/lib/domains/jobs/provenance-shared";
 import { checkFlow, FLOW_PROMPT_CHARS, type ItemFlow } from "@/lib/domains/signals/flow-shared";
@@ -696,6 +696,7 @@ const practiceInstruction = (today: string, recent: string[] = []) => `再出一
   那只是在问这条报道准不准，几天就揭晓，用不着判断。往后一步问：如果新闻里这件事成了，接下来最关键、两个方向都有理由的那一步会不会发生。
   例：新闻「日银可能宣布物价已达 2% 目标」→ 不问「会不会宣布达到 2%」，问它之后那一步，比如「到 2027 年 1 月底，日银会不会再加息一次？」
   不要问已经发生过的事（你记得的情况可能过时了，拿不准现状就问新闻里写明了现状的那部分）。
+- 优先从公司、产品、行业的具体动作里出题（谁推出了什么、谁进了哪个市场、谁拿到了钱）；央行、利率、汇率这种宏观题，下面「最近几天出过的题」里已经有两道的话就换一条新闻。
 - question：一个几个月内能用事实检验的问题，问"会怎样"而不是"你怎么看"。要能回答成一句具体的话。
   截止日离今天至少一个月。不用「显著」「明显」「大幅」「某个区间」这种到时候说不清算不算的词，写具体的动作或具体的数。
   题目里的时间点必须落在 horizon 以内，写成具体的月份（今天是 ${today}，horizon 是 3m 的话就问"到某年某月底"，不要写"到明年底"）。
@@ -711,21 +712,46 @@ export const PRACTICE_MIN_DAYS = 28;
 const PRACTICE_VAGUE = /显著|明显|大幅|某个|某种|一定程度|较大|较多|广泛/;
 /** 「会」的理由引的是报道本身。 */
 const PRACTICE_REPORT_CITED = /报道|据称|据悉|消息人士|知情人士|传出|新闻(说|称|显示)/;
+/** 央行、利率、汇率这种宏观题（10-25 到 10-29 五天全是日银、美联储）。 */
+export const PRACTICE_MACRO = /央行|日银|日本银行|美联储|联储|FOMC|加息|降息|利率|国债|汇率|日元(升值|贬值)/;
+/** 最近 7 天的题里宏观题出过几道就换一条新闻。 */
+const PRACTICE_MACRO_MAX = 2;
+/** 和最近的题连着这么多字一样，就算同一道（「到某年某月底，」这种开头先去掉）。 */
+const PRACTICE_SAME_RUN = 14;
+
+/**
+ * 跟最近几天的题比（2026-10-30：10-26 和 10-27 一字不差是同一道；出题时给了最近的题让它别重复，它没听）：
+ * same = 差不多是同一道；macro = 又是央行、利率的题，而最近已经出过两道以上。
+ */
+export function practiceRepeat(question: string, recent: string[]): "same" | "macro" | null {
+  const body = (q: string) => q.replace(/^到\s*\d{4}\s*年\s*\d{1,2}\s*月(底|末)?[，,]?\s*/, "");
+  const mine = body(question);
+  for (const r of recent) {
+    const other = body(r);
+    const run = longestSharedRun(mine, other);
+    if (run >= Math.min(PRACTICE_SAME_RUN, Math.ceil(Math.min(mine.length, other.length) * 0.6))) return "same";
+  }
+  if (PRACTICE_MACRO.test(question) && recent.filter((r) => PRACTICE_MACRO.test(r)).length >= PRACTICE_MACRO_MAX) return "macro";
+  return null;
+}
 
 /**
  * 练习题哪里不合格（2026-10-24 他碰到：「日银可能宣布物价已达 2%」的新闻，出的题是「到 10 月底日银会不会明确表示达到 2%」——
  * 题目就是新闻本身，一周后就揭晓）。合格返回 null。
  */
-export function practiceProblem(p: { question: string; whyUncertain?: string }, today: string): string | null {
+export function practiceProblem(p: { question: string; whyUncertain?: string }, today: string, recent: string[] = []): string | null {
   const deadline = questionDeadline(p.question, today);
   if (deadline && (deadline.getTime() - Date.parse(`${today}T00:00:00Z`)) / 86_400_000 < PRACTICE_MIN_DAYS) return "截止日离今天不到一个月";
   if (PRACTICE_VAGUE.test(p.question)) return "题目里有到时候说不清算不算的词（显著、明显、某个……）";
   const yes = p.whyUncertain?.match(/(?<!不)会[，,]?\s*因为([^；;]*)/)?.[1] ?? "";
   if (PRACTICE_REPORT_CITED.test(yes)) return "「会」的理由是报道本身，题目只是在问这条新闻准不准";
+  const repeat = practiceRepeat(p.question, recent);
+  if (repeat === "same") return "和最近几天出过的一道题差不多";
+  if (repeat === "macro") return "最近几天已经出过好几道央行、利率的题";
   return null;
 }
 
-const practiceReworkPrompt = (today: string, recent: string[]) => `他在练"读新闻、下判断、事后对账"。下面是今天练习题用的那条新闻、一道没通过检查的题和没通过的原因，还有今天上网查到的几份资料。按同一条新闻重出一道。今天是 ${today}。
+const practiceReworkPrompt = (today: string, recent: string[]) => `他在练"读新闻、下判断、事后对账"。下面是今天练习题用的新闻、一道没通过检查的题和没通过的原因，还有今天上网查到的几份资料。按下面这条新闻重出一道。今天是 ${today}。
 - 不要问新闻里说的那件事本身会不会发生（新闻说「可能宣布 X」「计划做 X」，就不要问「会不会宣布 X」—— 那只是在问报道准不准）。
   往后一步：如果新闻里这件事成了，接下来最关键、两个方向都有理由的那一步，问那一步会不会发生。
   例：新闻「日银可能宣布物价已达 2% 目标」→ 问它之后那一步，比如「到 2027 年 1 月底，日银会不会再加息一次？」
@@ -743,13 +769,13 @@ export function questionNumbers(question: string): string[] {
   return Array.from(rest.matchAll(/\d+(?:\.\d+)?/g)).map((m) => m[0]);
 }
 
-export function parsePracticeRework(value: unknown, today: string, material = ""): Omit<BriefPractice, "index"> {
+export function parsePracticeRework(value: unknown, today: string, material = "", recent: string[] = []): Omit<BriefPractice, "index"> {
   const v = (value ?? {}) as Record<string, unknown>;
   const question = typeof v.question === "string" ? v.question.trim() : "";
   const checkHow = typeof v.checkHow === "string" ? v.checkHow.trim() : "";
   const whyUncertain = typeof v.whyUncertain === "string" && v.whyUncertain.trim() ? v.whyUncertain.trim() : undefined;
   if (!question || !checkHow) throw new Error("缺 question 或 checkHow");
-  const problem = practiceProblem({ question, whyUncertain }, today);
+  const problem = practiceProblem({ question, whyUncertain }, today, recent);
   if (problem) throw new Error(problem);
   // 日文资料常写全角数字（「２％」「０．５」）
   const plain = material.replace(/\s+/g, "").replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
@@ -772,8 +798,11 @@ export async function reworkPractice(input: {
   recent: string[];
   /** 今天按新闻标题搜到的资料：给它现状，免得按过时的记忆出题（2026-10-24 试跑时它问「日银会不会结束负利率」，那是 2024 年的事）。 */
   sources: SearchSource[];
+  /** 换了一条新闻出题（原来那道跟最近的题重复、或又是央行的题）。 */
+  switched?: boolean;
 }): Promise<Omit<BriefPractice, "index">> {
   const contents = [
+    ...(input.switched ? ["原来那道题用的是另一条新闻；这次换成下面这条新闻出，跟原来那件事无关。"] : []),
     `新闻标题：${input.newsTitle}`,
     `新闻简介：${input.newsSummary.slice(0, 600) || "（没有）"}`,
     `没通过的题：${input.practice.question}`,
@@ -795,7 +824,8 @@ export async function reworkPractice(input: {
         maxOutputTokens: 1500,
       },
     }),
-    (value) => parsePracticeRework(value, input.today, [input.newsTitle, input.newsSummary, ...input.sources.map((s) => `${s.title} ${s.content}`)].join(" "))
+    (value) =>
+      parsePracticeRework(value, input.today, [input.newsTitle, input.newsSummary, ...input.sources.map((s) => `${s.title} ${s.content}`)].join(" "), input.recent)
   );
 }
 

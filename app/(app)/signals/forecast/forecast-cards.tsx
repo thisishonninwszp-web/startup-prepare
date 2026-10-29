@@ -29,8 +29,9 @@ import { confirmResolutionAction, revealQuestionAction, setMyForecastAction } fr
 
 const OFFLINE = "没连上服务器（网络断了一下），过一会儿再试。";
 
-function QuestionHead({ q }: { q: ForecastQuestion }) {
-  const link = q.kind === "market" ? q.source.url : q.source.signal_id ? `/signals/${q.source.signal_id}` : null;
+function QuestionHead({ q, inNews = false }: { q: ForecastQuestion; inNews?: boolean }) {
+  // 摆在那条新闻里面时，「出自这条新闻」就不用再链回去了
+  const link = q.kind === "market" ? q.source.url : q.source.signal_id && !inNews ? `/signals/${q.source.signal_id}` : null;
   return (
     <>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -57,6 +58,17 @@ function QuestionHead({ q }: { q: ForecastQuestion }) {
         </p>
       )}
     </>
+  );
+}
+
+/** 「从这几样想起」：摆在新闻里面时折起来。 */
+function Factors({ breakdown, folded }: { breakdown: Breakdown; folded: boolean }) {
+  if (!folded) return <BreakdownFactors breakdown={breakdown} />;
+  return (
+    <details className="mt-2 text-sm">
+      <summary className="cursor-pointer text-muted-foreground">不知道从哪想起？看看主要看哪几样</summary>
+      <BreakdownFactors breakdown={breakdown} />
+    </details>
   );
 }
 
@@ -110,6 +122,7 @@ export function ForecastCard({
   anchor,
   three,
   breakdown,
+  inNews = false,
 }: {
   q: ForecastQuestion;
   blind: boolean;
@@ -117,6 +130,8 @@ export function ForecastCard({
   three: Forecast[];
   /** 「从这几样想起」：题目下面、先摆的数前面（后台先拆好的，没拆到是 null）。 */
   breakdown: Breakdown | null;
+  /** 摆在「今天」那条新闻里面（读报时就地判断）：不链回新闻，「从这几样想起」折起来，免得一条新闻撑得太长。 */
+  inNews?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -139,8 +154,8 @@ export function ForecastCard({
     const lower = tiersBeside(anchor.probability, "lower");
     return (
       <li className="rounded-lg border border-border bg-card p-4">
-        <QuestionHead q={q} />
-        {breakdown && <BreakdownFactors breakdown={breakdown} />}
+        <QuestionHead q={q} inNews={inNews} />
+        {breakdown && <Factors breakdown={breakdown} folded={inNews} />}
         <p className="mt-3 text-sm">
           {ANCHOR_LABELS[anchor.source]}：<span className="font-mono">{pct(anchor.probability)}</span> 会
         </p>
@@ -183,8 +198,8 @@ export function ForecastCard({
   }
   return (
     <li className="rounded-lg border border-border bg-card p-4">
-      <QuestionHead q={q} />
-      {breakdown && <BreakdownFactors breakdown={breakdown} />}
+      <QuestionHead q={q} inNews={inNews} />
+      {breakdown && <Factors breakdown={breakdown} folded={inNews} />}
       {blind && <p className="mt-3 text-xs leading-6 text-muted-foreground">这道先自己判，判完再看 AI 的。每周一道，量的是你自己准不准。</p>}
       <p className="mt-3 text-xs text-muted-foreground">到截止日，你觉得「会」的可能有多大？</p>
       <div className="mt-1 flex flex-wrap gap-1">

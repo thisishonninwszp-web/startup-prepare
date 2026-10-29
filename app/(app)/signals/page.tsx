@@ -22,6 +22,9 @@ import { ensurePracticeBreakdown } from "@/lib/domains/signals/breakdown";
 import { BreakdownFactors } from "@/components/breakdown-factors";
 import type { SignalDetail } from "@/lib/domains/signals/analysis";
 import { PracticeDraftCard } from "./practice-draft-card";
+import { ForecastCard } from "./forecast/forecast-cards";
+import { inlineQuestions, type InlineQuestion } from "@/lib/domains/signals/inline-questions";
+import type { Breakdown } from "@/lib/domains/signals/breakdown-shared";
 import { practiceHorizon, questionDeadline } from "@/lib/ai";
 import { countPendingSignals, getDailyReport, type DailyReport, type ReportSection } from "./queries";
 import { GenerateBriefButton } from "./brief-panel";
@@ -156,6 +159,60 @@ function SideBlock({
   );
 }
 
+/** 今天的练习那一条：展开就能点行不行（和「给你的」里那张卡同一套，点了哪边都算）。 */
+type PracticeNow = {
+  date: string;
+  signalId: string;
+  question: string;
+  draft: PracticeDraft;
+  knownTags: string[];
+  horizon: HorizonKey;
+  deadline?: string;
+  breakdown: Breakdown | null;
+};
+
+/**
+ * 读报时就地判断（经用户同意，2026-10-30）：他会读、会标，不会专门去做题（一周点开 15 次、标了 6 条，判了 2 道）。
+ * 这条是今天的练习，或者挂着等他判断的预测题，展开以后读完事实就在原地摆出来，点一下就记。
+ */
+function JudgeHere({ signalId, practice, questions }: { signalId: string; practice?: PracticeNow; questions: InlineQuestion[] }) {
+  return (
+    <div className="mt-4 space-y-3">
+      {practice && (
+        <div className="border-l-2 border-primary pl-3">
+          <p className="text-xs font-medium text-primary">这条是今天的练习，在这儿就能判</p>
+          <p className="mt-1 text-sm font-medium leading-7">{practice.question}</p>
+          {practice.breakdown && (
+            <details className="mt-1 text-sm">
+              <summary className="cursor-pointer text-muted-foreground">不知道从哪想起？看看主要看哪几样</summary>
+              <BreakdownFactors breakdown={practice.breakdown} />
+            </details>
+          )}
+          <PracticeDraftCard
+            date={practice.date}
+            signalId={signalId}
+            question={practice.question}
+            draft={practice.draft}
+            knownTags={practice.knownTags}
+            defaultHorizon={practice.horizon}
+            deadline={practice.deadline}
+          />
+        </div>
+      )}
+      {questions.length > 0 && (
+        <div className="border-l-2 border-primary pl-3">
+          <p className="text-xs font-medium text-primary">从这条新闻出了{questions.length > 1 ? ` ${questions.length} 道` : "一道"}预测题，在这儿就能判</p>
+          <ul className="mt-2 space-y-2">
+            {questions.map((x) => (
+              <ForecastCard key={x.q.id} q={x.q} blind={x.blind} anchor={x.anchor} three={x.three} breakdown={x.breakdown} inNews />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 一条新闻。 */
 function ReportItem({
   item,
@@ -166,7 +223,13 @@ function ReportItem({
   mark,
   preferences,
   followed,
+  practiceNow,
+  questions = [],
 }: {
+  /** 这条是今天的练习、AI 已经先判了、他还没判：展开就能点行不行。 */
+  practiceNow?: PracticeNow;
+  /** 从这条新闻出的、等他判断的预测题。 */
+  questions?: InlineQuestion[];
   item: BriefItem;
   n: number;
   forYouLabel: string;
@@ -235,7 +298,11 @@ function ReportItem({
           </div>
           <ReportEvidence item={item} earlier={earlier} showBackground={false} />
           {earlier && <EarlierLine mention={earlier} />}
-          <p className="mt-3 text-sm"><Link href={`/signals/${item.signal_id}`} className="text-primary hover:underline">先写一句自己的判断 →</Link></p>
+          {practiceNow || questions.length > 0 ? (
+            <JudgeHere signalId={item.signal_id} practice={practiceNow} questions={questions} />
+          ) : (
+            <p className="mt-3 text-sm"><Link href={`/signals/${item.signal_id}`} className="text-primary hover:underline">先写一句自己的判断 →</Link></p>
+          )}
           {hidden ? (
             <p className="mt-2 rounded-md bg-muted/60 px-3 py-2 text-sm leading-7 text-muted-foreground">
               这条是今天的练习题。先在上面写下你的判断，AI 的解读再出来。
@@ -370,7 +437,13 @@ function ReportSectionView({
   marks,
   preferences,
   followed,
+  practiceNow,
+  inline,
 }: {
+  /** 今天的练习那一条（AI 先判了、他还没判）。 */
+  practiceNow: PracticeNow | null;
+  /** 哪几条新闻挂着等他判断的预测题。 */
+  inline: Record<string, InlineQuestion[]>;
   /** 他在跟的那几条。 */
   followed: string[];
   /** 他标过的（signal_id → 标记）。 */
@@ -444,6 +517,8 @@ function ReportSectionView({
                       mark={marks[item.signal_id]}
                       preferences={preferences}
                       followed={followed.includes(item.signal_id)}
+                      practiceNow={practiceNow?.signalId === item.signal_id ? practiceNow : undefined}
+                      questions={inline[item.signal_id]}
                     />
                   ))}
                 </ol>
@@ -930,6 +1005,21 @@ export default async function SignalsReportPage({
     practice && judgments ? judgments.find((j) => j.signal_id === practice.signal_id) ?? null : null;
   // 先判的日子（周一）才把那一条的解读藏到判完；AI 先判的日子 AI 的判断已经摆着了，再藏只是多一道手续
   const hiddenSignalId = practice && judgments && !practiceJudgment && isBlindPracticeDate(date) ? practice.signal_id : null;
+  // 读报时就地判断（2026-10-30）：练习那一条、挂着预测题的几条，展开就能判（只有今天的；周一先判那道照旧在上面写）
+  const practiceNow: PracticeNow | null =
+    isToday && practice?.ai_draft && judgments && !practiceJudgment && !isBlindPracticeDate(date)
+      ? {
+          date,
+          signalId: practice.signal_id,
+          question: practice.question,
+          draft: practice.ai_draft,
+          knownTags: knownTags(judgments),
+          horizon: practice.horizon && practice.horizon in HORIZONS ? (practice.horizon as HorizonKey) : practiceHorizon(practice.question, undefined, today),
+          deadline: questionDeadline(practice.question, today)?.toISOString().slice(0, 10),
+          breakdown: practice.breakdown ?? null,
+        }
+      : null;
+  const inline = isToday ? await inlineQuestions(user.id, today, selectedIds).catch(() => ({})) : {};
   const mail = emailConfig();
   const hasAnySection = report !== "missing-schema" && SECTIONS.some((s) => report[s.kind]);
 
@@ -1116,6 +1206,8 @@ export default async function SignalsReportPage({
                 marks={marks}
                 preferences={preferences}
                 followed={followed}
+                practiceNow={section.kind === "news" ? practiceNow : null}
+                inline={inline}
               />
             );
             return layout.folded.includes(kind) ? (
