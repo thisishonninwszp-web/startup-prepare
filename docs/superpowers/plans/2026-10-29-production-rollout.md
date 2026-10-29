@@ -21,6 +21,8 @@
 - 生产日志确认模型返回sections对象，而报告契约要求数组；Zod拒绝保存，没有生成或发布不合格报告。许可已消耗，没有直接重试同一许可。
 - 修复使用现有Zod结构生成responseJsonSchema传给Gemini，明确数组形状，prompt版本更新为business-report-v2。保留原有事实引用、内容检查和单次调用机制，不把错误对象静默转换为报告。
 - 回归测试先确认缺少输出约束会失败，再加入结构约束；相关29文件159测试及TypeScript检查通过。生产构建与修复部署验收继续进行。
+- 首轮修复2b678a4的生产部署6LorAFyDxXqp4NVnTzqQpfrp6QCX已Ready。逐次重新确认后复测，Google返回400；SDK的retryOptions包装丢失了响应体，日志只显示provider_error。使用不含真实资料的合成样本，经既有gateway诊断确认：嵌套长度约束导致解码状态过多。
+- 从同一Zod契约导出模型端结构时仅去掉minItems/maxItems/minLength/maxLength；服务器原始schema及所有内容/引用规则保持严格。加入测试确认模型端结构较简、服务器仍拒绝章节缺失。合成样本已由真实gemini-2.5-flash接受，29文件159测试再次通过；prompt版本更新为business-report-v3。尚待该版本部署及真实案例复测。
 
 ## 前次等待记录（已解除）
 

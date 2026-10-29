@@ -4,18 +4,21 @@ import {executeAiText} from '@/lib/ai-gateway';
 import {generateBusinessTeardownReport} from './business-teardowns';
 import {SECTION_KEYS,type ReportSource} from '@/lib/domains/business-teardowns/report-domain';
 import {z} from 'zod';
+import {validateBusinessReport} from '@/lib/domains/business-teardowns/report-validation';
 const sections=()=>SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:['材料不足，待核对']}));
 describe('business report model gateway',()=>{
  beforeEach(()=>vi.clearAllMocks());
- it('constrains provider output to the same twelve-section array contract as saved reports',async()=>{
+ it('constrains provider shape without nested size bounds while retaining strict saved-report checks',async()=>{
   vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
   await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[]});
   const config=vi.mocked(executeAiText).mock.calls[0][1].config;
   expect(config?.responseJsonSchema).toBeDefined();
+  expect(JSON.stringify(config!.responseJsonSchema)).not.toMatch(/"(?:minItems|maxItems|minLength|maxLength)"/);
   const output=z.fromJSONSchema(config!.responseJsonSchema as Parameters<typeof z.fromJSONSchema>[0]);
   expect(output.safeParse({sections:sections()}).success).toBe(true);
   expect(output.safeParse({sections:Object.fromEntries(sections().map(section=>[section.key,section]))}).success).toBe(false);
-  expect(output.safeParse({sections:sections().slice(1)}).success).toBe(false);
+  expect(output.safeParse({sections:sections().slice(1)}).success).toBe(true);
+  expect(()=>validateBusinessReport({sections:sections().slice(1)},[])).toThrow();
   expect(output.safeParse({sections:sections().map(section=>({...section,unknownField:'ignored?'}))}).success).toBe(false);
  });
  it('uses a single metadata-only gateway call, case/request tags and explicit public projection',async()=>{
