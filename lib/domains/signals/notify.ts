@@ -17,7 +17,13 @@ import { ANCHOR_LABELS, MY_TIERS, pct, tiersBeside } from "./forecast-shared";
 import { actionSecret, actionUrl, LIST_TTL_DAYS, signAction, type ActionKind } from "@/lib/action-links";
 import { listSeconds, loadTodayList, previewLine } from "./today-list";
 import { loadTodayPersonal } from "./today";
+import { sectionLayout } from "./section-habits";
+import { findEarlierMentions } from "./followups";
+import { REPORT_SECTION_KINDS } from "./feeds";
 import { DB_LIMIT_BYTES, storageReport } from "./storage";
+import { getWeekly, isSunday, weekMonday } from "./weekly";
+import { buildListenScript, listenMinutes } from "./listen-script";
+import { isBlindPracticeDate } from "./practice-shared";
 
 /**
  * 每天早上的提醒邮件：报告好了以后发一封到他的邮箱，带上今天的练习题。
@@ -53,9 +59,19 @@ export type DailyEmailInput = {
   practice: { question: string; headline: string } | null;
   overview: string | null;
   /** 今日总览挑的最值得点开的几条（最多 3 条）：标题、背景、一图看懂。 */
-  top?: { signal_id: string; headline: string; background: string; flow?: ItemFlow }[];
+  top?: { signal_id: string; headline: string; short?: string; background: string; flow?: ItemFlow }[];
   /** 每一节的精选：标题、背景（邮件里只放第一句）、两种提示。 */
-  sections: { title: string; items: (Pick<BriefItem, "headline" | "related_question" | "surprise"> & { signal_id?: string; background?: string })[] }[];
+  sections: {
+    title: string;
+    /** 哪一节（按他的阅读习惯排版面用）。 */
+    kind?: string;
+    items: (Pick<BriefItem, "headline" | "related_question" | "surprise"> & { signal_id?: string; background?: string; short?: string; tags?: string[] })[];
+  }[];
+  /** 版面顺序（按他最近 30 天的阅读习惯，见 section-habits-shared.ts）和收在最后的几节。每人一份。 */
+  sectionOrder?: string[];
+  foldedSections?: string[];
+  /** 他在跟的那几条（标「你在跟」）。每人一份。 */
+  followedIds?: string[];
   dueCount: number;
   freshQuestions: { question: string; freshCount: number }[];
   /** 这一周动得不寻常的快变量（已经写成一句话）。 */
@@ -78,6 +94,11 @@ export type DailyEmailInput = {
    * 拿不到口令（没配密钥或网址）或者取清单出错为 null，邮件照旧（回想、预测、练习各自单列）。
    */
   list?: { url: string; seconds: number; more: number; lines: { label: string; title: string; note: string }[] } | null;
+  /** 周日的周末版：这一周的周报（共用，朋友那封也放）。每条线带它在几天里出现过。 */
+  weekend?: { weekStart: string; summary: string; threads: { title: string; note: string; days: number }[] } | null;
+  /** 听今天的报告：念完约几分钟（按报告算，共用）和那一页的链接（每人一份口令）。 */
+  listenMinutes?: number;
+  listenUrl?: string | null;
   /** 预测题里等他做的：等判断几道（第一道的题目）、生意题等确认几道。每人一份。 */
   forecastTodo?: { toForecast: number; first: string | null; toConfirm: number } | null;
   url: string | null;
@@ -142,10 +163,18 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     if (list.more > 0) lines.push(`还有 ${list.more} 件留到明天。`);
     lines.push(`一分钟点完：${list.url}`, "");
   }
+  if (input.listenUrl) lines.push(`听今天的报告（约 ${input.listenMinutes ?? 1} 分钟）：${input.listenUrl}`, "");
+  const weekend = input.weekend && input.weekend.summary ? input.weekend : null;
+  if (weekend) {
+    lines.push(`周末版 · 这一周（${weekRangeLabel(weekend.weekStart)}）`, weekend.summary);
+    for (const t of weekend.threads) lines.push(`· ${t.title}（${t.days} 天都有）：${t.note}`);
+    if (input.url) lines.push(`${input.url}/signals/week?start=${weekend.weekStart}`);
+    lines.push("");
+  }
   if (input.digest) lines.push(input.digest, "");
   if (input.top && input.top.length > 0) {
     lines.push("最值得点开的几条");
-    for (const t of input.top) lines.push(`· ${t.headline}`, `  ${t.background}`);
+    for (const t of input.top) lines.push(`· ${t.short ?? t.headline}`, `  ${t.background}`);
     lines.push("");
   }
   if (input.stories && input.stories.length > 0) {
@@ -179,7 +208,8 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     if (s.items.length === 0) continue;
     lines.push(`【${s.title}】`);
     for (const item of s.items) {
-      lines.push(`· ${item.headline}`);
+      lines.push(`· ${item.short ?? item.headline}`);
+      if (item.short) lines.push(`  ${item.headline}`);
       if (item.background) lines.push(`  ${firstSentence(item.background)}`);
       if (item.surprise) lines.push(`  ↳ 意外：原本以为${item.surprise.expected}，结果${item.surprise.actual}。为什么？`);
       if (item.related_question) lines.push(`  ↳ 跟你在追的「${item.related_question.question}」有关`);
@@ -207,6 +237,13 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
   if (isArchiveDay(input.date) && input.url) lines.push("上个月的存档打包好了：下载一份放在自己电脑上，就是完整的离线备份。", `${input.url}/signals/memory#storage`, "");
   if (input.url) lines.push(`打开今天的报告：${input.url}/signals`);
   return { subject, text: lines.join("\n").trim() };
+}
+
+/** 10/19–10/25（周一到周日）。 */
+function weekRangeLabel(weekStart: string): string {
+  const md = (d: Date) => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  const start = new Date(`${weekStart}T12:00:00Z`);
+  return `${md(start)}–${md(new Date(start.getTime() + 6 * 86_400_000))}`;
 }
 
 /** 预测题里等他做的，写成一两句。 */
@@ -255,11 +292,28 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   const rule = `<div style="height:1px;background:${C.rule};margin:14px 0;"></div>`;
 
   const { text } = buildDailyEmail(input);
-  const sections = input.sections.filter((s) => s.items.length > 0);
+  // 版面按他的阅读习惯排（每人一份）；一直没碰过的几节放到最后
+  const folded = new Set(input.foldedSections ?? []);
+  const orderOf = (k?: string) => {
+    const i = input.sectionOrder?.indexOf(k ?? "") ?? -1;
+    return i < 0 ? 99 : i;
+  };
+  const sections = input.sections
+    .filter((s) => s.items.length > 0)
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => Number(folded.has(a.s.kind ?? "")) - Number(folded.has(b.s.kind ?? "")) || orderOf(a.s.kind) - orderOf(b.s.kind) || a.i - b.i)
+    .map((x) => x.s);
+  const followed = new Set(input.followedIds ?? []);
+  // 标题前面的小标签：后续（之前的报告报过）、你在跟、意外
+  const tagChips = (tags: string[]) =>
+    tags
+      .map((t) => `<span style="display:inline-block;font-size:11px;font-weight:600;line-height:1.4;color:${C.accent};border:1px solid ${C.accent};border-radius:3px;padding:0 4px;margin-right:5px;vertical-align:1px;">${esc(t)}</span>`)
+      .join("");
   const sectionCount = sections.reduce((n, s) => n + s.items.length, 0);
 
   // 一分钟清单：今天要他点的都在那一页，「给你的」里回想、预测、练习、到期判断不再单列
   const list = hasList(input) ? input.list : null;
+  const weekend = input.weekend && input.weekend.summary ? input.weekend : null;
 
   // 「给你的」一框：要他动手的都放这里（有清单时只剩要读的：在跟的事、在追的问题）
   const mine: string[] = [];
@@ -329,10 +383,12 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   // 报头
   parts.push(
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:2px solid ${C.ink};"><tr>` +
-      `<td style="padding:0 0 6px;font-size:22px;font-weight:700;color:${C.ink};">IdeaOS 早报</td>` +
+      `<td style="padding:0 0 6px;font-size:22px;font-weight:700;color:${C.ink};">IdeaOS 早报${weekend ? `<span style="font-size:15px;color:${C.accent};margin-left:8px;">周末版</span>` : ""}</td>` +
       `<td align="right" style="padding:0 0 6px;font-size:13px;color:${C.muted};">${esc(formatReportDate(input.date))}</td>` +
       `</tr></table>`,
-    `<p style="margin:6px 0 22px;font-size:12px;color:${C.muted};">约 ${readingMinutes(text)} 分钟读完${(input.top?.length ?? 0) > 0 ? ` · 头版 ${input.top?.length} 条` : ""}${mine.length > 0 ? ` · 给你的 ${mine.length} 件` : ""}${sectionCount > 0 ? ` · ${sections.length} 个版面 ${sectionCount} 条` : ""}</p>`
+    `<p style="margin:6px 0 22px;font-size:12px;color:${C.muted};">约 ${readingMinutes(text)} 分钟读完${(input.top?.length ?? 0) > 0 ? ` · 头版 ${input.top?.length} 条` : ""}${mine.length > 0 ? ` · 给你的 ${mine.length} 件` : ""}${sectionCount > 0 ? ` · ${sections.length} 个版面 ${sectionCount} 条` : ""}${
+      input.listenUrl ? ` · <a href="${esc(input.listenUrl)}" style="color:${C.accent};font-weight:600;">▶ 听（约 ${input.listenMinutes ?? 1} 分钟）</a>` : ""
+    }</p>`
   );
 
   // 一分钟清单：报头下面第一眼就是它；邮件里只给一眼，一个按钮点开那一页
@@ -352,6 +408,23 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
     );
   }
 
+  // 周末版：这一周连起来看（周报那一份），放在头版前面
+  if (weekend) {
+    parts.push(
+      `<div style="margin:0 0 24px;padding:16px 18px;border:1px solid ${C.ink};border-radius:6px;background:${C.card};">` +
+        kicker(`周末版 · 这一周（${weekRangeLabel(weekend.weekStart)}）`) +
+        para(weekend.summary, "font-size:15px;") +
+        weekend.threads
+          .map(
+            (t) =>
+              `<p style="margin:0 0 8px;font-size:14px;line-height:1.7;color:${C.ink};"><b>${esc(t.title)}</b><span style="font-size:12px;color:${C.muted};margin-left:6px;">${t.days} 天都有</span><br/><span style="color:${C.muted};">${esc(t.note)}</span></p>`
+          )
+          .join("") +
+        (input.url ? link(`${input.url}/signals/week?start=${weekend.weekStart}`, "看这一周的周报 →") : "") +
+        `</div>`
+    );
+  }
+
   // 头版
   if (input.digest || (input.top && input.top.length > 0)) {
     parts.push(kicker("头版"));
@@ -364,7 +437,7 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
     }
     for (const t of input.top ?? []) {
       parts.push(`<div style="margin:6px 0 16px;padding:14px 16px;border:1px solid ${C.rule};border-radius:8px;background:${C.card};">`);
-      parts.push(para(t.headline, "font-size:16px;font-weight:700;margin-bottom:6px;"), para(firstSentences(t.background), `font-size:14px;color:${C.muted};margin-bottom:8px;`));
+      parts.push(para(t.short ?? t.headline, "font-size:16px;font-weight:700;margin-bottom:6px;"), para(firstSentences(t.background), `font-size:14px;color:${C.muted};margin-bottom:8px;`));
       const cid = images[t.signal_id];
       if (cid) parts.push(`<img src="cid:${esc(cid)}" alt="一图看懂" width="560" style="display:block;width:100%;max-width:560px;height:auto;border-radius:6px;margin-bottom:6px;" />`);
       const marks = input.markLinks?.[t.signal_id];
@@ -389,18 +462,21 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
 
   // 各版
   for (const sec of sections) {
+    const isFolded = folded.has(sec.kind ?? "");
     parts.push(
-      `<div style="margin:26px 0 10px;border-top:2px solid ${C.ink};padding-top:6px;"><span style="font-size:15px;font-weight:700;color:${C.ink};">${esc(sec.title)}</span><span style="font-size:12px;color:${C.muted};margin-left:8px;">${sec.items.length} 条</span></div>`
+      `<div style="margin:26px 0 10px;border-top:2px solid ${isFolded ? C.rule : C.ink};padding-top:6px;"><span style="font-size:15px;font-weight:700;color:${isFolded ? C.muted : C.ink};">${esc(sec.title)}</span><span style="font-size:12px;color:${C.muted};margin-left:8px;">${sec.items.length} 条${isFolded ? " · 你最近一个月没点开过这一节，放在最后" : ""}</span></div>`
     );
-    if (sec === sections[0] && input.overview && sec.title === "今天的世界") parts.push(para(input.overview, `font-size:14px;color:${C.muted};`));
+    if (input.overview && sec.title === "今天的世界") parts.push(para(input.overview, `font-size:14px;color:${C.muted};`));
     sec.items.forEach((item, i) => {
       const marks = item.signal_id ? input.markLinks?.[item.signal_id] : undefined;
+      const tags = [...(item.tags ?? []), ...(item.signal_id && followed.has(item.signal_id) ? ["你在跟"] : []), ...(item.surprise ? ["意外"] : [])];
+      // 报纸标题：有短标题就用它，原来那一句放到下面一行；没有就照旧（下面一行是背景的第一句）
+      const title = item.short ?? item.headline;
+      const dek = item.short ? item.headline : item.background ? firstSentence(item.background) : "";
       parts.push(
         `<div style="margin:0 0 12px;">` +
-          `<p style="margin:0 0 2px;font-size:15px;line-height:1.6;font-weight:600;color:${C.ink};"><span style="font-family:Menlo,monospace;font-size:12px;font-weight:400;color:${C.muted};margin-right:6px;">${String(i + 1).padStart(2, "0")}</span>${esc(item.headline)}</p>` +
-          (item.background || marks
-            ? `<p style="margin:0;font-size:13.5px;line-height:1.65;color:${C.muted};">${item.background ? esc(firstSentence(item.background)) : ""}${marks ? markInline(marks) : ""}</p>`
-            : "") +
+          `<p style="margin:0 0 2px;font-size:15px;line-height:1.6;font-weight:600;color:${C.ink};"><span style="font-family:Menlo,monospace;font-size:12px;font-weight:400;color:${C.muted};margin-right:6px;">${String(i + 1).padStart(2, "0")}</span>${tagChips(tags)}${esc(title)}</p>` +
+          (dek || marks ? `<p style="margin:0;font-size:13.5px;line-height:1.65;color:${C.muted};">${esc(dek)}${marks ? markInline(marks) : ""}</p>` : "") +
           (item.surprise
             ? `<p style="margin:2px 0 0;font-size:13.5px;line-height:1.65;color:${C.accent};">↳ 意外：原本以为${esc(item.surprise.expected)}，结果${esc(item.surprise.actual)}。为什么？</p>`
             : "") +
@@ -410,7 +486,7 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
     });
   }
   // 「今天的世界」那一节没有条目、导语还在的话，单独放
-  if (input.overview && !(sections[0]?.title === "今天的世界")) parts.push(para(input.overview, `font-size:14px;color:${C.muted};`));
+  if (input.overview && !sections.some((s) => s.title === "今天的世界")) parts.push(para(input.overview, `font-size:14px;color:${C.muted};`));
 
   // 提醒
   const notes: string[] = [];
@@ -477,14 +553,33 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
   const top = ((byKind.get("digest")?.items as DigestPick[] | null) ?? []).slice(0, 3).flatMap((p) => {
     const item = allItems.find((i) => i.signal_id === p.signal_id);
     if (!item || item.signal_id === practiceRow?.signal_id) return [];
-    return [{ signal_id: item.signal_id, headline: item.headline, background: item.background, ...(item.flow ? { flow: item.flow } : {}) }];
+    return [
+      { signal_id: item.signal_id, headline: item.headline, ...(item.short ? { short: item.short } : {}), background: item.background, ...(item.flow ? { flow: item.flow } : {}) },
+    ];
   });
 
-  const [judgments, questions, fast, issueReminder] = await Promise.all([
+  // 「后续」：最近两周的报告里报过同一件事的（和「今天」页同一个找法）
+  const since = new Date(Date.parse(`${date}T00:00:00+09:00`) - 14 * 86_400_000).toISOString().slice(0, 10);
+  const { data: past } = await supabaseAdmin
+    .from("signal_briefs")
+    .select("brief_date, items")
+    .eq("user_id", userId)
+    .in("kind", REPORT_SECTION_KINDS.filter((k) => k !== "tools"))
+    .gte("brief_date", since)
+    .lt("brief_date", date);
+  const earlier = findEarlierMentions(
+    allItems,
+    ((past ?? []) as { brief_date: string; items: BriefItem[] | null }[]).map((r) => ({ brief_date: r.brief_date, items: r.items ?? [] })),
+    new Map()
+  );
+
+  const [judgments, questions, fast, issueReminder, weekly] = await Promise.all([
     listJudgments(userId).catch(() => []),
     supabaseAdmin.from("signal_questions").select("question, research").eq("user_id", userId).is("archived_at", null),
     unusualFastMoves().catch(() => []),
     isFriday(date) ? weeklyIssueReminder(userId, date) : Promise.resolve(null),
+    // 周日的周末版：6 点的任务刚写好的这一周周报
+    isSunday(date) ? getWeekly(userId, weekMonday(date)).catch(() => null) : Promise.resolve(null),
   ]);
   const freshQuestions = (questions.error ? [] : questions.data ?? [])
     .map((q) => ({
@@ -501,16 +596,37 @@ async function loadEmailInput(userId: string, date: string): Promise<DailyEmailI
     overview: (news?.overview as string | null) ?? null,
     sections: ["news", "calendar", "voices", "money", "tools"].map((kind) => ({
       title: SECTION_TITLES[kind],
+      kind,
       items: ((byKind.get(kind)?.items as BriefItem[] | null) ?? [])
         .filter((i) => !i.extra)
         // 练习题那一条不在列表里剧透
         .filter((i) => i.signal_id !== practiceRow?.signal_id)
-        .map(cleanBriefItem),
+        .map(cleanBriefItem)
+        .map((i) => ({ ...i, tags: earlier[i.signal_id] ? ["后续"] : [] })),
     })),
     dueCount: dueJudgments(judgments).length,
     freshQuestions,
     fastAlerts: fast.map(describeMove),
     issueReminder,
+    weekend: weekly
+      ? {
+          weekStart: weekly.weekStart,
+          summary: weekly.summary,
+          threads: weekly.threads.map((t) => ({ title: t.title, note: t.note, days: new Set(t.refs.map((r) => r.date).filter(Boolean)).size })),
+        }
+      : null,
+    // 念的稿子和「听」那一页同一个写法（那一页还会去掉他静音的，所以这里只是大约）
+    listenMinutes: listenMinutes(
+      buildListenScript({
+        digest: digest ?? null,
+        hiddenSignalId: practiceRow && isBlindPracticeDate(date) ? practiceRow.signal_id : null,
+        sections: REPORT_SECTION_KINDS.map((kind) => ({
+          title: SECTION_TITLES[kind],
+          overview: (byKind.get(kind)?.overview as string | null) ?? null,
+          items: ((byKind.get(kind)?.items as BriefItem[] | null) ?? []).filter((i) => !i.extra),
+        })),
+      })
+    ),
     storagePct: await storageReport()
       .then((r) => (r ? Math.round((r.total / DB_LIMIT_BYTES) * 100) : null))
       .catch(() => null),
@@ -529,9 +645,9 @@ async function personalParts(
   userId: string,
   date: string,
   signalIds: string[]
-): Promise<Pick<DailyEmailInput, "stories" | "recall" | "forecastTodo" | "markLinks" | "forecastQuick" | "list">> {
+): Promise<Pick<DailyEmailInput, "stories" | "recall" | "forecastTodo" | "markLinks" | "forecastQuick" | "list" | "sectionOrder" | "foldedSections" | "followedIds" | "listenUrl">> {
   try {
-    const t = await loadTodayPersonal(userId, date);
+    const [t, layout] = await Promise.all([loadTodayPersonal(userId, date), sectionLayout(userId, ["news", "calendar", "voices", "money", "tools"])]);
     const f = t.forecast;
     const base = appUrl();
     const secret = actionSecret();
@@ -559,7 +675,13 @@ async function personalParts(
     });
     const listUrl = base && secret ? actionUrl(base, signAction({ u: userId, k: "list", t: date, v: "" }, secret, Date.now(), LIST_TTL_DAYS)) : null;
     const list = today && listUrl ? { url: listUrl, seconds: listSeconds(today.items), more: today.more, lines: today.items.map(previewLine) } : null;
+    // 听：和清单一样三天有效，点开那一页一个大按钮
+    const listenUrl = base && secret ? actionUrl(base, signAction({ u: userId, k: "listen", t: date, v: "" }, secret, Date.now(), LIST_TTL_DAYS)) : null;
     return {
+      listenUrl,
+      sectionOrder: layout.order,
+      foldedSections: layout.folded,
+      followedIds: t.followedIds,
       list,
       recall: recallItem && recallUrl ? { title: recallItem.title ?? "（没有标题）", reason: recallItem.reason, url: recallUrl } : null,
       markLinks: Object.fromEntries(

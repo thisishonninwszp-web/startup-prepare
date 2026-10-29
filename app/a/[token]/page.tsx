@@ -8,6 +8,17 @@ import { pct } from "@/lib/domains/signals/forecast-shared";
 import { ANCHOR_LABELS, displayedAnchor } from "@/lib/domains/signals/forecast";
 import { listSeconds, loadTodayList, tapsThisWeek } from "@/lib/domains/signals/today-list";
 import { ConfirmTap, RecallTap } from "./tap";
+import { getDailyReport } from "@/app/(app)/signals/queries";
+import { ListenButton } from "@/app/(app)/signals/listen-button";
+import { getDigest } from "@/lib/domains/signals/digest";
+import { KIND_TITLES } from "@/lib/domains/signals/memory-shared";
+import { REPORT_SECTION_KINDS } from "@/lib/domains/signals/feeds";
+import { buildListenScript, listenMinutes } from "@/lib/domains/signals/listen-script";
+import { listJudgments } from "@/lib/domains/signals/practice";
+import { isBlindPracticeDate } from "@/lib/domains/signals/practice-shared";
+import { loadReadingPreferences } from "@/lib/domains/signals/reading-preferences";
+import { partitionReadingItems } from "@/lib/domains/signals/reading-preferences-shared";
+import { sharedViewFor } from "@/lib/domains/signals/users";
 import { TodayListView } from "./list-view";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +42,7 @@ export default async function TapPage({ params }: { params: { token: string } })
   if (!p) {
     return shell(
       <p className="text-sm leading-7 text-muted-foreground">
-        这个链接过期了（单件的七天内有效，一分钟清单三天）或者不对。
+        这个链接过期了（单件的七天内有效，一分钟清单和「听」三天）或者不对。
         <Link href="/signals" className="ml-1 text-primary underline-offset-4 hover:underline">
           回网站上做
         </Link>
@@ -43,6 +54,60 @@ export default async function TapPage({ params }: { params: { token: string } })
   if (p.k === "list") {
     const [list, taps] = await Promise.all([loadTodayList(p.u, p.t), tapsThisWeek(p.u, p.t).catch(() => null)]);
     return shell(<TodayListView token={params.token} day={p.t} items={list.items} more={list.more} seconds={listSeconds(list.items)} taps={taps} />);
+  }
+
+  // 听：邮件里点进来，一个大按钮（浏览器不许一打开就出声）；念的和「今天」页的听按钮同一份
+  if (p.k === "listen") {
+    const view = await sharedViewFor(p.u);
+    const [report, digest, preferences, judgments] = await Promise.all([
+      getDailyReport(view.sourceUserId, p.t),
+      getDigest(view.sourceUserId, p.t).catch(() => null),
+      loadReadingPreferences(p.u),
+      listJudgments(p.u).catch(() => null),
+    ]);
+    if (report === "missing-schema") return shell(<p className="text-sm text-muted-foreground">报告还没准备好。</p>);
+    const sections = REPORT_SECTION_KINDS.map((kind) => {
+      const data = report[kind];
+      const { visible, muted } = partitionReadingItems(data?.items ?? [], preferences.preferences);
+      return { title: KIND_TITLES[kind], overview: muted.length === 0 ? data?.overview ?? null : null, items: visible.filter((i) => !i.extra) };
+    });
+    const allItems = REPORT_SECTION_KINDS.flatMap((kind) => report[kind]?.items ?? []);
+    const practice = report.news?.practice ?? null;
+    const judged = !!practice && !!judgments?.some((j) => j.signal_id === practice.signal_id);
+    const script = buildListenScript({
+      digest: partitionReadingItems(allItems, preferences.preferences).muted.length === 0 && digest && digest !== "missing-schema" ? digest.summary : null,
+      hiddenSignalId: practice && !judged && isBlindPracticeDate(p.t) ? practice.signal_id : null,
+      sections,
+    });
+    const count = sections.reduce((n, s) => n + s.items.length, 0);
+    return shell(
+      <>
+        <p className="text-xs text-muted-foreground">{p.t} 的报告</p>
+        <h1 className="mt-1 text-lg font-semibold leading-8">听今天的报告</h1>
+        {script.length === 0 ? (
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">这一天的报告还没写好，晚点再来。</p>
+        ) : (
+          <>
+            <p className="mb-6 mt-2 text-sm leading-7 text-muted-foreground">
+              约 {listenMinutes(script)} 分钟，{count} 条。浏览器不让网页一打开就出声，点一下开始；锁屏以后有的手机会停。
+            </p>
+            <ListenButton paragraphs={script} big />
+            <ol className="mt-8 space-y-1 text-sm leading-7 text-muted-foreground">
+              {sections
+                .filter((s) => s.items.length > 0)
+                .map((s) => (
+                  <li key={s.title}>
+                    {s.title} · {s.items.length} 条
+                  </li>
+                ))}
+            </ol>
+          </>
+        )}
+        <Link href="/signals" className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline">
+          去网站上看
+        </Link>
+      </>
+    );
   }
 
   if (p.k === "forecast") {

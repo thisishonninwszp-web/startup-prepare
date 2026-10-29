@@ -288,3 +288,14 @@ describe("按题目对账的日子怎么写", () => {
     expect(deadlineLabel("2027-10-12")).toBe("2027年10月12日");
   });
 });
+
+describe("周末版用的是哪一周", () => {
+  it("周日就是这一周，别的日子是上一周", async () => {
+    const { latestWeekStart, weekMonday, isSunday } = await import("./weekly");
+    expect(isSunday("2026-10-25")).toBe(true);
+    expect(weekMonday("2026-10-25")).toBe("2026-10-19");
+    expect(latestWeekStart("2026-10-25")).toBe("2026-10-19");
+    expect(latestWeekStart("2026-10-26")).toBe("2026-10-19");
+    expect(latestWeekStart("2026-10-24")).toBe("2026-10-12");
+  });
+});

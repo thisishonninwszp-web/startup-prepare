@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { getWeekly, lastWeekRange } from "@/lib/domains/signals/weekly";
+import { getWeekly, latestWeekStart } from "@/lib/domains/signals/weekly";
 import { WeeklyLoader } from "./weekly-loader";
 import { sharedViewFor } from "@/lib/domains/signals/users";
 
@@ -30,7 +30,8 @@ export default async function WeeklyPage({ searchParams }: { searchParams: { sta
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const latest = lastWeekRange(tokyoToday()).start;
+  // 周日早上这一周就齐了（早报的周末版用的就是这一份）
+  const latest = latestWeekStart(tokyoToday());
   const requested = searchParams.start && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.start) ? searchParams.start : latest;
   // 只看已经过完的周；周一要对齐
   const start = requested > latest || new Date(`${requested}T12:00:00Z`).getUTCDay() !== 1 ? latest : requested;

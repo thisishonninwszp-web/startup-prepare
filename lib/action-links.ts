@@ -7,7 +7,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * list：一分钟清单那一页（t 是哪一天），一页里点好几件，每个按钮再验一次口令。
  */
 
-export type ActionKind = "mark" | "forecast" | "recall" | "list";
+export type ActionKind = "mark" | "forecast" | "recall" | "list" | "listen";
 export type ActionPayload = { u: string; k: ActionKind; t: string; v: string; e: number };
 
 /** 链接几天内有效。 */
@@ -36,7 +36,7 @@ export function verifyAction(token: string, secret: string, now = Date.now()): A
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as ActionPayload;
     if (typeof p.u !== "string" || typeof p.t !== "string" || typeof p.v !== "string" || typeof p.e !== "number") return null;
-    if (!["mark", "forecast", "recall", "list"].includes(p.k)) return null;
+    if (!["mark", "forecast", "recall", "list", "listen"].includes(p.k)) return null;
     return p.e * 1000 >= now ? p : null;
   } catch {
     return null;

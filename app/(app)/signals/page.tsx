@@ -36,7 +36,11 @@ import { PracticeComposer } from "./practice-composer";
 import { formatDueDate, JudgmentView } from "./judgment-view";
 import { ListenButton } from "./listen-button";
 import { ReaderPanel } from "./reader-panel";
-import { SectionTabs } from "./section-tabs";
+import { ListEntry } from "./list-entry";
+import { buildListenScript } from "@/lib/domains/signals/listen-script";
+import { sectionLayout } from "@/lib/domains/signals/section-habits";
+import { followedSignals } from "@/lib/domains/signals/memory";
+import { readingMinutes } from "@/lib/domains/signals/notify";
 import { TodayBlocks } from "./today-blocks";
 import { MarkButtons } from "./mark-buttons";
 import { marksFor, type Mark } from "@/lib/domains/signals/memory";
@@ -161,6 +165,7 @@ function ReportItem({
   earlier,
   mark,
   preferences,
+  followed,
 }: {
   item: BriefItem;
   n: number;
@@ -170,6 +175,8 @@ function ReportItem({
   /** 他标过没有（展开以后可以直接标，不用点进详情页）。 */
   mark?: Mark;
   preferences: ReadingPreferencesState;
+  /** 他在跟这一条（标过、点开过两天以上、写过判断……见 followedSignals）。 */
+  followed?: boolean;
 }) {
   // 中国那边只在"没有、没普及"时显示：中国早就有的（比如豆芽）只是噪音
   const showChina = !!item.china_side && /^(没有|有类似的)/.test(item.china_side);
@@ -187,7 +194,8 @@ function ReportItem({
     item.surprise ? "意外" : null,
     item.related_question ? "你在追的问题" : null,
     item.personal ? (item.personal_edge ? "你的优势" : "跟你") : null,
-    earlier ? "之前上过" : null,
+    earlier ? "后续" : null,
+    followed ? "你在跟" : null,
     item.precedent ? "先例" : null,
     showChina || (item.japan && /^(没有|有类似的)/.test(item.japan)) ? (item.origin === "us" ? "美日差距" : "中日差距") : null,
   ].filter((x): x is string => !!x);
@@ -199,12 +207,14 @@ function ReportItem({
           <TrackOpen signalId={item.signal_id} />
           <span className="mt-0.5 font-mono text-xs text-muted-foreground">{String(n).padStart(2, "0")}</span>
           <span className="min-w-0 flex-1">
-            <span className="text-base font-medium leading-7">{item.headline}</span>
+            {/* 报纸标题：有短标题就用它，原来那一句放在下面一行 */}
+            <span className="text-base font-medium leading-7">{item.short ?? item.headline}</span>
             <span className="ml-2"><OpenedBadge signalId={item.signal_id} /></span>
+            {item.short && <span className="block text-sm leading-6 text-muted-foreground">{item.headline}</span>}
             {chips.length > 0 && (
               <span className="mt-1 flex flex-wrap gap-1">
                 {chips.map((c) => (
-                  <Badge key={c} variant={c === "意外" || c === "你的优势" || c === "你在追的问题" ? "default" : "muted"}>
+                  <Badge key={c} variant={c === "意外" || c === "你的优势" || c === "你在追的问题" || c === "你在跟" ? "default" : "muted"}>
                     {c}
                   </Badge>
                 ))}
@@ -359,7 +369,10 @@ function ReportSectionView({
   feedback,
   marks,
   preferences,
+  followed,
 }: {
+  /** 他在跟的那几条。 */
+  followed: string[];
   /** 他标过的（signal_id → 标记）。 */
   marks: Record<string, Mark>;
   preferences: ReadingPreferencesState;
@@ -388,8 +401,11 @@ function ReportSectionView({
       : [{ label: null as string | null, items: picks }];
 
   return (
-    <section id={`section-${section.kind}`} className="mt-4">
-      <h2 className="text-lg font-semibold">{section.title}</h2>
+    <section id={`section-${section.kind}`} className="mt-10 scroll-mt-16 border-t-2 border-foreground pt-2">
+      <h2 className="text-lg font-semibold">
+        {section.title}
+        {picks.length > 0 && <span className="ml-2 text-xs font-normal text-muted-foreground">{picks.length} 条</span>}
+      </h2>
 
       {data && picks.length === 0 ? (
         <div className="mt-4">
@@ -427,6 +443,7 @@ function ReportSectionView({
                       earlier={earlier[item.signal_id]}
                       mark={marks[item.signal_id]}
                       preferences={preferences}
+                      followed={followed.includes(item.signal_id)}
                     />
                   ))}
                 </ol>
@@ -882,6 +899,15 @@ export default async function SignalsReportPage({
     isToday ? unusualFastMoves().catch(() => []) : Promise.resolve([]),
     loadReadingPreferences(user.id),
   ]);
+  // 版面按他最近 30 天的阅读习惯排（点开、标记、有用 / 没用），在跟的几条标「你在跟」
+  const [layout, followedRows] = await Promise.all([
+    sectionLayout(
+      user.id,
+      SECTIONS.map((s) => s.kind)
+    ),
+    followedSignals(user.id, view.shared).catch(() => []),
+  ]);
+  const followed = followedRows.map((f) => f.signal_id);
 
   const report = rawReport !== "missing-schema" && view.shared ? publicReport(rawReport) : rawReport;
   const allItems = report === "missing-schema" ? [] : SECTIONS.flatMap((s) => report[s.kind]?.items ?? []);
@@ -911,22 +937,15 @@ export default async function SignalsReportPage({
   const listenScript =
     report === "missing-schema"
       ? []
-      : [
-          ...(!hideOverview && digest && digest !== "missing-schema" ? ["AI 今日总览", digest.summary] : []),
-          ...SECTIONS.flatMap((section) => {
+      : buildListenScript({
+          digest: !hideOverview && digest && digest !== "missing-schema" ? digest.summary : null,
+          hiddenSignalId,
+          sections: SECTIONS.map((section) => {
             const data = report[section.kind];
             const { visible, muted } = partitionReadingItems(data?.items ?? [], preferences.preferences);
-            const items = visible.filter((i) => !i.extra);
-            if (!data || items.length === 0) return [];
-            return [
-              section.title,
-              ...(muted.length === 0 && data.overview ? ["以下是 AI 整理与推断。", data.overview] : []),
-              ...items.map((i) =>
-                i.signal_id === hiddenSignalId ? `${i.headline}。这条是今天的练习题，先自己判断。` : `${i.headline}。以下是 AI 整理，解释仍需核验。${i.background}`
-              ),
-            ];
+            return { title: section.title, overview: muted.length === 0 ? data?.overview ?? null : null, items: visible.filter((i) => !i.extra) };
           }),
-        ];
+        });
 
   return (
     <PageContainer width="narrow">
@@ -943,6 +962,25 @@ export default async function SignalsReportPage({
       {isToday && (
         <Suspense fallback={null}>
           <NextActionLine userId={user.id} />
+        </Suspense>
+      )}
+      {report !== "missing-schema" && (
+        <p className="-mt-4 mb-4 text-xs text-muted-foreground">
+          约 {readingMinutes(listenScript.join(""))} 分钟读完 · {SECTIONS.filter((s) => (report[s.kind]?.items ?? []).some((i) => !i.extra)).length} 个版面{" "}
+          {selectedIds.length} 条
+          {isToday && selectedIds.length > 0 && (
+            <>
+              {" · "}
+              <Link href="/signals/quick" className="text-primary underline-offset-4 hover:underline">
+                速读：一条一屏，左右滑 →
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+      {isToday && (
+        <Suspense fallback={null}>
+          <ListEntry userId={user.id} today={today} />
         </Suspense>
       )}
       {/* 去别的页面的入口在顶上的导航里；这里只留全部新闻、工具各攒了多少和往期 */}
@@ -994,6 +1032,24 @@ export default async function SignalsReportPage({
               这是大家共用的一份报告，每天早上自动生成。你的判断、标记、记成的观察都是你自己的，别人看不到。
             </p>
           )}
+          {!hideOverview && digest && digest !== "missing-schema" && digest.picks.length > 0 && (
+            <section className="mb-6">
+              <p className="mb-1 text-xs font-semibold tracking-wider text-primary">头版</p>
+              <ul className="space-y-1">
+                {digest.picks.slice(0, 3).map((pick) => {
+                  const item = allItems.find((i) => i.signal_id === pick.signal_id);
+                  return (
+                    <li key={pick.signal_id} className="text-base font-semibold leading-7">
+                      <a href={`#item-${pick.signal_id}`} className="transition-colors duration-150 hover:text-primary">
+                        {item?.short ?? pick.headline}
+                      </a>
+                      {item?.source && <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{item.source}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
           {hideOverview ? (
             <p className="mb-4 text-xs leading-6 text-muted-foreground">你的静音设置已应用；混合总览暂时收起，避免再次出现静音事件。下面按你的设置展示精选。</p>
           ) : (
@@ -1006,6 +1062,8 @@ export default async function SignalsReportPage({
             <ListenButton paragraphs={listenScript} />
           </div>
 
+          <div className="mb-8 rounded-lg border-l-4 border-primary/60 bg-primary/5 px-4 pt-4">
+          <p className="mb-3 text-xs font-semibold tracking-wider text-primary">给你的</p>
           {isToday && (
             <Suspense fallback={<p className="mb-8 text-xs text-muted-foreground">在翻你在跟的事……</p>}>
               <TodayBlocks userId={user.id} today={today} />
@@ -1038,30 +1096,39 @@ export default async function SignalsReportPage({
               )}
             </>
           )}
+          </div>
 
-          <h2 className="mb-1 mt-4 text-lg font-semibold">五节精选</h2>
-          <p className="mb-3 text-xs leading-6 text-muted-foreground">每一节从当天抓到的几百条里挑五条。总览已经说过大意，这里按需翻；全部的在「全部新闻」。</p>
-          <SectionTabs
-            tabs={SECTIONS.map((section) => ({
-              key: section.kind,
-              label: section.tab,
-              count: partitionReadingItems(report[section.kind]?.items ?? [], preferences.preferences).visible.filter((i) => !i.extra).length,
-              content: (
-                <ReportSectionView
-                  section={section}
-                  data={report[section.kind]}
-                  isToday={isToday}
-                  canGenerate={isToday && !view.shared}
-                  earlier={report.earlier}
-                  hiddenSignalId={section.kind === "news" ? hiddenSignalId : null}
-                  date={date}
-                  feedback={feedback[section.kind as keyof typeof feedback]}
-                  marks={marks}
-                  preferences={preferences}
-                />
-              ),
-            }))}
-          />
+          <p className="mb-1 mt-4 text-xs leading-6 text-muted-foreground">
+            每一节从当天抓到的几百条里挑五条，按你最近一个月点开、标记得多少排先后；一直没碰过的几节收在最后。全部的在「全部新闻」。
+          </p>
+          {layout.order.map((kind) => {
+            const section = SECTIONS.find((s) => s.kind === kind)!;
+            const view_ = (
+              <ReportSectionView
+                section={section}
+                data={report[section.kind]}
+                isToday={isToday}
+                canGenerate={isToday && !view.shared}
+                earlier={report.earlier}
+                hiddenSignalId={section.kind === "news" ? hiddenSignalId : null}
+                date={date}
+                feedback={feedback[section.kind as keyof typeof feedback]}
+                marks={marks}
+                preferences={preferences}
+                followed={followed}
+              />
+            );
+            return layout.folded.includes(kind) ? (
+              <details key={kind} className="mt-8 rounded-md border border-dashed px-3 py-2">
+                <summary className="cursor-pointer text-sm text-muted-foreground">
+                  {section.title} · 你最近一个月没点开过这一节，收起来了（{partitionReadingItems(report[kind]?.items ?? [], preferences.preferences).visible.filter((i) => !i.extra).length} 条）
+                </summary>
+                {view_}
+              </details>
+            ) : (
+              <div key={kind}>{view_}</div>
+            );
+          })}
         </ReadingProgress>
       )}
 

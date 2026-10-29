@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
  * 听报告：用浏览器自带的朗读，把今天的报告念出来，通勤路上听。不花钱、不用装东西。
  * 一段一段排进去念 —— 有的浏览器一次念太长的一段会念到一半停住。
  */
-export function ListenButton({ paragraphs }: { paragraphs: string[] }) {
+/** big：邮件里「听」点进来的那一页，一个大按钮。 */
+export function ListenButton({ paragraphs, big = false }: { paragraphs: string[]; big?: boolean }) {
   const [state, setState] = useState<"idle" | "playing" | "paused">("idle");
   const [supported, setSupported] = useState(true);
   const queued = useRef(0);
@@ -43,8 +44,8 @@ export function ListenButton({ paragraphs }: { paragraphs: string[] }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {state === "idle" && (
-        <Button variant="outline" size="sm" onClick={start}>
-          听今天的报告
+        <Button variant={big ? "default" : "outline"} size={big ? "lg" : "sm"} onClick={start}>
+          {big ? "▶ 开始听" : "听今天的报告"}
         </Button>
       )}
       {state === "playing" && (

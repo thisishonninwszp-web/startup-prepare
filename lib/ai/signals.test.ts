@@ -1521,3 +1521,14 @@ describe("练习题不合格就重出", () => {
     expect(parsePracticeRework(q, today, "政策金利は0.2%から引き上げ").question).toContain("0.2");
   });
 });
+
+describe("报纸短标题", () => {
+  const titles = ["标题甲", "标题乙"];
+  const base = { index: 0, title: "标题甲", event: "日银加息", headline: "日本银行决定把政策利率提高到0.75%，是三十年来最高。", background: "日本银行今天决定加息。地方银行会跟进。", forYou: "房贷的人先受影响。" };
+  it("写了就带上；太长就不要，不为它让整份报告重写", () => {
+    const ok = parseBrief({ overview: "今天最重要的是日银加息。", picks: [{ ...base, short: "日银加息至0.75%" }], more: [] }, titles, true);
+    expect(ok.picks[0].short).toBe("日银加息至0.75%");
+    const long = parseBrief({ overview: "今天最重要的是日银加息。", picks: [{ ...base, short: "日本银行今天决定把政策利率提高到百分之零点七五这是三十年来最高的水平" }], more: [] }, titles, true);
+    expect(long.picks[0].short).toBeUndefined();
+  });
+});

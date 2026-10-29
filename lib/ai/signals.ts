@@ -476,6 +476,8 @@ export type BriefPick = {
   forYou: string;
   /** 这是哪件事的短标签（"日银加息"）。代码按它去重：同一件事的几篇报道、后续反应只留一条。 */
   event: string;
+  /** 报纸那样的短标题（20 字以内）：邮件和「今天」页扫读用，长的那句 headline 放在下面。写不好就没有，照旧用 headline。 */
+  short?: string;
   /** 德鲁克的创新机会来源（"意外"另有一步专门找）。拿不准、都不算的不标。 */
   opportunity?: OpportunitySource;
   /** 先例：这条讲的是某个方向"有人试过的结果"时，一句话说它对想走这个方向的人说明了什么。 */
@@ -822,6 +824,7 @@ overview 最后用一句点出来，并说是哪几件事（"倒产潮和外国�
 const MORE_SIZE = 5;
 
 const MORE_INSTRUCTION = `每条 picks 都写 event：这是哪件事的短标签，4 到 10 个字（比如"日银加息""台积电熊本"）。
+每条 picks 还写 short：报纸那样的短标题，8 到 20 个字，写清谁做了什么（可以带一个关键数字，比如"日银加息至0.75%""PHP曝重大漏洞已修补"），不加评价、不加问号、不用「或将」这类猜测。
 同一件事的不同报道、它引发的后续反应，用同一个标签 —— 代码会按标签去重，标签不同的才算不同的事。
 picks 按重要性从高到低排，可以多挑一两条备选（最多 ${BRIEF_SIZE + 2} 条），去重后只留前 ${BRIEF_SIZE} 条。
 
@@ -887,6 +890,8 @@ export function parseBrief(value: unknown, candidateTitles: string[], allowEmpty
     seen.add(index);
     const headline = requireString(v, "headline");
     const event = typeof v.event === "string" && v.event.trim() ? v.event.trim().slice(0, 30) : headline;
+    // 短标题写得太长就不要（照旧用 headline），不为它让整份报告重写
+    const short = typeof v.short === "string" && v.short.trim() && [...v.short.trim()].length <= 24 ? v.short.trim() : undefined;
     // 同一件事（标签相同或互相包含）只留排在前面的那条
     if (result.some((r) => sameEvent(r.event, event))) continue;
     const opportunity = OPPORTUNITY_SOURCES.includes(v.opportunity as OpportunitySource)
@@ -900,6 +905,7 @@ export function parseBrief(value: unknown, candidateTitles: string[], allowEmpty
       background: requireString(v, "background"),
       forYou: requireString(v, "forYou"),
       event,
+      ...(short ? { short } : {}),
       ...(opportunity ? { opportunity } : {}),
       ...(precedent ? { precedent } : {}),
       ...(domain ? { domain } : {}),
@@ -988,7 +994,7 @@ ${kind === "news" ? practiceInstruction(tokyoDate(), options.recentPractice) : "
 ${kind === "news" || kind === "voices" || kind === "money" ? `${OPPORTUNITY_INSTRUCTION}\n${OVERVIEW_LENS}` : ""}
 ${kind === "tools" ? "" : DOMAIN_INSTRUCTION}
 ${MORE_INSTRUCTION}
-只输出 JSON：{"overview":"…","picks":[{"index":序号,"title":"原标题照抄","event":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}${kind === "tools" ? "" : ',"domain":"…"'}}],"more":[{"index":序号,"title":"原标题照抄","event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"horizon":"3m","question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
+只输出 JSON：{"overview":"…","picks":[{"index":序号,"title":"原标题照抄","event":"…","short":"…","headline":"…","background":"…","forYou":"…"${kind === "news" || kind === "voices" || kind === "money" ? ',"opportunity":"…","precedent":"…"' : ""}${kind === "tools" ? "" : ',"domain":"…"'}}],"more":[{"index":序号,"title":"原标题照抄","event":"…","headline":"…"}]${kind === "news" ? ',"practice":{"index":序号,"horizon":"3m","question":"…","checkHow":"…","whyUncertain":"…"}' : ""}}`;
 
   return executeAiJson(
     { operation: `signal_brief_${kind}`, module: "unknown", outputMode: "json", timeoutMs: 50_000 },
