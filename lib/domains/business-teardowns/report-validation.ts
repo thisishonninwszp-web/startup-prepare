@@ -4,6 +4,7 @@ import {SECTION_KEYS,type CaseSection,type ReportSource} from './report-domain';
 const ref=z.object({snapshotId:z.string().min(1),quote:z.string().min(1).max(2000)}).strict();
 const section=z.object({key:z.enum(SECTION_KEYS),observations:z.array(z.object({metricId:z.string().min(1),snapshotId:z.string().min(1)}).strict()).max(50),interpretations:z.array(z.object({text:z.string().min(1).max(2000),refs:z.array(ref).max(10),competingExplanation:z.string().min(1).max(2000),distinguishingObservation:z.string().min(1).max(2000)}).strict()).max(12),unknowns:z.array(z.string().min(1).max(1000)).max(20)}).strict();
 const schema=z.object({sections:z.array(section).length(12)}).strict();
+export const BUSINESS_REPORT_OUTPUT_SCHEMA=z.toJSONSchema(schema);
 const prohibited=/很有潜力|不错的想法|前景广阔|照做能成功|值得投资|想法评分|机会评分|评分|星级|score|rating/i;
 const unsupportedAssertion=/(?:总体|整体|所有|全部|多数|大多|主要)(?:的)?(?:顾客|买家|客户|消费者)|(?:顾客|买家|客户|消费者)(?:主要|大多|多数|都是|均为|以.+为主)|真实利润|实际利润|净利润|盈利已|稳赚|\b(?:most|all|majority of) (?:buyers|customers|consumers)\b/i;
 // Free prose cannot carry quantities; exact source quotations and typed observations are separate fields.
