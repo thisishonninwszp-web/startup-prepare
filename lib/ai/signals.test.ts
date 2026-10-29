@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, practiceProblem, parsePracticeRework, questionNumbers, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseSlowThen, parseSlowWind, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
+import { assertChinese, mentionsNumericLikelihood, parseAnalogChecks, yearShift, parseBayesDraft, parseGroundedBrief, sameEvent, parseBrief, titleEchoMatches, parseGapPicks, parseInferenceSteps, parseScoutQueries, parseSharpened, parseFunded, keepJudgedLinks, parseDigest, parseDigestChain, parseWhyNow, parseSurprises, keepJudgedSurprises, trimAnalogLead, whenSpan, parseUserAnalog, parseQuestionLinks, parseKeyFactors, parseQuestionPlan, parseJapanChecks, parseJapanComparisons, parseJapanQueries, parseOutcomeQueries, parseDrillDrafts, parseDrillChecks, parseTransferPlan, parseTransferJudgment, parseIssueZh, parseIssueJa, issueInputText, parseBreakdownPlan, parseBreakdownNow, practiceProblem, practiceRepeat, parsePracticeRework, questionNumbers, parseTransferDrafts, parseTransferVerification, parseTransferProves, parseRecheckQueries, issuePhrasesText, parseSlowThen, parseSlowWind, parseJudgedTiers, parseJudgmentFeedback, parseNewsAnalysis, parsePersonalLinks, parseSignalHistory, parseSituationFacts, parseStepEvidence, parseToolAnalysis } from "./signals";
 
 /** 测试用的候选原标题：彼此不像，免得核对标题时误认。 */
 const titles = (n: number) => Array.from({ length: n }, (_, i) => `候补記事その${"一二三四五六七八九十"[i] ?? i}についての報道`);
@@ -1512,6 +1512,18 @@ describe("练习题不合格就重出", () => {
     );
     expect(ok.question).toContain("1%以上");
     expect(() => parsePracticeRework({ question: "到2026年10月底，日银会不会宣布达到2%？", checkHow: "看公告。" }, today)).toThrow("不到一个月");
+  });
+
+  it("practiceRepeat：跟最近的题一字不差、或又是央行的题（10-25 到 10-28 的真题）", () => {
+    const recent = [
+      "到 2027 年 1 月底，美联储会不会在下一次 FOMC 会议上公布加息的明确计划或意向？",
+      "到 2027 年 1 月底，日本央行会不会公布其长期国债购买量的具体减少计划？",
+    ];
+    expect(practiceRepeat("到2027年1月底，日本央行会不会公布其长期国债购买量的具体减少计划？", recent)).toBe("same");
+    expect(practiceRepeat("到2027年1月底，日本央行会不会采取直接干预外汇市场的行动来抑制日元进一步贬值？", recent)).toBe("macro");
+    expect(practiceRepeat("到2027年1月底，日本央行会不会采取直接干预外汇市场的行动来抑制日元进一步贬值？", recent.slice(0, 1))).toBeNull();
+    expect(practiceRepeat("到2027年3月底，PayPay 会不会在台湾上线扫码支付？", recent)).toBeNull();
+    expect(practiceProblem({ question: "到2027年1月底，日本央行会不会公布其长期国债购买量的具体减少计划？" }, today, recent)).toContain("差不多");
   });
 
   it("parsePracticeRework：题目里的数（年月日不算）必须在新闻或资料里", () => {

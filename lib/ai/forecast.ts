@@ -1,5 +1,7 @@
 import { executeAiJson } from "@/lib/ai-gateway";
-import { MODEL } from "./shared";
+import { longestSharedRun, MODEL } from "./shared";
+
+export { longestSharedRun };
 import { assertChineseAllowingNames, assertNoBanned, titleEchoMatches, type SearchSource } from "./signals";
 import { FORECAST_CATEGORIES } from "@/lib/domains/signals/forecast-shared";
 
@@ -125,21 +127,6 @@ const referencePrompt = (asOf: string) => `下面是一道预测题，假设今�
 用简体中文，名字可以保留原文。不写可能性，不写你的看法。
 只输出 JSON：{"kind":"…","examples":["…"]}`;
 
-/** 两句话里最长的一段相同的字（去掉空白和标点）：kind 跟题目连着六个字一样，多半只是把题目换了个说法。 */
-export function longestSharedRun(a: string, b: string): number {
-  const clean = (t: string) => t.replace(/[\s\p{P}]/gu, "");
-  const x = clean(a);
-  const y = clean(b);
-  let best = 0;
-  for (let i = 0; i < x.length; i++) {
-    for (let j = 0; j < y.length; j++) {
-      let k = 0;
-      while (i + k < x.length && j + k < y.length && x[i + k] === y[j + k]) k++;
-      if (k > best) best = k;
-    }
-  }
-  return best;
-}
 
 const MAX_SHARED_WITH_TITLE = 6;
 
