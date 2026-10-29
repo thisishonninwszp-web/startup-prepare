@@ -6,6 +6,9 @@ import { PatternReport } from "../patterns/pattern-report";
 import { SurvivalCalendar } from "../patterns/survival-calendar";
 import { PageContainer } from "@/components/ui/page-container";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FeedbackImpactPanel } from "../workbench/feedback-impact-panel";
+import { ReconsiderationCuesPanel } from "../workbench/reconsideration-cues-panel";
+import { loadReconsiderationCuesAction } from "../ideas/reconsideration-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +57,8 @@ export default async function LearningsPage({
     data: { user },
   } = await supabase.auth.getUser();
   const userId = user!.id;
+  const feedbackEnabled = process.env.FEEDBACK_LEARNING_ENABLED === "true";
+  const cues = feedbackEnabled ? await loadReconsiderationCuesAction() : null;
 
   const { data: rows, error: rowsError } = await supabaseAdmin
     .from("decisions")
@@ -151,6 +156,7 @@ export default async function LearningsPage({
         打印“学到了什么”合集手册 →
       </a>
 
+      {feedbackEnabled && <div className="mb-6 space-y-3"><ReconsiderationCuesPanel initialData={cues?.ok ? cues.data : null} /><FeedbackImpactPanel allowTaskAdjustment={process.env.DECISION_OBSERVATIONS_ENABLED === "true"} /></div>}
       <Tabs defaultValue={searchParams.tab === "patterns" ? "patterns" : "learned"}>
         <TabsList>
           <TabsTrigger value="learned">学到了</TabsTrigger>

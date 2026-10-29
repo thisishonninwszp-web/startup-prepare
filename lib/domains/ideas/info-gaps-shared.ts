@@ -51,6 +51,9 @@ export type GapEvidence = {
   at: string;
   /** 从外部信号哪一条补进来的（他自己记的没有）。 */
   signal_id?: string;
+  observation_run_id?: string;
+  experiment_id?: string;
+  experiment_run_id?: string;
   title: string;
   url?: string | null;
   note?: string;
@@ -82,10 +85,10 @@ export const FOUNDER_FACTS_MAX = 1000;
 
 /** 标了"拿不到"之后的退路（固定的几条，不让 AI 写）。 */
 export const UNOBTAINABLE_ADVICE = [
-  "拿不到本身就是信息：说明你没有进这个市场的通道。连调研都碰不到客户，以后卖东西也碰不到 —— 这常常是 Kill 或先搁置的理由，不是「再多查查」的理由。",
-  "把注改小，让行动去产生数据：做一个两周内能做完、错了损失很小的版本（手工替一个人办一次、只有一页的东西）。",
-  "把这次的判断写进判断账本（带期限），没有数据，到期也能学到你的直觉准不准。",
-  "换一个数据拿得到的方向 —— 这本身就是你的约束之一。",
+  "先记录当下接触渠道的限制与复查日期；接触困难本身不能推出没有需求。",
+  "有公开材料时，可以核对前提、重建任务，并保留原文出处与尚未回答的问题。",
+  "能运行原型时，用公开或合成样本按预先判据自测，记录人工补救和资源消耗；技术通过不代表真实需求。",
+  "痛点和付费仍未知。保留必须问真人的问题，条件变化后续接真实接触；由你决定是否继续或记录学到了什么。",
 ] as const;
 
 /** 还缺的、离截止最近的在前；截止过了的算"该拿了"。 */
@@ -95,3 +98,8 @@ export function dueGaps(gaps: Pick<InfoGap, "status" | "due_on">[], today: strin
 
 /** 「补进想法的缺口」要选的：没归档的想法里还缺的那几个缺口。 */
 export type OpenGapOption = { idea_id: string; idea_title: string; gaps: { id: string; question: string }[] };
+
+/** Existing plain evidence keeps its activity behavior; derived research/test refs do not represent contact. */
+export function hasLegacyActivityEvidence(evidence: GapEvidence[]): boolean {
+  return evidence.some(item => !item.observation_run_id && !item.experiment_id && !item.experiment_run_id);
+}

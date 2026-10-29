@@ -23,3 +23,12 @@ describe("自己去数一数：有多少人在问", () => {
     expect(askLinks("  ")).toEqual([]);
   });
 });
+
+it('new derived references do not count as real activity; legacy evidence retains eligibility', async()=>{
+ const {hasLegacyActivityEvidence}=await import('./info-gaps-shared');
+ const base={title:'test',at:'2026-10-26'};
+ expect(hasLegacyActivityEvidence([{...base,experiment_id:'exp',experiment_run_id:'run'}])).toBe(false);
+ expect(hasLegacyActivityEvidence([{...base,observation_run_id:'obs'}])).toBe(false);
+ expect(hasLegacyActivityEvidence([{...base,experiment_run_id:'run'}, {...base,signal_id:'legacy'}])).toBe(true);
+ expect(hasLegacyActivityEvidence([base])).toBe(true);
+});

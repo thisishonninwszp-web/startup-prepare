@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UnderstandingReview } from "../events/understanding-review";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
@@ -86,6 +87,7 @@ export default async function WeeklyPage({ searchParams }: { searchParams: { sta
         <WeeklyLoader weekStart={start} />
       )}
 
+      <UnderstandingReview viewerId={user.id} start={`${start}T00:00:00+09:00`} endExclusive={`${shiftWeek(start, 1)}T00:00:00+09:00`} />
       <nav className="mt-10 flex justify-between text-sm">
         <Link href={`/signals/week?start=${prev}`} className="text-muted-foreground transition-colors duration-150 hover:text-foreground">
           ← 再往前一周

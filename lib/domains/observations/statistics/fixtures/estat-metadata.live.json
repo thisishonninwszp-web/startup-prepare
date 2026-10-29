@@ -1,0 +1,4618 @@
+{
+  "GET_META_INFO": {
+    "RESULT": {
+      "STATUS": 0,
+      "ERROR_MSG": "正常に終了しました。",
+      "DATE": "2026-10-28T07:38:16.231+09:00"
+    },
+    "METADATA_INF": {
+      "TABLE_INF": {
+        "@id": "0004006264",
+        "STAT_NAME": {
+          "@code": "00200553",
+          "$": "経済センサス‐活動調査"
+        },
+        "GOV_ORG": {
+          "@code": "00200",
+          "$": "総務省"
+        },
+        "STATISTICS_NAME": "令和３年経済センサス‐活動調査 企業等に関する集計 産業横断的集計 企業等数、従業者数",
+        "TITLE": {
+          "@no": "3-1",
+          "$": "企業産業(小分類)、経営組織(3区分)、企業常用雇用者規模(11区分)別企業等数、事業所数、男女別従業者数及び常用雇用者数－全国、都道府県、大都市"
+        },
+        "CYCLE": "-",
+        "SURVEY_DATE": 202106,
+        "OPEN_DATE": "2023-06-27",
+        "SMALL_AREA": 0,
+        "COLLECT_AREA": "全国",
+        "MAIN_CATEGORY": {
+          "@code": "07",
+          "$": "企業・家計・経済"
+        },
+        "SUB_CATEGORY": {
+          "@code": "01",
+          "$": "企業活動"
+        },
+        "OVERALL_TOTAL_NUMBER": 34872600,
+        "UPDATED_DATE": "2026-09-30",
+        "STATISTICS_NAME_SPEC": {
+          "TABULATION_CATEGORY": "令和３年経済センサス‐活動調査",
+          "TABULATION_SUB_CATEGORY1": "企業等に関する集計",
+          "TABULATION_SUB_CATEGORY2": "産業横断的集計",
+          "TABULATION_SUB_CATEGORY3": "企業等数、従業者数"
+        },
+        "DESCRIPTION": "",
+        "TITLE_SPEC": {
+          "TABLE_NAME": "企業産業(小分類)、経営組織(3区分)、企業常用雇用者規模(11区分)別企業等数、事業所数、男女別従業者数及び常用雇用者数－全国、都道府県、大都市"
+        }
+      },
+      "CLASS_INF": {
+        "CLASS_OBJ": [
+          {
+            "@id": "tab",
+            "@name": "表章項目",
+            "CLASS": [
+              {
+                "@code": "201-2021",
+                "@name": "企業等数",
+                "@level": "",
+                "@unit": "企業等"
+              },
+              {
+                "@code": "205-2021",
+                "@name": "事業所数",
+                "@level": "",
+                "@unit": "事業所"
+              },
+              {
+                "@code": "211-2021",
+                "@name": "従業者数_男女計",
+                "@level": "",
+                "@unit": "人"
+              },
+              {
+                "@code": "212-2021",
+                "@name": "従業者数_男",
+                "@level": "",
+                "@unit": "人"
+              },
+              {
+                "@code": "213-2021",
+                "@name": "従業者数_女",
+                "@level": "",
+                "@unit": "人"
+              },
+              {
+                "@code": "225-2021",
+                "@name": "従業者数_うち常用雇用者_男女計",
+                "@level": "",
+                "@unit": "人"
+              },
+              {
+                "@code": "226-2021",
+                "@name": "従業者数_うち常用雇用者_男",
+                "@level": "",
+                "@unit": "人"
+              },
+              {
+                "@code": "227-2021",
+                "@name": "従業者数_うち常用雇用者_女",
+                "@level": "",
+                "@unit": "人"
+              }
+            ]
+          },
+          {
+            "@id": "cat01",
+            "@name": "企業産業小分類",
+            "CLASS": [
+              {
+                "@code": "AR",
+                "@name": "全産業（S_公務を除く）",
+                "@level": "1"
+              },
+              {
+                "@code": "AB",
+                "@name": "農林漁業",
+                "@level": "1"
+              },
+              {
+                "@code": "A",
+                "@name": "農業，林業",
+                "@level": "2",
+                "@parentCode": "AB"
+              },
+              {
+                "@code": "01",
+                "@name": "農業",
+                "@level": "4",
+                "@parentCode": "A"
+              },
+              {
+                "@code": "011",
+                "@name": "耕種農業",
+                "@level": "5",
+                "@parentCode": "01"
+              },
+              {
+                "@code": "012",
+                "@name": "畜産農業",
+                "@level": "5",
+                "@parentCode": "01"
+              },
+              {
+                "@code": "013",
+                "@name": "農業サービス業（園芸サービス業を除く）",
+                "@level": "5",
+                "@parentCode": "01"
+              },
+              {
+                "@code": "014",
+                "@name": "園芸サービス業",
+                "@level": "5",
+                "@parentCode": "01"
+              },
+              {
+                "@code": "02",
+                "@name": "林業",
+                "@level": "4",
+                "@parentCode": "A"
+              },
+              {
+                "@code": "021",
+                "@name": "育林業",
+                "@level": "5",
+                "@parentCode": "02"
+              },
+              {
+                "@code": "022",
+                "@name": "素材生産業",
+                "@level": "5",
+                "@parentCode": "02"
+              },
+              {
+                "@code": "023",
+                "@name": "特用林産物生産業（きのこ類の栽培を除く）",
+                "@level": "5",
+                "@parentCode": "02"
+              },
+              {
+                "@code": "024",
+                "@name": "林業サービス業",
+                "@level": "5",
+                "@parentCode": "02"
+              },
+              {
+                "@code": "029",
+                "@name": "その他の林業",
+                "@level": "5",
+                "@parentCode": "02"
+              },
+              {
+                "@code": "B",
+                "@name": "漁業",
+                "@level": "2",
+                "@parentCode": "AB"
+              },
+              {
+                "@code": "03",
+                "@name": "漁業（水産養殖業を除く）",
+                "@level": "4",
+                "@parentCode": "B"
+              },
+              {
+                "@code": "031",
+                "@name": "海面漁業",
+                "@level": "5",
+                "@parentCode": "03"
+              },
+              {
+                "@code": "032",
+                "@name": "内水面漁業",
+                "@level": "5",
+                "@parentCode": "03"
+              },
+              {
+                "@code": "04",
+                "@name": "水産養殖業",
+                "@level": "4",
+                "@parentCode": "B"
+              },
+              {
+                "@code": "041",
+                "@name": "海面養殖業",
+                "@level": "5",
+                "@parentCode": "04"
+              },
+              {
+                "@code": "042",
+                "@name": "内水面養殖業",
+                "@level": "5",
+                "@parentCode": "04"
+              },
+              {
+                "@code": "CR",
+                "@name": "非農林漁業（S_公務を除く）",
+                "@level": "1"
+              },
+              {
+                "@code": "C",
+                "@name": "鉱業，採石業，砂利採取業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "05",
+                "@name": "鉱業，採石業，砂利採取業",
+                "@level": "4",
+                "@parentCode": "C"
+              },
+              {
+                "@code": "051",
+                "@name": "金属鉱業",
+                "@level": "5",
+                "@parentCode": "05"
+              },
+              {
+                "@code": "052",
+                "@name": "石炭・亜炭鉱業",
+                "@level": "5",
+                "@parentCode": "05"
+              },
+              {
+                "@code": "053",
+                "@name": "原油・天然ガス鉱業",
+                "@level": "5",
+                "@parentCode": "05"
+              },
+              {
+                "@code": "054",
+                "@name": "採石業，砂・砂利・玉石採取業",
+                "@level": "5",
+                "@parentCode": "05"
+              },
+              {
+                "@code": "055",
+                "@name": "窯業原料用鉱物鉱業（耐火物・陶磁器・ガラス・セメント原料用に限る）",
+                "@level": "5",
+                "@parentCode": "05"
+              },
+              {
+                "@code": "059",
+                "@name": "その他の鉱業",
+                "@level": "5",
+                "@parentCode": "05"
+              },
+              {
+                "@code": "D",
+                "@name": "建設業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "06",
+                "@name": "総合工事業",
+                "@level": "4",
+                "@parentCode": "D"
+              },
+              {
+                "@code": "061",
+                "@name": "一般土木建築工事業",
+                "@level": "5",
+                "@parentCode": "06"
+              },
+              {
+                "@code": "062",
+                "@name": "土木工事業（舗装工事業を除く）",
+                "@level": "5",
+                "@parentCode": "06"
+              },
+              {
+                "@code": "063",
+                "@name": "舗装工事業",
+                "@level": "5",
+                "@parentCode": "06"
+              },
+              {
+                "@code": "064",
+                "@name": "建築工事業（木造建築工事業を除く）",
+                "@level": "5",
+                "@parentCode": "06"
+              },
+              {
+                "@code": "065",
+                "@name": "木造建築工事業",
+                "@level": "5",
+                "@parentCode": "06"
+              },
+              {
+                "@code": "066",
+                "@name": "建築リフォーム工事業",
+                "@level": "5",
+                "@parentCode": "06"
+              },
+              {
+                "@code": "07",
+                "@name": "職別工事業（設備工事業を除く）",
+                "@level": "4",
+                "@parentCode": "D"
+              },
+              {
+                "@code": "071",
+                "@name": "大工工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "072",
+                "@name": "とび・土工・コンクリート工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "073",
+                "@name": "鉄骨・鉄筋工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "074",
+                "@name": "石工・れんが・タイル・ブロック工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "075",
+                "@name": "左官工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "076",
+                "@name": "板金・金物工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "077",
+                "@name": "塗装工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "078",
+                "@name": "床・内装工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "079",
+                "@name": "その他の職別工事業",
+                "@level": "5",
+                "@parentCode": "07"
+              },
+              {
+                "@code": "08",
+                "@name": "設備工事業",
+                "@level": "4",
+                "@parentCode": "D"
+              },
+              {
+                "@code": "081",
+                "@name": "電気工事業",
+                "@level": "5",
+                "@parentCode": "08"
+              },
+              {
+                "@code": "082",
+                "@name": "電気通信・信号装置工事業",
+                "@level": "5",
+                "@parentCode": "08"
+              },
+              {
+                "@code": "083",
+                "@name": "管工事業（さく井工事業を除く）",
+                "@level": "5",
+                "@parentCode": "08"
+              },
+              {
+                "@code": "084",
+                "@name": "機械器具設置工事業",
+                "@level": "5",
+                "@parentCode": "08"
+              },
+              {
+                "@code": "089",
+                "@name": "その他の設備工事業",
+                "@level": "5",
+                "@parentCode": "08"
+              },
+              {
+                "@code": "E",
+                "@name": "製造業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "09",
+                "@name": "食料品製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "091",
+                "@name": "畜産食料品製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "092",
+                "@name": "水産食料品製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "093",
+                "@name": "野菜缶詰・果実缶詰・農産保存食料品製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "094",
+                "@name": "調味料製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "095",
+                "@name": "糖類製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "096",
+                "@name": "精穀・製粉業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "097",
+                "@name": "パン・菓子製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "098",
+                "@name": "動植物油脂製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "099",
+                "@name": "その他の食料品製造業",
+                "@level": "5",
+                "@parentCode": "09"
+              },
+              {
+                "@code": "10",
+                "@name": "飲料・たばこ・飼料製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "101",
+                "@name": "清涼飲料製造業",
+                "@level": "5",
+                "@parentCode": "10"
+              },
+              {
+                "@code": "102",
+                "@name": "酒類製造業",
+                "@level": "5",
+                "@parentCode": "10"
+              },
+              {
+                "@code": "103",
+                "@name": "茶・コーヒー製造業（清涼飲料を除く）",
+                "@level": "5",
+                "@parentCode": "10"
+              },
+              {
+                "@code": "104",
+                "@name": "製氷業",
+                "@level": "5",
+                "@parentCode": "10"
+              },
+              {
+                "@code": "105",
+                "@name": "たばこ製造業",
+                "@level": "5",
+                "@parentCode": "10"
+              },
+              {
+                "@code": "106",
+                "@name": "飼料・有機質肥料製造業",
+                "@level": "5",
+                "@parentCode": "10"
+              },
+              {
+                "@code": "11",
+                "@name": "繊維工業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "111",
+                "@name": "製糸業，紡績業，化学繊維・ねん糸等製造業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "112",
+                "@name": "織物業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "113",
+                "@name": "ニット生地製造業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "114",
+                "@name": "染色整理業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "115",
+                "@name": "綱・網・レース・繊維粗製品製造業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "116",
+                "@name": "外衣・シャツ製造業（和式を除く）",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "117",
+                "@name": "下着類製造業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "118",
+                "@name": "和装製品・その他の衣服・繊維製身の回り品製造業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "119",
+                "@name": "その他の繊維製品製造業",
+                "@level": "5",
+                "@parentCode": "11"
+              },
+              {
+                "@code": "12",
+                "@name": "木材・木製品製造業（家具を除く）",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "121",
+                "@name": "製材業，木製品製造業",
+                "@level": "5",
+                "@parentCode": "12"
+              },
+              {
+                "@code": "122",
+                "@name": "造作材・合板・建築用組立材料製造業",
+                "@level": "5",
+                "@parentCode": "12"
+              },
+              {
+                "@code": "123",
+                "@name": "木製容器製造業（竹，とうを含む）",
+                "@level": "5",
+                "@parentCode": "12"
+              },
+              {
+                "@code": "129",
+                "@name": "その他の木製品製造業（竹，とうを含む）",
+                "@level": "5",
+                "@parentCode": "12"
+              },
+              {
+                "@code": "13",
+                "@name": "家具・装備品製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "131",
+                "@name": "家具製造業",
+                "@level": "5",
+                "@parentCode": "13"
+              },
+              {
+                "@code": "132",
+                "@name": "宗教用具製造業",
+                "@level": "5",
+                "@parentCode": "13"
+              },
+              {
+                "@code": "133",
+                "@name": "建具製造業",
+                "@level": "5",
+                "@parentCode": "13"
+              },
+              {
+                "@code": "139",
+                "@name": "その他の家具・装備品製造業",
+                "@level": "5",
+                "@parentCode": "13"
+              },
+              {
+                "@code": "14",
+                "@name": "パルプ・紙・紙加工品製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "141",
+                "@name": "パルプ製造業",
+                "@level": "5",
+                "@parentCode": "14"
+              },
+              {
+                "@code": "142",
+                "@name": "紙製造業",
+                "@level": "5",
+                "@parentCode": "14"
+              },
+              {
+                "@code": "143",
+                "@name": "加工紙製造業",
+                "@level": "5",
+                "@parentCode": "14"
+              },
+              {
+                "@code": "144",
+                "@name": "紙製品製造業",
+                "@level": "5",
+                "@parentCode": "14"
+              },
+              {
+                "@code": "145",
+                "@name": "紙製容器製造業",
+                "@level": "5",
+                "@parentCode": "14"
+              },
+              {
+                "@code": "149",
+                "@name": "その他のパルプ・紙・紙加工品製造業",
+                "@level": "5",
+                "@parentCode": "14"
+              },
+              {
+                "@code": "15",
+                "@name": "印刷・同関連業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "151",
+                "@name": "印刷業",
+                "@level": "5",
+                "@parentCode": "15"
+              },
+              {
+                "@code": "152",
+                "@name": "製版業",
+                "@level": "5",
+                "@parentCode": "15"
+              },
+              {
+                "@code": "153",
+                "@name": "製本業，印刷物加工業",
+                "@level": "5",
+                "@parentCode": "15"
+              },
+              {
+                "@code": "159",
+                "@name": "印刷関連サービス業",
+                "@level": "5",
+                "@parentCode": "15"
+              },
+              {
+                "@code": "16",
+                "@name": "化学工業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "161",
+                "@name": "化学肥料製造業",
+                "@level": "5",
+                "@parentCode": "16"
+              },
+              {
+                "@code": "162",
+                "@name": "無機化学工業製品製造業",
+                "@level": "5",
+                "@parentCode": "16"
+              },
+              {
+                "@code": "163",
+                "@name": "有機化学工業製品製造業",
+                "@level": "5",
+                "@parentCode": "16"
+              },
+              {
+                "@code": "164",
+                "@name": "油脂加工製品・石けん・合成洗剤・界面活性剤・塗料製造業",
+                "@level": "5",
+                "@parentCode": "16"
+              },
+              {
+                "@code": "165",
+                "@name": "医薬品製造業",
+                "@level": "5",
+                "@parentCode": "16"
+              },
+              {
+                "@code": "166",
+                "@name": "化粧品・歯磨・その他の化粧用調整品製造業",
+                "@level": "5",
+                "@parentCode": "16"
+              },
+              {
+                "@code": "169",
+                "@name": "その他の化学工業",
+                "@level": "5",
+                "@parentCode": "16"
+              },
+              {
+                "@code": "17",
+                "@name": "石油製品・石炭製品製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "171",
+                "@name": "石油精製業",
+                "@level": "5",
+                "@parentCode": "17"
+              },
+              {
+                "@code": "172",
+                "@name": "潤滑油・グリース製造業（石油精製業によらないもの）",
+                "@level": "5",
+                "@parentCode": "17"
+              },
+              {
+                "@code": "173",
+                "@name": "コークス製造業",
+                "@level": "5",
+                "@parentCode": "17"
+              },
+              {
+                "@code": "174",
+                "@name": "舗装材料製造業",
+                "@level": "5",
+                "@parentCode": "17"
+              },
+              {
+                "@code": "179",
+                "@name": "その他の石油製品・石炭製品製造業",
+                "@level": "5",
+                "@parentCode": "17"
+              },
+              {
+                "@code": "18",
+                "@name": "プラスチック製品製造業（別掲を除く）",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "181",
+                "@name": "プラスチック板・棒・管・継手・異形押出製品製造業",
+                "@level": "5",
+                "@parentCode": "18"
+              },
+              {
+                "@code": "182",
+                "@name": "プラスチックフィルム・シート・床材・合成皮革製造業",
+                "@level": "5",
+                "@parentCode": "18"
+              },
+              {
+                "@code": "183",
+                "@name": "工業用プラスチック製品製造業",
+                "@level": "5",
+                "@parentCode": "18"
+              },
+              {
+                "@code": "184",
+                "@name": "発泡・強化プラスチック製品製造業",
+                "@level": "5",
+                "@parentCode": "18"
+              },
+              {
+                "@code": "185",
+                "@name": "プラスチック成形材料製造業（廃プラスチックを含む）",
+                "@level": "5",
+                "@parentCode": "18"
+              },
+              {
+                "@code": "189",
+                "@name": "その他のプラスチック製品製造業",
+                "@level": "5",
+                "@parentCode": "18"
+              },
+              {
+                "@code": "19",
+                "@name": "ゴム製品製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "191",
+                "@name": "タイヤ・チューブ製造業",
+                "@level": "5",
+                "@parentCode": "19"
+              },
+              {
+                "@code": "192",
+                "@name": "ゴム製・プラスチック製履物・同附属品製造業",
+                "@level": "5",
+                "@parentCode": "19"
+              },
+              {
+                "@code": "193",
+                "@name": "ゴムベルト・ゴムホース・工業用ゴム製品製造業",
+                "@level": "5",
+                "@parentCode": "19"
+              },
+              {
+                "@code": "199",
+                "@name": "その他のゴム製品製造業",
+                "@level": "5",
+                "@parentCode": "19"
+              },
+              {
+                "@code": "20",
+                "@name": "なめし革・同製品・毛皮製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "201",
+                "@name": "なめし革製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "202",
+                "@name": "工業用革製品製造業（手袋を除く）",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "203",
+                "@name": "革製履物用材料・同附属品製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "204",
+                "@name": "革製履物製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "205",
+                "@name": "革製手袋製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "206",
+                "@name": "かばん製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "207",
+                "@name": "袋物製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "208",
+                "@name": "毛皮製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "209",
+                "@name": "その他のなめし革製品製造業",
+                "@level": "5",
+                "@parentCode": "20"
+              },
+              {
+                "@code": "21",
+                "@name": "窯業・土石製品製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "211",
+                "@name": "ガラス・同製品製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "212",
+                "@name": "セメント・同製品製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "213",
+                "@name": "建設用粘土製品製造業（陶磁器製を除く）",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "214",
+                "@name": "陶磁器・同関連製品製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "215",
+                "@name": "耐火物製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "216",
+                "@name": "炭素・黒鉛製品製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "217",
+                "@name": "研磨材・同製品製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "218",
+                "@name": "骨材・石工品等製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "219",
+                "@name": "その他の窯業・土石製品製造業",
+                "@level": "5",
+                "@parentCode": "21"
+              },
+              {
+                "@code": "22",
+                "@name": "鉄鋼業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "221",
+                "@name": "製鉄業",
+                "@level": "5",
+                "@parentCode": "22"
+              },
+              {
+                "@code": "222",
+                "@name": "製鋼・製鋼圧延業",
+                "@level": "5",
+                "@parentCode": "22"
+              },
+              {
+                "@code": "223",
+                "@name": "製鋼を行わない鋼材製造業（表面処理鋼材を除く）",
+                "@level": "5",
+                "@parentCode": "22"
+              },
+              {
+                "@code": "224",
+                "@name": "表面処理鋼材製造業",
+                "@level": "5",
+                "@parentCode": "22"
+              },
+              {
+                "@code": "225",
+                "@name": "鉄素形材製造業",
+                "@level": "5",
+                "@parentCode": "22"
+              },
+              {
+                "@code": "229",
+                "@name": "その他の鉄鋼業",
+                "@level": "5",
+                "@parentCode": "22"
+              },
+              {
+                "@code": "23",
+                "@name": "非鉄金属製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "231",
+                "@name": "非鉄金属第１次製錬・精製業",
+                "@level": "5",
+                "@parentCode": "23"
+              },
+              {
+                "@code": "232",
+                "@name": "非鉄金属第２次製錬・精製業（非鉄金属合金製造業を含む）",
+                "@level": "5",
+                "@parentCode": "23"
+              },
+              {
+                "@code": "233",
+                "@name": "非鉄金属・同合金圧延業（抽伸，押出しを含む）",
+                "@level": "5",
+                "@parentCode": "23"
+              },
+              {
+                "@code": "234",
+                "@name": "電線・ケーブル製造業",
+                "@level": "5",
+                "@parentCode": "23"
+              },
+              {
+                "@code": "235",
+                "@name": "非鉄金属素形材製造業",
+                "@level": "5",
+                "@parentCode": "23"
+              },
+              {
+                "@code": "239",
+                "@name": "その他の非鉄金属製造業",
+                "@level": "5",
+                "@parentCode": "23"
+              },
+              {
+                "@code": "24",
+                "@name": "金属製品製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "241",
+                "@name": "ブリキ缶・その他のめっき板等製品製造業",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "242",
+                "@name": "洋食器・刃物・手道具・金物類製造業",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "243",
+                "@name": "暖房・調理等装置，配管工事用附属品製造業",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "244",
+                "@name": "建設用・建築用金属製品製造業（製缶板金業を含む）",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "245",
+                "@name": "金属素形材製品製造業",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "246",
+                "@name": "金属被覆・彫刻業，熱処理業（ほうろう鉄器を除く）",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "247",
+                "@name": "金属線製品製造業（ねじ類を除く）",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "248",
+                "@name": "ボルト・ナット・リベット・小ねじ・木ねじ等製造業",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "249",
+                "@name": "その他の金属製品製造業",
+                "@level": "5",
+                "@parentCode": "24"
+              },
+              {
+                "@code": "25",
+                "@name": "はん用機械器具製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "251",
+                "@name": "ボイラ・原動機製造業",
+                "@level": "5",
+                "@parentCode": "25"
+              },
+              {
+                "@code": "252",
+                "@name": "ポンプ・圧縮機器製造業",
+                "@level": "5",
+                "@parentCode": "25"
+              },
+              {
+                "@code": "253",
+                "@name": "一般産業用機械・装置製造業",
+                "@level": "5",
+                "@parentCode": "25"
+              },
+              {
+                "@code": "259",
+                "@name": "その他のはん用機械・同部分品製造業",
+                "@level": "5",
+                "@parentCode": "25"
+              },
+              {
+                "@code": "26",
+                "@name": "生産用機械器具製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "261",
+                "@name": "農業用機械製造業（農業用器具を除く）",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "262",
+                "@name": "建設機械・鉱山機械製造業",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "263",
+                "@name": "繊維機械製造業",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "264",
+                "@name": "生活関連産業用機械製造業",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "265",
+                "@name": "基礎素材産業用機械製造業",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "266",
+                "@name": "金属加工機械製造業",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "267",
+                "@name": "半導体・フラットパネルディスプレイ製造装置製造業",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "269",
+                "@name": "その他の生産用機械・同部分品製造業",
+                "@level": "5",
+                "@parentCode": "26"
+              },
+              {
+                "@code": "27",
+                "@name": "業務用機械器具製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "271",
+                "@name": "事務用機械器具製造業",
+                "@level": "5",
+                "@parentCode": "27"
+              },
+              {
+                "@code": "272",
+                "@name": "サービス用・娯楽用機械器具製造業",
+                "@level": "5",
+                "@parentCode": "27"
+              },
+              {
+                "@code": "273",
+                "@name": "計量器・測定器・分析機器・試験機・測量機械器具・理化学機械器具製造業",
+                "@level": "5",
+                "@parentCode": "27"
+              },
+              {
+                "@code": "274",
+                "@name": "医療用機械器具・医療用品製造業",
+                "@level": "5",
+                "@parentCode": "27"
+              },
+              {
+                "@code": "275",
+                "@name": "光学機械器具・レンズ製造業",
+                "@level": "5",
+                "@parentCode": "27"
+              },
+              {
+                "@code": "276",
+                "@name": "武器製造業",
+                "@level": "5",
+                "@parentCode": "27"
+              },
+              {
+                "@code": "28",
+                "@name": "電子部品・デバイス・電子回路製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "281",
+                "@name": "電子デバイス製造業",
+                "@level": "5",
+                "@parentCode": "28"
+              },
+              {
+                "@code": "282",
+                "@name": "電子部品製造業",
+                "@level": "5",
+                "@parentCode": "28"
+              },
+              {
+                "@code": "283",
+                "@name": "記録メディア製造業",
+                "@level": "5",
+                "@parentCode": "28"
+              },
+              {
+                "@code": "284",
+                "@name": "電子回路製造業",
+                "@level": "5",
+                "@parentCode": "28"
+              },
+              {
+                "@code": "285",
+                "@name": "ユニット部品製造業",
+                "@level": "5",
+                "@parentCode": "28"
+              },
+              {
+                "@code": "289",
+                "@name": "その他の電子部品・デバイス・電子回路製造業",
+                "@level": "5",
+                "@parentCode": "28"
+              },
+              {
+                "@code": "29",
+                "@name": "電気機械器具製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "291",
+                "@name": "発電用・送電用・配電用電気機械器具製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "292",
+                "@name": "産業用電気機械器具製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "293",
+                "@name": "民生用電気機械器具製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "294",
+                "@name": "電球・電気照明器具製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "295",
+                "@name": "電池製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "296",
+                "@name": "電子応用装置製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "297",
+                "@name": "電気計測器製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "299",
+                "@name": "その他の電気機械器具製造業",
+                "@level": "5",
+                "@parentCode": "29"
+              },
+              {
+                "@code": "30",
+                "@name": "情報通信機械器具製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "301",
+                "@name": "通信機械器具・同関連機械器具製造業",
+                "@level": "5",
+                "@parentCode": "30"
+              },
+              {
+                "@code": "302",
+                "@name": "映像・音響機械器具製造業",
+                "@level": "5",
+                "@parentCode": "30"
+              },
+              {
+                "@code": "303",
+                "@name": "電子計算機・同附属装置製造業",
+                "@level": "5",
+                "@parentCode": "30"
+              },
+              {
+                "@code": "31",
+                "@name": "輸送用機械器具製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "311",
+                "@name": "自動車・同附属品製造業",
+                "@level": "5",
+                "@parentCode": "31"
+              },
+              {
+                "@code": "312",
+                "@name": "鉄道車両・同部分品製造業",
+                "@level": "5",
+                "@parentCode": "31"
+              },
+              {
+                "@code": "313",
+                "@name": "船舶製造・修理業，舶用機関製造業",
+                "@level": "5",
+                "@parentCode": "31"
+              },
+              {
+                "@code": "314",
+                "@name": "航空機・同附属品製造業",
+                "@level": "5",
+                "@parentCode": "31"
+              },
+              {
+                "@code": "315",
+                "@name": "産業用運搬車両・同部分品・附属品製造業",
+                "@level": "5",
+                "@parentCode": "31"
+              },
+              {
+                "@code": "319",
+                "@name": "その他の輸送用機械器具製造業",
+                "@level": "5",
+                "@parentCode": "31"
+              },
+              {
+                "@code": "32",
+                "@name": "その他の製造業",
+                "@level": "4",
+                "@parentCode": "E"
+              },
+              {
+                "@code": "321",
+                "@name": "貴金属・宝石製品製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "322",
+                "@name": "装身具・装飾品・ボタン・同関連品製造業（貴金属・宝石製を除く）",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "323",
+                "@name": "時計・同部分品製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "324",
+                "@name": "楽器製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "325",
+                "@name": "がん具・運動用具製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "32A",
+                "@name": "がん具製造業",
+                "@level": "6",
+                "@parentCode": "325"
+              },
+              {
+                "@code": "32B",
+                "@name": "運動用具製造業",
+                "@level": "6",
+                "@parentCode": "325"
+              },
+              {
+                "@code": "326",
+                "@name": "ペン・鉛筆・絵画用品・その他の事務用品製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "327",
+                "@name": "漆器製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "328",
+                "@name": "畳等生活雑貨製品製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "329",
+                "@name": "他に分類されない製造業",
+                "@level": "5",
+                "@parentCode": "32"
+              },
+              {
+                "@code": "32C",
+                "@name": "情報記録物製造業（新聞，書籍等の印刷物を除く）",
+                "@level": "6",
+                "@parentCode": "329"
+              },
+              {
+                "@code": "32D",
+                "@name": "他に分類されないその他の製造業",
+                "@level": "6",
+                "@parentCode": "329"
+              },
+              {
+                "@code": "F",
+                "@name": "電気・ガス・熱供給・水道業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "33",
+                "@name": "電気業",
+                "@level": "4",
+                "@parentCode": "F"
+              },
+              {
+                "@code": "331",
+                "@name": "電気業",
+                "@level": "5",
+                "@parentCode": "33"
+              },
+              {
+                "@code": "34",
+                "@name": "ガス業",
+                "@level": "4",
+                "@parentCode": "F"
+              },
+              {
+                "@code": "341",
+                "@name": "ガス業",
+                "@level": "5",
+                "@parentCode": "34"
+              },
+              {
+                "@code": "35",
+                "@name": "熱供給業",
+                "@level": "4",
+                "@parentCode": "F"
+              },
+              {
+                "@code": "351",
+                "@name": "熱供給業",
+                "@level": "5",
+                "@parentCode": "35"
+              },
+              {
+                "@code": "36",
+                "@name": "水道業",
+                "@level": "4",
+                "@parentCode": "F"
+              },
+              {
+                "@code": "361",
+                "@name": "上水道業",
+                "@level": "5",
+                "@parentCode": "36"
+              },
+              {
+                "@code": "362",
+                "@name": "工業用水道業",
+                "@level": "5",
+                "@parentCode": "36"
+              },
+              {
+                "@code": "363",
+                "@name": "下水道業",
+                "@level": "5",
+                "@parentCode": "36"
+              },
+              {
+                "@code": "G",
+                "@name": "情報通信業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "G1",
+                "@name": "情報通信業（通信業，放送業，映像・音声・文字情報制作業）",
+                "@level": "3",
+                "@parentCode": "G"
+              },
+              {
+                "@code": "37",
+                "@name": "通信業",
+                "@level": "4",
+                "@parentCode": "G1"
+              },
+              {
+                "@code": "371",
+                "@name": "固定電気通信業",
+                "@level": "5",
+                "@parentCode": "37"
+              },
+              {
+                "@code": "372",
+                "@name": "移動電気通信業",
+                "@level": "5",
+                "@parentCode": "37"
+              },
+              {
+                "@code": "373",
+                "@name": "電気通信に附帯するサービス業",
+                "@level": "5",
+                "@parentCode": "37"
+              },
+              {
+                "@code": "38",
+                "@name": "放送業",
+                "@level": "4",
+                "@parentCode": "G1"
+              },
+              {
+                "@code": "381",
+                "@name": "公共放送業（有線放送業を除く）",
+                "@level": "5",
+                "@parentCode": "38"
+              },
+              {
+                "@code": "382",
+                "@name": "民間放送業（有線放送業を除く）",
+                "@level": "5",
+                "@parentCode": "38"
+              },
+              {
+                "@code": "383",
+                "@name": "有線放送業",
+                "@level": "5",
+                "@parentCode": "38"
+              },
+              {
+                "@code": "41",
+                "@name": "映像・音声・文字情報制作業",
+                "@level": "4",
+                "@parentCode": "G1"
+              },
+              {
+                "@code": "411",
+                "@name": "映像情報制作・配給業",
+                "@level": "5",
+                "@parentCode": "41"
+              },
+              {
+                "@code": "412",
+                "@name": "音声情報制作業",
+                "@level": "5",
+                "@parentCode": "41"
+              },
+              {
+                "@code": "413",
+                "@name": "新聞業",
+                "@level": "5",
+                "@parentCode": "41"
+              },
+              {
+                "@code": "414",
+                "@name": "出版業",
+                "@level": "5",
+                "@parentCode": "41"
+              },
+              {
+                "@code": "415",
+                "@name": "広告制作業",
+                "@level": "5",
+                "@parentCode": "41"
+              },
+              {
+                "@code": "416",
+                "@name": "映像・音声・文字情報制作に附帯するサービス業",
+                "@level": "5",
+                "@parentCode": "41"
+              },
+              {
+                "@code": "G2",
+                "@name": "情報通信業（情報サービス業，インターネット附随サービス業）",
+                "@level": "3",
+                "@parentCode": "G"
+              },
+              {
+                "@code": "39",
+                "@name": "情報サービス業",
+                "@level": "4",
+                "@parentCode": "G2"
+              },
+              {
+                "@code": "391",
+                "@name": "ソフトウェア業",
+                "@level": "5",
+                "@parentCode": "39"
+              },
+              {
+                "@code": "392",
+                "@name": "情報処理・提供サービス業",
+                "@level": "5",
+                "@parentCode": "39"
+              },
+              {
+                "@code": "39A",
+                "@name": "情報処理サービス業",
+                "@level": "6",
+                "@parentCode": "392"
+              },
+              {
+                "@code": "39B",
+                "@name": "情報提供サービス業",
+                "@level": "6",
+                "@parentCode": "392"
+              },
+              {
+                "@code": "39C",
+                "@name": "その他の情報処理・提供サービス業",
+                "@level": "6",
+                "@parentCode": "392"
+              },
+              {
+                "@code": "40",
+                "@name": "インターネット附随サービス業",
+                "@level": "4",
+                "@parentCode": "G2"
+              },
+              {
+                "@code": "401",
+                "@name": "インターネット附随サービス業",
+                "@level": "5",
+                "@parentCode": "40"
+              },
+              {
+                "@code": "H",
+                "@name": "運輸業，郵便業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "42",
+                "@name": "鉄道業",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "421",
+                "@name": "鉄道業",
+                "@level": "5",
+                "@parentCode": "42"
+              },
+              {
+                "@code": "43",
+                "@name": "道路旅客運送業",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "431",
+                "@name": "一般乗合旅客自動車運送業",
+                "@level": "5",
+                "@parentCode": "43"
+              },
+              {
+                "@code": "432",
+                "@name": "一般乗用旅客自動車運送業",
+                "@level": "5",
+                "@parentCode": "43"
+              },
+              {
+                "@code": "433",
+                "@name": "一般貸切旅客自動車運送業",
+                "@level": "5",
+                "@parentCode": "43"
+              },
+              {
+                "@code": "439",
+                "@name": "その他の道路旅客運送業",
+                "@level": "5",
+                "@parentCode": "43"
+              },
+              {
+                "@code": "44",
+                "@name": "道路貨物運送業",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "441",
+                "@name": "一般貨物自動車運送業",
+                "@level": "5",
+                "@parentCode": "44"
+              },
+              {
+                "@code": "442",
+                "@name": "特定貨物自動車運送業",
+                "@level": "5",
+                "@parentCode": "44"
+              },
+              {
+                "@code": "443",
+                "@name": "貨物軽自動車運送業",
+                "@level": "5",
+                "@parentCode": "44"
+              },
+              {
+                "@code": "444",
+                "@name": "集配利用運送業",
+                "@level": "5",
+                "@parentCode": "44"
+              },
+              {
+                "@code": "449",
+                "@name": "その他の道路貨物運送業",
+                "@level": "5",
+                "@parentCode": "44"
+              },
+              {
+                "@code": "45",
+                "@name": "水運業",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "451",
+                "@name": "外航海運業",
+                "@level": "5",
+                "@parentCode": "45"
+              },
+              {
+                "@code": "452",
+                "@name": "沿海海運業",
+                "@level": "5",
+                "@parentCode": "45"
+              },
+              {
+                "@code": "453",
+                "@name": "内陸水運業",
+                "@level": "5",
+                "@parentCode": "45"
+              },
+              {
+                "@code": "454",
+                "@name": "船舶貸渡業",
+                "@level": "5",
+                "@parentCode": "45"
+              },
+              {
+                "@code": "46",
+                "@name": "航空運輸業",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "461",
+                "@name": "航空運送業",
+                "@level": "5",
+                "@parentCode": "46"
+              },
+              {
+                "@code": "462",
+                "@name": "航空機使用業（航空運送業を除く）",
+                "@level": "5",
+                "@parentCode": "46"
+              },
+              {
+                "@code": "47",
+                "@name": "倉庫業",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "471",
+                "@name": "倉庫業（冷蔵倉庫業を除く）",
+                "@level": "5",
+                "@parentCode": "47"
+              },
+              {
+                "@code": "472",
+                "@name": "冷蔵倉庫業",
+                "@level": "5",
+                "@parentCode": "47"
+              },
+              {
+                "@code": "48",
+                "@name": "運輸に附帯するサービス業",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "481",
+                "@name": "港湾運送業",
+                "@level": "5",
+                "@parentCode": "48"
+              },
+              {
+                "@code": "482",
+                "@name": "貨物運送取扱業（集配利用運送業を除く）",
+                "@level": "5",
+                "@parentCode": "48"
+              },
+              {
+                "@code": "483",
+                "@name": "運送代理店",
+                "@level": "5",
+                "@parentCode": "48"
+              },
+              {
+                "@code": "484",
+                "@name": "こん包業",
+                "@level": "5",
+                "@parentCode": "48"
+              },
+              {
+                "@code": "485",
+                "@name": "運輸施設提供業",
+                "@level": "5",
+                "@parentCode": "48"
+              },
+              {
+                "@code": "489",
+                "@name": "その他の運輸に附帯するサービス業",
+                "@level": "5",
+                "@parentCode": "48"
+              },
+              {
+                "@code": "49",
+                "@name": "郵便業（信書便事業を含む）",
+                "@level": "4",
+                "@parentCode": "H"
+              },
+              {
+                "@code": "491",
+                "@name": "郵便業（信書便事業を含む）",
+                "@level": "5",
+                "@parentCode": "49"
+              },
+              {
+                "@code": "I",
+                "@name": "卸売業，小売業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "I1",
+                "@name": "卸売業",
+                "@level": "3",
+                "@parentCode": "I"
+              },
+              {
+                "@code": "50",
+                "@name": "各種商品卸売業",
+                "@level": "4",
+                "@parentCode": "I1"
+              },
+              {
+                "@code": "501",
+                "@name": "各種商品卸売業",
+                "@level": "5",
+                "@parentCode": "50"
+              },
+              {
+                "@code": "50A",
+                "@name": "各種商品卸売業（従業者が常時100人以上のもの）",
+                "@level": "6",
+                "@parentCode": "501"
+              },
+              {
+                "@code": "50B",
+                "@name": "その他の各種商品卸売業",
+                "@level": "6",
+                "@parentCode": "501"
+              },
+              {
+                "@code": "51",
+                "@name": "繊維・衣服等卸売業",
+                "@level": "4",
+                "@parentCode": "I1"
+              },
+              {
+                "@code": "511",
+                "@name": "繊維品卸売業（衣服，身の回り品を除く）",
+                "@level": "5",
+                "@parentCode": "51"
+              },
+              {
+                "@code": "512",
+                "@name": "衣服卸売業",
+                "@level": "5",
+                "@parentCode": "51"
+              },
+              {
+                "@code": "513",
+                "@name": "身の回り品卸売業",
+                "@level": "5",
+                "@parentCode": "51"
+              },
+              {
+                "@code": "52",
+                "@name": "飲食料品卸売業",
+                "@level": "4",
+                "@parentCode": "I1"
+              },
+              {
+                "@code": "521",
+                "@name": "農畜産物・水産物卸売業",
+                "@level": "5",
+                "@parentCode": "52"
+              },
+              {
+                "@code": "52A",
+                "@name": "米穀類卸売業",
+                "@level": "6",
+                "@parentCode": "521"
+              },
+              {
+                "@code": "52B",
+                "@name": "野菜・果実卸売業",
+                "@level": "6",
+                "@parentCode": "521"
+              },
+              {
+                "@code": "52C",
+                "@name": "食肉卸売業",
+                "@level": "6",
+                "@parentCode": "521"
+              },
+              {
+                "@code": "52D",
+                "@name": "生鮮魚介卸売業",
+                "@level": "6",
+                "@parentCode": "521"
+              },
+              {
+                "@code": "52E",
+                "@name": "その他の農畜産物・水産物卸売業",
+                "@level": "6",
+                "@parentCode": "521"
+              },
+              {
+                "@code": "522",
+                "@name": "食料・飲料卸売業",
+                "@level": "5",
+                "@parentCode": "52"
+              },
+              {
+                "@code": "53",
+                "@name": "建築材料，鉱物・金属材料等卸売業",
+                "@level": "4",
+                "@parentCode": "I1"
+              },
+              {
+                "@code": "531",
+                "@name": "建築材料卸売業",
+                "@level": "5",
+                "@parentCode": "53"
+              },
+              {
+                "@code": "532",
+                "@name": "化学製品卸売業",
+                "@level": "5",
+                "@parentCode": "53"
+              },
+              {
+                "@code": "533",
+                "@name": "石油・鉱物卸売業",
+                "@level": "5",
+                "@parentCode": "53"
+              },
+              {
+                "@code": "534",
+                "@name": "鉄鋼製品卸売業",
+                "@level": "5",
+                "@parentCode": "53"
+              },
+              {
+                "@code": "535",
+                "@name": "非鉄金属卸売業",
+                "@level": "5",
+                "@parentCode": "53"
+              },
+              {
+                "@code": "536",
+                "@name": "再生資源卸売業",
+                "@level": "5",
+                "@parentCode": "53"
+              },
+              {
+                "@code": "54",
+                "@name": "機械器具卸売業",
+                "@level": "4",
+                "@parentCode": "I1"
+              },
+              {
+                "@code": "541",
+                "@name": "産業機械器具卸売業",
+                "@level": "5",
+                "@parentCode": "54"
+              },
+              {
+                "@code": "542",
+                "@name": "自動車卸売業",
+                "@level": "5",
+                "@parentCode": "54"
+              },
+              {
+                "@code": "543",
+                "@name": "電気機械器具卸売業",
+                "@level": "5",
+                "@parentCode": "54"
+              },
+              {
+                "@code": "549",
+                "@name": "その他の機械器具卸売業",
+                "@level": "5",
+                "@parentCode": "54"
+              },
+              {
+                "@code": "55",
+                "@name": "その他の卸売業",
+                "@level": "4",
+                "@parentCode": "I1"
+              },
+              {
+                "@code": "551",
+                "@name": "家具・建具・じゅう器等卸売業",
+                "@level": "5",
+                "@parentCode": "55"
+              },
+              {
+                "@code": "552",
+                "@name": "医薬品・化粧品等卸売業",
+                "@level": "5",
+                "@parentCode": "55"
+              },
+              {
+                "@code": "553",
+                "@name": "紙・紙製品卸売業",
+                "@level": "5",
+                "@parentCode": "55"
+              },
+              {
+                "@code": "559",
+                "@name": "他に分類されない卸売業",
+                "@level": "5",
+                "@parentCode": "55"
+              },
+              {
+                "@code": "55A",
+                "@name": "代理商，仲立業",
+                "@level": "6",
+                "@parentCode": "559"
+              },
+              {
+                "@code": "55B",
+                "@name": "他に分類されないその他の卸売業",
+                "@level": "6",
+                "@parentCode": "559"
+              },
+              {
+                "@code": "I2",
+                "@name": "小売業",
+                "@level": "3",
+                "@parentCode": "I"
+              },
+              {
+                "@code": "56",
+                "@name": "各種商品小売業",
+                "@level": "4",
+                "@parentCode": "I2"
+              },
+              {
+                "@code": "561",
+                "@name": "百貨店，総合スーパー",
+                "@level": "5",
+                "@parentCode": "56"
+              },
+              {
+                "@code": "569",
+                "@name": "その他の各種商品小売業（従業者が常時50人未満のもの）",
+                "@level": "5",
+                "@parentCode": "56"
+              },
+              {
+                "@code": "57",
+                "@name": "織物・衣服・身の回り品小売業",
+                "@level": "4",
+                "@parentCode": "I2"
+              },
+              {
+                "@code": "571",
+                "@name": "呉服・服地・寝具小売業",
+                "@level": "5",
+                "@parentCode": "57"
+              },
+              {
+                "@code": "572",
+                "@name": "男子服小売業",
+                "@level": "5",
+                "@parentCode": "57"
+              },
+              {
+                "@code": "573",
+                "@name": "婦人・子供服小売業",
+                "@level": "5",
+                "@parentCode": "57"
+              },
+              {
+                "@code": "574",
+                "@name": "靴・履物小売業",
+                "@level": "5",
+                "@parentCode": "57"
+              },
+              {
+                "@code": "579",
+                "@name": "その他の織物・衣服・身の回り品小売業",
+                "@level": "5",
+                "@parentCode": "57"
+              },
+              {
+                "@code": "58",
+                "@name": "飲食料品小売業",
+                "@level": "4",
+                "@parentCode": "I2"
+              },
+              {
+                "@code": "581",
+                "@name": "各種食料品小売業",
+                "@level": "5",
+                "@parentCode": "58"
+              },
+              {
+                "@code": "582",
+                "@name": "野菜・果実小売業",
+                "@level": "5",
+                "@parentCode": "58"
+              },
+              {
+                "@code": "583",
+                "@name": "食肉小売業",
+                "@level": "5",
+                "@parentCode": "58"
+              },
+              {
+                "@code": "584",
+                "@name": "鮮魚小売業",
+                "@level": "5",
+                "@parentCode": "58"
+              },
+              {
+                "@code": "585",
+                "@name": "酒小売業",
+                "@level": "5",
+                "@parentCode": "58"
+              },
+              {
+                "@code": "586",
+                "@name": "菓子・パン小売業",
+                "@level": "5",
+                "@parentCode": "58"
+              },
+              {
+                "@code": "589",
+                "@name": "その他の飲食料品小売業",
+                "@level": "5",
+                "@parentCode": "58"
+              },
+              {
+                "@code": "58A",
+                "@name": "料理品小売業",
+                "@level": "6",
+                "@parentCode": "589"
+              },
+              {
+                "@code": "58B",
+                "@name": "他に分類されない飲食料品小売業",
+                "@level": "6",
+                "@parentCode": "589"
+              },
+              {
+                "@code": "59",
+                "@name": "機械器具小売業",
+                "@level": "4",
+                "@parentCode": "I2"
+              },
+              {
+                "@code": "591",
+                "@name": "自動車小売業",
+                "@level": "5",
+                "@parentCode": "59"
+              },
+              {
+                "@code": "592",
+                "@name": "自転車小売業",
+                "@level": "5",
+                "@parentCode": "59"
+              },
+              {
+                "@code": "593",
+                "@name": "機械器具小売業（自動車，自転車を除く）",
+                "@level": "5",
+                "@parentCode": "59"
+              },
+              {
+                "@code": "60",
+                "@name": "その他の小売業",
+                "@level": "4",
+                "@parentCode": "I2"
+              },
+              {
+                "@code": "601",
+                "@name": "家具・建具・畳小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "602",
+                "@name": "じゅう器小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "603",
+                "@name": "医薬品・化粧品小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "604",
+                "@name": "農耕用品小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "605",
+                "@name": "燃料小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "606",
+                "@name": "書籍・文房具小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "607",
+                "@name": "スポーツ用品・がん具・娯楽用品・楽器小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "60A",
+                "@name": "スポーツ用品小売業",
+                "@level": "6",
+                "@parentCode": "607"
+              },
+              {
+                "@code": "60B",
+                "@name": "がん具・娯楽用品小売業",
+                "@level": "6",
+                "@parentCode": "607"
+              },
+              {
+                "@code": "60C",
+                "@name": "楽器小売業",
+                "@level": "6",
+                "@parentCode": "607"
+              },
+              {
+                "@code": "608",
+                "@name": "写真機・時計・眼鏡小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "609",
+                "@name": "他に分類されない小売業",
+                "@level": "5",
+                "@parentCode": "60"
+              },
+              {
+                "@code": "60D",
+                "@name": "花・植木小売業",
+                "@level": "6",
+                "@parentCode": "609"
+              },
+              {
+                "@code": "60E",
+                "@name": "ペット・ペット用品小売業",
+                "@level": "6",
+                "@parentCode": "609"
+              },
+              {
+                "@code": "60F",
+                "@name": "中古品小売業（他に分類されないもの）",
+                "@level": "6",
+                "@parentCode": "609"
+              },
+              {
+                "@code": "60G",
+                "@name": "他に分類されないその他の小売業",
+                "@level": "6",
+                "@parentCode": "609"
+              },
+              {
+                "@code": "61",
+                "@name": "無店舗小売業",
+                "@level": "4",
+                "@parentCode": "I2"
+              },
+              {
+                "@code": "611",
+                "@name": "通信販売・訪問販売小売業",
+                "@level": "5",
+                "@parentCode": "61"
+              },
+              {
+                "@code": "612",
+                "@name": "自動販売機による小売業",
+                "@level": "5",
+                "@parentCode": "61"
+              },
+              {
+                "@code": "619",
+                "@name": "その他の無店舗小売業",
+                "@level": "5",
+                "@parentCode": "61"
+              },
+              {
+                "@code": "J",
+                "@name": "金融業，保険業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "62",
+                "@name": "銀行業",
+                "@level": "4",
+                "@parentCode": "J"
+              },
+              {
+                "@code": "621",
+                "@name": "中央銀行",
+                "@level": "5",
+                "@parentCode": "62"
+              },
+              {
+                "@code": "622",
+                "@name": "銀行（中央銀行を除く）",
+                "@level": "5",
+                "@parentCode": "62"
+              },
+              {
+                "@code": "63",
+                "@name": "協同組織金融業",
+                "@level": "4",
+                "@parentCode": "J"
+              },
+              {
+                "@code": "631",
+                "@name": "中小企業等金融業",
+                "@level": "5",
+                "@parentCode": "63"
+              },
+              {
+                "@code": "632",
+                "@name": "農林水産金融業",
+                "@level": "5",
+                "@parentCode": "63"
+              },
+              {
+                "@code": "64",
+                "@name": "貸金業，クレジットカード業等非預金信用機関",
+                "@level": "4",
+                "@parentCode": "J"
+              },
+              {
+                "@code": "641",
+                "@name": "貸金業",
+                "@level": "5",
+                "@parentCode": "64"
+              },
+              {
+                "@code": "642",
+                "@name": "質屋",
+                "@level": "5",
+                "@parentCode": "64"
+              },
+              {
+                "@code": "643",
+                "@name": "クレジットカード業，割賦金融業",
+                "@level": "5",
+                "@parentCode": "64"
+              },
+              {
+                "@code": "649",
+                "@name": "その他の非預金信用機関",
+                "@level": "5",
+                "@parentCode": "64"
+              },
+              {
+                "@code": "65",
+                "@name": "金融商品取引業，商品先物取引業",
+                "@level": "4",
+                "@parentCode": "J"
+              },
+              {
+                "@code": "651",
+                "@name": "金融商品取引業",
+                "@level": "5",
+                "@parentCode": "65"
+              },
+              {
+                "@code": "652",
+                "@name": "商品先物取引業，商品投資顧問業",
+                "@level": "5",
+                "@parentCode": "65"
+              },
+              {
+                "@code": "66",
+                "@name": "補助的金融業等",
+                "@level": "4",
+                "@parentCode": "J"
+              },
+              {
+                "@code": "661",
+                "@name": "補助的金融業，金融附帯業",
+                "@level": "5",
+                "@parentCode": "66"
+              },
+              {
+                "@code": "662",
+                "@name": "信託業",
+                "@level": "5",
+                "@parentCode": "66"
+              },
+              {
+                "@code": "663",
+                "@name": "金融代理業",
+                "@level": "5",
+                "@parentCode": "66"
+              },
+              {
+                "@code": "67",
+                "@name": "保険業（保険媒介代理業，保険サービス業を含む）",
+                "@level": "4",
+                "@parentCode": "J"
+              },
+              {
+                "@code": "671",
+                "@name": "生命保険業",
+                "@level": "5",
+                "@parentCode": "67"
+              },
+              {
+                "@code": "672",
+                "@name": "損害保険業",
+                "@level": "5",
+                "@parentCode": "67"
+              },
+              {
+                "@code": "673",
+                "@name": "共済事業，少額短期保険業",
+                "@level": "5",
+                "@parentCode": "67"
+              },
+              {
+                "@code": "674",
+                "@name": "保険媒介代理業",
+                "@level": "5",
+                "@parentCode": "67"
+              },
+              {
+                "@code": "675",
+                "@name": "保険サービス業",
+                "@level": "5",
+                "@parentCode": "67"
+              },
+              {
+                "@code": "K",
+                "@name": "不動産業，物品賃貸業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "K1",
+                "@name": "不動産業",
+                "@level": "3",
+                "@parentCode": "K"
+              },
+              {
+                "@code": "68",
+                "@name": "不動産取引業",
+                "@level": "4",
+                "@parentCode": "K1"
+              },
+              {
+                "@code": "681",
+                "@name": "建物売買業，土地売買業",
+                "@level": "5",
+                "@parentCode": "68"
+              },
+              {
+                "@code": "682",
+                "@name": "不動産代理業・仲介業",
+                "@level": "5",
+                "@parentCode": "68"
+              },
+              {
+                "@code": "69",
+                "@name": "不動産賃貸業・管理業",
+                "@level": "4",
+                "@parentCode": "K1"
+              },
+              {
+                "@code": "691",
+                "@name": "不動産賃貸業（貸家業，貸間業を除く）",
+                "@level": "5",
+                "@parentCode": "69"
+              },
+              {
+                "@code": "692",
+                "@name": "貸家業，貸間業",
+                "@level": "5",
+                "@parentCode": "69"
+              },
+              {
+                "@code": "693",
+                "@name": "駐車場業",
+                "@level": "5",
+                "@parentCode": "69"
+              },
+              {
+                "@code": "694",
+                "@name": "不動産管理業",
+                "@level": "5",
+                "@parentCode": "69"
+              },
+              {
+                "@code": "K2",
+                "@name": "物品賃貸業",
+                "@level": "3",
+                "@parentCode": "K"
+              },
+              {
+                "@code": "70",
+                "@name": "物品賃貸業",
+                "@level": "4",
+                "@parentCode": "K2"
+              },
+              {
+                "@code": "701",
+                "@name": "各種物品賃貸業",
+                "@level": "5",
+                "@parentCode": "70"
+              },
+              {
+                "@code": "70C",
+                "@name": "総合リース業",
+                "@level": "6",
+                "@parentCode": "701"
+              },
+              {
+                "@code": "70D",
+                "@name": "その他の各種物品賃貸業",
+                "@level": "6",
+                "@parentCode": "701"
+              },
+              {
+                "@code": "702",
+                "@name": "産業用機械器具賃貸業",
+                "@level": "5",
+                "@parentCode": "70"
+              },
+              {
+                "@code": "703",
+                "@name": "事務用機械器具賃貸業",
+                "@level": "5",
+                "@parentCode": "70"
+              },
+              {
+                "@code": "704",
+                "@name": "自動車賃貸業",
+                "@level": "5",
+                "@parentCode": "70"
+              },
+              {
+                "@code": "705",
+                "@name": "スポーツ・娯楽用品賃貸業",
+                "@level": "5",
+                "@parentCode": "70"
+              },
+              {
+                "@code": "709",
+                "@name": "その他の物品賃貸業",
+                "@level": "5",
+                "@parentCode": "70"
+              },
+              {
+                "@code": "70A",
+                "@name": "音楽・映像記録物賃貸業（別掲を除く）",
+                "@level": "6",
+                "@parentCode": "709"
+              },
+              {
+                "@code": "70B",
+                "@name": "他に分類されない物品賃貸業",
+                "@level": "6",
+                "@parentCode": "709"
+              },
+              {
+                "@code": "L",
+                "@name": "学術研究，専門・技術サービス業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "71",
+                "@name": "学術・開発研究機関",
+                "@level": "4",
+                "@parentCode": "L"
+              },
+              {
+                "@code": "711",
+                "@name": "自然科学研究所",
+                "@level": "5",
+                "@parentCode": "71"
+              },
+              {
+                "@code": "712",
+                "@name": "人文・社会科学研究所",
+                "@level": "5",
+                "@parentCode": "71"
+              },
+              {
+                "@code": "72",
+                "@name": "専門サービス業（他に分類されないもの）",
+                "@level": "4",
+                "@parentCode": "L"
+              },
+              {
+                "@code": "721",
+                "@name": "法律事務所，特許事務所",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "72A",
+                "@name": "法律事務所",
+                "@level": "6",
+                "@parentCode": "721"
+              },
+              {
+                "@code": "72B",
+                "@name": "特許事務所",
+                "@level": "6",
+                "@parentCode": "721"
+              },
+              {
+                "@code": "722",
+                "@name": "公証人役場，司法書士事務所，土地家屋調査士事務所",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "72J",
+                "@name": "公証人役場，司法書士事務所",
+                "@level": "6",
+                "@parentCode": "722"
+              },
+              {
+                "@code": "72K",
+                "@name": "土地家屋調査士事務所",
+                "@level": "6",
+                "@parentCode": "722"
+              },
+              {
+                "@code": "723",
+                "@name": "行政書士事務所",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "724",
+                "@name": "公認会計士事務所，税理士事務所",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "72C",
+                "@name": "公認会計士事務所",
+                "@level": "6",
+                "@parentCode": "724"
+              },
+              {
+                "@code": "72D",
+                "@name": "税理士事務所",
+                "@level": "6",
+                "@parentCode": "724"
+              },
+              {
+                "@code": "725",
+                "@name": "社会保険労務士事務所",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "726",
+                "@name": "デザイン業",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "727",
+                "@name": "著述・芸術家業",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "728",
+                "@name": "経営コンサルタント業，純粋持株会社",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "72E",
+                "@name": "経営コンサルタント業",
+                "@level": "6",
+                "@parentCode": "728"
+              },
+              {
+                "@code": "72F",
+                "@name": "純粋持株会社",
+                "@level": "6",
+                "@parentCode": "728"
+              },
+              {
+                "@code": "729",
+                "@name": "その他の専門サービス業",
+                "@level": "5",
+                "@parentCode": "72"
+              },
+              {
+                "@code": "72G",
+                "@name": "興信所",
+                "@level": "6",
+                "@parentCode": "729"
+              },
+              {
+                "@code": "72H",
+                "@name": "他に分類されない専門サービス業",
+                "@level": "6",
+                "@parentCode": "729"
+              },
+              {
+                "@code": "73",
+                "@name": "広告業",
+                "@level": "4",
+                "@parentCode": "L"
+              },
+              {
+                "@code": "731",
+                "@name": "広告業",
+                "@level": "5",
+                "@parentCode": "73"
+              },
+              {
+                "@code": "74",
+                "@name": "技術サービス業（他に分類されないもの）",
+                "@level": "4",
+                "@parentCode": "L"
+              },
+              {
+                "@code": "741",
+                "@name": "獣医業",
+                "@level": "5",
+                "@parentCode": "74"
+              },
+              {
+                "@code": "742",
+                "@name": "土木建築サービス業",
+                "@level": "5",
+                "@parentCode": "74"
+              },
+              {
+                "@code": "74A",
+                "@name": "建築設計業",
+                "@level": "6",
+                "@parentCode": "742"
+              },
+              {
+                "@code": "74B",
+                "@name": "測量業",
+                "@level": "6",
+                "@parentCode": "742"
+              },
+              {
+                "@code": "74C",
+                "@name": "その他の土木建築サービス業",
+                "@level": "6",
+                "@parentCode": "742"
+              },
+              {
+                "@code": "743",
+                "@name": "機械設計業",
+                "@level": "5",
+                "@parentCode": "74"
+              },
+              {
+                "@code": "744",
+                "@name": "商品・非破壊検査業",
+                "@level": "5",
+                "@parentCode": "74"
+              },
+              {
+                "@code": "745",
+                "@name": "計量証明業",
+                "@level": "5",
+                "@parentCode": "74"
+              },
+              {
+                "@code": "746",
+                "@name": "写真業",
+                "@level": "5",
+                "@parentCode": "74"
+              },
+              {
+                "@code": "74D",
+                "@name": "写真業（商業写真業を除く）",
+                "@level": "6",
+                "@parentCode": "746"
+              },
+              {
+                "@code": "74E",
+                "@name": "商業写真業",
+                "@level": "6",
+                "@parentCode": "746"
+              },
+              {
+                "@code": "749",
+                "@name": "その他の技術サービス業",
+                "@level": "5",
+                "@parentCode": "74"
+              },
+              {
+                "@code": "M",
+                "@name": "宿泊業，飲食サービス業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "M1",
+                "@name": "宿泊業",
+                "@level": "3",
+                "@parentCode": "M"
+              },
+              {
+                "@code": "75",
+                "@name": "宿泊業",
+                "@level": "4",
+                "@parentCode": "M1"
+              },
+              {
+                "@code": "751",
+                "@name": "旅館，ホテル",
+                "@level": "5",
+                "@parentCode": "75"
+              },
+              {
+                "@code": "752",
+                "@name": "簡易宿所",
+                "@level": "5",
+                "@parentCode": "75"
+              },
+              {
+                "@code": "753",
+                "@name": "下宿業",
+                "@level": "5",
+                "@parentCode": "75"
+              },
+              {
+                "@code": "759",
+                "@name": "その他の宿泊業",
+                "@level": "5",
+                "@parentCode": "75"
+              },
+              {
+                "@code": "75A",
+                "@name": "会社・団体の宿泊所",
+                "@level": "6",
+                "@parentCode": "759"
+              },
+              {
+                "@code": "75B",
+                "@name": "他に分類されない宿泊業",
+                "@level": "6",
+                "@parentCode": "759"
+              },
+              {
+                "@code": "M2",
+                "@name": "飲食店，持ち帰り・配達飲食サービス業",
+                "@level": "3",
+                "@parentCode": "M"
+              },
+              {
+                "@code": "76",
+                "@name": "飲食店",
+                "@level": "4",
+                "@parentCode": "M2"
+              },
+              {
+                "@code": "761",
+                "@name": "食堂，レストラン（専門料理店を除く）",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "762",
+                "@name": "専門料理店",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "76A",
+                "@name": "日本料理店",
+                "@level": "6",
+                "@parentCode": "762"
+              },
+              {
+                "@code": "76B",
+                "@name": "中華料理店",
+                "@level": "6",
+                "@parentCode": "762"
+              },
+              {
+                "@code": "76C",
+                "@name": "焼肉店",
+                "@level": "6",
+                "@parentCode": "762"
+              },
+              {
+                "@code": "76D",
+                "@name": "その他の専門料理店",
+                "@level": "6",
+                "@parentCode": "762"
+              },
+              {
+                "@code": "763",
+                "@name": "そば・うどん店",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "764",
+                "@name": "すし店",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "765",
+                "@name": "酒場，ビヤホール",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "766",
+                "@name": "バー，キャバレー，ナイトクラブ",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "767",
+                "@name": "喫茶店",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "769",
+                "@name": "その他の飲食店",
+                "@level": "5",
+                "@parentCode": "76"
+              },
+              {
+                "@code": "76E",
+                "@name": "ハンバーガー店",
+                "@level": "6",
+                "@parentCode": "769"
+              },
+              {
+                "@code": "76F",
+                "@name": "お好み焼・焼きそば・たこ焼店",
+                "@level": "6",
+                "@parentCode": "769"
+              },
+              {
+                "@code": "76G",
+                "@name": "他に分類されない飲食店",
+                "@level": "6",
+                "@parentCode": "769"
+              },
+              {
+                "@code": "77",
+                "@name": "持ち帰り・配達飲食サービス業",
+                "@level": "4",
+                "@parentCode": "M2"
+              },
+              {
+                "@code": "771",
+                "@name": "持ち帰り飲食サービス業",
+                "@level": "5",
+                "@parentCode": "77"
+              },
+              {
+                "@code": "772",
+                "@name": "配達飲食サービス業",
+                "@level": "5",
+                "@parentCode": "77"
+              },
+              {
+                "@code": "N",
+                "@name": "生活関連サービス業，娯楽業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "78",
+                "@name": "洗濯・理容・美容・浴場業",
+                "@level": "4",
+                "@parentCode": "N"
+              },
+              {
+                "@code": "781",
+                "@name": "洗濯業",
+                "@level": "5",
+                "@parentCode": "78"
+              },
+              {
+                "@code": "78A",
+                "@name": "普通洗濯業",
+                "@level": "6",
+                "@parentCode": "781"
+              },
+              {
+                "@code": "78B",
+                "@name": "リネンサプライ業",
+                "@level": "6",
+                "@parentCode": "781"
+              },
+              {
+                "@code": "782",
+                "@name": "理容業",
+                "@level": "5",
+                "@parentCode": "78"
+              },
+              {
+                "@code": "783",
+                "@name": "美容業",
+                "@level": "5",
+                "@parentCode": "78"
+              },
+              {
+                "@code": "784",
+                "@name": "一般公衆浴場業",
+                "@level": "5",
+                "@parentCode": "78"
+              },
+              {
+                "@code": "785",
+                "@name": "その他の公衆浴場業",
+                "@level": "5",
+                "@parentCode": "78"
+              },
+              {
+                "@code": "789",
+                "@name": "その他の洗濯・理容・美容・浴場業",
+                "@level": "5",
+                "@parentCode": "78"
+              },
+              {
+                "@code": "78C",
+                "@name": "洗張・染物業",
+                "@level": "6",
+                "@parentCode": "789"
+              },
+              {
+                "@code": "78D",
+                "@name": "他に分類されない洗濯・理容・美容・浴場業",
+                "@level": "6",
+                "@parentCode": "789"
+              },
+              {
+                "@code": "79",
+                "@name": "その他の生活関連サービス業",
+                "@level": "4",
+                "@parentCode": "N"
+              },
+              {
+                "@code": "791",
+                "@name": "旅行業",
+                "@level": "5",
+                "@parentCode": "79"
+              },
+              {
+                "@code": "793",
+                "@name": "衣服裁縫修理業",
+                "@level": "5",
+                "@parentCode": "79"
+              },
+              {
+                "@code": "794",
+                "@name": "物品預り業",
+                "@level": "5",
+                "@parentCode": "79"
+              },
+              {
+                "@code": "795",
+                "@name": "火葬・墓地管理業",
+                "@level": "5",
+                "@parentCode": "79"
+              },
+              {
+                "@code": "796",
+                "@name": "冠婚葬祭業",
+                "@level": "5",
+                "@parentCode": "79"
+              },
+              {
+                "@code": "79A",
+                "@name": "葬儀業",
+                "@level": "6",
+                "@parentCode": "796"
+              },
+              {
+                "@code": "79B",
+                "@name": "結婚式場業",
+                "@level": "6",
+                "@parentCode": "796"
+              },
+              {
+                "@code": "79C",
+                "@name": "冠婚葬祭互助会",
+                "@level": "6",
+                "@parentCode": "796"
+              },
+              {
+                "@code": "799",
+                "@name": "他に分類されない生活関連サービス業",
+                "@level": "5",
+                "@parentCode": "79"
+              },
+              {
+                "@code": "79D",
+                "@name": "写真プリント，現像・焼付業",
+                "@level": "6",
+                "@parentCode": "799"
+              },
+              {
+                "@code": "79E",
+                "@name": "他に分類されないその他の生活関連サービス業",
+                "@level": "6",
+                "@parentCode": "799"
+              },
+              {
+                "@code": "80",
+                "@name": "娯楽業",
+                "@level": "4",
+                "@parentCode": "N"
+              },
+              {
+                "@code": "801",
+                "@name": "映画館",
+                "@level": "5",
+                "@parentCode": "80"
+              },
+              {
+                "@code": "802",
+                "@name": "興行場（別掲を除く），興行団",
+                "@level": "5",
+                "@parentCode": "80"
+              },
+              {
+                "@code": "803",
+                "@name": "競輪・競馬等の競走場，競技団",
+                "@level": "5",
+                "@parentCode": "80"
+              },
+              {
+                "@code": "804",
+                "@name": "スポーツ施設提供業",
+                "@level": "5",
+                "@parentCode": "80"
+              },
+              {
+                "@code": "80A",
+                "@name": "スポーツ施設提供業（別掲を除く）",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "80B",
+                "@name": "体育館",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "80C",
+                "@name": "ゴルフ場",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "80D",
+                "@name": "ゴルフ練習場",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "80E",
+                "@name": "ボウリング場",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "80F",
+                "@name": "テニス場",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "80G",
+                "@name": "バッティング・テニス練習場",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "80H",
+                "@name": "フィットネスクラブ",
+                "@level": "6",
+                "@parentCode": "804"
+              },
+              {
+                "@code": "805",
+                "@name": "公園，遊園地",
+                "@level": "5",
+                "@parentCode": "80"
+              },
+              {
+                "@code": "806",
+                "@name": "遊戯場",
+                "@level": "5",
+                "@parentCode": "80"
+              },
+              {
+                "@code": "80J",
+                "@name": "マージャンクラブ",
+                "@level": "6",
+                "@parentCode": "806"
+              },
+              {
+                "@code": "80K",
+                "@name": "パチンコホール",
+                "@level": "6",
+                "@parentCode": "806"
+              },
+              {
+                "@code": "80L",
+                "@name": "ゲームセンター",
+                "@level": "6",
+                "@parentCode": "806"
+              },
+              {
+                "@code": "80M",
+                "@name": "その他の遊戯場",
+                "@level": "6",
+                "@parentCode": "806"
+              },
+              {
+                "@code": "809",
+                "@name": "その他の娯楽業",
+                "@level": "5",
+                "@parentCode": "80"
+              },
+              {
+                "@code": "80N",
+                "@name": "カラオケボックス業",
+                "@level": "6",
+                "@parentCode": "809"
+              },
+              {
+                "@code": "80Q",
+                "@name": "娯楽に附帯するサービス業",
+                "@level": "6",
+                "@parentCode": "809"
+              },
+              {
+                "@code": "80R",
+                "@name": "他に分類されない娯楽業",
+                "@level": "6",
+                "@parentCode": "809"
+              },
+              {
+                "@code": "O",
+                "@name": "教育，学習支援業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "O1",
+                "@name": "教育，学習支援業（学校教育）",
+                "@level": "3",
+                "@parentCode": "O"
+              },
+              {
+                "@code": "81",
+                "@name": "学校教育",
+                "@level": "4",
+                "@parentCode": "O1"
+              },
+              {
+                "@code": "811",
+                "@name": "幼稚園",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "819",
+                "@name": "幼保連携型認定こども園",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "812",
+                "@name": "小学校",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "813",
+                "@name": "中学校",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "814",
+                "@name": "高等学校，中等教育学校",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "815",
+                "@name": "特別支援学校",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "816",
+                "@name": "高等教育機関",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "817",
+                "@name": "専修学校，各種学校",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "81A",
+                "@name": "専修学校",
+                "@level": "6",
+                "@parentCode": "817"
+              },
+              {
+                "@code": "81B",
+                "@name": "各種学校",
+                "@level": "6",
+                "@parentCode": "817"
+              },
+              {
+                "@code": "818",
+                "@name": "学校教育支援機関",
+                "@level": "5",
+                "@parentCode": "81"
+              },
+              {
+                "@code": "O2",
+                "@name": "教育，学習支援業（その他の教育，学習支援業）",
+                "@level": "3",
+                "@parentCode": "O"
+              },
+              {
+                "@code": "82",
+                "@name": "その他の教育，学習支援業",
+                "@level": "4",
+                "@parentCode": "O2"
+              },
+              {
+                "@code": "821",
+                "@name": "社会教育",
+                "@level": "5",
+                "@parentCode": "82"
+              },
+              {
+                "@code": "82A",
+                "@name": "公民館",
+                "@level": "6",
+                "@parentCode": "821"
+              },
+              {
+                "@code": "82B",
+                "@name": "図書館",
+                "@level": "6",
+                "@parentCode": "821"
+              },
+              {
+                "@code": "82C",
+                "@name": "博物館，美術館",
+                "@level": "6",
+                "@parentCode": "821"
+              },
+              {
+                "@code": "82D",
+                "@name": "動物園，植物園，水族館",
+                "@level": "6",
+                "@parentCode": "821"
+              },
+              {
+                "@code": "82N",
+                "@name": "社会通信教育",
+                "@level": "6",
+                "@parentCode": "821"
+              },
+              {
+                "@code": "82P",
+                "@name": "その他の社会教育",
+                "@level": "6",
+                "@parentCode": "821"
+              },
+              {
+                "@code": "822",
+                "@name": "職業・教育支援施設",
+                "@level": "5",
+                "@parentCode": "82"
+              },
+              {
+                "@code": "823",
+                "@name": "学習塾",
+                "@level": "5",
+                "@parentCode": "82"
+              },
+              {
+                "@code": "824",
+                "@name": "教養・技能教授業",
+                "@level": "5",
+                "@parentCode": "82"
+              },
+              {
+                "@code": "82F",
+                "@name": "音楽教授業",
+                "@level": "6",
+                "@parentCode": "824"
+              },
+              {
+                "@code": "82G",
+                "@name": "書道教授業",
+                "@level": "6",
+                "@parentCode": "824"
+              },
+              {
+                "@code": "82H",
+                "@name": "生花・茶道教授業",
+                "@level": "6",
+                "@parentCode": "824"
+              },
+              {
+                "@code": "82J",
+                "@name": "そろばん教授業",
+                "@level": "6",
+                "@parentCode": "824"
+              },
+              {
+                "@code": "82K",
+                "@name": "外国語会話教授業",
+                "@level": "6",
+                "@parentCode": "824"
+              },
+              {
+                "@code": "82L",
+                "@name": "スポーツ・健康教授業",
+                "@level": "6",
+                "@parentCode": "824"
+              },
+              {
+                "@code": "82M",
+                "@name": "その他の教養・技能教授業",
+                "@level": "6",
+                "@parentCode": "824"
+              },
+              {
+                "@code": "829",
+                "@name": "他に分類されない教育，学習支援業",
+                "@level": "5",
+                "@parentCode": "82"
+              },
+              {
+                "@code": "P",
+                "@name": "医療，福祉",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "83",
+                "@name": "医療業",
+                "@level": "4",
+                "@parentCode": "P"
+              },
+              {
+                "@code": "831",
+                "@name": "病院",
+                "@level": "5",
+                "@parentCode": "83"
+              },
+              {
+                "@code": "832",
+                "@name": "一般診療所",
+                "@level": "5",
+                "@parentCode": "83"
+              },
+              {
+                "@code": "833",
+                "@name": "歯科診療所",
+                "@level": "5",
+                "@parentCode": "83"
+              },
+              {
+                "@code": "834",
+                "@name": "助産・看護業",
+                "@level": "5",
+                "@parentCode": "83"
+              },
+              {
+                "@code": "83A",
+                "@name": "助産所",
+                "@level": "6",
+                "@parentCode": "834"
+              },
+              {
+                "@code": "83B",
+                "@name": "看護業",
+                "@level": "6",
+                "@parentCode": "834"
+              },
+              {
+                "@code": "835",
+                "@name": "療術業",
+                "@level": "5",
+                "@parentCode": "83"
+              },
+              {
+                "@code": "836",
+                "@name": "医療に附帯するサービス業",
+                "@level": "5",
+                "@parentCode": "83"
+              },
+              {
+                "@code": "83C",
+                "@name": "歯科技工所",
+                "@level": "6",
+                "@parentCode": "836"
+              },
+              {
+                "@code": "83D",
+                "@name": "その他の医療に附帯するサービス業",
+                "@level": "6",
+                "@parentCode": "836"
+              },
+              {
+                "@code": "84",
+                "@name": "保健衛生",
+                "@level": "4",
+                "@parentCode": "P"
+              },
+              {
+                "@code": "842",
+                "@name": "健康相談施設",
+                "@level": "5",
+                "@parentCode": "84"
+              },
+              {
+                "@code": "849",
+                "@name": "その他の保健衛生",
+                "@level": "5",
+                "@parentCode": "84"
+              },
+              {
+                "@code": "85",
+                "@name": "社会保険・社会福祉・介護事業",
+                "@level": "4",
+                "@parentCode": "P"
+              },
+              {
+                "@code": "851",
+                "@name": "社会保険事業団体",
+                "@level": "5",
+                "@parentCode": "85"
+              },
+              {
+                "@code": "853",
+                "@name": "児童福祉事業",
+                "@level": "5",
+                "@parentCode": "85"
+              },
+              {
+                "@code": "85A",
+                "@name": "保育所",
+                "@level": "6",
+                "@parentCode": "853"
+              },
+              {
+                "@code": "85B",
+                "@name": "その他の児童福祉事業",
+                "@level": "6",
+                "@parentCode": "853"
+              },
+              {
+                "@code": "854",
+                "@name": "老人福祉・介護事業",
+                "@level": "5",
+                "@parentCode": "85"
+              },
+              {
+                "@code": "85C",
+                "@name": "特別養護老人ホーム",
+                "@level": "6",
+                "@parentCode": "854"
+              },
+              {
+                "@code": "85D",
+                "@name": "介護老人保健施設",
+                "@level": "6",
+                "@parentCode": "854"
+              },
+              {
+                "@code": "85E",
+                "@name": "通所・短期入所介護事業",
+                "@level": "6",
+                "@parentCode": "854"
+              },
+              {
+                "@code": "85F",
+                "@name": "訪問介護事業",
+                "@level": "6",
+                "@parentCode": "854"
+              },
+              {
+                "@code": "85G",
+                "@name": "認知症老人グループホーム",
+                "@level": "6",
+                "@parentCode": "854"
+              },
+              {
+                "@code": "85H",
+                "@name": "有料老人ホーム",
+                "@level": "6",
+                "@parentCode": "854"
+              },
+              {
+                "@code": "85J",
+                "@name": "その他の老人福祉・介護事業",
+                "@level": "6",
+                "@parentCode": "854"
+              },
+              {
+                "@code": "855",
+                "@name": "障害者福祉事業",
+                "@level": "5",
+                "@parentCode": "85"
+              },
+              {
+                "@code": "859",
+                "@name": "その他の社会保険・社会福祉・介護事業",
+                "@level": "5",
+                "@parentCode": "85"
+              },
+              {
+                "@code": "85K",
+                "@name": "更生保護事業",
+                "@level": "6",
+                "@parentCode": "859"
+              },
+              {
+                "@code": "85L",
+                "@name": "他に分類されない社会保険・社会福祉・介護事業",
+                "@level": "6",
+                "@parentCode": "859"
+              },
+              {
+                "@code": "Q",
+                "@name": "複合サービス事業",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "Q1",
+                "@name": "複合サービス事業（郵便局）",
+                "@level": "3",
+                "@parentCode": "Q"
+              },
+              {
+                "@code": "86",
+                "@name": "郵便局",
+                "@level": "4",
+                "@parentCode": "Q1"
+              },
+              {
+                "@code": "861",
+                "@name": "郵便局",
+                "@level": "5",
+                "@parentCode": "86"
+              },
+              {
+                "@code": "862",
+                "@name": "郵便局受託業",
+                "@level": "5",
+                "@parentCode": "86"
+              },
+              {
+                "@code": "Q2",
+                "@name": "複合サービス事業（協同組合）",
+                "@level": "3",
+                "@parentCode": "Q"
+              },
+              {
+                "@code": "87",
+                "@name": "協同組合（他に分類されないもの）",
+                "@level": "4",
+                "@parentCode": "Q2"
+              },
+              {
+                "@code": "871",
+                "@name": "農林水産業協同組合（他に分類されないもの）",
+                "@level": "5",
+                "@parentCode": "87"
+              },
+              {
+                "@code": "872",
+                "@name": "事業協同組合（他に分類されないもの）",
+                "@level": "5",
+                "@parentCode": "87"
+              },
+              {
+                "@code": "R",
+                "@name": "サービス業（他に分類されないもの）",
+                "@level": "2",
+                "@parentCode": "CR"
+              },
+              {
+                "@code": "R1",
+                "@name": "サービス業（政治・経済・文化団体，宗教）",
+                "@level": "3",
+                "@parentCode": "R"
+              },
+              {
+                "@code": "93",
+                "@name": "政治・経済・文化団体",
+                "@level": "4",
+                "@parentCode": "R1"
+              },
+              {
+                "@code": "931",
+                "@name": "経済団体",
+                "@level": "5",
+                "@parentCode": "93"
+              },
+              {
+                "@code": "932",
+                "@name": "労働団体",
+                "@level": "5",
+                "@parentCode": "93"
+              },
+              {
+                "@code": "933",
+                "@name": "学術・文化団体",
+                "@level": "5",
+                "@parentCode": "93"
+              },
+              {
+                "@code": "934",
+                "@name": "政治団体",
+                "@level": "5",
+                "@parentCode": "93"
+              },
+              {
+                "@code": "939",
+                "@name": "他に分類されない非営利的団体",
+                "@level": "5",
+                "@parentCode": "93"
+              },
+              {
+                "@code": "94",
+                "@name": "宗教",
+                "@level": "4",
+                "@parentCode": "R1"
+              },
+              {
+                "@code": "941",
+                "@name": "神道系宗教",
+                "@level": "5",
+                "@parentCode": "94"
+              },
+              {
+                "@code": "942",
+                "@name": "仏教系宗教",
+                "@level": "5",
+                "@parentCode": "94"
+              },
+              {
+                "@code": "943",
+                "@name": "キリスト教系宗教",
+                "@level": "5",
+                "@parentCode": "94"
+              },
+              {
+                "@code": "949",
+                "@name": "その他の宗教",
+                "@level": "5",
+                "@parentCode": "94"
+              },
+              {
+                "@code": "R2",
+                "@name": "サービス業（政治・経済・文化団体，宗教を除く）",
+                "@level": "3",
+                "@parentCode": "R"
+              },
+              {
+                "@code": "88",
+                "@name": "廃棄物処理業",
+                "@level": "4",
+                "@parentCode": "R2"
+              },
+              {
+                "@code": "881",
+                "@name": "一般廃棄物処理業",
+                "@level": "5",
+                "@parentCode": "88"
+              },
+              {
+                "@code": "882",
+                "@name": "産業廃棄物処理業",
+                "@level": "5",
+                "@parentCode": "88"
+              },
+              {
+                "@code": "889",
+                "@name": "その他の廃棄物処理業",
+                "@level": "5",
+                "@parentCode": "88"
+              },
+              {
+                "@code": "89",
+                "@name": "自動車整備業",
+                "@level": "4",
+                "@parentCode": "R2"
+              },
+              {
+                "@code": "891",
+                "@name": "自動車整備業",
+                "@level": "5",
+                "@parentCode": "89"
+              },
+              {
+                "@code": "90",
+                "@name": "機械等修理業（別掲を除く）",
+                "@level": "4",
+                "@parentCode": "R2"
+              },
+              {
+                "@code": "901",
+                "@name": "機械修理業（電気機械器具を除く）",
+                "@level": "5",
+                "@parentCode": "90"
+              },
+              {
+                "@code": "902",
+                "@name": "電気機械器具修理業",
+                "@level": "5",
+                "@parentCode": "90"
+              },
+              {
+                "@code": "903",
+                "@name": "表具業",
+                "@level": "5",
+                "@parentCode": "90"
+              },
+              {
+                "@code": "909",
+                "@name": "その他の修理業",
+                "@level": "5",
+                "@parentCode": "90"
+              },
+              {
+                "@code": "91",
+                "@name": "職業紹介・労働者派遣業",
+                "@level": "4",
+                "@parentCode": "R2"
+              },
+              {
+                "@code": "911",
+                "@name": "職業紹介業",
+                "@level": "5",
+                "@parentCode": "91"
+              },
+              {
+                "@code": "912",
+                "@name": "労働者派遣業",
+                "@level": "5",
+                "@parentCode": "91"
+              },
+              {
+                "@code": "92",
+                "@name": "その他の事業サービス業",
+                "@level": "4",
+                "@parentCode": "R2"
+              },
+              {
+                "@code": "921",
+                "@name": "速記・ワープロ入力・複写業",
+                "@level": "5",
+                "@parentCode": "92"
+              },
+              {
+                "@code": "922",
+                "@name": "建物サービス業",
+                "@level": "5",
+                "@parentCode": "92"
+              },
+              {
+                "@code": "92A",
+                "@name": "ビルメンテナンス業",
+                "@level": "6",
+                "@parentCode": "922"
+              },
+              {
+                "@code": "92B",
+                "@name": "その他の建物サービス業",
+                "@level": "6",
+                "@parentCode": "922"
+              },
+              {
+                "@code": "923",
+                "@name": "警備業",
+                "@level": "5",
+                "@parentCode": "92"
+              },
+              {
+                "@code": "929",
+                "@name": "他に分類されない事業サービス業",
+                "@level": "5",
+                "@parentCode": "92"
+              },
+              {
+                "@code": "95",
+                "@name": "その他のサービス業",
+                "@level": "4",
+                "@parentCode": "R2"
+              },
+              {
+                "@code": "951",
+                "@name": "集会場",
+                "@level": "5",
+                "@parentCode": "95"
+              },
+              {
+                "@code": "952",
+                "@name": "と畜場",
+                "@level": "5",
+                "@parentCode": "95"
+              },
+              {
+                "@code": "959",
+                "@name": "他に分類されないサービス業",
+                "@level": "5",
+                "@parentCode": "95"
+              }
+            ]
+          },
+          {
+            "@id": "cat02",
+            "@name": "企業常用雇用者規模",
+            "CLASS": [
+              {
+                "@code": "00",
+                "@name": "総数",
+                "@level": "1"
+              },
+              {
+                "@code": "01",
+                "@name": "0～4人",
+                "@level": "1"
+              },
+              {
+                "@code": "02",
+                "@name": "5～9人",
+                "@level": "1"
+              },
+              {
+                "@code": "03",
+                "@name": "10～19人",
+                "@level": "1"
+              },
+              {
+                "@code": "04",
+                "@name": "20～29人",
+                "@level": "1"
+              },
+              {
+                "@code": "05",
+                "@name": "30～49人",
+                "@level": "1"
+              },
+              {
+                "@code": "06",
+                "@name": "50～99人",
+                "@level": "1"
+              },
+              {
+                "@code": "07",
+                "@name": "100～299人",
+                "@level": "1"
+              },
+              {
+                "@code": "08",
+                "@name": "300～999人",
+                "@level": "1"
+              },
+              {
+                "@code": "09",
+                "@name": "1000～1999人",
+                "@level": "1"
+              },
+              {
+                "@code": "10",
+                "@name": "2000～4999人",
+                "@level": "1"
+              },
+              {
+                "@code": "11",
+                "@name": "5000人以上",
+                "@level": "1"
+              },
+              {
+                "@code": "R1",
+                "@name": "（再掲）5人以下",
+                "@level": "1"
+              },
+              {
+                "@code": "R2",
+                "@name": "（再掲）20人以下",
+                "@level": "1"
+              },
+              {
+                "@code": "R3",
+                "@name": "（再掲）50人以下",
+                "@level": "1"
+              },
+              {
+                "@code": "R4",
+                "@name": "（再掲）100人以下",
+                "@level": "1"
+              },
+              {
+                "@code": "R5",
+                "@name": "（再掲）200人以下",
+                "@level": "1"
+              },
+              {
+                "@code": "R6",
+                "@name": "（再掲）300人以下",
+                "@level": "1"
+              },
+              {
+                "@code": "R7",
+                "@name": "（再掲）900人以下",
+                "@level": "1"
+              }
+            ]
+          },
+          {
+            "@id": "cat03",
+            "@name": "経営組織",
+            "CLASS": [
+              {
+                "@code": "0",
+                "@name": "総数",
+                "@level": "1"
+              },
+              {
+                "@code": "1",
+                "@name": "法人",
+                "@level": "1"
+              },
+              {
+                "@code": "11",
+                "@name": "会社企業",
+                "@level": "2",
+                "@parentCode": "1"
+              },
+              {
+                "@code": "12",
+                "@name": "会社以外の法人",
+                "@level": "2",
+                "@parentCode": "1"
+              },
+              {
+                "@code": "2",
+                "@name": "個人",
+                "@level": "1"
+              }
+            ]
+          },
+          {
+            "@id": "area",
+            "@name": "地域",
+            "CLASS": [
+              {
+                "@code": "00000",
+                "@name": "全国",
+                "@level": "1"
+              },
+              {
+                "@code": "01000",
+                "@name": "北海道",
+                "@level": "1"
+              },
+              {
+                "@code": "01100",
+                "@name": "札幌市",
+                "@level": "2",
+                "@parentCode": "01000"
+              },
+              {
+                "@code": "02000",
+                "@name": "青森県",
+                "@level": "1"
+              },
+              {
+                "@code": "03000",
+                "@name": "岩手県",
+                "@level": "1"
+              },
+              {
+                "@code": "04000",
+                "@name": "宮城県",
+                "@level": "1"
+              },
+              {
+                "@code": "04100",
+                "@name": "仙台市",
+                "@level": "2",
+                "@parentCode": "04000"
+              },
+              {
+                "@code": "05000",
+                "@name": "秋田県",
+                "@level": "1"
+              },
+              {
+                "@code": "06000",
+                "@name": "山形県",
+                "@level": "1"
+              },
+              {
+                "@code": "07000",
+                "@name": "福島県",
+                "@level": "1"
+              },
+              {
+                "@code": "08000",
+                "@name": "茨城県",
+                "@level": "1"
+              },
+              {
+                "@code": "09000",
+                "@name": "栃木県",
+                "@level": "1"
+              },
+              {
+                "@code": "10000",
+                "@name": "群馬県",
+                "@level": "1"
+              },
+              {
+                "@code": "11000",
+                "@name": "埼玉県",
+                "@level": "1"
+              },
+              {
+                "@code": "11100",
+                "@name": "さいたま市",
+                "@level": "2",
+                "@parentCode": "11000"
+              },
+              {
+                "@code": "12000",
+                "@name": "千葉県",
+                "@level": "1"
+              },
+              {
+                "@code": "12100",
+                "@name": "千葉市",
+                "@level": "2",
+                "@parentCode": "12000"
+              },
+              {
+                "@code": "13000",
+                "@name": "東京都",
+                "@level": "1"
+              },
+              {
+                "@code": "13100",
+                "@name": "特別区部",
+                "@level": "2",
+                "@parentCode": "13000"
+              },
+              {
+                "@code": "14000",
+                "@name": "神奈川県",
+                "@level": "1"
+              },
+              {
+                "@code": "14100",
+                "@name": "横浜市",
+                "@level": "2",
+                "@parentCode": "14000"
+              },
+              {
+                "@code": "14130",
+                "@name": "川崎市",
+                "@level": "2",
+                "@parentCode": "14000"
+              },
+              {
+                "@code": "14150",
+                "@name": "相模原市",
+                "@level": "2",
+                "@parentCode": "14000"
+              },
+              {
+                "@code": "15000",
+                "@name": "新潟県",
+                "@level": "1"
+              },
+              {
+                "@code": "15100",
+                "@name": "新潟市",
+                "@level": "2",
+                "@parentCode": "15000"
+              },
+              {
+                "@code": "16000",
+                "@name": "富山県",
+                "@level": "1"
+              },
+              {
+                "@code": "17000",
+                "@name": "石川県",
+                "@level": "1"
+              },
+              {
+                "@code": "18000",
+                "@name": "福井県",
+                "@level": "1"
+              },
+              {
+                "@code": "19000",
+                "@name": "山梨県",
+                "@level": "1"
+              },
+              {
+                "@code": "20000",
+                "@name": "長野県",
+                "@level": "1"
+              },
+              {
+                "@code": "21000",
+                "@name": "岐阜県",
+                "@level": "1"
+              },
+              {
+                "@code": "22000",
+                "@name": "静岡県",
+                "@level": "1"
+              },
+              {
+                "@code": "22100",
+                "@name": "静岡市",
+                "@level": "2",
+                "@parentCode": "22000"
+              },
+              {
+                "@code": "22130",
+                "@name": "浜松市",
+                "@level": "2",
+                "@parentCode": "22000"
+              },
+              {
+                "@code": "23000",
+                "@name": "愛知県",
+                "@level": "1"
+              },
+              {
+                "@code": "23100",
+                "@name": "名古屋市",
+                "@level": "2",
+                "@parentCode": "23000"
+              },
+              {
+                "@code": "24000",
+                "@name": "三重県",
+                "@level": "1"
+              },
+              {
+                "@code": "25000",
+                "@name": "滋賀県",
+                "@level": "1"
+              },
+              {
+                "@code": "26000",
+                "@name": "京都府",
+                "@level": "1"
+              },
+              {
+                "@code": "26100",
+                "@name": "京都市",
+                "@level": "2",
+                "@parentCode": "26000"
+              },
+              {
+                "@code": "27000",
+                "@name": "大阪府",
+                "@level": "1"
+              },
+              {
+                "@code": "27100",
+                "@name": "大阪市",
+                "@level": "2",
+                "@parentCode": "27000"
+              },
+              {
+                "@code": "27140",
+                "@name": "堺市",
+                "@level": "2",
+                "@parentCode": "27000"
+              },
+              {
+                "@code": "28000",
+                "@name": "兵庫県",
+                "@level": "1"
+              },
+              {
+                "@code": "28100",
+                "@name": "神戸市",
+                "@level": "2",
+                "@parentCode": "28000"
+              },
+              {
+                "@code": "29000",
+                "@name": "奈良県",
+                "@level": "1"
+              },
+              {
+                "@code": "30000",
+                "@name": "和歌山県",
+                "@level": "1"
+              },
+              {
+                "@code": "31000",
+                "@name": "鳥取県",
+                "@level": "1"
+              },
+              {
+                "@code": "32000",
+                "@name": "島根県",
+                "@level": "1"
+              },
+              {
+                "@code": "33000",
+                "@name": "岡山県",
+                "@level": "1"
+              },
+              {
+                "@code": "33100",
+                "@name": "岡山市",
+                "@level": "2",
+                "@parentCode": "33000"
+              },
+              {
+                "@code": "34000",
+                "@name": "広島県",
+                "@level": "1"
+              },
+              {
+                "@code": "34100",
+                "@name": "広島市",
+                "@level": "2",
+                "@parentCode": "34000"
+              },
+              {
+                "@code": "35000",
+                "@name": "山口県",
+                "@level": "1"
+              },
+              {
+                "@code": "36000",
+                "@name": "徳島県",
+                "@level": "1"
+              },
+              {
+                "@code": "37000",
+                "@name": "香川県",
+                "@level": "1"
+              },
+              {
+                "@code": "38000",
+                "@name": "愛媛県",
+                "@level": "1"
+              },
+              {
+                "@code": "39000",
+                "@name": "高知県",
+                "@level": "1"
+              },
+              {
+                "@code": "40000",
+                "@name": "福岡県",
+                "@level": "1"
+              },
+              {
+                "@code": "40100",
+                "@name": "北九州市",
+                "@level": "2",
+                "@parentCode": "40000"
+              },
+              {
+                "@code": "40130",
+                "@name": "福岡市",
+                "@level": "2",
+                "@parentCode": "40000"
+              },
+              {
+                "@code": "41000",
+                "@name": "佐賀県",
+                "@level": "1"
+              },
+              {
+                "@code": "42000",
+                "@name": "長崎県",
+                "@level": "1"
+              },
+              {
+                "@code": "43000",
+                "@name": "熊本県",
+                "@level": "1"
+              },
+              {
+                "@code": "43100",
+                "@name": "熊本市",
+                "@level": "2",
+                "@parentCode": "43000"
+              },
+              {
+                "@code": "44000",
+                "@name": "大分県",
+                "@level": "1"
+              },
+              {
+                "@code": "45000",
+                "@name": "宮崎県",
+                "@level": "1"
+              },
+              {
+                "@code": "46000",
+                "@name": "鹿児島県",
+                "@level": "1"
+              },
+              {
+                "@code": "47000",
+                "@name": "沖縄県",
+                "@level": "1"
+              }
+            ]
+          },
+          {
+            "@id": "time",
+            "@name": "時間軸",
+            "CLASS": {
+              "@code": "2021000000",
+              "@name": "2021年",
+              "@level": "1"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

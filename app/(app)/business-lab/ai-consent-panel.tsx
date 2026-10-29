@@ -1,0 +1,12 @@
+"use client";
+import {useEffect,useState} from 'react';
+import {Button} from '@/components/ui/button';
+import type {AIConsent,ReportSource} from '@/lib/domains/business-teardowns/report-domain';
+export function BusinessAIConsentPanel({sources,selectedIds,onSelectionChange,consent,disabled,onGrant,onRevoke,onGenerate}:{sources:ReportSource[];selectedIds:string[];onSelectionChange:(ids:string[])=>void;consent:AIConsent|null;disabled:boolean;onGrant:()=>Promise<void>;onRevoke:()=>Promise<void>;onGenerate:()=>Promise<void>}) {
+ const [confirmed,setConfirmed]=useState(false);
+ const consumed=!!consent?.consumedByRequestId;
+ const retrying=consumed&&consent?.consumedRequestStatus==='pending';
+ const authorizing=!!consent&&!consumed;
+ useEffect(()=>{setConfirmed(false);},[consent?.consumedByRequestId]);
+ return <section className="space-y-3 rounded-lg border bg-card p-5" aria-label="本次 AI 材料许可"><h2 className="text-base font-medium">本次选定的公开材料</h2><p className="text-xs leading-6 text-muted-foreground">仅向 Gemini 发送以下明确选定的公开字段与去标识摘录。既有新闻许可不适用；本次许可不启动每日生成。</p><fieldset disabled={disabled||authorizing} className="space-y-2">{sources.map(source=><label key={source.id} className="flex gap-2 break-words text-xs leading-6"><input type="checkbox" name="snapshotId" value={source.id} checked={selectedIds.includes(source.id)} onChange={e=>{setConfirmed(false);onSelectionChange(e.target.checked?[...selectedIds,source.id]:selectedIds.filter(id=>id!==source.id));}}/><span>{source.role==='comparison'?'对照店':'主店材料'} · {source.coverage} · {source.capturedAt}</span></label>)}<label className="flex gap-2 text-xs leading-6"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/><span>我已核对本次发送范围，确认摘录已去标识，仅授权本案例这次生成。</span></label></fieldset>{consumed&&<p className="text-xs leading-6">本次许可已使用。{retrying?'可重新读取同一请求的结果，不会再次发送材料。':'如需再次生成，请核对范围并重新确认本次材料许可。'}</p>}<div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={disabled||authorizing||!confirmed||!selectedIds.some(id=>sources.some(s=>s.id===id&&s.role!=='comparison'))} onClick={()=>void onGrant()}>确认本次材料许可</Button><Button variant="outline" size="sm" disabled={disabled||!consent||(consumed&&!retrying)} onClick={()=>void onGenerate()}>{retrying?'重新读取本次生成结果':'生成 AI 草稿'}</Button>{consent&&<Button variant="ghost" size="sm" disabled={disabled} onClick={()=>{setConfirmed(false);void onRevoke();}}>撤回本次许可</Button>}</div></section>;
+}

@@ -1,0 +1,92 @@
+begin;
+create table public.statistical_source_configs (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,
+ table_id text not null check(table_id='0004006264'),filters jsonb not null,metadata jsonb not null,metadata_hash text not null,
+ preview_hash text not null,approval_state text not null check(approval_state in ('approved','needs_review','deleted')),
+ approved_at timestamptz not null default clock_timestamp(),deleted_at timestamptz,unique(user_id,id)
+);
+create table public.statistical_snapshots (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,config_id uuid not null,payload jsonb not null,
+ metadata_hash text not null,request_id uuid not null,created_at timestamptz not null default clock_timestamp(),
+ foreign key(user_id,config_id) references public.statistical_source_configs(user_id,id) on delete cascade,
+ unique(user_id,request_id)
+);
+create table public.statistical_idea_links (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,config_id uuid not null,
+ idea_id uuid references public.ideas(id) on delete set null,scope text,unknown_note text,created_at timestamptz not null default clock_timestamp(),deleted_at timestamptz,
+ foreign key(user_id,config_id) references public.statistical_source_configs(user_id,id) on delete cascade
+);
+create table public.statistical_requests(user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,operation text not null,input_hash text not null,result_id uuid not null,approval_semantic_hash text check(approval_semantic_hash is null or approval_semantic_hash ~ '^[a-f0-9]{64}$'),primary key(user_id,request_id));
+create index statistical_source_page on public.statistical_source_configs(user_id,approved_at desc,id desc);
+create index statistical_snapshot_page on public.statistical_snapshots(user_id,config_id,created_at desc);
+alter table public.statistical_source_configs enable row level security;alter table public.statistical_snapshots enable row level security;alter table public.statistical_idea_links enable row level security;alter table public.statistical_requests enable row level security;
+-- Private owner data is exposed only by service-guarded RPCs, never direct client writes.
+revoke all on public.statistical_source_configs,public.statistical_snapshots,public.statistical_idea_links,public.statistical_requests from public,anon,authenticated,service_role;
+create function public.statistics_owner(p_user_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+begin if p_user_id is null or coalesce(auth.role(),'')<>'service_role' or not exists(select 1 from auth.users where id=p_user_id) then raise exception 'statistics owner required' using errcode='42501';end if;end $$;
+create function public.statistics_input_hash(p_value jsonb) returns text language sql immutable set search_path=public,pg_temp as $$select encode(sha256(convert_to(p_value::text,'UTF8')),'hex')$$;
+create function public.statistics_immutable() returns trigger language plpgsql set search_path=public,pg_temp as $$begin if tg_op='DELETE' and current_setting('app.statistics_privacy_delete',true)='yes' then return old;end if;raise exception 'statistical revision is immutable';end $$;
+create trigger statistical_snapshot_immutable before update or delete on public.statistical_snapshots for each row execute function public.statistics_immutable();
+create function public.get_statistical_request(p_user_id uuid,p_request_id uuid,p_operation text,p_config_id uuid default null) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare r statistical_requests;begin perform statistics_owner(p_user_id);select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;if not found then return null;end if;if r.operation<>p_operation or (p_config_id is not null and not exists(select 1 from statistical_snapshots where id=r.result_id and user_id=p_user_id and config_id=p_config_id)) then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end $$;
+-- A committed approval can be acknowledged before another network attempt. Its semantic
+-- digest survives privacy deletion without retaining filters or private association text.
+create function public.get_statistical_approval_request(p_user_id uuid,p_request_id uuid,p_filters jsonb,p_metadata_hash text,p_preview_hash text) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare r statistical_requests;h text;begin
+ perform statistics_owner(p_user_id);if p_request_id is null or p_filters is null or jsonb_typeof(p_filters)<>'object' or coalesce(p_metadata_hash,'')!~'^[a-f0-9]{64}$' or coalesce(p_preview_hash,'')!~'^[a-f0-9]{64}$' then raise exception 'invalid approval request identity';end if;
+ select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;if not found then return null;end if;
+ h:=statistics_input_hash(jsonb_build_object('filters',p_filters,'metadataHash',p_metadata_hash,'previewHash',p_preview_hash));
+ if r.operation<>'approve' or r.approval_semantic_hash is distinct from h then raise exception 'request payload conflict';end if;
+ return jsonb_build_object('id',r.result_id);end $$;
+create function public.persist_statistical_snapshot_internal(p_user_id uuid,p_config_id uuid,p_payload jsonb,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;s statistical_snapshots;h text;begin
+ perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;
+ if c.approval_state<>'approved' then raise exception 'statistical source not approved';end if;
+ if p_request_id is null or p_payload is null or jsonb_typeof(p_payload)<>'object' or octet_length(p_payload::text)>2000000 then raise exception 'invalid statistical payload';end if;
+ if p_payload->>'tableId' is distinct from c.table_id or p_payload->>'metadataHash' is distinct from c.metadata_hash or p_payload->'filters' is distinct from c.filters or p_payload->>'sourceType' is distinct from 'live' or jsonb_typeof(p_payload->'cells') is distinct from 'array' or jsonb_array_length(p_payload->'cells')>1 then raise exception 'source configuration mismatch';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('configId',p_config_id,'payload',p_payload));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'snapshot' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ insert into statistical_snapshots(user_id,config_id,payload,metadata_hash,request_id) values(p_user_id,p_config_id,p_payload,c.metadata_hash,p_request_id) returning * into s;
+ insert into statistical_requests(user_id,request_id,operation,input_hash,result_id) values(p_user_id,p_request_id,'snapshot',h,s.id);return jsonb_build_object('id',s.id);end $$;
+create function public.approve_statistical_source(p_user_id uuid,p_filters jsonb,p_metadata jsonb,p_payload jsonb,p_preview_hash text,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;h text;d jsonb;begin
+ perform statistics_owner(p_user_id);if p_request_id is null or p_filters is null or jsonb_typeof(p_filters)<>'object' or p_metadata is null or jsonb_typeof(p_metadata)<>'object' or p_payload is null or jsonb_typeof(p_payload)<>'object' then raise exception 'invalid approved statistical source';end if;
+ if p_metadata->>'tableId' is distinct from '0004006264' or p_payload->>'tableId' is distinct from '0004006264' or coalesce(p_metadata->>'metadataHash','')!~'^[a-f0-9]{64}$' or p_payload->>'metadataHash' is distinct from p_metadata->>'metadataHash' or p_payload->'filters' is distinct from p_filters or p_payload->>'sourceType' is distinct from 'live' or coalesce(p_preview_hash,'')!~'^[a-f0-9]{64}$' or jsonb_typeof(p_metadata->'dimensions') is distinct from 'array' or jsonb_array_length(p_metadata->'dimensions')<>6 or (select count(*) from jsonb_object_keys(p_filters))<>6 or octet_length(p_metadata::text)>1000000 or octet_length(p_payload::text)>2000000 then raise exception 'invalid approved statistical source';end if;
+ for d in select value from jsonb_array_elements(p_metadata->'dimensions') loop if not(p_filters ? (d->>'id')) or jsonb_typeof(p_filters->(d->>'id')) is distinct from 'string' or not exists(select 1 from jsonb_array_elements(d->'categories') k where k->>'code'=p_filters->>(d->>'id')) then raise exception 'unknown statistical category';end if;end loop;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('filters',p_filters,'metadataHash',p_metadata->>'metadataHash','previewHash',p_preview_hash,'cells',p_payload->'cells','scope',p_payload->'scope'));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'approve' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ insert into statistical_source_configs(user_id,table_id,filters,metadata,metadata_hash,preview_hash,approval_state) values(p_user_id,'0004006264',p_filters,p_metadata,p_metadata->>'metadataHash',p_preview_hash,'approved') returning * into c;
+ insert into statistical_snapshots(user_id,config_id,payload,metadata_hash,request_id) values(p_user_id,c.id,p_payload,c.metadata_hash,p_request_id);
+ insert into statistical_requests(user_id,request_id,operation,input_hash,result_id,approval_semantic_hash) values(p_user_id,p_request_id,'approve',h,c.id,statistics_input_hash(jsonb_build_object('filters',p_filters,'metadataHash',p_metadata->>'metadataHash','previewHash',p_preview_hash)));return jsonb_build_object('id',c.id);end $$;
+create function public.load_approved_statistical_source(p_user_id uuid,p_config_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;begin perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;if c.approval_state<>'approved' then raise exception 'statistical source not approved';end if;return to_jsonb(c);end $$;
+create function public.invalidate_statistical_config(p_user_id uuid,p_config_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;begin perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;if c.approval_state='approved' then update statistical_source_configs set approval_state='needs_review' where id=c.id;end if;return jsonb_build_object('id',c.id);end $$;
+create function public.link_statistical_idea(p_user_id uuid,p_config_id uuid,p_idea_id uuid,p_scope text,p_unknown text,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;h text;result_id uuid;begin
+ perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found or c.approval_state='deleted' or not exists(select 1 from ideas where id=p_idea_id and user_id=p_user_id) then raise exception 'statistics or idea owner required' using errcode='42501';end if;
+ if p_request_id is null or p_scope is null or p_unknown is null or length(btrim(p_scope)) not between 1 and 2000 or length(btrim(p_unknown)) not between 1 and 2000 then raise exception 'scope and unknown required';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('configId',p_config_id,'ideaId',p_idea_id,'scope',p_scope,'unknown',p_unknown));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'link' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ insert into statistical_idea_links(user_id,config_id,idea_id,scope,unknown_note) values(p_user_id,p_config_id,p_idea_id,btrim(p_scope),btrim(p_unknown)) returning id into result_id;insert into statistical_requests(user_id,request_id,operation,input_hash,result_id) values(p_user_id,p_request_id,'link',h,result_id);return jsonb_build_object('id',result_id);end $$;
+create function public.delete_statistical_source(p_user_id uuid,p_config_id uuid,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;h text;begin
+ perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;
+ if p_request_id is null then raise exception 'request identity required';end if;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('configId',p_config_id));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'delete' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ perform set_config('app.statistics_privacy_delete','yes',true);delete from statistical_snapshots where user_id=p_user_id and config_id=p_config_id;perform set_config('app.statistics_privacy_delete','no',true);
+ update statistical_idea_links set idea_id=null,scope=null,unknown_note=null,deleted_at=coalesce(deleted_at,clock_timestamp()) where user_id=p_user_id and config_id=p_config_id;
+ update statistical_source_configs set approval_state='deleted',filters='{}',metadata='{}',metadata_hash='',preview_hash='',deleted_at=coalesce(deleted_at,clock_timestamp()) where id=p_config_id;
+ insert into statistical_requests(user_id,request_id,operation,input_hash,result_id) values(p_user_id,p_request_id,'delete',h,p_config_id);return jsonb_build_object('id',p_config_id);end $$;
+create function public.load_statistical_snapshot(p_user_id uuid,p_snapshot_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s statistical_snapshots;begin perform statistics_owner(p_user_id);select * into s from statistical_snapshots where id=p_snapshot_id and user_id=p_user_id;if not found then raise exception 'statistics snapshot owner required' using errcode='42501';end if;return to_jsonb(s);end $$;
+revoke all on function public.load_statistical_snapshot(uuid,uuid) from public,anon,authenticated;grant execute on function public.load_statistical_snapshot(uuid,uuid) to service_role;
+create function public.page_statistical_sources(p_user_id uuid,p_before uuid default null,p_limit integer default 30) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare rows jsonb;ids uuid[];next_id uuid;begin perform statistics_owner(p_user_id);if p_limit not between 1 and 30 then raise exception 'invalid page limit';end if;
+ if p_before is not null and not exists(select 1 from statistical_source_configs where id=p_before and user_id=p_user_id) then raise exception 'statistics cursor owner required' using errcode='42501';end if;
+ select coalesce(jsonb_agg(to_jsonb(c) order by approved_at desc,id desc),'[]'),array_agg(id order by approved_at desc,id desc) into rows,ids from (select * from statistical_source_configs c where user_id=p_user_id and (p_before is null or (approved_at,id)<(select approved_at,id from statistical_source_configs where id=p_before and user_id=p_user_id)) order by approved_at desc,id desc limit p_limit)c;
+ if array_length(ids,1)=p_limit then next_id:=ids[p_limit];end if;
+ return jsonb_build_object('status','ready','configs',rows,'snapshots',coalesce((select jsonb_agg(to_jsonb(s) order by s.created_at desc,s.id desc) from (select * from statistical_snapshots where user_id=p_user_id and config_id=any(ids) order by created_at desc,id desc limit 300)s),'[]'),'links',coalesce((select jsonb_agg((to_jsonb(l)-'unknown_note')||jsonb_build_object('unknown',unknown_note) order by created_at desc,id desc) from (select * from statistical_idea_links where user_id=p_user_id and config_id=any(ids) order by created_at desc,id desc limit 300)l),'[]'),'nextCursor',next_id);end $$;
+revoke all on function public.statistics_owner(uuid),public.statistics_input_hash(jsonb),public.statistics_immutable(),public.get_statistical_request(uuid,uuid,text,uuid),public.get_statistical_approval_request(uuid,uuid,jsonb,text,text),public.persist_statistical_snapshot_internal(uuid,uuid,jsonb,uuid),public.approve_statistical_source(uuid,jsonb,jsonb,jsonb,text,uuid),public.load_approved_statistical_source(uuid,uuid),public.invalidate_statistical_config(uuid,uuid),public.link_statistical_idea(uuid,uuid,uuid,text,text,uuid),public.delete_statistical_source(uuid,uuid,uuid),public.page_statistical_sources(uuid,uuid,integer) from public,anon,authenticated;
+grant execute on function public.get_statistical_request(uuid,uuid,text,uuid),public.get_statistical_approval_request(uuid,uuid,jsonb,text,text),public.persist_statistical_snapshot_internal(uuid,uuid,jsonb,uuid),public.approve_statistical_source(uuid,jsonb,jsonb,jsonb,text,uuid),public.load_approved_statistical_source(uuid,uuid),public.invalidate_statistical_config(uuid,uuid),public.link_statistical_idea(uuid,uuid,uuid,text,text,uuid),public.delete_statistical_source(uuid,uuid,uuid),public.page_statistical_sources(uuid,uuid,integer) to service_role;
+commit;

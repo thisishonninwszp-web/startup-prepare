@@ -1,0 +1,8 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const rpc=vi.hoisted(()=>vi.fn());vi.mock('@/lib/supabase',()=>({supabaseAdmin:{rpc}}));
+import {mutateProductSource,ingestProductEvent,purgeExpiredProductEvents} from './commands';
+const id='bbbbbbbb-bbbb-4bbb-8bbb-000000000001';
+beforeEach(()=>rpc.mockReset());
+it('returns a token only when the database accepted the freshly generated hash',async()=>{rpc.mockResolvedValueOnce({data:{source:{id},tokenIssued:true,replayed:false},error:null});const input={action:'activate' as const,sourceId:id,expectedRevision:1,confirmPrototype:true as const,requestId:id};const first=await mutateProductSource(id,input);expect(first.token).toMatch(/^[A-Za-z0-9_-]{43}$/);expect(rpc.mock.calls[0][1].p_token_hash).toHaveLength(64);expect(rpc.mock.calls[0][1].p_token_hash).not.toBe(first.token);rpc.mockResolvedValueOnce({data:{source:{id},tokenIssued:false,replayed:true},error:null});expect((await mutateProductSource(id,input)).token).toBeUndefined();});
+it('derives ingestion owner from token lookup, never caller input',async()=>{rpc.mockResolvedValue({data:{id},error:null});await ingestProductEvent('a'.repeat(43),{externalId:id,kind:'no_result',occurredAt:new Date().toISOString(),noticeVersion:'v1',attributes:{}});expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_user_id');expect(rpc.mock.calls[0][1].p_token_hash).toHaveLength(64);});
+it('exposes a bounded service retention worker',async()=>{rpc.mockResolvedValue({data:{erased:3},error:null});expect(await purgeExpiredProductEvents(10)).toEqual({erased:3});expect(rpc).toHaveBeenCalledWith('purge_expired_product_events',{p_limit:10});await expect(purgeExpiredProductEvents(0)).rejects.toThrow();});

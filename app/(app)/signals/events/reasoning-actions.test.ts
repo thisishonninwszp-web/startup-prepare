@@ -1,0 +1,13 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const mocks=vi.hoisted(()=>({getUser:vi.fn(),save:vi.fn(),load:vi.fn(),refresh:vi.fn()}));
+vi.mock("@/lib/supabase/server",()=>({createClient:()=>({auth:{getUser:mocks.getUser}})}));
+vi.mock("@/lib/domains/observations/reasoning/commands",()=>({saveReasoning:mocks.save}));
+vi.mock("@/lib/domains/observations/reasoning/queries",()=>({loadReasoning:mocks.load}));
+vi.mock("next/cache",()=>({revalidatePath:mocks.refresh}));
+import {saveReasoningAction,loadReasoningAction} from "./reasoning-actions";
+const input={requestId:"req",expectedRevision:0,kind:"claim" as const,payload:{}};
+beforeEach(()=>{vi.clearAllMocks();process.env.SIGNAL_EVENTS_ENABLED="true";process.env.REASONING_ATTENTION_ENABLED="true";mocks.getUser.mockResolvedValue({data:{user:{id:"owner"}},error:null});mocks.refresh.mockImplementation(()=>{});});
+it("gates both feature flags before database access",async()=>{process.env.REASONING_ATTENTION_ENABLED="false";expect((await loadReasoningAction("event")).ok).toBe(false);expect(mocks.load).not.toHaveBeenCalled();});
+it("derives owner server-side",async()=>{mocks.save.mockResolvedValue({id:"saved"});expect((await saveReasoningAction("event",input)).ok).toBe(true);expect(mocks.save).toHaveBeenCalledWith("owner","event",input);});
+it("keeps a saved result when page refresh fails",async()=>{mocks.save.mockResolvedValue({id:"saved"});mocks.refresh.mockImplementation(()=>{throw new Error("refresh failed");});const result=await saveReasoningAction("event",input);expect(result.ok).toBe(true);expect(result).toMatchObject({refreshWarning:expect.any(String)});});
+it("does not write as an unauthenticated viewer",async()=>{mocks.getUser.mockResolvedValue({data:{user:null},error:null});expect((await saveReasoningAction("event",input)).ok).toBe(false);expect(mocks.save).not.toHaveBeenCalled();});

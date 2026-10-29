@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase";
 import { planInfoGaps } from "@/lib/ai";
 import { HYPOTHESIS_FIELDS, type Hypothesis, type IdeaStatus } from "@/app/(app)/ideas/types";
 import { touchIdea } from "./touch";
 import { tokyoToday } from "@/lib/domains/signals/brief";
-import { FOUNDER_FACTS_MAX, type GapEvidence, type GapStatus, type IdeaFit, type InfoGap, type OpenGapOption } from "./info-gaps-shared";
+import { FOUNDER_FACTS_MAX, hasLegacyActivityEvidence, type GapEvidence, type GapStatus, type IdeaFit, type InfoGap, type OpenGapOption } from "./info-gaps-shared";
 
 export * from "./info-gaps-shared";
 
@@ -106,8 +107,12 @@ export async function generateIdeaGaps(userId: string, ideaId: string): Promise<
   const today = tokyoToday();
   const stale = existing.gaps.filter((g) => g.status === "open" && g.evidence.length === 0).map((g) => g.id);
   if (stale.length > 0) {
-    const { error } = await supabaseAdmin.from("idea_info_gaps").delete().in("id", stale).eq("user_id", userId);
-    if (error) throw new Error(error.message);
+    // Delete each candidate separately: RESTRICT preserves experiment/observation references,
+    // including a reference saved concurrently after the initial gap read.
+    for (const id of stale) {
+      const { error } = await supabaseAdmin.from("idea_info_gaps").delete().eq("id", id).eq("user_id", userId);
+      if (error && error.code !== "23503") throw new Error(error.message);
+    }
   }
   const { error: insertError } = await supabaseAdmin.from("idea_info_gaps").insert(
     draft.gaps.map((g) => ({
@@ -145,28 +150,28 @@ export async function setGapStatus(userId: string, gapId: string, status: GapSta
     .select("idea_id, evidence")
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (status === "got" && data && ((data.evidence as GapEvidence[] | null) ?? []).length > 0) {
+  if (status === "got" && data && hasLegacyActivityEvidence((data.evidence as GapEvidence[] | null) ?? [])) {
     await touchIdea(userId, data.idea_id as string);
   }
 }
 
 /** 补进一条信息（从外部信号的某一条，或者他自己记的）。只追加。 */
-export async function addGapEvidence(userId: string, gapId: string, item: Omit<GapEvidence, "at">): Promise<void> {
-  const { data, error } = await supabaseAdmin.from("idea_info_gaps").select("evidence").eq("id", gapId).eq("user_id", userId).maybeSingle();
-  if (error) {
-    if (missing(error)) throw new Error(MISSING_MIGRATION);
-    throw new Error(error.message);
+export async function addGapEvidence(userId: string, gapId: string, item: Omit<GapEvidence, "at">, requestId = randomUUID()): Promise<void> {
+  if (item.experiment_id || item.experiment_run_id || item.observation_run_id) throw new Error("来源引用须通过专用保存入口");
+  async function legacyAppend() {
+    const { data, error } = await supabaseAdmin.from("idea_info_gaps").select("evidence").eq("id", gapId).eq("user_id", userId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("找不到这个缺口");
+    const { error: updateError } = await supabaseAdmin.from("idea_info_gaps").update({ evidence: [...((data.evidence as GapEvidence[] | null) ?? []), { ...item, at: new Date().toISOString() }], updated_at: new Date().toISOString() }).eq("id", gapId).eq("user_id", userId);
+    if (updateError) throw new Error(updateError.message);
   }
-  if (!data) throw new Error("找不到这个缺口");
-  const evidence = [...((data.evidence as GapEvidence[] | null) ?? []), { ...item, at: new Date().toISOString() }];
-  const { error: updateError } = await supabaseAdmin
-    .from("idea_info_gaps")
-    .update({ evidence, updated_at: new Date().toISOString() })
-    .eq("id", gapId)
-    .eq("user_id", userId);
-  if (updateError) throw new Error(updateError.message);
+  if (process.env.IDEA_EXPERIMENTS_ENABLED !== "true") return legacyAppend();
+  const { error } = await supabaseAdmin.rpc("append_idea_gap_evidence", { p_user_id: userId, p_gap_id: gapId, p_item: item, p_request_id: requestId });
+  // Before migration 109, keep the existing plain-note path available. Derived references
+  // always use their dedicated RPC; other database failures never fall back.
+  if (error?.code === "PGRST202" && /append_idea_gap_evidence/.test(error.message)) return legacyAppend();
+  if (error) throw new Error(error.message);
 }
-
 /** 外部信号"补进想法的缺口"要选的：没归档的想法里还缺的那几个缺口。表还没建返回空。 */
 export async function listOpenGapOptions(userId: string): Promise<OpenGapOption[]> {
   const { data, error } = await supabaseAdmin

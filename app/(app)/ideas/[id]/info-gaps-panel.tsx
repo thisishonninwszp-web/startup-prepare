@@ -22,6 +22,8 @@ import { AddToThisGap } from "../add-asks-evidence";
 import { tokyoDate } from "@/lib/domains/signals/asks-summary";
 import { AsksView } from "@/components/asks-view";
 import type { AsksResult } from "@/lib/domains/signals/asks-shared";
+import { ExperimentPanel } from "./experiment-panel";
+import { ObservationTaskPanel } from "@/app/(app)/workbench/observation-task-panel";
 
 /** 他自己写的约束和优势（只写事实）。所有想法共用一份。 */
 function FounderFacts({ initial }: { initial: string }) {
@@ -61,7 +63,7 @@ function FounderFacts({ initial }: { initial: string }) {
   );
 }
 
-function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
+function GapCard({ gap, today, experimentsEnabled, observationsEnabled }: { gap: InfoGap; today: string; experimentsEnabled?: boolean; observationsEnabled?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState(gap.note ?? "");
@@ -145,6 +147,10 @@ function GapCard({ gap, today }: { gap: InfoGap; today: string }) {
         </ul>
       )}
 
+      {(experimentsEnabled || observationsEnabled) && <div className="mt-3 space-y-3">
+        {observationsEnabled && <ObservationTaskPanel ideaId={gap.idea_id} gapId={gap.id} question={gap.question} />}
+        {experimentsEnabled && <ExperimentPanel ideaId={gap.idea_id} gapId={gap.id} question={gap.question} />}
+      </div>}
       <details className="mt-3 text-xs">
         <summary className="cursor-pointer text-muted-foreground">记一下：拿到了 / 拿不到 / 自己补一条</summary>
         <div className="mt-2 space-y-2">
@@ -265,11 +271,15 @@ export function InfoGapsPanel({
   initial,
   founderFacts,
   today,
+  experimentsEnabled = false,
+  observationsEnabled = false,
 }: {
   ideaId: string;
   initial: { gaps: InfoGap[]; fit: IdeaFit | null } | "missing-schema";
   founderFacts: string;
   today: string;
+  experimentsEnabled?: boolean;
+  observationsEnabled?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -350,7 +360,7 @@ export function InfoGapsPanel({
       {sorted.length > 0 && (
         <ul className="space-y-3">
           {sorted.map((g) => (
-            <GapCard key={g.id} gap={g} today={today} />
+            <GapCard key={g.id} gap={g} today={today} experimentsEnabled={experimentsEnabled} observationsEnabled={observationsEnabled} />
           ))}
         </ul>
       )}

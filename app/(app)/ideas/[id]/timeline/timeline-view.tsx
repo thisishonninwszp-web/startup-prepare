@@ -24,6 +24,7 @@ const KIND_ICON: Record<TimelineEventKind, LucideIcon> = {
   exit_criterion_added: DoorOpen,
   exit_criterion_reviewed: DoorClosed,
   reasoning_session: Brain,
+  experiment_run: Eye,
 };
 
 function fmtDate(iso: string): string {

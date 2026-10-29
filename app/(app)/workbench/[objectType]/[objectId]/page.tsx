@@ -12,6 +12,8 @@ import { ClosureList, ObjectSummary } from "../../object-summary";
 import { PageContainer } from "@/components/ui/page-container";
 import { DecisionSelfPanel } from "@/lib/domains/decision-self/panel";
 import { TARGET_TYPES, type TargetType } from "@/lib/domains/decision-self/domain";
+import { ObservationTaskPanel } from "../../observation-task-panel";
+import { ExperimentPanel } from "@/app/(app)/ideas/[id]/experiment-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +49,8 @@ export default async function WorkbenchDetailPage({
         {TARGET_TYPES.includes(objectType as TargetType) && <DecisionSelfPanel key={`${objectType}:${params.objectId}`} target={{ type: objectType as TargetType, id: params.objectId }} />}
         <FrameworkRecommendations cards={recommendations} />
         <ClosureList closures={detail.closures} />
+        {objectType === "idea" && process.env.DECISION_OBSERVATIONS_ENABLED === "true" && <ObservationTaskPanel ideaId={params.objectId} />}
+        {objectType === "idea" && process.env.IDEA_EXPERIMENTS_ENABLED === "true" && <ExperimentPanel ideaId={params.objectId} />}
       </PageContainer>
     </>
   );

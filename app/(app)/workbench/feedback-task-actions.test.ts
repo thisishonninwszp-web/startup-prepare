@@ -1,0 +1,11 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const m=vi.hoisted(()=>({user:vi.fn(),applies:vi.fn(),tasks:vi.fn(),preview:vi.fn(),save:vi.fn(),apply:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:m.user}})}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/lib/domains/observations/queries',()=>({listTasks:m.tasks,getTask:vi.fn()}));
+vi.mock('@/lib/domains/observations/feedback/task-adjustments',()=>({applicableFeedback:m.applies,previewTaskAdjustment:m.preview,saveTaskProposal:m.save,applyTaskProposal:m.apply,listTaskProposals:vi.fn()}));
+import {loadFeedbackTasksAction,applyFeedbackTaskProposalAction} from './feedback-task-actions';
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('FEEDBACK_LEARNING_ENABLED','true');vi.stubEnv('DECISION_OBSERVATIONS_ENABLED','true');m.user.mockResolvedValue({data:{user:{id:'owner'}}});m.applies.mockResolvedValue({});m.tasks.mockResolvedValue({items:[]});});
+it('关闭任一开关时不查询私人记录',async()=>{vi.stubEnv('DECISION_OBSERVATIONS_ENABLED','false');await expect(loadFeedbackTasksAction('idea','feedback')).rejects.toThrow('尚未启用');expect(m.applies).not.toHaveBeenCalled();});
+it('从登录态取owner并在列任务前核对反馈适用性',async()=>{await loadFeedbackTasksAction('idea','feedback');expect(m.applies).toHaveBeenCalledWith('owner','feedback','idea');expect(m.tasks).toHaveBeenCalledWith('owner',{objectId:'idea',objectType:'idea',cursor:undefined});});
+it('拒绝未登录的采用请求',async()=>{m.user.mockResolvedValue({data:{user:null}});await expect(applyFeedbackTaskProposalAction({proposalId:'p',requestId:'r'})).rejects.toThrow('未登录');expect(m.apply).not.toHaveBeenCalled();});

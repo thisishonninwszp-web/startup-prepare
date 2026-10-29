@@ -23,6 +23,7 @@ import {
   RotateCcw,
   ScanSearch,
   Settings,
+  Store,
   UserCircle,
   Users,
   Wrench,
@@ -30,7 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { NAV_GROUPS, isActiveRoute } from "./app-navigation";
+import { navigationGroups, isActiveRoute } from "./app-navigation";
 import { Button } from "@/components/ui/button";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -49,9 +50,11 @@ const ICONS: Record<string, LucideIcon> = {
   "/signals": Radar,
   "/companies": Building2,
   "/knowledge": BookOpen,
+  "/business-lab": Store,
 };
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, businessTeardownsEnabled = false }: { children: ReactNode; businessTeardownsEnabled?: boolean }) {
+  const groups = navigationGroups({businessTeardownsEnabled});
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -81,6 +84,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.refresh();
   }
 
+  if (pathname?.startsWith("/signals/events/") && pathname.includes("/replay/")) {
+    return <div className="min-h-screen bg-background"><header className="border-b px-5 py-3 text-sm">历史材料回放 · <a href="/signals" className="text-muted-foreground underline">退出回放，返回实时新闻</a></header>{children}</div>;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 flex h-14 items-center border-b bg-background/95 px-4 backdrop-blur md:hidden">
@@ -97,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           IdeaOS
         </Link>
         <span className="ml-auto text-xs text-muted-foreground">
-          {NAV_GROUPS.flatMap((group) => group.items).find((item) =>
+          {groups.flatMap((group) => group.items).find((item) =>
             isActiveRoute(pathname, item.href)
           )?.label ?? ""}
         </span>
@@ -137,7 +144,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-5">
-          {NAV_GROUPS.map((group, groupIndex) => (
+          {groups.map((group, groupIndex) => (
             <div key={group.label} className={groupIndex > 0 ? "mt-7" : ""}>
               <div className="mb-2 px-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 {group.label}

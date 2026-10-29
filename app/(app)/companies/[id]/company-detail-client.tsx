@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 type Props = {
   company: CompanyDetail;
   companyTypes: readonly { key: CompanyType; label: string }[];
+  observations?: ReactNode;
 };
 
 function fmtDate(iso: string): string {
@@ -28,7 +29,7 @@ function fmtDate(iso: string): string {
   });
 }
 
-export function CompanyDetailClient({ company, companyTypes }: Props) {
+export function CompanyDetailClient({ company, companyTypes, observations }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -376,6 +377,7 @@ export function CompanyDetailClient({ company, companyTypes }: Props) {
         )}
       </section>
 
+      {observations && <div className="mb-8">{observations}</div>}
       {/* 求职触达策略（仅求职目标或两者皆是） */}
       {(company.company_type === "prospect" || company.company_type === "both") && (
         <section className="mb-8">

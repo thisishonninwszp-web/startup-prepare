@@ -1,0 +1,9 @@
+{
+  "checkedAt": "2026-10-28T12:33:37.636Z",
+  "source": "official_api",
+  "databaseWrites": false,
+  "aiCalls": false,
+  "status": "unavailable",
+  "reason": "楽天来源不可用：未配置 API 凭据",
+  "authorizedRequests": 0
+}

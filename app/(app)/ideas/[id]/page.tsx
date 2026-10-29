@@ -32,6 +32,11 @@ import { dueGaps, getFounderFacts, loadIdeaGaps } from "@/lib/domains/ideas/info
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import { InfoGapsPanel } from "./info-gaps-panel";
 import { GrantsPanel } from "./grants-panel";
+import { ExperimentPanel } from "./experiment-panel";
+import { ObservationTaskPanel } from "@/app/(app)/workbench/observation-task-panel";
+import { CompanyReviewPanel } from "./company-review-panel";
+import { FeedbackImpactPanel } from "../../workbench/feedback-impact-panel";
+import { ReconsiderationPanel } from "./reconsideration-panel";
 
 export const dynamic = "force-dynamic";
 // 列信息缺口（二三十秒）、「数一数」（二三十秒）都由这一页的 server action 跑
@@ -180,8 +185,13 @@ export default async function IdeaDetailPage({
             initial={infoGaps}
             founderFacts={founderFacts}
             today={today}
+            observationsEnabled={process.env.DECISION_OBSERVATIONS_ENABLED === "true"}
+            experimentsEnabled={process.env.IDEA_EXPERIMENTS_ENABLED === "true"}
           />
         </section>
+        {(process.env.DECISION_OBSERVATIONS_ENABLED === "true" || process.env.IDEA_EXPERIMENTS_ENABLED === "true") && <section id="connected-learning" className="mt-8 space-y-3 border-t pt-6"><h2 className="text-lg font-semibold">从问题到一次可检查的行动</h2><p className="text-xs leading-6 text-muted-foreground">从上方具体缺口建立的记录会保留缺口引用；也可以直接为这个想法建任务。公开核对与原型运行不会替代真实接触。</p>{process.env.DECISION_OBSERVATIONS_ENABLED === "true" && <ObservationTaskPanel ideaId={idea.id} />}{process.env.IDEA_EXPERIMENTS_ENABLED === "true" && <ExperimentPanel ideaId={idea.id} />}</section>}
+        {process.env.COMPANY_OBSERVATIONS_ENABLED === "true" && <CompanyReviewPanel userId={userId} ideaId={idea.id} />}
+        {process.env.FEEDBACK_LEARNING_ENABLED === "true" && <div className="mt-8 space-y-3"><FeedbackImpactPanel ideaId={idea.id} allowTaskAdjustment={process.env.DECISION_OBSERVATIONS_ENABLED === "true"} /><ReconsiderationPanel ideaId={idea.id} archived={idea.status === "归档"} /></div>}
         <section id="grants" className="mt-12 border-t pt-6">
           <h2 className="mb-3 text-lg font-semibold">有没有补助金可以拿</h2>
           <GrantsPanel />

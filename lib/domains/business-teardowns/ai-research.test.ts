@@ -1,0 +1,17 @@
+import {describe,it,expect,vi,beforeEach} from 'vitest';
+vi.mock('./report-commands',()=>({startDraft:vi.fn(),verifyDraft:vi.fn(),finishDraft:vi.fn(),failDraft:vi.fn()}));
+vi.mock('@/lib/ai',()=>({generateBusinessTeardownReport:vi.fn(),BUSINESS_REPORT_PROMPT_VERSION:'v1',MODEL:'mock'}));
+import {startDraft,verifyDraft,finishDraft,failDraft} from './report-commands';
+import {generateBusinessTeardownReport} from '@/lib/ai';
+import {researchBusinessCase} from './ai-research';
+import {SECTION_KEYS,type DraftInput,type DraftLease} from './report-domain';
+const input={caseId:'c',requestId:'r'} as DraftInput;const lease={requestId:'r',caseId:'c'} as DraftLease;
+const sections=SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:['材料不足']}));
+describe('business AI lease orchestration',()=>{
+ beforeEach(()=>{vi.clearAllMocks();vi.mocked(startDraft).mockResolvedValue({status:'ready',lease,sources:[],consent:{} as never});vi.mocked(verifyDraft).mockResolvedValue({sources:[],consent:{} as never});vi.mocked(generateBusinessTeardownReport).mockResolvedValue(sections);vi.mocked(finishDraft).mockResolvedValue({id:'report'} as never);});
+ it.each(['busy','completed'] as const)('returns %s receipt without calling provider',async status=>{const receipt=status==='busy'?{status} as const:{status,report:{id:'report'}} as const;vi.mocked(startDraft).mockResolvedValue(receipt as never);expect(await researchBusinessCase('owner',input)).toEqual(receipt);expect(generateBusinessTeardownReport).not.toHaveBeenCalled();});
+ it('rechecks before and after and atomically finishes validated sections',async()=>{expect(await researchBusinessCase('owner',input)).toEqual({status:'completed',report:{id:'report'}});expect(verifyDraft).toHaveBeenCalledTimes(2);expect(finishDraft).toHaveBeenCalledWith('owner',lease,expect.objectContaining({sections}));});
+ it('rejects revoked or changed materials after provider and never finishes',async()=>{vi.mocked(verifyDraft).mockResolvedValueOnce({sources:[],consent:{} as never}).mockRejectedValueOnce(new Error('许可已撤回'));await expect(researchBusinessCase('owner',input)).rejects.toThrow('许可已撤回');expect(finishDraft).not.toHaveBeenCalled();expect(failDraft).toHaveBeenCalled();});
+ it('does not call provider on expired lease and never auto retries provider failure',async()=>{vi.mocked(verifyDraft).mockRejectedValueOnce(new Error('用量未知'));await expect(researchBusinessCase('owner',input)).rejects.toThrow('用量未知');expect(generateBusinessTeardownReport).not.toHaveBeenCalled();vi.mocked(verifyDraft).mockResolvedValue({sources:[],consent:{} as never});vi.mocked(generateBusinessTeardownReport).mockRejectedValueOnce(new Error('network'));await expect(researchBusinessCase('owner',input)).rejects.toThrow('network');expect(generateBusinessTeardownReport).toHaveBeenCalledTimes(1);});
+ it('preserves original error if failure receipt is lost',async()=>{vi.mocked(generateBusinessTeardownReport).mockRejectedValue(new Error('provider outcome unknown'));vi.mocked(failDraft).mockRejectedValue(new Error('callback lost'));await expect(researchBusinessCase('owner',input)).rejects.toThrow('provider outcome unknown');expect(startDraft).toHaveBeenCalledTimes(1);});
+});

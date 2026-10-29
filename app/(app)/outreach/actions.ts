@@ -12,6 +12,8 @@ import type { UseCase, Dim, AiChallenge } from "@/app/(app)/outreach/types";
 import { getRelevantKnowledgeCards } from "@/app/(app)/knowledge/queries";
 import { parseCustomerProxy } from "@/app/(app)/customer-view/types";
 import type { Hypothesis } from "@/app/(app)/ideas/types";
+import { loadSearchOutreachDraft } from "@/lib/domains/observations/search/outreach";
+import { loadFeedbackContactDraft } from "@/lib/domains/observations/feedback/contact-brief";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -311,17 +313,25 @@ export async function createCanvas(params: {
   scenario: string;
   source_id?: string;
   source_type?: "idea" | "company";
+  source_observation_run_id?: string;
+  source_feedback_id?: string;
 }): Promise<string> {
   const userId = await requireUserId();
+  if (params.source_feedback_id && params.source_observation_run_id) throw new Error("请一次选择一种提纲来源。");
+  if (params.source_feedback_id && process.env.FEEDBACK_LEARNING_ENABLED !== "true") throw new Error("反馈学习尚未启用。");
+  const feedback = params.source_feedback_id ? await loadFeedbackContactDraft(userId, params.source_feedback_id) : null;
+  if (params.source_observation_run_id && process.env.DECISION_OBSERVATIONS_ENABLED !== "true") throw new Error("观察任务尚未启用。");
+  const observation = params.source_observation_run_id
+    ? await loadSearchOutreachDraft(userId, params.source_observation_run_id) : null;
   const { data, error } = await supabaseAdmin
     .from("outreach_canvases")
     .insert({
       user_id: userId,
       title: params.title,
       use_case: params.use_case,
-      scenario: params.scenario,
-      source_id: params.source_id ?? null,
-      source_type: params.source_type ?? null,
+      scenario: observation ? `${params.scenario}\n\n观察来源（已核对归属）：${observation.runId}；关联想法：/ideas/${observation.ideaId}。搜索材料不代表痛点或付费意愿。` : feedback ? `${params.scenario}\n\n反馈来源（已核对归属）：${feedback.feedbackId}；关联想法：/ideas/${feedback.ideaId}。请保留角色、情境与未知的边界。` : params.scenario,
+      source_id: observation?.ideaId ?? feedback?.ideaId ?? params.source_id ?? null,
+      source_type: observation || feedback ? "idea" : params.source_type ?? null,
     })
     .select("id")
     .single();

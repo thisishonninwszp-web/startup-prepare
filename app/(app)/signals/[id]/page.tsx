@@ -26,6 +26,7 @@ import { userSignalState } from "@/lib/domains/signals/user-states";
 import { loadReadingPreferences, reportEventsForSignals } from "@/lib/domains/signals/reading-preferences";
 import { preferenceForItem } from "@/lib/domains/signals/reading-preferences-shared";
 import { StoryPreferenceButtons } from "../story-preference-buttons";
+import { SignalEventSection } from "../events/signal-event-section";
 
 export const dynamic = "force-dynamic";
 // 第一次打开时要读原文 + 调 AI 写深读，默认 10 秒不够。
@@ -146,6 +147,7 @@ export default async function SignalDetailPage({
             <MarkButtons signalId={detail.id} initial={marks.get(detail.id)?.mark ?? null} initialNote={marks.get(detail.id)?.note ?? null} />
             <StoryPreferenceButtons signalId={detail.id} event={events.get(detail.id)} initial={preferenceForItem({ signal_id: detail.id, event: events.get(detail.id) }, preferences.preferences)} available={preferences.status === "ready"} />
           </div>
+          <SignalEventSection viewerId={user.id} signalId={detail.id} title={detail.title} />
 
           {detail.summary && (
             <section className="mt-8">

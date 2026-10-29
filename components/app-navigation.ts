@@ -47,6 +47,15 @@ export const NAV_GROUPS: AppNavGroup[] = [
   },
 ];
 
+export function navigationGroups(options: { businessTeardownsEnabled?: boolean } = {}): AppNavGroup[] {
+  return NAV_GROUPS.map(group => ({
+    ...group,
+    items: group.label === "成长" && options.businessTeardownsEnabled
+      ? [...group.items, { href: "/business-lab", label: "生意拆解", shortLabel: "生意" }]
+      : [...group.items],
+  }));
+}
+
 export function isActiveRoute(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }

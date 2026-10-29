@@ -1,0 +1,10 @@
+import {vi,it,expect,beforeEach} from 'vitest';
+const mocks=vi.hoisted(()=>({user:vi.fn(),save:vi.fn(),load:vi.fn(),refresh:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:mocks.user}})}));
+vi.mock('@/lib/domains/observations/attention/commands',()=>({saveAttention:mocks.save}));
+vi.mock('@/lib/domains/observations/attention/queries',()=>({loadAttention:mocks.load}));
+vi.mock('next/cache',()=>({revalidatePath:mocks.refresh}));
+import {saveAttentionAction,attentionStateAction} from './attention-actions';
+beforeEach(()=>{vi.clearAllMocks();process.env.SIGNAL_EVENTS_ENABLED='true';process.env.REASONING_ATTENTION_ENABLED='true';mocks.user.mockResolvedValue({data:{user:{id:'owner'}},error:null});});
+it('gates attention independently of events',async()=>{process.env.REASONING_ATTENTION_ENABLED='false';expect((await attentionStateAction('event')).ok).toBe(false);expect(mocks.load).not.toHaveBeenCalled();});
+it('does not report persisted writes as failed when refresh fails',async()=>{mocks.save.mockResolvedValue({id:'saved'});mocks.refresh.mockImplementation(()=>{throw new Error('refresh failed');});expect(await saveAttentionAction('event',{kind:'contract_exit',requestId:'request',payload:{}})).toMatchObject({ok:true,data:{id:'saved'},refreshWarning:expect.any(String)});});

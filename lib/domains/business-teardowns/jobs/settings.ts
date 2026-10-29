@@ -1,0 +1,6 @@
+import {z} from 'zod';
+import {AUTO_POLICY_VERSION} from '../rules';
+const group=z.string().min(1).max(120).refine(value=>value.trim().length>0,'选题分组不能为空');
+const source=z.object({mode:z.enum(['search','ranking']),keyword:z.string().max(128).optional(),genreId:z.string().regex(/^\d+$/).optional(),category:group,priceBand:group,businessModel:group}).strict().superRefine((value,context)=>{if(value.mode==='search'&&!value.keyword?.trim())context.addIssue({code:'custom',message:'关键词搜索需要关键词'});if(value.mode==='ranking'&&value.keyword!==undefined)context.addIssue({code:'custom',message:'官方榜单不支持关键词'});});
+const settings=z.object({enabled:z.boolean(),prepareOnOpen:z.boolean(),schedule:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),httpBudget:z.number().int().min(1).max(1000),aiBudget:z.number().int().min(0).max(10),sources:z.array(source),excluded:z.array(z.string().regex(/^rakuten:[a-zA-Z0-9_-]+$/)),autoAI:z.boolean(),policyVersion:z.literal(AUTO_POLICY_VERSION),revision:z.number().int().nonnegative(),expectedRevision:z.number().int().nonnegative(),requestId:z.string().uuid(),autoAIConfirmed:z.boolean().optional()}).passthrough();
+export function validateJobSettings(input:unknown):void{settings.parse(input);}

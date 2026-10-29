@@ -55,6 +55,7 @@ export const SIGNALS_NAV: { label: string; pages: { href: string; label: string 
 
 /** 当前在哪一页：最长的前缀对得上的那一页；都对不上（一条新闻的详情页）算「今天」。 */
 export function activeHref(pathname: string): string {
+  if (pathname === "/signals/events" || pathname.startsWith("/signals/events/")) return "/signals/memory";
   const all = SIGNALS_NAV.flatMap((g) => g.pages.map((p) => p.href)).filter((h) => h !== "/signals");
   const hit = all.filter((h) => pathname === h || pathname.startsWith(`${h}/`)).sort((a, b) => b.length - a.length)[0];
   return hit ?? "/signals";

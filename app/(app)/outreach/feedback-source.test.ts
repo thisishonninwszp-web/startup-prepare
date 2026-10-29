@@ -1,0 +1,10 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const m=vi.hoisted(()=>({auth:vi.fn(),draft:vi.fn(),insert:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:m.auth}})}));
+vi.mock('@/lib/supabase',()=>({supabaseAdmin:{from:()=>({insert:m.insert})}}));
+vi.mock('@/lib/domains/observations/feedback/contact-brief',()=>({loadFeedbackContactDraft:m.draft}));
+vi.mock('@/lib/ai',()=>({generateOutreachStrategy:vi.fn(),challengeOutreachDimension:vi.fn(),polishOutreachDraft:vi.fn()}));
+import {createCanvas} from './actions';
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('FEEDBACK_LEARNING_ENABLED','true');m.auth.mockResolvedValue({data:{user:{id:'owner'}}});m.draft.mockResolvedValue({feedbackId:'f',ideaId:'owned'});m.insert.mockReturnValue({select:()=>({single:async()=>({data:{id:'canvas'},error:null})})});});
+it('重新核对反馈归属并以服务器想法绑定画布',async()=>{await createCanvas({title:'核对',use_case:'startup',scenario:'提纲',source_feedback_id:'f',source_id:'spoof',source_type:'company'});expect(m.draft).toHaveBeenCalledWith('owner','f');expect(m.insert).toHaveBeenCalledWith(expect.objectContaining({source_id:'owned',source_type:'idea',scenario:expect.stringContaining('反馈来源（已核对归属）：f')}));});
+it('来源互斥、功能关闭和不可访问时均不创建',async()=>{await expect(createCanvas({title:'核对',use_case:'startup',scenario:'',source_feedback_id:'f',source_observation_run_id:'r'})).rejects.toThrow('一次选择');vi.stubEnv('FEEDBACK_LEARNING_ENABLED','false');await expect(createCanvas({title:'核对',use_case:'startup',scenario:'',source_feedback_id:'f'})).rejects.toThrow('尚未启用');vi.stubEnv('FEEDBACK_LEARNING_ENABLED','true');m.draft.mockRejectedValue(new Error('不可访问'));await expect(createCanvas({title:'核对',use_case:'startup',scenario:'',source_feedback_id:'f'})).rejects.toThrow('不可访问');expect(m.insert).not.toHaveBeenCalled();});

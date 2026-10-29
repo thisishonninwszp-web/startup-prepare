@@ -1,0 +1,3 @@
+import type {Feedback,FeedbackLink} from './domain';
+export function latestFeedbackLinks(links:FeedbackLink[]){const latest=new Map<string,FeedbackLink>();for(const link of links){const key=`${link.feedback_id}:${link.target_idea_id}`;if((latest.get(key)?.revision??0)<link.revision)latest.set(key,link);}return [...latest.values()];}
+export function feedbackAppliesToIdea(feedback:Feedback,ideaId:string,links:FeedbackLink[]){return feedback.idea_id===ideaId||latestFeedbackLinks(links).some(l=>l.user_id===feedback.user_id&&l.feedback_id===feedback.id&&l.target_idea_id===ideaId&&l.action==='confirm');}

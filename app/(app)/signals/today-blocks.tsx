@@ -6,6 +6,10 @@ import { followReasonText, type StoryUpdate } from "@/lib/domains/signals/memory
 import { RecallCard } from "./recall-card";
 import { FOLLOW_DAYS } from "@/lib/domains/signals/memory";
 import { loadTodayPersonal, type TodayForecast, type TodayPersonal } from "@/lib/domains/signals/today";
+import { eventsEnabled } from "./events/enabled";
+import { eventLinksForSignals } from "@/lib/domains/signals/events/queries";
+
+type EventLinks = Record<string, { id: string; title: string }[]>;
 
 /** 「今天」一页最多列几件在跟的事（多的去记忆页看）。 */
 const STORIES_SHOWN = 5;
@@ -17,20 +21,22 @@ const linkClass = "transition-colors duration-150 hover:text-primary";
  * 放在 Suspense 里：报告先出来，这几块算好了再补上。
  */
 export async function TodayBlocks({ userId, today }: { userId: string; today: string }) {
-  return <TodayBlocksView t={await loadTodayPersonal(userId, today)} />;
+  const t = await loadTodayPersonal(userId, today);
+  const eventLinks = eventsEnabled() && Array.isArray(t.stories) ? await eventLinksForSignals(userId, t.stories.map((story) => story.followed.signal_id)) : {};
+  return <TodayBlocksView t={t} eventLinks={eventLinks} />;
 }
 
-export function TodayBlocksView({ t }: { t: TodayPersonal }) {
+export function TodayBlocksView({ t, eventLinks = {} }: { t: TodayPersonal; eventLinks?: EventLinks }) {
   return (
     <>
-      <Stories t={t} />
+      <Stories t={t} eventLinks={eventLinks} />
       {t.recall && t.recall.items.length > 0 && <Recall recall={t.recall} />}
       {t.forecast && <ForecastTodo f={t.forecast} />}
     </>
   );
 }
 
-function Stories({ t }: { t: TodayPersonal }) {
+function Stories({ t, eventLinks }: { t: TodayPersonal; eventLinks: EventLinks }) {
   const { stories, followedCount } = t;
   const note = (text: string) => <p className="mt-1 text-sm leading-7 text-muted-foreground">{text}</p>;
   return (
@@ -47,7 +53,7 @@ function Stories({ t }: { t: TodayPersonal }) {
       ) : (
         <>
           <p className="mt-1 text-xs leading-6 text-muted-foreground">最近 {FOLLOW_DAYS} 天你标过、记成观察、写过判断的新闻，这一天又抓到了说同一件事的。</p>
-          <StoryList stories={stories.slice(0, STORIES_SHOWN)} />
+          <StoryList stories={stories.slice(0, STORIES_SHOWN)} eventLinks={eventLinks} />
           {stories.length > STORIES_SHOWN && (
             <p className="mt-3 text-xs text-muted-foreground">
               还有 {stories.length - STORIES_SHOWN} 件也有新消息，
@@ -64,7 +70,7 @@ function Stories({ t }: { t: TodayPersonal }) {
 }
 
 /** 一件在跟的事一组：当时那条（为什么在跟），底下是之后说同一件事的。记忆页也用。 */
-export function StoryList({ stories }: { stories: StoryUpdate[] }) {
+export function StoryList({ stories, eventLinks = {} }: { stories: StoryUpdate[]; eventLinks?: EventLinks }) {
   return (
     <ul className="mt-3 space-y-5">
       {stories.map((s) => (
@@ -76,6 +82,7 @@ export function StoryList({ stories }: { stories: StoryUpdate[] }) {
           <Link href={`/signals/${s.followed.signal_id}`} className={`font-medium ${linkClass}`}>
             {s.followed.title ?? "（没有标题）"}
           </Link>
+          {(eventLinks[s.followed.signal_id] ?? []).map((event) => <p key={event.id} className="mt-1 text-xs"><Link href={`/signals/events/${event.id}`} className="text-primary hover:underline">{event.title} · 事件时间线 →</Link></p>)}
           <ul className="mt-1 space-y-1 border-l border-border pl-3">
             {s.updates.map((u) => (
               <li key={u.id}>

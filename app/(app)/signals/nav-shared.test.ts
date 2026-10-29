@@ -4,6 +4,9 @@ import { activeHref, SIGNALS_NAV } from "./nav-shared";
 describe("外部信号的二级导航", () => {
   it("activeHref：最长的前缀对得上的那一页；新闻详情页算「今天」", () => {
     expect(activeHref("/signals")).toBe("/signals");
+    expect(activeHref("/signals/events")).toBe("/signals/memory");
+    expect(activeHref("/signals/events/example")).toBe("/signals/memory");
+    expect(activeHref("/signals/eventsX")).toBe("/signals");
     expect(activeHref("/signals/gaps")).toBe("/signals/gaps");
     expect(activeHref("/signals/gaps/door")).toBe("/signals/gaps");
     expect(activeHref("/signals/issue/door")).toBe("/signals/issue/door");

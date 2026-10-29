@@ -1,0 +1,12 @@
+import {it,expect,vi,afterEach} from 'vitest';
+const state=vi.hoisted(()=>({user:{id:'session-owner'} as {id:string}|null,save:vi.fn(),evaluate:vi.fn(),ack:vi.fn(),load:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:async()=>({data:{user:state.user}})}})}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/lib/domains/observations/feedback/reconsideration-commands',()=>({saveReconsiderationCondition:state.save,evaluateReconsideration:state.evaluate,acknowledgeReconsideration:state.ack}));
+vi.mock('@/lib/domains/observations/feedback/reconsideration-queries',()=>({loadReconsideration:state.load}));
+import {saveReconsiderationConditionAction,evaluateReconsiderationAction,acknowledgeReconsiderationAction,loadReconsiderationAction} from './reconsideration-actions';
+afterEach(()=>{state.user={id:'session-owner'};vi.unstubAllEnvs();vi.clearAllMocks();});
+it('rejects disabled and unauthenticated operations before accessing history',async()=>{vi.stubEnv('FEEDBACK_LEARNING_ENABLED','false');expect((await saveReconsiderationConditionAction({} as never)).ok).toBe(false);expect(state.save).not.toHaveBeenCalled();state.user=null;expect(await loadReconsiderationAction('idea')).toEqual({ok:false,message:'未登录'});expect(state.load).not.toHaveBeenCalled();});
+it('derives condition owner from session',async()=>{vi.stubEnv('FEEDBACK_LEARNING_ENABLED','true');state.save.mockResolvedValue({id:'saved'});const input={userId:'other'} as never;expect(await saveReconsiderationConditionAction(input)).toEqual({ok:true,id:'saved'});expect(state.save).toHaveBeenCalledWith('session-owner',input);});
+it('keeps stale errors actionable without losing client material',async()=>{vi.stubEnv('FEEDBACK_LEARNING_ENABLED','true');state.evaluate.mockRejectedValue(new Error('stale condition version'));expect(await evaluateReconsiderationAction({} as never)).toEqual({ok:false,message:'stale condition version'});});
+it('uses the same authenticated boundary for acknowledgment',async()=>{vi.stubEnv('FEEDBACK_LEARNING_ENABLED','true');state.ack.mockResolvedValue({id:'receipt'});expect((await acknowledgeReconsiderationAction({} as never)).ok).toBe(true);expect(state.ack).toHaveBeenCalledWith('session-owner',{});});

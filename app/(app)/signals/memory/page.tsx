@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
+import { eventsEnabled } from "../events/enabled";
 import { tokyoToday } from "@/lib/domains/signals/brief";
 import {
   archiveCoverage,
@@ -68,6 +69,7 @@ export default async function MemoryPage() {
         title="记忆"
         description="每天抓到的新闻一条都不删，全在这里。看过多少不算数，以后找得到、当时点过一下的，才想得起来 —— 所以存和找交给程序，你只在看到时点一下「重要 / 跟我有关 / 存疑」。"
       />
+      {eventsEnabled() && <Link href="/signals/events" className="mb-6 block rounded-lg border bg-card p-4 text-sm hover:border-primary"><span className="font-medium">我的事件档案 →</span><span className="mt-1 block text-xs leading-6 text-muted-foreground">把不同日期的报道放回同一件事，看发展、来源和时间来路。</span></Link>}
 
       {coverage === null ? (
         <p className="mb-8 text-sm leading-7 text-muted-foreground">

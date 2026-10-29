@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { observationSourceTag } from "@/app/(app)/ideas/types";
+import { missingExperimentSchema } from "@/lib/domains/experiments/queries";
+import { experimentTimelineEvents, type ExperimentTimelineRun } from "./experiment-timeline";
 import {
   getBayesianBeliefsForIdea,
   getFermiEstimatesForIdea,
@@ -15,7 +17,8 @@ export type TimelineEventKind =
   | "decision"
   | "exit_criterion_added"
   | "exit_criterion_reviewed"
-  | "reasoning_session";
+  | "reasoning_session"
+  | "experiment_run";
 
 export type TimelineEvent = {
   at: string;
@@ -240,5 +243,20 @@ export async function getIdeaTimeline(
     });
   }
 
+  if (process.env.IDEA_EXPERIMENTS_ENABLED === "true") {
+    for (let offset = 0; ; offset += 500) {
+      const result = await supabaseAdmin.from("idea_experiment_runs")
+        .select("id, experiment_id, status, started_at, finished_at")
+        .eq("user_id", userId).eq("idea_id", ideaId)
+        .order("started_at").order("id").range(offset, offset + 499);
+      if (result.error) {
+        if (missingExperimentSchema(result.error)) break;
+        throw new Error(result.error.message);
+      }
+      const runs = (result.data ?? []) as ExperimentTimelineRun[];
+      events.push(...experimentTimelineEvents(runs));
+      if (runs.length < 500) break;
+    }
+  }
   return events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }

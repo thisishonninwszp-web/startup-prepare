@@ -1,0 +1,6 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({getUser:vi.fn(),load:vi.fn(),mutate:vi.fn(),link:vi.fn()}));vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:m.getUser}})}));vi.mock('@/lib/domains/observations/product-events/commands',()=>({mutateProductSource:m.mutate,linkProductEvent:m.link}));vi.mock('@/lib/domains/observations/product-events/queries',()=>({loadProductEvents:m.load}));
+import {loadProductEventsAction,mutateProductSourceAction} from './product-event-actions';
+beforeEach(()=>{vi.clearAllMocks();process.env.PRODUCT_EVENTS_ENABLED='true';m.getUser.mockResolvedValue({data:{user:{id:'owner'}},error:null});});
+it('is default-off before any database mutation',async()=>{delete process.env.PRODUCT_EVENTS_ENABLED;expect((await loadProductEventsAction()).ok).toBe(false);expect(m.load).not.toHaveBeenCalled();});
+it('derives owner from auth and never activates implicitly',async()=>{m.mutate.mockResolvedValue({source:{active:false}});const input={action:'create' as const,requestId:'id',config:{prototypeUrl:'https://example.com',noticeUrl:'https://example.com/privacy',noticeVersion:'v1',eventKinds:['query' as const],retentionDays:30}};expect((await mutateProductSourceAction(input)).ok).toBe(true);expect(m.mutate).toHaveBeenCalledWith('owner',input);});

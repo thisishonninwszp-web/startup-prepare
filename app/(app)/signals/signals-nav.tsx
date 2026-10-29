@@ -7,6 +7,7 @@ import { activeHref, SIGNALS_NAV as GROUPS } from "./nav-shared";
 
 export function SignalsNav() {
   const pathname = usePathname() ?? "/signals";
+  if (pathname.startsWith("/signals/events/") && pathname.includes("/replay/")) return null;
   const active = activeHref(pathname);
   const group = GROUPS.find((g) => g.pages.some((p) => p.href === active)) ?? GROUPS[0];
   return (

@@ -1,0 +1,9 @@
+import {vi,it,expect,beforeEach} from 'vitest';
+const {rpc,from}=vi.hoisted(()=>({rpc:vi.fn(),from:vi.fn()}));vi.mock('@/lib/supabase',()=>({supabaseAdmin:{rpc,from}}));
+import {loadFeedbackBundle,listFeedback,listFeedbackLinks,getLatestFeedbackLink} from './queries';
+const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+beforeEach(()=>{rpc.mockReset();from.mockReset();});
+it('passes owner and integer revision to incoming-aware server query',async()=>{const data={status:'ready',items:[],links:[],nextBefore:null};rpc.mockResolvedValue({data,error:null});expect(await loadFeedbackBundle(id,id,37)).toEqual(data);expect(rpc).toHaveBeenCalledWith('list_decision_feedback',{p_user_id:id,p_idea_id:id,p_before:37});});
+it('handles missing migration without pretending data exists',async()=>{rpc.mockResolvedValue({error:{code:'PGRST202'}});expect(await loadFeedbackBundle(id)).toEqual({status:'missing-schema',items:[],links:[],nextBefore:null});});
+it('rejects invalid keyset positions before reads',async()=>{await expect(listFeedback(id,undefined,1.2)).rejects.toThrow();await expect(listFeedbackLinks(id,{before:0})).rejects.toThrow();expect(from).not.toHaveBeenCalled();});
+it('latest proof is owner and pair bound rather than page bound',async()=>{const q={select:vi.fn(),eq:vi.fn(),order:vi.fn(),limit:vi.fn(),maybeSingle:vi.fn()};for(const k of ['select','eq','order','limit'] as const)q[k].mockReturnValue(q);q.maybeSingle.mockResolvedValue({data:{id,action:'retract'},error:null});from.mockReturnValue(q);expect(await getLatestFeedbackLink(id,id,id)).toEqual({id,action:'retract'});expect(q.eq).toHaveBeenCalledWith('user_id',id);expect(q.eq).toHaveBeenCalledWith('feedback_id',id);expect(q.eq).toHaveBeenCalledWith('target_idea_id',id);expect(q.order).toHaveBeenCalledWith('revision',{ascending:false});});

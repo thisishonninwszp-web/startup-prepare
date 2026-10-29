@@ -5,7 +5,15 @@ import { getReflectionSettings, todayInTimezone } from "@/app/(app)/retrospectiv
 import { recommendFrameworks } from "./framework-router";
 import { listWorkbenchObjects, signalForObject } from "./queries";
 import { WorkbenchObjectCard } from "./workbench-object-card";
+import { ConnectedOverview } from "./connected-overview";
 import { PageContainer } from "@/components/ui/page-container";
+import { ObservationTaskPanel } from "./observation-task-panel";
+import { FeedbackImpactPanel } from "./feedback-impact-panel";
+import { ReconsiderationCuesPanel } from "./reconsideration-cues-panel";
+import { loadReconsiderationCuesAction } from "../ideas/reconsideration-actions";
+import { StatisticsPanel } from "./statistics-panel";
+import { ProductEventPanel } from "./product-event-panel";
+import { SchedulingPanel } from "./scheduling-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +23,8 @@ export default async function WorkbenchPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) notFound();
+  const feedbackEnabled = process.env.FEEDBACK_LEARNING_ENABLED === "true";
+  const cues = feedbackEnabled ? await loadReconsiderationCuesAction() : null;
   const settings = await getReflectionSettings(user.id);
   const today = todayInTimezone(settings.timezone);
   const objects = await listWorkbenchObjects(user.id, today);
@@ -83,6 +93,13 @@ export default async function WorkbenchPage() {
           </section>
         )}
 
+        {process.env.DECISION_OBSERVATIONS_ENABLED === "true" && <div className="mb-8"><ObservationTaskPanel /></div>}
+        {feedbackEnabled && <div className="mb-8 space-y-3"><ReconsiderationCuesPanel initialData={cues?.ok ? cues.data : null} /><FeedbackImpactPanel allowTaskAdjustment={process.env.DECISION_OBSERVATIONS_ENABLED === "true"} /></div>}
+        {process.env.STATISTICAL_DENOMINATORS_ENABLED === "true" && <div className="mb-8"><StatisticsPanel ideas={objects.filter(o => o.object_type === "idea").map(o => ({id:o.object_id,title:o.title}))} /></div>}
+        {process.env.PRODUCT_EVENTS_ENABLED === "true" && <div className="mb-8"><ProductEventPanel ideas={objects.filter(o => o.object_type === "idea").map(o => ({id:o.object_id,title:o.title}))} /></div>}
+        {process.env.SCHEDULED_OBSERVATIONS_ENABLED === "true" && process.env.STATISTICAL_DENOMINATORS_ENABLED === "true" && <div className="mb-8"><SchedulingPanel /></div>}
+        {process.env.IDEA_EXPERIMENTS_ENABLED === "true" && <section className="mb-8 rounded-lg border bg-card p-5"><h2 className="text-sm font-medium">前提核对与待接触问题 · 仅想法</h2><p className="mt-2 text-xs leading-6 text-muted-foreground">从想法的缺口选择当前资源，查看公开核对、原型运行与仍需问真人的问题；实验完成不表示需求已验证。</p><div className="mt-3 flex flex-wrap gap-3">{objects.filter(o => o.object_type === "idea").map(o => <Link key={o.object_id} href={`/ideas/${o.object_id}#connected-learning`} className="text-xs text-primary underline-offset-4 hover:underline">{o.title} →</Link>)}</div></section>}
+        {process.env.IDEA_EXPERIMENTS_ENABLED === "true" && <ConnectedOverview userId={user.id} />}
         <section>
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-medium">全部决策对象</h2>

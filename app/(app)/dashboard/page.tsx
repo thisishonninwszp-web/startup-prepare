@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { RecommendationWidget } from "./recommendation-widget";
 import { getWeeklyMirror } from "./queries";
 import { WeeklyDigest } from "./weekly-digest";
+import { BusinessTodayCard } from "../business-lab/today-card";
 import { daysSince, daysUntilLock } from "../ideas/types";
 import { listRealityCases } from "../reality/queries";
 import { listOpenOutsideViewChecks } from "../reasoning/queries";
@@ -279,6 +280,7 @@ export default async function DashboardPage() {
 
         <div className={mirrorImbalanced ? "saturate-50 opacity-80" : undefined}>
         <RecommendationWidget />
+        {process.env.BUSINESS_TEARDOWNS_ENABLED === "true" && <div className="mb-8"><BusinessTodayCard ownerId={userId} /></div>}
 
         {inbox.length > 0 && (
           <section className="mb-8">

@@ -1,0 +1,32 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { parseSearchImport, decodeSearchFile, type SearchContext, type SearchImportPreview, type SearchProvider } from "@/lib/domains/observations/search/imports";
+import { saveSearchObservationRun } from "./search-observation-actions";
+import { eventRequest } from "@/app/(app)/signals/events/request-id";
+import { refreshSavedView } from "./connected-form";
+
+export function SearchImportPanel({ taskId, versionId, context, onSaved, configuredTerms = [] }: { configuredTerms?: string[]; taskId: string; versionId: string; context: SearchContext; onSaved: () => Promise<void> }) {
+  const [provider, setProvider] = useState<SearchProvider>("trends_web");
+  const [purpose, setPurpose] = useState<"problem" | "solution" | "alternative" | "purchase">("problem");
+  const [raw, setRaw] = useState("");
+  const [termMappings, setTermMappings] = useState<Record<string, string>>({});
+  const [preview, setPreview] = useState<SearchImportPreview | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const ready = context.region.trim() && context.language.trim() && context.timeframe.trim();
+  const update = (text: string) => { setRaw(text); setPreview(null); setTermMappings({}); setMessage(""); };
+  return <details className="text-xs"><summary className="cursor-pointer">导入手动导出的 Trends / 关键词规划 CSV</summary>{!ready ? <p className="mt-2 leading-6 text-muted-foreground">先修改任务配置，填写地区、语言和时间范围，再导入。程序不会猜测导出条件。</p> : <div className="mt-3 space-y-3"><p className="leading-6 text-muted-foreground">使用配置口径：{context.region} · {context.language} · {context.timeframe}。只在此浏览器解析预览；确认后保存原始导出与口径。不会联网抓取。</p><fieldset disabled={busy} className="space-y-3"><label className="block space-y-1"><span>这次查询的目的</span><select name="purpose" className="h-10 w-full rounded-md border bg-background px-3" value={purpose} onChange={e => { setPurpose(e.target.value as typeof purpose); setPreview(null); }}><option value="problem">发现问题表述（默认）</option><option value="solution">寻找解决办法</option><option value="alternative">寻找现有替代方案</option><option value="purchase">询价或购买表述</option></select></label><label className="block space-y-1"><span>导出来源</span><select className="h-10 w-full rounded-md border bg-background px-3" value={provider} onChange={e => { setProvider(e.target.value as SearchProvider); setPreview(null); setTermMappings({}); }}><option value="trends_web">Google Trends 网页导出（相对关注）</option><option value="ads_planner">Google Ads 关键词规划（估计搜索量）</option></select></label><label className="block space-y-1"><span>选择 CSV / TSV 文件（不超过 250000 字符）</span><input className="block max-w-full" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" onChange={async e => { const file = e.target.files?.[0]; if (!file) return; try { if (file.size > 500000) throw new Error("文件太大，请缩小导出范围。"); const text = decodeSearchFile(new Uint8Array(await file.arrayBuffer())); if (text.length > 250000) throw new Error("文件超过250000字符，请缩小导出范围。"); update(text); } catch (error) { setMessage(error instanceof Error ? error.message : "文件读取未完成。"); } }} /></label><label className="block space-y-1"><span>或者粘贴原始 CSV / TSV</span><Textarea value={raw} onChange={e => update(e.target.value)} rows={5} maxLength={250000} /></label><Button type="button" size="sm" variant="outline" disabled={!raw.trim()} onClick={() => { setMessage(""); try { setPreview(parseSearchImport(provider, raw, context)); } catch (error) { setPreview(null); setMessage(error instanceof Error ? error.message : "导出格式无法识别。"); } }}>解析并预览</Button></fieldset>
+      {preview && <div className="space-y-2"><p>解析 {preview.points.length} 项；仅预览前 50 项，保存包含全部已解析内容。</p>{preview.canConfirm && configuredTerms.length > 0 && <fieldset disabled={busy} className="space-y-2 rounded border p-3"><legend>明确对应任务词组（可选）</legend><p className="text-muted-foreground">保留导出原标签；只有你确认对应关系后，才归入固定或探索词组。不自动猜测地区后缀。</p>{[...new Set(preview.points.map(point => point.term))].slice(0, 100).map(label => <label key={label} className="block"><span>{label}</span><select aria-label={`对应词组：${label}`} className="mt-1 h-10 w-full rounded border bg-background px-2" value={termMappings[label] ?? ""} onChange={e => setTermMappings(old => { const next = { ...old }; if (e.target.value) next[label] = e.target.value; else delete next[label]; return next; })}><option value="">保持导出原标签</option>{[...new Set(configuredTerms)].map(term => <option key={term} value={term}>{term}</option>)}</select></label>)}</fieldset>}{preview.warnings.map(w => <p key={w} className="leading-6 text-muted-foreground">{w}</p>)}{preview.issues.map((issue, i) => <p key={i} className="text-destructive">第 {issue.row} 行：{issue.message}</p>)}<div className="max-h-72 overflow-auto rounded-md border"><table className="w-full text-left"><thead><tr><th className="p-2">词组</th><th className="p-2">时间</th><th className="p-2">原始值</th><th className="p-2">口径</th></tr></thead><tbody>{preview.points.slice(0, 50).map((p, i) => <tr key={i} className="border-t"><td className="break-words p-2">{p.term}</td><td className="p-2">{p.period || "未提供"}</td><td className="p-2">{p.rawValue || "缺失"}</td><td className="p-2">{{ value: "有数值", missing: "未知 / 缺失", range: "供应商区间", below_threshold: "低于阈值" }[p.state]}</td></tr>)}</tbody></table></div><p className="leading-6 text-muted-foreground">相对关注不是市场规模；搜索量不是人数。缺失、低于阈值和零保留区别，不合并成想法评分。</p><Button type="button" variant="outline" size="sm" disabled={busy || !preview.canConfirm || preview.issues.length > 0} onClick={async () => {
+        if (inFlight.current) return;
+        inFlight.current = true; setBusy(true); setMessage("");
+        try { const payload = { taskId, taskVersionId: versionId, provider, rawText: raw, purpose, termMappings }; const request = await eventRequest("search-import", payload); await saveSearchObservationRun({ ...payload, requestId: request.requestId }); request.complete(); setPreview(null); setRaw(""); const refreshed = await refreshSavedView(onSaved); setMessage(refreshed.refreshFailed ? refreshed.message : "已保存原始导出与解析结果。"); }
+        catch (error) { setMessage(`${error instanceof Error ? error.message : "未完成导入"}。原始输入与请求身份已保留，请重试。`); }
+        finally { inFlight.current = false; setBusy(false); }
+      }}>{busy ? "正在保存……" : "确认保存导入"}</Button></div>}{message && <p role="status" className="leading-6">{message}</p>}</div>}</details>;
+}
+
+
