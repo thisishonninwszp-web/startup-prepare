@@ -8,17 +8,29 @@ import {validateBusinessReport} from '@/lib/domains/business-teardowns/report-va
 const sections=()=>SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:['材料不足，待核对']}));
 describe('business report model gateway',()=>{
  beforeEach(()=>vi.clearAllMocks());
+ it('limits citation identifiers to the selected frozen sources and saved metrics',async()=>{
+  vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
+  const source={id:'selected',role:'primary',quantities:[{id:'saved-review-count',period:{}}],structured:{}} as unknown as ReportSource;
+  await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[source]});
+  const output=z.fromJSONSchema(vi.mocked(executeAiText).mock.calls[0][1].config!.responseJsonSchema as Parameters<typeof z.fromJSONSchema>[0]);
+  const withObservation=(snapshotId:string,metricId:string)=>({sections:sections().map((section,index)=>index?section:{...section,observations:[{snapshotId,metricId}]})});
+  expect(output.safeParse(withObservation('selected','saved-review-count')).success).toBe(true);
+  expect(output.safeParse(withObservation('selected','itemPrice')).success).toBe(false);
+  expect(output.safeParse(withObservation('unselected','saved-review-count')).success).toBe(false);
+ });
  it('constrains provider shape without nested size bounds while retaining strict saved-report checks',async()=>{
   vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
   await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[]});
   const config=vi.mocked(executeAiText).mock.calls[0][1].config;
   expect(config?.responseJsonSchema).toBeDefined();
-  expect(JSON.stringify(config!.responseJsonSchema)).not.toMatch(/"(?:minItems|maxItems|minLength|maxLength)"/);
+  expect(JSON.stringify(config!.responseJsonSchema)).not.toMatch(/"(?:minItems|minLength|maxLength)"/);
+  expect(JSON.stringify(config!.responseJsonSchema)).not.toMatch(/"maxItems":(?:[1-9])/);
   const output=z.fromJSONSchema(config!.responseJsonSchema as Parameters<typeof z.fromJSONSchema>[0]);
   expect(output.safeParse({sections:sections()}).success).toBe(true);
   expect(output.safeParse({sections:Object.fromEntries(sections().map(section=>[section.key,section]))}).success).toBe(false);
   expect(output.safeParse({sections:sections().slice(1)}).success).toBe(true);
   expect(()=>validateBusinessReport({sections:sections().slice(1)},[])).toThrow();
+  expect(output.safeParse({sections:sections().map((section,index)=>index?section:{...section,observations:[{snapshotId:'invented',metricId:'itemPrice'}]})}).success).toBe(false);
   expect(output.safeParse({sections:sections().map(section=>({...section,unknownField:'ignored?'}))}).success).toBe(false);
  });
  it('uses a single metadata-only gateway call, case/request tags and explicit public projection',async()=>{

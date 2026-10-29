@@ -23,6 +23,7 @@
 - 回归测试先确认缺少输出约束会失败，再加入结构约束；相关29文件159测试及TypeScript检查通过。生产构建与修复部署验收继续进行。
 - 首轮修复2b678a4的生产部署6LorAFyDxXqp4NVnTzqQpfrp6QCX已Ready。逐次重新确认后复测，Google返回400；SDK的retryOptions包装丢失了响应体，日志只显示provider_error。使用不含真实资料的合成样本，经既有gateway诊断确认：嵌套长度约束导致解码状态过多。
 - 从同一Zod契约导出模型端结构时仅去掉minItems/maxItems/minLength/maxLength；服务器原始schema及所有内容/引用规则保持严格。加入测试确认模型端结构较简、服务器仍拒绝章节缺失。合成样本已由真实gemini-2.5-flash接受，29文件159测试再次通过；prompt版本更新为business-report-v3。尚待该版本部署及真实案例复测。
+- 805c4a2部署Bxk4H5J9dKACxJgBavAwvyRiFdYQ已Ready；真实案例复测返回内容，但引用了未保存的来源/数值，服务器拒绝，未保存草稿。继续将本次选定snapshotId和已有metricId列为模型输出枚举；无数值材料强制observations为空。来源与数值的成对归属仍由服务器校验，不因枚举而认定内容真实。prompt更新为business-report-v4，29文件160测试通过，零数值结构也经真实Gemini合成样本接受。
 
 ## 前次等待记录（已解除）
 
