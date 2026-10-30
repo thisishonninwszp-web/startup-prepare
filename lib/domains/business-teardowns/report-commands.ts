@@ -1,13 +1,14 @@
 import {supabaseAdmin} from '@/lib/supabase';
 import {uuid} from './domain';
 import {canPublishBusinessReport} from './report-partial';
+import {fitBusinessReportArchive} from './report-archive';
 import {validateDraftInput,type DraftInput,type DraftLease,type DraftStart,type AIConsent,type ConsentInput,type CaseRevision,type CaseSection,type ReportSource,type LessonInput,type CaseLesson} from './report-domain';
 export async function reportCommand<T>(owner:string,operation:string,input:object):Promise<T> {uuid(owner);const {data,error}=await supabaseAdmin.rpc('business_report_command',{p_user_id:owner,p_operation:operation,p_input:input});if(error)throw new Error(error.message);return data as T;}
 export function grantConsent(owner:string,input:ConsentInput):Promise<AIConsent>{validateDraftInput({...input,consentId:input.requestId,expectedReportRevision:0});if(input.publicExcerptDeidentified!==true)throw new Error('请确认仅包含公开且去标识的材料');return reportCommand(owner,'consent',input);}
 export function revokeConsent(owner:string,consentId:string):Promise<void>{uuid(consentId);return reportCommand(owner,'revoke',{consentId});}
 export async function startDraft(owner:string,input:DraftInput):Promise<DraftStart>{validateDraftInput(input);const result=await reportCommand<DraftStart|{status:'unknown'}>(owner,'start',input);if(result.status==='unknown')throw new Error('上次请求结果或用量未知，请重新确认后使用新请求');return result;}
 export function verifyDraft(owner:string,lease:DraftLease):Promise<{sources:ReportSource[];consent:AIConsent}>{return reportCommand(owner,'verify',lease);}
-export function finishDraft(owner:string,lease:DraftLease,report:{sections:CaseSection[];model:string|null;promptVersion:string|null}):Promise<CaseRevision>{return reportCommand(owner,'finish',{...lease,report});}
+export function finishDraft(owner:string,lease:DraftLease,report:{sections:CaseSection[];model:string|null;promptVersion:string|null}):Promise<CaseRevision>{return reportCommand(owner,'finish',{...lease,report:fitBusinessReportArchive(lease,report)});}
 export function failDraft(owner:string,lease:DraftLease):Promise<void>{return reportCommand(owner,'fail',lease);}
 export type PublishInput={caseId:string;reportId:string;expectedPublishedReportId:string|null;requestId:string};
 export async function publishReport(owner:string,input:PublishInput):Promise<CaseRevision>{uuid(input.caseId);uuid(input.reportId);uuid(input.requestId);if(input.expectedPublishedReportId)uuid(input.expectedPublishedReportId);

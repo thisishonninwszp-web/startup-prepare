@@ -15,15 +15,17 @@ describe('business report model gateway',()=>{
   const withRefs=(refs:unknown[])=>({sections:sections().map((section,index)=>index?section:{...section,interpretations:[{text:'假设：可能涉及收纳需求',refs,competingExplanation:'假设：也可能是赠礼',distinguishingObservation:'核对购买情境'}]})});
   expect(output.safeParse(withRefs([])).success).toBe(true);expect(output.safeParse(withRefs([{snapshotId:'api',quote:'公开商品'}])).success).toBe(false);
  });
- it('limits citation identifiers to the selected frozen sources and saved metrics',async()=>{
+ it('prevents the model from writing facts and attaches saved metrics in code',async()=>{
   vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
-  const source={id:'selected',role:'primary',quantities:[{id:'saved-review-count',period:{}}],structured:{}} as unknown as ReportSource;
-  await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[source]});
+  const source={id:'selected',role:'primary',quantities:[{id:'saved-review-count',metric:'review_count',value:12345,raw:'12345',period:{}}],structured:{}} as unknown as ReportSource;
+  const result=await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[source]});
   const output=z.fromJSONSchema(vi.mocked(executeAiText).mock.calls[0][1].config!.responseJsonSchema as Parameters<typeof z.fromJSONSchema>[0]);
   const withObservation=(snapshotId:string,metricId:string)=>({sections:sections().map((section,index)=>index?section:{...section,observations:[{snapshotId,metricId}]})});
-  expect(output.safeParse(withObservation('selected','saved-review-count')).success).toBe(true);
+  expect(output.safeParse(withObservation('selected','saved-review-count')).success).toBe(false);
   expect(output.safeParse(withObservation('selected','itemPrice')).success).toBe(false);
   expect(output.safeParse(withObservation('unselected','saved-review-count')).success).toBe(false);
+  expect(result.find(section=>section.key==='volume')?.observations).toEqual([{snapshotId:'selected',metricId:'saved-review-count'}]);
+  expect(JSON.stringify(vi.mocked(executeAiText).mock.calls[0][1].contents)).not.toContain('12345');
  });
  it('constrains provider shape without nested size bounds while retaining strict saved-report checks',async()=>{
   vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
@@ -48,7 +50,7 @@ describe('business report model gateway',()=>{
   expect(context).toMatchObject({userId:'o',entityType:'business_teardown_case',entityId:'c',operation:'business_teardown_report:r',payloadLogging:'metadata_only'});
   expect(JSON.stringify(request)).not.toContain('私人反馈');expect(JSON.stringify(request)).not.toContain('secret');expect(JSON.stringify(request)).toContain('不可信');
  });
- it('drops invented quantities with an explicit gap and never repairs or retries',async()=>{const invalid=sections();Object.assign(invalid[0],{unknowns:['销量300单']});vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:invalid}));const result=await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[]});expect(result[0].unknowns).toEqual([]);expect(result[0].validationGaps).toEqual([{field:'unknowns',reason:'content_rejected',count:1}]);expect(executeAiText).toHaveBeenCalledTimes(1);});
+ it('drops invented quantities with an explicit gap and never repairs or retries',async()=>{const invalid=sections();Object.assign(invalid[0],{unknowns:['销量300单']});vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:invalid}));const result=await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[]});expect(result[0].unknowns).toEqual([]);expect(result[0].validationGaps).toEqual([{field:'unknowns',reason:'content_rejected',rule:'numeric_claim',detailField:'unknowns',count:1}]);expect(executeAiText).toHaveBeenCalledTimes(1);});
  it('does not send nested private objects under an otherwise public field',async()=>{vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[{id:'s',role:'primary',quantities:[],structured:{itemName:{privateFeedback:'hidden-private-body'}}} as unknown as ReportSource]});expect(JSON.stringify(vi.mocked(executeAiText).mock.calls[0][1])).not.toContain('hidden-private-body');});
  it('keeps all saved scalar price-range qualifiers in the public projection',async()=>{vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));const price={itemPrice:100,hasPriceRange:true,itemPriceBaseField:'itemPriceMin1',itemPriceMin1:100,itemPriceMax1:200,itemPriceMin2:150,itemPriceMax2:250,itemPriceMin3:175,itemPriceMax3:300};await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[{id:'s',role:'primary',quantities:[],structured:{...price,privateFeedback:'not-selected'}} as unknown as ReportSource]});const request=vi.mocked(executeAiText).mock.calls[0][1];const payload=JSON.parse(request.contents as string);expect(payload.untrustedSelectedSources[0].publicFields).toEqual(price);});
 });

@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {SECTION_KEYS,type CaseSection,type ReportSource} from './report-domain';
+import {BusinessReportValidationError,checkReportProse} from './report-rules';
 
 const snapshotId=z.string().min(1),metricId=z.string().min(1);
 const ref=z.object({snapshotId,quote:z.string().min(1).max(2000)}).strict();
@@ -14,21 +15,11 @@ export function businessReportOutputSchema(sources:ReportSource[]){
   delete jsonSchema.minItems;delete jsonSchema.maxItems;delete jsonSchema.minLength;delete jsonSchema.maxLength;
   if(zodSchema===snapshotId&&sourceIds.length)jsonSchema.enum=sourceIds;
   if(zodSchema===metricId&&metricIds.length)jsonSchema.enum=metricIds;
-  if(zodSchema===observations&&!metricIds.length)jsonSchema.maxItems=0;
+  if(zodSchema===observations)jsonSchema.maxItems=0;
   if(zodSchema===references&&!sources.some(source=>source.capturedText?.trim()))jsonSchema.maxItems=0;
  }});
 }
-const prohibited=/很有潜力|不错的想法|前景广阔|照做能成功|值得投资|想法评分|机会评分|评分|星级|score|rating/i;
 const unsupportedAssertion=/(?:总体|整体|所有|全部|多数|大多|主要)(?:的)?(?:顾客|买家|客户|消费者)|(?:顾客|买家|客户|消费者)(?:主要|大多|多数|都是|均为|以.+为主)|真实利润|实际利润|净利润|盈利已|稳赚|\b(?:most|all|majority of) (?:buyers|customers|consumers)\b/i;
-// Free prose cannot carry quantities; exact source quotations and typed observations are separate fields.
-const quantitative=/[\p{N}%％]|[零〇壹贰叁肆伍陆柒捌玖拾佰仟二三四五六七八九十百千万亿两]|一(?=[个件枚袋盒包人单成倍万元千百十])|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|percent|dozen)\b/iu;
-const fractional=/过半|一半|半(?:数|成(?!品)|价|折|个|件|枚|袋|盒|包|人|单|倍|美?元|日元|欧元|英镑|年|月|天|日|小时|分钟|公斤|斤|份)|\b(?:half|halves|quarter|quarters)\b/iu;
-function prose(text:string):void {
- // These fixed business terms describe an external party, not an observed quantity.
- const quantityText=text.replace(/第三方|三方物流/g,'外部');
- if(prohibited.test(text)||quantitative.test(quantityText)||fractional.test(quantityText))throw new Error('报告校验失败：自由文字含数值、迎合或评分');
-}
-
 /** Checks structure and provenance, not whether an interpretation is causally true. */
 export function parseBusinessReportStructure(value:unknown,sources:ReportSource[]):CaseSection[] {
  const parsed=schema.parse(value);const selected=new Map(sources.map(source=>[source.id,source]));
@@ -39,14 +30,17 @@ export function validateBusinessReport(value:unknown,sources:ReportSource[]):Cas
  const sections=parseBusinessReportStructure(value,sources),selected=new Map(sources.map(source=>[source.id,source]));
  for(const s of sections){
   if(!s.observations.length&&!s.interpretations.length&&!s.unknowns.length)throw new Error('报告校验失败：空章节须明确未知');
-  for(const observation of s.observations){const source=selected.get(observation.snapshotId);if(!source?.quantities.some(q=>q.id===observation.metricId))throw new Error('citation：未选择的来源或数值');}
+  for(const observation of s.observations){const source=selected.get(observation.snapshotId);if(!source?.quantities.some(q=>q.id===observation.metricId))throw new BusinessReportValidationError('metric_source','observations','citation：未选择的来源或数值');}
   for(const interpretation of s.interpretations){
-   if(!/^假设[：:]/.test(interpretation.text)||!/^假设[：:]/.test(interpretation.competingExplanation))throw new Error('报告校验失败：解释必须明确标为假设');
-   [interpretation.text,interpretation.competingExplanation,interpretation.distinguishingObservation].forEach(prose);
-   if([interpretation.text,interpretation.competingExplanation].some(text=>unsupportedAssertion.test(text)))throw new Error('报告校验失败：未获支持的总体画像或利润断言');
-   for(const reference of interpretation.refs){const source=selected.get(reference.snapshotId);if(!source?.capturedText?.includes(reference.quote))throw new Error('citation：原文或来源无法逐字核对');}
+   for(const field of ['text','competingExplanation'] as const){
+    if(!/^假设[：:]/.test(interpretation[field]))throw new BusinessReportValidationError('missing_hypothesis',field,'报告校验失败：解释必须明确标为假设');
+    checkReportProse(interpretation[field],field,false);
+    if(unsupportedAssertion.test(interpretation[field]))throw new BusinessReportValidationError('population_or_profit',field,'报告校验失败：未获支持的总体画像或利润断言');
+   }
+   checkReportProse(interpretation.distinguishingObservation,'distinguishingObservation',true);
+   for(const reference of interpretation.refs){const source=selected.get(reference.snapshotId);if(!source?.capturedText?.includes(reference.quote))throw new BusinessReportValidationError('quote_source','refs','citation：原文或来源无法逐字核对');}
   }
-  s.unknowns.forEach(prose);
+  s.unknowns.forEach(text=>checkReportProse(text,'unknowns',s.key==='experiment'));
  }
  return sections;
 }

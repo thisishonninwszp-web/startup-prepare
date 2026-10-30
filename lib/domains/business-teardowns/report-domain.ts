@@ -1,12 +1,15 @@
 import {uuid} from './domain';
 import type {MaterialSnapshot} from './domain';
+import type {ReportValidationRule,ReportDetailField} from './report-rules';
 export const SECTION_KEYS=['offering','trigger','buyers','volume','journey','value','operations','economics','comparison','failure_conditions','transfer','experiment'] as const;
 export type Reference={snapshotId:string;quote:string};
-export type ReportValidationGap={field:'observations'|'interpretations'|'unknowns';reason:'citation_rejected'|'content_rejected';count:number};
-export type CaseSection={key:typeof SECTION_KEYS[number];observations:{metricId:string;snapshotId:string}[];interpretations:{text:string;refs:Reference[];competingExplanation:string;distinguishingObservation:string}[];unknowns:string[];validationGaps?:ReportValidationGap[]};
+export type ReportValidationGap={field:'observations'|'interpretations'|'unknowns';reason:'citation_rejected'|'content_rejected';count:number;rule?:ReportValidationRule;detailField?:ReportDetailField};
+export type ReportValidationDiagnostic={field:ReportValidationGap['field'];itemIndex:number;rule:ReportValidationRule;detailField:ReportDetailField;rejectedText:string;truncated:boolean;validatorVersion:string};
+export type CaseSection={key:typeof SECTION_KEYS[number];observations:{metricId:string;snapshotId:string}[];interpretations:{text:string;refs:Reference[];competingExplanation:string;distinguishingObservation:string}[];unknowns:string[];validationGaps?:ReportValidationGap[];validationDiagnostics?:ReportValidationDiagnostic[];factCoverage?:{displayed:number;available:number}};
 export function hasBusinessReportGaps(sections:CaseSection[]):boolean{return sections.some(section=>section.validationGaps?.length);}
 export function canPublishBusinessReport(sections:CaseSection[]):boolean{return !hasBusinessReportGaps(sections)||sections.some(section=>section.interpretations.length>0);}
 export type CaseRevision={id:string;caseId:string;revision:number;materialRevision:number;primarySnapshotIds:string[];comparisonSnapshotIds:string[];inputManifestHash:string;sections:CaseSection[];authorship:'manual_template'|'ai_draft';promptVersion:string|null;model:string|null;createdAt:string;erasedAt:string|null};
+export function publicBusinessReport(report:CaseRevision):CaseRevision{return {...report,sections:report.sections.map(section=>{const {validationDiagnostics,...content}=section;void validationDiagnostics;return content;})};}
 export type ReportSource=MaterialSnapshot&{role:'primary'|'product'|'comparison'};
 export type AIConsent={id:string;caseId:string;materialRevision:number;snapshotIds:string[];comparisonSnapshotIds:string[];publicExcerptDeidentified:boolean;revokedAt:string|null;consumedByRequestId?:string|null;consumedRequestStatus?:'pending'|'completed'|'failed'|'unknown'|null;consumedExpectedReportRevision?:number|null;createdAt:string};
 export type DraftInput={caseId:string;materialRevision:number;expectedReportRevision:number;snapshotIds:string[];comparisonSnapshotIds:string[];consentId:string;requestId:string};
