@@ -3,8 +3,9 @@ import {SECTION_KEYS,type CaseSection,type ReportSource} from './report-domain';
 
 const snapshotId=z.string().min(1),metricId=z.string().min(1);
 const ref=z.object({snapshotId,quote:z.string().min(1).max(2000)}).strict();
+const references=z.array(ref).max(10);
 const observations=z.array(z.object({metricId,snapshotId}).strict()).max(50);
-const section=z.object({key:z.enum(SECTION_KEYS),observations,interpretations:z.array(z.object({text:z.string().min(1).max(2000),refs:z.array(ref).max(10),competingExplanation:z.string().min(1).max(2000),distinguishingObservation:z.string().min(1).max(2000)}).strict()).max(12),unknowns:z.array(z.string().min(1).max(1000)).max(20)}).strict();
+const section=z.object({key:z.enum(SECTION_KEYS),observations,interpretations:z.array(z.object({text:z.string().min(1).max(2000),refs:references,competingExplanation:z.string().min(1).max(2000),distinguishingObservation:z.string().min(1).max(2000)}).strict()).max(12),unknowns:z.array(z.string().min(1).max(1000)).max(20)}).strict();
 const schema=z.object({sections:z.array(section).length(12)}).strict();
 // Gemini rejects nested size bounds as too many decoding states; enforce those on save below.
 export function businessReportOutputSchema(sources:ReportSource[]){
@@ -14,6 +15,7 @@ export function businessReportOutputSchema(sources:ReportSource[]){
   if(zodSchema===snapshotId&&sourceIds.length)jsonSchema.enum=sourceIds;
   if(zodSchema===metricId&&metricIds.length)jsonSchema.enum=metricIds;
   if(zodSchema===observations&&!metricIds.length)jsonSchema.maxItems=0;
+  if(zodSchema===references&&!sources.some(source=>source.capturedText?.trim()))jsonSchema.maxItems=0;
  }});
 }
 const prohibited=/很有潜力|不错的想法|前景广阔|照做能成功|值得投资|想法评分|机会评分|评分|星级|score|rating/i;

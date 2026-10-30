@@ -8,6 +8,13 @@ import {validateBusinessReport} from '@/lib/domains/business-teardowns/report-va
 const sections=()=>SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:['材料不足，待核对']}));
 describe('business report model gateway',()=>{
  beforeEach(()=>vi.clearAllMocks());
+ it('forbids quotes when selected material has only API fields and no captured text',async()=>{
+  vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
+  await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[{id:'api',capturedText:null,quantities:[],structured:{itemName:'公开商品'}} as unknown as ReportSource]});
+  const output=z.fromJSONSchema(vi.mocked(executeAiText).mock.calls[0][1].config!.responseJsonSchema as Parameters<typeof z.fromJSONSchema>[0]);
+  const withRefs=(refs:unknown[])=>({sections:sections().map((section,index)=>index?section:{...section,interpretations:[{text:'假设：可能涉及收纳需求',refs,competingExplanation:'假设：也可能是赠礼',distinguishingObservation:'核对购买情境'}]})});
+  expect(output.safeParse(withRefs([])).success).toBe(true);expect(output.safeParse(withRefs([{snapshotId:'api',quote:'公开商品'}])).success).toBe(false);
+ });
  it('limits citation identifiers to the selected frozen sources and saved metrics',async()=>{
   vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
   const source={id:'selected',role:'primary',quantities:[{id:'saved-review-count',period:{}}],structured:{}} as unknown as ReportSource;
