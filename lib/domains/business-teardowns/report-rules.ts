@@ -1,5 +1,6 @@
 export const REPORT_VALIDATION_RULES=['numeric_claim','fractional_claim','flattery_or_score','population_or_profit','missing_hypothesis','metric_source','quote_source'] as const;
 export type ReportValidationRule=typeof REPORT_VALIDATION_RULES[number];
+export const REPORT_VALIDATOR_VERSION='business-validator-v3';
 export const REPORT_DETAIL_FIELDS=['text','competingExplanation','distinguishingObservation','unknowns','observations','refs'] as const;
 export type ReportDetailField=typeof REPORT_DETAIL_FIELDS[number];
 export class BusinessReportValidationError extends Error{
@@ -17,18 +18,19 @@ const compare=new RegExp(`^${actionPrefix}(?:比较|对照|核对)(?:两|二|2)(
 function withoutPlannedCounts(text:string):string{
  if(/已经|已完成|曾经|结果|发现|显示|证明|成交|占比|支付了|付了/.test(text))return text;
  return text.split(/([。；;！？!?])/u).map(clause=>{
-  const trimmed=clause.trimStart();
+  const researchPrefix=clause.trimStart().match(/^(?:(?:建议|计划|准备|尝试|需要|先|请|可以|拟)\s*)*对[^，,。；;]{1,40}(?:进行|开展)(?:市场调研|调研|核对|验证)[，,]\s*/u)?.[0]??'';
+  const trimmed=clause.trimStart().slice(researchPrefix.length);
   for(const pattern of [interview,smallTest,compare]){
    const match=trimmed.match(pattern);if(!match)continue;
    const continuation=trimmed.slice(match[0].length).trim();
-   if(!continuation||/^[，,]\s*(?:核对|了解|询问|比较|观察|记录|收集|确认|检验|验证|测试|排查|辨别)/.test(continuation))return `开展核对${continuation}`;
+   if(!continuation||/^[，,]\s*(?:核对|了解|询问|比较|观察|记录|收集|确认|检验|验证|测试|排查|辨别)/.test(continuation))return `${researchPrefix}开展核对${continuation}`;
   }
   return clause;
  }).join('');
 }
 export function checkReportProse(text:string,field:ReportDetailField,allowPlannedActions:boolean):void{
  if(prohibited.test(text))throw new BusinessReportValidationError('flattery_or_score',field,'报告校验失败：自由文字含数值、迎合或评分');
- const qualitative=text.replace(/第三方|三方物流/g,'外部');
+ const qualitative=text.replace(/第三方|三方物流/g,'外部').replace(/零部件/g,'部件').replace(/一个(?:普遍的)?特征/g,'定性特征');
  const checked=allowPlannedActions?withoutPlannedCounts(qualitative):qualitative;
  if(quantitative.test(checked))throw new BusinessReportValidationError('numeric_claim',field,'报告校验失败：自由文字含数值、迎合或评分');
  if(fractional.test(checked))throw new BusinessReportValidationError('fractional_claim',field,'报告校验失败：自由文字含数值、迎合或评分');
