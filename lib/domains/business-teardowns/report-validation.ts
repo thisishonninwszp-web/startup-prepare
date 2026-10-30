@@ -28,10 +28,14 @@ function prose(text:string):void {
 }
 
 /** Checks structure and provenance, not whether an interpretation is causally true. */
-export function validateBusinessReport(value:unknown,sources:ReportSource[]):CaseSection[] {
+export function parseBusinessReportStructure(value:unknown,sources:ReportSource[]):CaseSection[] {
  const parsed=schema.parse(value);const selected=new Map(sources.map(source=>[source.id,source]));
  if(selected.size!==sources.length||new Set(parsed.sections.map(s=>s.key)).size!==12)throw new Error('报告校验失败：章节或材料重复');
- for(const s of parsed.sections){
+ return SECTION_KEYS.map(key=>parsed.sections.find(s=>s.key===key)!);
+}
+export function validateBusinessReport(value:unknown,sources:ReportSource[]):CaseSection[] {
+ const sections=parseBusinessReportStructure(value,sources),selected=new Map(sources.map(source=>[source.id,source]));
+ for(const s of sections){
   if(!s.observations.length&&!s.interpretations.length&&!s.unknowns.length)throw new Error('报告校验失败：空章节须明确未知');
   for(const observation of s.observations){const source=selected.get(observation.snapshotId);if(!source?.quantities.some(q=>q.id===observation.metricId))throw new Error('citation：未选择的来源或数值');}
   for(const interpretation of s.interpretations){
@@ -42,7 +46,7 @@ export function validateBusinessReport(value:unknown,sources:ReportSource[]):Cas
   }
   s.unknowns.forEach(prose);
  }
- return SECTION_KEYS.map(key=>parsed.sections.find(s=>s.key===key)!);
+ return sections;
 }
 
 export function renderSavedMetric(source:ReportSource,metricId:string):string {

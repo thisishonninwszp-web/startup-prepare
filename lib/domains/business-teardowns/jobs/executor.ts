@@ -3,7 +3,7 @@ import {generateBusinessTeardownReport,MODEL,BUSINESS_REPORT_PROMPT_VERSION} fro
 import {searchBusinessCandidates,inspectRakutenItem} from '../providers/rakuten';
 import {selectCandidate} from '../selection';
 import {admissible,type QueuedCandidate} from '../rules';
-import {validateBusinessReport} from '../report-validation';
+import {validateSavedBusinessReport,hasBusinessReportGaps} from '../report-partial';
 import type {DraftStart,DraftLease,ReportSource,CaseSection} from '../report-domain';
 import type {SnapshotInput} from '../domain';
 import {jobCommand,businessJobsEnabled} from './commands';
@@ -80,7 +80,8 @@ export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'o
   // No catch-retry around the provider: uncertain delivery is a terminal receipt.
   const sections:CaseSection[]=await d.generate({ownerId:owner,caseId:lease.caseId,requestId:lease.requestId,sources:before.sources});
   await check(true);const after=await d.command<{sources:ReportSource[]}>('verify_ai',{...run,draftLease:lease});
-  const checked=validateBusinessReport({sections},after.sources);
+  const checked=validateSavedBusinessReport({sections},after.sources);
+  if(hasBusinessReportGaps(checked))throw new Error('报告含校验缺口，自动任务未保存或发布部分结果；请在手动流程重新确认材料后生成并核对');
   await d.command('settle',{...run,ticketId:ticket.id,status:'completed',usage:null});
   await check(true);return await d.command<JobResult>('finish',{...run,draftLease:lease,report:{sections:checked,model:MODEL,promptVersion:BUSINESS_REPORT_PROMPT_VERSION}});
  }catch(error){

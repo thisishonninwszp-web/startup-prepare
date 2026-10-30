@@ -1,6 +1,6 @@
 import {generateBusinessTeardownReport,BUSINESS_REPORT_PROMPT_VERSION,MODEL} from '@/lib/ai';
 import {startDraft,verifyDraft,finishDraft,failDraft} from './report-commands';
-import {validateBusinessReport} from './report-validation';
+import {validateSavedBusinessReport} from './report-partial';
 import type {DraftInput,CaseRevision} from './report-domain';
 
 export function businessTeardownsAiEnabled():boolean {return process.env.BUSINESS_TEARDOWNS_ENABLED==='true'&&process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true';}
@@ -13,7 +13,7 @@ export async function researchBusinessCase(ownerId:string,input:DraftInput):Prom
   const before=await verifyDraft(ownerId,lease);
   const sections=await generateBusinessTeardownReport({ownerId,caseId:input.caseId,requestId:input.requestId,sources:before.sources});
   const after=await verifyDraft(ownerId,lease);
-  const checked=validateBusinessReport({sections},after.sources);
+  const checked=validateSavedBusinessReport({sections},after.sources);
   const report=await finishDraft(ownerId,lease,{sections:checked,model:MODEL,promptVersion:BUSINESS_REPORT_PROMPT_VERSION});
   return {status:'completed',report};
  } catch(error) {

@@ -17,6 +17,13 @@ function fixture(){
  return {deps,command,search,inspect,events,run};
 }
 describe('controlled business job executor',()=>{
+ it('never automatically publishes a report with filtered content gaps',async()=>{
+  const f=fixture();f.run.settings.autoAI=true;f.deps.aiEnabled=()=>true;const original=f.command.getMockImplementation()!;
+  f.command.mockImplementation(async(op,input)=>{if(op==='ai_start')return {status:'ready',lease:{caseId:'case',requestId:'report-request'},sources:[]};if(op==='verify_ai')return {sources:[]};return original(op,input);});
+  vi.mocked(f.deps.generate).mockResolvedValue(SECTION_KEYS.map((key,index)=>({key,observations:[],interpretations:[],unknowns:index?['未知']:[],...(index?{}:{validationGaps:[{field:'unknowns' as const,reason:'content_rejected' as const,count:1}]})})));
+  await executeBusinessJob('owner','manual',f.deps);
+  expect(f.command.mock.calls.some(([op])=>op==='finish')).toBe(false);expect(f.command.mock.calls.some(([op])=>op==='fail')).toBe(true);expect(f.deps.generate).toHaveBeenCalledTimes(1);
+ });
  it('gets an HTTP ticket immediately before each transport, reserves before inspection, and keeps AI off',async()=>{const f=fixture();expect((await executeBusinessJob('owner','manual',f.deps)).status).toBe('materials_ready');expect(f.events.indexOf('ticket')).toBeLessThan(f.events.indexOf('http'));expect(f.events.indexOf('reserve')).toBeLessThan(f.events.indexOf('inspectHttp'));expect(f.deps.generate).not.toHaveBeenCalled();const material=f.command.mock.calls.find(([op])=>op==='material')![1];expect(JSON.stringify(material)).not.toContain('secret');expect(JSON.stringify(material)).not.toContain('query');});
  it('returns terminal or busy receipt before outbound work',async()=>{const f=fixture();f.command.mockImplementationOnce(async()=>({status:'completed',reportId:'report'}));expect((await executeBusinessJob('owner','cron',f.deps)).status).toBe('completed');expect(f.search).not.toHaveBeenCalled();});
  it('refuses in-flight HTTP result after settings withdrawal',async()=>{const f=fixture();let httpCompleted=false;f.search.mockImplementationOnce(async(input)=>{await input.beforeRequest?.();httpCompleted=true;return {items:[],coverage:'page',nextCursor:null};});f.command.mockImplementation(async(op)=>{if(op==='claim')return f.run;if(op==='state')return {candidates:[],history:{excluded:[],priorMain:[],recent:[]}};if(op==='check'&&httpCompleted)throw new Error('settings revoked');if(op==='ticket')return {id:'t'};return {status:'failed'};});await executeBusinessJob('owner','manual',f.deps);expect(f.command.mock.calls.some(([op])=>op==='enqueue')).toBe(false);expect(f.inspect).not.toHaveBeenCalled();});
