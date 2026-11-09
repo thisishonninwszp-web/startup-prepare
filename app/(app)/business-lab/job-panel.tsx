@@ -5,8 +5,8 @@ import {loadBusinessJobStateAction,saveBusinessJobSettingsAction,prepareBusiness
 import type {JobState,JobSettings,JobLease,SourceConfiguration} from '@/lib/domains/business-teardowns/jobs/types';
 const inputClass='min-w-0 rounded-md border bg-background px-3 py-2 text-sm';
 const buttonClass='rounded-md border px-3 py-2 text-sm disabled:opacity-50';
-const statusLabel:Record<string,string>={running:'处理中',busy:'已有任务正在处理',completed:'报告已发布',materials_ready:'材料已准备',failed:'任务出错',unknown:'结果或用量未知',disabled:'任务未开启',not_due:'未到东京计划时间'};
-const detailLabel:Record<string,string>={ready:'已就绪',pending:'未开始',started:'处理中',published:'已发布',not_permitted:'未开启自动AI',not_started:'未开始',failed:'出错',unknown:'结果或用量未知',completed:'已完成'};
+const statusLabel:Record<string,string>={running:'处理中',busy:'已有任务正在处理',completed:'报告已发布',draft_ready:'草稿已保存',schema_required:'请先完成 123 迁移',materials_ready:'材料已准备',failed:'任务出错',unknown:'结果或用量未知',disabled:'任务未开启',not_due:'未到东京计划时间'};
+const detailLabel:Record<string,string>={ready:'已就绪',pending:'未开始',started:'处理中',published:'已发布',draft:'已保存（未自动发布）',not_permitted:'未开启自动AI',not_started:'未开始',failed:'出错',unknown:'结果或用量未知',completed:'已完成'};
 const stageLabel:Record<string,string>={discovery:'来源发现',inspect:'商品核对',report:'报告生成'};
 export function BusinessJobPanel({initialState,enabled}:{initialState:JobState;enabled:boolean}){
  const [state,setState]=useState(initialState),[draft,setDraft]=useState<JobSettings>(initialState.settings),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[history,setHistory]=useState<JobLease[]>([]),[cursor,setCursor]=useState<string|null|undefined>(undefined),[refreshFailed,setRefreshFailed]=useState(false),[pausing,setPausing]=useState(false);
@@ -24,7 +24,7 @@ export function BusinessJobPanel({initialState,enabled}:{initialState:JobState;e
   try{const saved=await saveBusinessJobSettingsAction({...payload,requestId:pauseReceipt.current.requestId});pauseReceipt.current=null;pausedDuringPrepare.current=true;pending.current=null;setState(previous=>({...previous,settings:saved}));setDraft(previous=>({...previous,enabled:false,autoAI:false,revision:saved.revision}));setConfirmed(false);setMessage('任务已暂停并撤回自动AI许可。在途结果不会发布；未保存的其他输入已保留。');}
   catch(error){setMessage(`暂停尚未确认：${errorText(error)}`);}finally{pausePending.current=false;setPausing(false);}
  }
- useEffect(()=>{if(!opened.current&&enabled&&initialState.available&&initialState.settings.enabled&&initialState.settings.prepareOnOpen){opened.current=true;void prepare('open');}},[enabled,initialState]); // eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(()=>{if(!opened.current&&enabled&&initialState.available&&initialState.draftFinalizationAvailable!==false&&initialState.settings.enabled&&initialState.settings.prepareOnOpen){opened.current=true;void prepare('open');}},[enabled,initialState]); // eslint-disable-line react-hooks/exhaustive-deps
  async function save(){
   setBusy(true);setMessage('');
   const payload={...draft,autoAIConfirmed:confirmed,expectedRevision:draft.revision};const key=JSON.stringify(payload);if(pending.current?.key!==key)pending.current={key,requestId:crypto.randomUUID()};
@@ -37,6 +37,7 @@ export function BusinessJobPanel({initialState,enabled}:{initialState:JobState;e
  return <section aria-label="受控每日任务" className="space-y-5 rounded-lg border p-4 sm:p-6">
   <div><h2 className="text-lg font-medium">受控每日任务</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">每天只选一家未用作主案例的店。关键词与官方榜单均可作为入口；材料和报告分别记录。此处保存计划，真实调度需另行配置。</p></div>
   {!enabled&&<p role="status" className="rounded-md border p-3 text-sm">部署开关尚未开启，可保存设置；当前不会执行后台请求。</p>}
+  {state.draftFinalizationAvailable===false&&<p role="status" className="rounded-md border p-3 text-sm">请先完成 123 迁移，才能准备今日材料或自动保存报告草稿。</p>}
   {state.credentialAvailable===false&&<p role="status" className="text-sm">未配置乐天API凭据，官方来源当前不可用。</p>}
   {draft.revision!==state.settings.revision&&<div role="status" className="space-y-2 rounded-md border p-3 text-sm"><p>设置已在其他页面更新，未保存编辑仍保留。读取最新任务设置会替换当前未保存输入，请先保留需要的内容。</p><button className={buttonClass} disabled={busy} onClick={()=>{setDraft(state.settings);pending.current=null;setConfirmed(false);setMessage('已读取最新任务设置。');}}>读取最新任务设置</button></div>}
   <fieldset disabled={busy} className="space-y-4">
@@ -48,8 +49,8 @@ export function BusinessJobPanel({initialState,enabled}:{initialState:JobState;e
     <button className={buttonClass} onClick={()=>setDraft({...draft,sources:[...draft.sources,{mode:'search',keyword:'',category:'未分类',priceBand:'未知',businessModel:'待核对'}]})}>添加官方来源</button>
    </div>
    <label className="grid gap-1 text-sm">排除主店（每行一个乐天店铺ID）<textarea className={inputClass} rows={3} value={draft.excluded.map(value=>value.replace(/^rakuten:/,'')).join('\n')} onChange={e=>setDraft({...draft,excluded:e.target.value.split('\n').map(line=>line.trim()).filter(Boolean).map(value=>`rakuten:${value.replace(/^rakuten:/,'')}`)})}/></label>
-   <div className="space-y-2 rounded-md border p-3"><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.autoAI} onChange={e=>setDraft({...draft,autoAI:e.target.checked})}/>自动AI：允许每日任务把官方公开标量字段交给 Google Gemini 生成并发布拆解</label><p className="text-xs leading-5 text-muted-foreground">自动许可第一版，仅楽天官方公开字段，不含人工摘录或私人笔记。逐次案例许可不会升级为本许可；关闭后拒绝下一次请求及在途结果。AI只寻找解释失效和不可迁移的条件。</p>{draft.autoAI&&!state.settings.autoAI&&<label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>我明确同意上述自动AI范围与版本</label>}</div>
-   <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={refreshFailed||draft.revision!==state.settings.revision||(draft.autoAI&&!state.settings.autoAI&&!confirmed)} onClick={()=>void save()}>保存任务设置</button><button className={buttonClass} disabled={refreshFailed||!enabled||!state.settings.enabled} onClick={()=>void prepare('manual')}>准备今日</button><button className={buttonClass} onClick={()=>{setBusy(true);void refresh().then(()=>setMessage('任务记录已刷新')).catch(error=>setMessage(errorText(error))).finally(()=>setBusy(false));}}>刷新任务记录</button></div>
+   <div className="space-y-2 rounded-md border p-3"><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.autoAI} onChange={e=>setDraft({...draft,autoAI:e.target.checked})}/>自动AI：允许每日任务把官方公开标量字段交给 Google Gemini 生成拆解；完整报告自动发布，有校验缺口则保存草稿供核对</label><p className="text-xs leading-5 text-muted-foreground">自动许可第一版，仅楽天官方公开字段，不含人工摘录或私人笔记。逐次案例许可不会升级为本许可；关闭后拒绝下一次请求及在途结果。AI只寻找解释失效和不可迁移的条件。</p>{draft.autoAI&&!state.settings.autoAI&&<label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>我明确同意上述自动AI范围与版本</label>}</div>
+   <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={refreshFailed||draft.revision!==state.settings.revision||(draft.autoAI&&!state.settings.autoAI&&!confirmed)} onClick={()=>void save()}>保存任务设置</button><button className={buttonClass} disabled={refreshFailed||state.draftFinalizationAvailable===false||!enabled||!state.settings.enabled} onClick={()=>void prepare('manual')}>准备今日</button><button className={buttonClass} onClick={()=>{setBusy(true);void refresh().then(()=>setMessage('任务记录已刷新')).catch(error=>setMessage(errorText(error))).finally(()=>setBusy(false));}}>刷新任务记录</button></div>
   </fieldset>
   <button className={buttonClass} disabled={pausing||(!state.settings.enabled&&!state.settings.autoAI)} onClick={()=>void pause()}>{pausing?'正在暂停…':'立即暂停并撤回自动AI'}</button>
   {message&&<p role="status" className="break-words text-sm">{message}</p>}

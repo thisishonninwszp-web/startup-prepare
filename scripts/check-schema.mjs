@@ -189,6 +189,11 @@ if (process.argv.includes("--business-learning")) {
     if(response.ok || body.code!=="42501") {failed=true;console.error(`BUSINESS LEARNING RPC ERROR ${name}: ${body.code??response.status} ${body.message??"owner guard absent"}`);}
   }
 }
+if (process.argv.includes("--business-job-drafts")) {
+  const response = await fetch(`${baseUrl}/rest/v1/rpc/business_job_draft_capability`, {method:"POST",headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,"Content-Type":"application/json"},body:JSON.stringify({p_user_id:null})});
+  const body = await response.json().catch(()=>({}));
+  if(response.ok || body.code!=="42501") {failed=true;console.error(`BUSINESS DRAFT RPC ERROR (123): ${body.code??response.status} ${body.message??"owner guard absent"}`);}
+}
 if (process.argv.includes("--business-jobs")) {
   for (const contract of [["business_job_settings","user_id,revision,consent_version,consent_revoked_at"], ["business_job_runs","id,user_id,local_date,status,material_status,report_status"], ["business_job_attempts","id,user_id,run_id,kind,status,usage,operation_reference"]]) {
     const error = await probe(contract); if(error){failed=true;console.error(`BUSINESS JOB SCHEMA ERROR ${error}`);}

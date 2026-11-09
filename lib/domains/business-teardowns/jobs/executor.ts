@@ -6,17 +6,19 @@ import {admissible,type QueuedCandidate} from '../rules';
 import {validateSavedBusinessReport,hasBusinessReportGaps} from '../report-partial';
 import type {DraftStart,DraftLease,ReportSource,CaseSection} from '../report-domain';
 import type {SnapshotInput} from '../domain';
-import {jobCommand,businessJobsEnabled} from './commands';
+import {jobCommand,businessJobsEnabled,businessJobDraftsAvailable} from './commands';
+import {fitBusinessReportArchive} from '../report-archive';
 import type {JobResult,JobLease,JobState} from './types';
-export type JobDependencies={command:<T>(operation:string,input?:object)=>Promise<T>;search:typeof searchBusinessCandidates;inspect:typeof inspectRakutenItem;generate:typeof generateBusinessTeardownReport;enabled:()=>boolean;aiEnabled:()=>boolean;sleep:(ms:number)=>Promise<void>;now:()=>Date};
+export type JobDependencies={command:<T>(operation:string,input?:object)=>Promise<T>;search:typeof searchBusinessCandidates;inspect:typeof inspectRakutenItem;generate:typeof generateBusinessTeardownReport;enabled:()=>boolean;aiEnabled:()=>boolean;draftsAvailable:()=>Promise<boolean>;sleep:(ms:number)=>Promise<void>;now:()=>Date};
 const AUTO_SCALARS=new Set(['itemCode','itemName','shopCode','shopName','itemUrl','shopUrl','itemPrice','hasPriceRange','itemPriceBaseField','itemPriceMin1','itemPriceMax1','itemPriceMin2','itemPriceMax2','itemPriceMin3','itemPriceMax3','reviewCount','availability','taxFlag','postageFlag','creditCardFlag','giftFlag','startTime','endTime','genreId','currency']);
 export function officialScalarSnapshot(snapshot:SnapshotInput):SnapshotInput{
  if(snapshot.platform!=='rakuten'||snapshot.origin!=='official_api'||snapshot.captureScope!=='api_fields'||snapshot.capturedText!==null)throw new Error('自动任务只允许官方公开标量材料');
  return {...snapshot,capturedText:null,structured:Object.fromEntries(Object.entries(snapshot.structured).filter(([key,value])=>AUTO_SCALARS.has(key)&&['string','number','boolean'].includes(typeof value)))};
 }
 export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'open',injected?:JobDependencies):Promise<JobResult>{
- const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
+ const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',draftsAvailable:()=>businessJobDraftsAvailable(owner),sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
  if(!d.enabled())return {status:'disabled'};
+ if(!await d.draftsAvailable())return {status:'schema_required',message:'请先执行123迁移，再准备今日材料或生成报告'};
  let run=await d.command<JobLease>('claim',{trigger});if(run.status!=='running')return run;
  let httpReservations=0;
  const assertEnabled=()=>{if(!d.enabled())throw new Error('自动任务开关已暂停');};
@@ -81,9 +83,9 @@ export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'o
   const sections:CaseSection[]=await d.generate({ownerId:owner,caseId:lease.caseId,requestId:lease.requestId,sources:before.sources});
   await check(true);const after=await d.command<{sources:ReportSource[]}>('verify_ai',{...run,draftLease:lease});
   const checked=validateSavedBusinessReport({sections},after.sources);
-  if(hasBusinessReportGaps(checked))throw new Error('报告含校验缺口，自动任务未保存或发布部分结果；请在手动流程重新确认材料后生成并核对');
   await d.command('settle',{...run,ticketId:ticket.id,status:'completed',usage:null});
-  await check(true);return await d.command<JobResult>('finish',{...run,draftLease:lease,report:{sections:checked,model:MODEL,promptVersion:BUSINESS_REPORT_PROMPT_VERSION}});
+  const envelope={...run,draftLease:lease};const report=fitBusinessReportArchive(envelope,{sections:checked,model:MODEL,promptVersion:BUSINESS_REPORT_PROMPT_VERSION});
+  await check(true);return await d.command<JobResult>(hasBusinessReportGaps(checked)?'finish_draft':'finish',{...envelope,report});
  }catch(error){
   const message=error instanceof Error?error.message:'任务执行出错';
   try{return await d.command<JobResult>('fail',{...run,message});}catch(receiptError){throw new Error(`${message}；任务失败回执未确认：${receiptError instanceof Error?receiptError.message:'未知错误'}`);}
