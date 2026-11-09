@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-vi.mock('@/lib/supabase',()=>({supabaseAdmin:{rpc:vi.fn()}}));
+vi.mock('@/lib/supabase',()=>{const client={rpc:vi.fn()};return {supabaseAdmin:client,supabaseAdminUncached:client};});
 vi.mock('@/lib/ai',()=>({generateBusinessTeardownReport:vi.fn(),MODEL:'mock',BUSINESS_REPORT_PROMPT_VERSION:'v1'}));
 import {executeBusinessJob,type JobDependencies} from './executor';
 import {AUTO_POLICY_VERSION} from '../rules';

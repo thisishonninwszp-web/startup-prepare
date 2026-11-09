@@ -1,4 +1,4 @@
-import {supabaseAdmin} from '@/lib/supabase';
+import {supabaseAdminUncached as supabaseAdmin} from '@/lib/supabase';
 import {uuid} from '../domain';
 import {rakutenKeys} from '@/lib/rakuten';
 import {DEFAULT_JOB_SETTINGS,type JobState,type JobSettings} from './types';

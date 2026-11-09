@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-vi.mock('@/lib/supabase',()=>({supabaseAdmin:{rpc:vi.fn()}}));
+vi.mock('@/lib/supabase',()=>{const client={rpc:vi.fn()};return {supabaseAdmin:client,supabaseAdminUncached:client};});
 import {supabaseAdmin} from '@/lib/supabase';
 import {loadBusinessJobState,businessJobDraftsAvailable} from './commands';
 const owner='10000000-0000-4000-8000-000000000001';

@@ -39,3 +39,22 @@ export const supabaseAdmin = new Proxy({} as SupabaseClient, {
       : val;
   },
 });
+
+let _uncachedClient: SupabaseClient | null = null;
+
+/** Task commands must observe current settings and receipts on every request. */
+export const supabaseAdminUncached = new Proxy({} as SupabaseClient, {
+  get(_, prop: string | symbol) {
+    if (!_uncachedClient) {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) throw new Error("Missing Supabase env vars");
+      _uncachedClient = createClient(url, key, {
+        auth: { autoRefreshToken: false, persistSession: false },
+        global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
+      });
+    }
+    const val = (_uncachedClient as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof val === "function" ? val.bind(_uncachedClient) : val;
+  },
+});
