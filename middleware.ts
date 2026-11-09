@@ -18,6 +18,8 @@ const TOKEN_AUTH_PREFIXES = ["/api/cron/", "/api/share", "/api/flow-card", "/rec
 export async function middleware(request: NextRequest) {
   if (TOKEN_AUTH_PREFIXES.some((p) => request.nextUrl.pathname.startsWith(p))) return NextResponse.next();
   let supabaseResponse = NextResponse.next({ request });
+  // @supabase/ssr 写登录 cookie 时一起给的「别缓存」头：带着 token 的响应被 CDN 缓存，会把一个人的登录发给另一个人。
+  let authHeaders: Record<string, string> = {};
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,13 +29,17 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
+          );
+          authHeaders = headers ?? {};
+          Object.entries(authHeaders).forEach(([key, value]) =>
+            supabaseResponse.headers.set(key, value)
           );
         },
       },
@@ -46,31 +52,30 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (!user && pathname !== "/login") {
+  // getUser() 可能刚用掉旧的 refresh token、换了新的。跳转的响应是另起的，不把新 cookie 抄过去，
+  // 浏览器就还拿着用过的那个，过了 Supabase 的重用窗口再来就是 refresh_token_already_used，人被登出。
+  const redirectTo = (path: string) => {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
+    url.pathname = path;
+    const response = NextResponse.redirect(url);
+    supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie));
+    Object.entries(authHeaders).forEach(([key, value]) =>
+      response.headers.set(key, value)
+    );
+    return response;
+  };
+
+  if (!user && pathname !== "/login") return redirectTo("/login");
 
   // 不在使用名单上的账号（配了 IDEAOS_USER_EMAIL / IDEAOS_MEMBERS 时）：哪里都去不了，只停在「还没对你开放」。
   // server action 走的是页面地址的 POST，也会在这里被拦下 —— 陌生人注册了也花不了 AI 的钱。
   if (user && !isAllowedEmail(user.email)) {
     if (pathname === "/not-member") return supabaseResponse;
-    const url = request.nextUrl.clone();
-    url.pathname = "/not-member";
-    return NextResponse.redirect(url);
+    return redirectTo("/not-member");
   }
-  if (user && pathname === "/not-member") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
-  }
+  if (user && pathname === "/not-member") return redirectTo("/dashboard");
 
-  if (user && (pathname === "/login" || pathname === "/")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
-  }
+  if (user && (pathname === "/login" || pathname === "/")) return redirectTo("/dashboard");
 
   return supabaseResponse;
 }
