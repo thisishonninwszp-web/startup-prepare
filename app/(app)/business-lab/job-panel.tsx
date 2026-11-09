@@ -5,7 +5,7 @@ import {loadBusinessJobStateAction,saveBusinessJobSettingsAction,prepareBusiness
 import type {JobState,JobSettings,JobLease,SourceConfiguration} from '@/lib/domains/business-teardowns/jobs/types';
 const inputClass='min-w-0 rounded-md border bg-background px-3 py-2 text-sm';
 const buttonClass='rounded-md border px-3 py-2 text-sm disabled:opacity-50';
-const statusLabel:Record<string,string>={running:'处理中',busy:'已有任务正在处理',completed:'报告已发布',draft_ready:'草稿已保存',schema_required:'请先完成 123 迁移',materials_ready:'材料已准备',failed:'任务出错',unknown:'结果或用量未知',disabled:'任务未开启',not_due:'未到东京计划时间'};
+const statusLabel:Record<string,string>={owner_only:'每日生意任务目前仅供主账号使用',running:'处理中',busy:'已有任务正在处理',completed:'报告已发布',draft_ready:'草稿已保存',schema_required:'请先完成 123 迁移',materials_ready:'材料已准备',failed:'任务出错',unknown:'结果或用量未知',disabled:'任务未开启',not_due:'未到东京计划时间'};
 const detailLabel:Record<string,string>={ready:'已就绪',pending:'未开始',started:'处理中',published:'已发布',draft:'已保存（未自动发布）',not_permitted:'未开启自动AI',not_started:'未开始',failed:'出错',unknown:'结果或用量未知',completed:'已完成'};
 const stageLabel:Record<string,string>={discovery:'来源发现',inspect:'商品核对',report:'报告生成'};
 export function BusinessJobPanel({initialState,enabled}:{initialState:JobState;enabled:boolean}){

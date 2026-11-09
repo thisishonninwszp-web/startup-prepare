@@ -6775,3 +6775,2993 @@ create policy "signal_opens_owner" on signal_opens for all using (auth.uid() = u
 -- 和每日练习的拆解卡同一个形状（lib/domains/signals/breakdown-shared.ts 的 Breakdown）；没拆过是 null。
 
 alter table forecast_questions add column if not exists breakdown jsonb;
+
+-- ============================================================================
+-- Synced migration: 102_signal_reading_preferences.sql
+-- ============================================================================
+-- Explicit reading choices belong to the viewer, including when the report is shared.
+create table if not exists signal_reading_preferences (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  event_key text not null check (char_length(event_key) between 1 and 250),
+  signal_id uuid not null references external_signals(id) on delete cascade,
+  event_label text check (char_length(event_label) <= 200),
+  preference text not null check (preference in ('follow', 'mute')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, event_key)
+);
+create index if not exists signal_reading_preferences_user_idx
+  on signal_reading_preferences(user_id, updated_at desc);
+alter table signal_reading_preferences enable row level security;
+drop policy if exists "signal_reading_preferences_owner" on signal_reading_preferences;
+create policy "signal_reading_preferences_owner" on signal_reading_preferences
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- Synced migration: 103_signal_judgment_updates.sql
+-- ============================================================================
+-- A later view is a new entry. The original prediction remains the basis for reconciliation.
+create table if not exists signal_judgment_updates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  judgment_id uuid not null references signal_judgments (id) on delete cascade,
+  judgment text not null check (char_length(btrim(judgment)) between 4 and 500),
+  reason text not null check (char_length(btrim(reason)) between 4 and 1000),
+  source_url text check (source_url is null or (char_length(source_url) <= 2000 and source_url ~ '^https?://[^[:space:]]+$')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists signal_judgment_updates_history_idx
+  on signal_judgment_updates (user_id, judgment_id, created_at, id);
+
+alter table signal_judgment_updates enable row level security;
+drop policy if exists signal_judgment_updates_read on signal_judgment_updates;
+create policy signal_judgment_updates_read on signal_judgment_updates for select
+  using (auth.uid() = user_id);
+drop policy if exists signal_judgment_updates_append on signal_judgment_updates;
+create policy signal_judgment_updates_append on signal_judgment_updates for insert
+  with check (auth.uid() = user_id and exists (
+    select 1 from signal_judgments j where j.id = judgment_id and j.user_id = auth.uid()
+  ));
+
+-- Also enforce ownership when the server uses its service role and bypasses RLS.
+create or replace function check_signal_judgment_update_owner() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if not exists (select 1 from signal_judgments j where j.id = new.judgment_id and j.user_id = new.user_id) then
+    raise exception 'Judgment update owner does not match the original judgment';
+  end if;
+  new.created_at := now();
+  return new;
+end;
+$$;
+drop trigger if exists signal_judgment_update_owner on signal_judgment_updates;
+create trigger signal_judgment_update_owner before insert on signal_judgment_updates
+  for each row execute function check_signal_judgment_update_owner();
+
+create or replace function preserve_signal_judgment_update() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  -- Permit cascades when an account or the parent record is removed.
+  if tg_op = 'DELETE' and pg_trigger_depth() > 1 then return old; end if;
+  raise exception 'Judgment history is append-only';
+end;
+$$;
+drop trigger if exists signal_judgment_update_immutable on signal_judgment_updates;
+create trigger signal_judgment_update_immutable before update or delete on signal_judgment_updates
+  for each row execute function preserve_signal_judgment_update();
+
+revoke update, delete on signal_judgment_updates from anon, authenticated;
+
+
+-- ============================================================================
+-- Synced migration: 104_signal_reading_sessions.sql
+-- ============================================================================
+-- 阅读终点由用户主动决定；展开不等于读完。快照用于识别结束后报告新增的条目。
+create table if not exists public.signal_reading_sessions (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  report_date date not null,
+  signal_ids uuid[] not null check (cardinality(signal_ids) between 1 and 200),
+  stopped_at timestamptz not null default now(),
+  primary key (user_id, report_date)
+);
+alter table public.signal_reading_sessions enable row level security;
+drop policy if exists "signal_reading_sessions_owner" on public.signal_reading_sessions;
+create policy "signal_reading_sessions_owner" on public.signal_reading_sessions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- Synced migration: 105_signal_event_dossiers.sql
+-- ============================================================================
+-- Private, explicitly curated event dossiers. No AI, scores, or automatic membership.
+create table public.signal_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null check (length(btrim(title)) between 1 and 120),
+  scope_note text check (length(scope_note) <= 1000),
+  revision bigint not null default 0 check (revision >= 0),
+  client_request_id uuid not null,
+  created_at timestamptz not null default now(),
+  archived_at timestamptz,
+  unique(user_id,id), unique(user_id,client_request_id)
+);
+create index signal_events_page on public.signal_events(user_id,created_at desc,id desc);
+
+create table public.signal_source_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  signal_id uuid not null references public.external_signals(id) on delete restrict,
+  title text not null check(length(btrim(title)) between 1 and 1000),
+  source_name text not null check(length(btrim(source_name)) between 1 and 200),
+  source_url text check(source_url is null or (length(source_url) <= 4096 and source_url ~* '^https?://[^/[:space:]]+' and source_url !~* '^https?://[^/]*@')),
+  published_at timestamptz,
+  captured_at timestamptz not null default now(),
+  source_fetched_at timestamptz,
+  capture_scope text not null check(capture_scope in ('summary','excerpt','body')),
+  captured_text text not null check(length(btrim(captured_text)) between 1 and 100000),
+  payload_hash text not null check(payload_hash ~ '^[a-f0-9]{64}$'),
+  unique(user_id,id,signal_id), unique(user_id,signal_id,payload_hash)
+);
+create table public.signal_event_memberships (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  event_id uuid not null,
+  signal_id uuid not null references public.external_signals(id) on delete restrict,
+  snapshot_id uuid,
+  action text not null check(action in ('include','exclude')),
+  revision bigint not null check(revision > 0),
+  client_request_id uuid not null,
+  note text check(length(note) <= 1000),
+  occurred_from text, occurred_to text, occurred_precision text, occurred_quote text,
+  created_at timestamptz not null default now(),
+  foreign key(user_id,event_id) references public.signal_events(user_id,id) on delete cascade,
+  foreign key(user_id,snapshot_id,signal_id) references public.signal_source_snapshots(user_id,id,signal_id) on delete restrict,
+  unique(event_id,revision), unique(user_id,client_request_id),
+  check(action<>'include' or snapshot_id is not null),
+  check ((occurred_from is null and occurred_to is null and occurred_precision is null and occurred_quote is null) or
+    (occurred_from is not null and occurred_precision in ('day','month','year') and length(btrim(occurred_quote)) between 1 and 4000))
+);
+create index signal_event_members_latest on public.signal_event_memberships(user_id,event_id,signal_id,revision desc);
+
+alter table public.signal_events enable row level security;
+alter table public.signal_source_snapshots enable row level security;
+alter table public.signal_event_memberships enable row level security;
+create policy event_owner_read on public.signal_events for select to authenticated using(auth.uid()=user_id);
+create policy snapshot_owner_read on public.signal_source_snapshots for select to authenticated using(auth.uid()=user_id);
+create policy membership_owner_read on public.signal_event_memberships for select to authenticated using(auth.uid()=user_id);
+revoke all on public.signal_events,public.signal_source_snapshots,public.signal_event_memberships from anon,authenticated;
+grant select on public.signal_events,public.signal_source_snapshots,public.signal_event_memberships to authenticated;
+grant all on public.signal_events,public.signal_source_snapshots,public.signal_event_memberships to service_role;
+
+-- Date precision remains text: a month/year never masquerades as an exact day.
+create function public.signal_occurrence_date(value text, p_precision text) returns date
+language plpgsql immutable set search_path=public,pg_temp as $$
+declare normalized text; result date;
+begin
+  if value is null then return null; end if;
+  if p_precision='day' and value ~ '^\d{4}-\d{2}-\d{2}$' then normalized:=value;
+  elsif p_precision='month' and value ~ '^\d{4}-\d{2}$' then normalized:=value||'-01';
+  elsif p_precision='year' and value ~ '^\d{4}$' then normalized:=value||'-01-01';
+  else raise exception 'invalid occurrence precision'; end if;
+  result:=normalized::date;
+  if to_char(result,'YYYY-MM-DD')<>normalized then raise exception 'invalid occurrence date'; end if;
+  return result;
+end $$;
+
+create function public.signal_event_guard_owner(p_user_id uuid) returns void
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+begin
+  if p_user_id is null or (coalesce(auth.role(),'')<>'service_role' and auth.uid() is distinct from p_user_id) then
+    raise exception 'event owner required' using errcode='42501';
+  end if;
+end $$;
+
+create function public.signal_snapshot_immutable() returns trigger
+language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  if tg_op='INSERT' then new.captured_at:=clock_timestamp(); return new; end if;
+  if tg_op='DELETE' and not exists(select 1 from auth.users where id=old.user_id) then return old; end if;
+  raise exception 'source snapshots are immutable';
+end $$;
+create trigger source_snapshot_immutable before insert or update or delete on public.signal_source_snapshots for each row execute function public.signal_snapshot_immutable();
+
+create function public.signal_membership_immutable() returns trigger
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare text_copy text; from_date date; to_date date;
+begin
+  if tg_op='DELETE' and (not exists(select 1 from auth.users where id=old.user_id) or not exists(select 1 from public.signal_events where id=old.event_id and user_id=old.user_id)) then return old; end if;
+  if tg_op<>'INSERT' then raise exception 'membership history is append only'; end if;
+  if new.occurred_from is not null then
+    from_date:=public.signal_occurrence_date(new.occurred_from,new.occurred_precision);
+    to_date:=public.signal_occurrence_date(new.occurred_to,new.occurred_precision);
+    if to_date<from_date then raise exception 'occurrence interval reversed'; end if;
+    select captured_text into text_copy from public.signal_source_snapshots where id=new.snapshot_id and user_id=new.user_id and signal_id=new.signal_id;
+    if text_copy is null or new.occurred_quote is null or position(new.occurred_quote in text_copy)=0 then raise exception 'occurrence quote absent from snapshot'; end if;
+  end if;
+  return new;
+end $$;
+create trigger membership_immutable before insert or update or delete on public.signal_event_memberships for each row execute function public.signal_membership_immutable();
+
+create function public.create_signal_event(p_user_id uuid,p_title text,p_scope_note text,p_request_id uuid) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare row public.signal_events;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  if p_request_id is null or p_title is null or length(btrim(p_title)) not between 1 and 120 or length(p_scope_note)>1000 then raise exception 'invalid event input'; end if;
+  -- Unique insertion serializes concurrent retries, then compare the original payload.
+  insert into public.signal_events(user_id,title,scope_note,client_request_id)
+    values(p_user_id,btrim(p_title),nullif(btrim(p_scope_note),''),p_request_id)
+    on conflict(user_id,client_request_id) do nothing;
+  select * into row from public.signal_events where user_id=p_user_id and client_request_id=p_request_id for update;
+  if row.title is distinct from btrim(p_title) or row.scope_note is distinct from nullif(btrim(p_scope_note),'') then raise exception 'request payload conflict' using errcode='23505'; end if;
+  return jsonb_build_object('id',row.id,'revision',row.revision);
+end $$;
+
+create function public.revise_signal_event_member(p_user_id uuid,p_event_id uuid,p_signal_id uuid,p_snapshot_id uuid,p_action text,p_request_id uuid,p_note text default null,p_occurred_from text default null,p_occurred_to text default null,p_occurred_precision text default null,p_occurred_quote text default null) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare event_row public.signal_events; old_row public.signal_event_memberships; snapshot uuid; new_revision bigint;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  if p_event_id is null or p_signal_id is null or p_request_id is null or p_action is null or p_action not in ('include','exclude') or length(p_note)>1000 then raise exception 'invalid member input'; end if;
+  select * into event_row from public.signal_events where id=p_event_id and user_id=p_user_id for update;
+  if not found or event_row.archived_at is not null then raise exception 'event unavailable' using errcode='42501'; end if;
+  select * into old_row from public.signal_event_memberships where user_id=p_user_id and client_request_id=p_request_id;
+  if found then
+    if old_row.event_id is distinct from p_event_id or old_row.signal_id is distinct from p_signal_id or old_row.action is distinct from p_action or
+      (p_snapshot_id is not null and old_row.snapshot_id is distinct from p_snapshot_id) or old_row.note is distinct from nullif(btrim(p_note),'') or
+      old_row.occurred_from is distinct from p_occurred_from or old_row.occurred_to is distinct from p_occurred_to or old_row.occurred_precision is distinct from p_occurred_precision or old_row.occurred_quote is distinct from p_occurred_quote then raise exception 'request payload conflict' using errcode='23505'; end if;
+    return jsonb_build_object('revision',old_row.revision);
+  end if;
+  if p_action='exclude' then
+    if p_snapshot_id is not null or p_occurred_from is not null or p_occurred_to is not null or p_occurred_precision is not null or p_occurred_quote is not null then raise exception 'exclude cannot supply source or dates'; end if;
+    select * into old_row from public.signal_event_memberships where user_id=p_user_id and event_id=p_event_id and signal_id=p_signal_id order by revision desc limit 1;
+    snapshot:=old_row.snapshot_id;
+  else
+    snapshot:=p_snapshot_id;
+    if snapshot is null or not exists(select 1 from public.signal_source_snapshots where user_id=p_user_id and id=snapshot and signal_id=p_signal_id) then raise exception 'source snapshot unavailable' using errcode='42501'; end if;
+  end if;
+  update public.signal_events set revision=revision+1 where id=p_event_id returning revision into new_revision;
+  insert into public.signal_event_memberships(user_id,event_id,signal_id,snapshot_id,action,revision,client_request_id,note,occurred_from,occurred_to,occurred_precision,occurred_quote)
+    values(p_user_id,p_event_id,p_signal_id,snapshot,p_action,new_revision,p_request_id,nullif(btrim(p_note),''),p_occurred_from,p_occurred_to,p_occurred_precision,p_occurred_quote);
+  return jsonb_build_object('revision',new_revision);
+end $$;
+
+create function public.list_signal_events(p_user_id uuid,p_search text default '',p_cursor text default null,p_limit integer default 20) returns jsonb
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare result jsonb; cursor_data jsonb;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  if p_limit is null or p_limit not between 1 and 100 or length(p_search)>200 then raise exception 'invalid page input'; end if;
+  cursor_data:=p_cursor::jsonb;
+  with selected as (
+    select id,title,scope_note,revision,created_at,archived_at from public.signal_events
+    where user_id=p_user_id and archived_at is null and (coalesce(p_search,'')='' or title ilike '%'||replace(replace(replace(p_search,'\','\\'),'%','\%'),'_','\_')||'%')
+      and (p_cursor is null or (created_at,id)<((cursor_data->>'at')::timestamptz,(cursor_data->>'id')::uuid))
+    order by created_at desc,id desc limit p_limit+1
+  ), page as (select * from selected order by created_at desc,id desc limit p_limit)
+  select jsonb_build_object('items',coalesce((select jsonb_agg(to_jsonb(page) order by created_at desc,id desc) from page),'[]'::jsonb),
+    'nextCursor',case when (select count(*) from selected)>p_limit then (select jsonb_build_object('at',created_at,'id',id)::text from page order by created_at,id limit 1) else null end) into result;
+  return result;
+end $$;
+
+create function public.signal_event_timeline(p_user_id uuid,p_event_id uuid,p_mode text default 'published',p_cursor text default null,p_limit integer default 20) returns jsonb
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare result jsonb; cursor_data jsonb;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  if p_mode is null or p_mode not in ('published','occurred','captured') or p_limit is null or p_limit not between 1 and 100 then raise exception 'invalid timeline input'; end if;
+  if not exists(select 1 from public.signal_events where user_id=p_user_id and id=p_event_id) then raise exception 'event unavailable' using errcode='42501'; end if;
+  cursor_data:=p_cursor::jsonb;
+  if p_cursor is not null and cursor_data->>'mode' is distinct from p_mode then raise exception 'cursor mode mismatch'; end if;
+  with latest as (
+    select distinct on (m.signal_id) m.* from public.signal_event_memberships m
+    where m.user_id=p_user_id and m.event_id=p_event_id order by m.signal_id,m.revision desc
+  ), entries as (
+    select m.signal_id,s.id as snapshot_id,s.title,s.source_name,s.source_url,s.published_at,s.captured_at,s.source_fetched_at,s.captured_text,s.capture_scope,
+      m.occurred_from,m.occurred_to,m.occurred_precision,m.occurred_quote,m.note,m.revision,
+      (select min(o.first_at) from public.signal_opens o where o.user_id=p_user_id and o.signal_id=m.signal_id) as first_open,
+      case p_mode when 'published' then s.published_at when 'captured' then s.captured_at else public.signal_occurrence_date(m.occurred_from,m.occurred_precision)::timestamp at time zone 'UTC' end as time_key
+    from latest m join public.signal_source_snapshots s on (s.user_id,s.id,s.signal_id)=(m.user_id,m.snapshot_id,m.signal_id)
+    where m.action='include'
+  ), selected as (
+    select * from entries where p_cursor is null or
+      (case when cursor_data->>'at' is null then time_key is null and snapshot_id<(cursor_data->>'id')::uuid
+        else time_key is null or (time_key,snapshot_id)<((cursor_data->>'at')::timestamptz,(cursor_data->>'id')::uuid) end)
+    order by time_key desc nulls last,snapshot_id desc limit p_limit+1
+  ), page as (select * from selected order by time_key desc nulls last,snapshot_id desc limit p_limit)
+  select jsonb_build_object('items',coalesce((select jsonb_agg(jsonb_build_object(
+    'signalId',signal_id,'snapshotId',snapshot_id,'title',title,'sourceName',source_name,'sourceUrl',source_url,
+    'publishedAt',published_at,'capturedAt',captured_at,'sourceFetchedAt',source_fetched_at,'capturedText',captured_text,'captureScope',capture_scope,
+    'occurred',case when occurred_from is null then null else jsonb_build_object('from',occurred_from,'to',occurred_to,'precision',occurred_precision,'quote',occurred_quote) end,
+    'firstRecordedOpenAt',first_open,'note',note,'revision',revision) order by time_key desc nulls last,snapshot_id desc) from page),'[]'::jsonb),
+    'nextCursor',case when (select count(*) from selected)>p_limit then (select jsonb_build_object('mode',p_mode,'at',time_key,'id',snapshot_id)::text from page order by time_key asc nulls first,snapshot_id asc limit 1) else null end) into result;
+  return result;
+end $$;
+
+create function public.suggest_signal_event_members(p_user_id uuid,p_event_id uuid,p_limit integer default 20) returns jsonb
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare event_title text; result jsonb;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  if p_limit is null or p_limit not between 1 and 100 then raise exception 'invalid candidate limit'; end if;
+  select title into event_title from public.signal_events where user_id=p_user_id and id=p_event_id;
+  if not found then raise exception 'event unavailable' using errcode='42501'; end if;
+  -- Any prior explicit exclusion remains excluded from suggestions. Inclusion always requires a command.
+  select coalesce(jsonb_agg(to_jsonb(candidate)),'[]'::jsonb) into result from (
+    select s.id,coalesce(s.title,'无标题') as title,s.source,s.url,s.fetched_at from public.external_signals s
+    where (to_tsvector('simple',coalesce(s.title,'')) @@ plainto_tsquery('simple',event_title)
+      or (select count(distinct substring(event_title from n for 2)) from generate_series(1,length(event_title)-1) n
+        where substring(event_title from n for 2) ~ '^[一-龥ぁ-んァ-ヶ]{2}$'
+          and position(substring(event_title from n for 2) in coalesce(s.title,''))>0)>=2)
+      and s.source not like 'github%'
+      and not exists(select 1 from public.signal_event_memberships m where m.user_id=p_user_id and m.event_id=p_event_id and m.signal_id=s.id)
+    order by s.fetched_at desc,s.id desc limit p_limit
+  ) candidate;
+  return result;
+end $$;
+
+create function public.signal_event_links(p_user_id uuid,p_signal_ids uuid[]) returns jsonb
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare result jsonb;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  if p_signal_ids is null or cardinality(p_signal_ids)>200 then raise exception 'invalid signal batch'; end if;
+  with latest as (
+    select distinct on (m.event_id,m.signal_id) m.event_id,m.signal_id,m.action
+    from public.signal_event_memberships m where m.user_id=p_user_id and m.signal_id=any(p_signal_ids)
+    order by m.event_id,m.signal_id,m.revision desc
+  ), grouped as (
+    select m.signal_id,jsonb_agg(jsonb_build_object('id',e.id,'title',e.title) order by e.created_at desc,e.id desc) as links
+    from latest m join public.signal_events e on e.id=m.event_id and e.user_id=p_user_id
+    where m.action='include' and e.archived_at is null group by m.signal_id
+  ) select coalesce(jsonb_object_agg(signal_id::text,links),'{}'::jsonb) into result from grouped;
+  return result;
+end $$;
+
+revoke all on function public.signal_occurrence_date(text,text),public.signal_event_guard_owner(uuid),public.signal_snapshot_immutable(),public.signal_membership_immutable() from public,anon,authenticated;
+revoke all on function public.create_signal_event(uuid,text,text,uuid),public.revise_signal_event_member(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text),public.list_signal_events(uuid,text,text,integer),public.signal_event_timeline(uuid,uuid,text,text,integer),public.suggest_signal_event_members(uuid,uuid,integer) from public,anon;
+grant execute on function public.create_signal_event(uuid,text,text,uuid),public.revise_signal_event_member(uuid,uuid,uuid,uuid,text,uuid,text,text,text,text,text),public.list_signal_events(uuid,text,text,integer),public.signal_event_timeline(uuid,uuid,text,text,integer),public.suggest_signal_event_members(uuid,uuid,integer) to authenticated,service_role;
+revoke all on function public.signal_event_links(uuid,uuid[]) from public,anon;
+grant execute on function public.signal_event_links(uuid,uuid[]) to authenticated,service_role;
+
+
+-- ============================================================================
+-- Synced migration: 106_signal_event_research.sql
+-- ============================================================================
+-- Typed append-only research journal: preserves each user's evolving evidence and views.
+create table public.signal_event_research_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  event_id uuid not null,
+  kind text not null check (kind in ('note','unknown','unknown_answer','explanation','explanation_evidence','expectation','expectation_resolution','perspective','source_link','dossier','connection','window','window_check','understanding')),
+  subject_id uuid,
+  payload jsonb not null check (jsonb_typeof(payload)='object' and octet_length(payload::text)<=65000),
+  client_request_id uuid not null,
+  created_at timestamptz not null default clock_timestamp(),
+  unique(id,user_id,event_id), unique(user_id,client_request_id),
+  foreign key (user_id,event_id) references public.signal_events(user_id,id) on delete cascade,
+  foreign key (subject_id,user_id,event_id) references public.signal_event_research_entries(id,user_id,event_id)
+);
+create index event_research_history on public.signal_event_research_entries(user_id,event_id,created_at,id);
+alter table public.signal_event_research_entries enable row level security;
+create policy event_research_owner on public.signal_event_research_entries for select to authenticated using(auth.uid()=user_id);
+revoke all on public.signal_event_research_entries from public,anon,authenticated;
+grant select on public.signal_event_research_entries to authenticated;
+grant select,insert on public.signal_event_research_entries to service_role;
+
+create function public.preserve_event_research() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  if tg_op='INSERT' then new.created_at:=clock_timestamp(); return new; end if;
+  if tg_op='DELETE' and (not exists(select 1 from auth.users where id=old.user_id) or not exists(select 1 from public.signal_events where id=old.event_id)) then return old; end if;
+  raise exception 'event research is append only';
+end $$;
+create trigger event_research_immutable before insert or update or delete on public.signal_event_research_entries for each row execute function public.preserve_event_research();
+
+create function public.append_signal_event_research(p_user_id uuid,p_event_id uuid,p_kind text,p_subject_id uuid,p_payload jsonb,p_request_id uuid) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare previous public.signal_event_research_entries; parent public.signal_event_research_entries; result public.signal_event_research_entries; ref jsonb; target uuid; allowed_event uuid; proof text; from_id uuid; to_id uuid;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  perform 1 from public.signal_events where id=p_event_id and user_id=p_user_id and archived_at is null for update;
+  if not found then raise exception 'event owner required' using errcode='42501'; end if;
+  if p_request_id is null or p_payload is null or jsonb_typeof(p_payload)<>'object' or octet_length(p_payload::text)>65000 then raise exception 'invalid research payload'; end if;
+  if exists(select 1 from jsonb_object_keys(p_payload) k where lower(k) ~ 'score|rating|confidence|percentage') then raise exception 'research does not accept scores'; end if;
+  if p_kind in ('window_check','dossier','understanding') and coalesce(auth.role(),'')<>'service_role' then raise exception 'server generated research only' using errcode='42501'; end if;
+  if p_kind in ('note','unknown_answer','explanation','explanation_evidence','expectation','expectation_resolution','perspective','connection') and nullif(btrim(p_payload->>'text'),'') is null then raise exception 'research text required'; end if;
+  if p_kind='unknown' and (nullif(btrim(p_payload->>'question'),'') is null or nullif(btrim(p_payload->>'criterion'),'') is null) then raise exception 'unknown requires question and criterion'; end if;
+  if p_kind='unknown_answer' and (p_payload->>'status' is null or p_payload->>'status' not in ('open','answered','closed')) then raise exception 'unknown status required'; end if;
+  if p_kind='explanation' and (nullif(btrim(p_payload->>'assumptions'),'') is null or nullif(btrim(p_payload->>'distinguish'),'') is null) then raise exception 'explanation needs assumptions and distinguishing observation'; end if;
+  if p_kind='explanation_evidence' and (p_payload->>'direction' is null or p_payload->>'direction' not in ('supports','contradicts','context') or jsonb_array_length(coalesce(p_payload->'refs','[]'::jsonb))=0) then raise exception 'explanation needs evidence'; end if;
+  if p_kind='expectation' then
+    if p_payload->>'dueAt' is null or p_payload->>'dueAt' !~ '^\d{4}-\d{2}-\d{2}$' or nullif(btrim(p_payload->>'criterion'),'') is null then raise exception 'expectation requires date and criterion'; end if;
+    perform (p_payload->>'dueAt')::date;
+  end if;
+  if p_kind='perspective' and (p_payload->>'role' is null or p_payload->>'role' not in ('customer','employee','operator','supplier') or nullif(btrim(p_payload->>'questions'),'') is null or jsonb_array_length(coalesce(p_payload->'refs','[]'::jsonb))=0) then raise exception 'perspective requires source evidence and questions'; end if;
+  if p_kind='window' and (p_payload->>'url' is null or p_payload->>'url' !~ '^https?://' or p_payload->>'cadence' is null or p_payload->>'cadence' not in ('manual','weekly','monthly') or jsonb_typeof(p_payload->'field') is distinct from 'string') then raise exception 'invalid observation window'; end if;
+  if p_kind='window_check' then
+    if p_payload->>'status' is null or p_payload->>'status' not in ('success','failed') or p_payload->>'url' is null or p_payload->>'url' !~ '^https?://' or p_payload->>'checkedAt' is null then raise exception 'invalid observation check'; end if;
+    perform (p_payload->>'checkedAt')::timestamptz;
+    if p_payload->>'status'='failed' and (nullif(btrim(p_payload->>'error'),'') is null or p_payload ?| array['value','excerpt','hash']) then raise exception 'failed check cannot contain success facts'; end if;
+    if p_payload->>'status'='success' and (p_payload->>'hash' is null or p_payload->>'hash' !~ '^[a-f0-9]{64}$' or nullif(btrim(p_payload->>'excerpt'),'') is null) then raise exception 'successful check needs captured text'; end if;
+  end if;
+  if p_kind in ('dossier','understanding') then
+    if p_payload->>'inputHash' is null or p_payload->>'inputHash' !~ '^[a-f0-9]{64}$' or p_payload->>'task' is null or jsonb_typeof(p_payload->'sections') is distinct from 'array' or jsonb_array_length(p_payload->'sections') not between 1 and 12 then raise exception 'generated draft requires provenance'; end if;
+    for ref in select value from jsonb_array_elements(p_payload->'sections') loop
+      if nullif(btrim(ref->>'heading'),'') is null or nullif(btrim(ref->>'text'),'') is null or jsonb_typeof(ref->'refs') is distinct from 'array' then raise exception 'invalid generated section'; end if;
+      if jsonb_array_length(ref->'refs')=0 and jsonb_array_length(coalesce(ref->'noteRefs','[]'::jsonb))=0 and concat(ref->>'heading',ref->>'text') !~ '未知|待核实|需要核实|需要问|尚不清楚' then raise exception 'generated claim requires evidence'; end if;
+      if exists(select 1 from jsonb_array_elements(ref->'refs') r where not coalesce(p_payload->'refs','[]'::jsonb) @> jsonb_build_array(r)) then raise exception 'section citation missing from validated refs'; end if;
+      if exists(select 1 from jsonb_array_elements(coalesce(ref->'noteRefs','[]'::jsonb)) r where not coalesce(p_payload->'noteRefs','[]'::jsonb) @> jsonb_build_array(r)) then raise exception 'section note citation missing'; end if;
+      if exists(select 1 from jsonb_array_elements(coalesce(ref->'proposal'->'payload'->'refs','[]'::jsonb)) r where not coalesce(p_payload->'refs','[]'::jsonb) @> jsonb_build_array(r)) then raise exception 'proposal source citation missing'; end if;
+      if exists(select 1 from jsonb_array_elements(coalesce(ref->'proposal'->'payload'->'noteRefs','[]'::jsonb)) r where not coalesce(p_payload->'noteRefs','[]'::jsonb) @> jsonb_build_array(r)) then raise exception 'proposal note citation missing'; end if;
+    end loop;
+    if jsonb_typeof(coalesce(p_payload->'selectedSnapshotIds','[]'::jsonb))<>'array' or jsonb_array_length(coalesce(p_payload->'selectedSnapshotIds','[]'::jsonb))>12 or jsonb_typeof(coalesce(p_payload->'selectedNoteIds','[]'::jsonb))<>'array' or jsonb_array_length(coalesce(p_payload->'selectedNoteIds','[]'::jsonb))>10 then raise exception 'invalid selected input scope'; end if;
+    for ref in select value from jsonb_array_elements(coalesce(p_payload->'noteRefs','[]'::jsonb)) loop
+      if not coalesce(p_payload->'selectedNoteIds','[]'::jsonb) @> jsonb_build_array(ref->>'recordId') then raise exception 'unselected private note' using errcode='42501'; end if;
+    end loop;
+    if p_payload->>'targetEventId' is not null then
+      allowed_event:=(p_payload->>'targetEventId')::uuid;
+      if allowed_event=p_event_id or not exists(select 1 from public.signal_events where id=allowed_event and user_id=p_user_id) then raise exception 'draft target unavailable' using errcode='42501'; end if;
+    end if;
+  end if;
+  if jsonb_typeof(coalesce(p_payload->'noteRefs','[]'::jsonb))<>'array' or jsonb_array_length(coalesce(p_payload->'noteRefs','[]'::jsonb))>24 then raise exception 'invalid private note refs'; end if;
+  for ref in select value from jsonb_array_elements(coalesce(p_payload->'noteRefs','[]'::jsonb)) loop
+    if nullif(btrim(ref->>'quote'),'') is null or length(ref->>'quote')>1000 or not exists(select 1 from public.signal_event_research_entries r where r.id=(ref->>'recordId')::uuid and r.user_id=p_user_id and r.event_id=p_event_id and r.kind in ('note','explanation') and position(ref->>'quote' in r.payload->>'text')>0) then raise exception 'unavailable private note or quote mismatch' using errcode='42501'; end if;
+  end loop;
+  select * into previous from public.signal_event_research_entries where user_id=p_user_id and client_request_id=p_request_id;
+  if found then
+    if previous.event_id is distinct from p_event_id or previous.kind is distinct from p_kind or previous.subject_id is distinct from p_subject_id or previous.payload is distinct from p_payload then raise exception 'request payload conflict' using errcode='23505'; end if;
+    return to_jsonb(previous);
+  end if;
+  if p_subject_id is not null then
+    select * into parent from public.signal_event_research_entries where id=p_subject_id and event_id=p_event_id and user_id=p_user_id;
+    if not found then raise exception 'research parent unavailable' using errcode='42501'; end if;
+    if p_kind in ('note','explanation','source_link') and parent.kind is distinct from p_kind then raise exception 'research revision type mismatch'; end if;
+  end if;
+  if (p_kind='unknown_answer' and parent.kind is distinct from 'unknown') or (p_kind='explanation_evidence' and parent.kind is distinct from 'explanation') or (p_kind='expectation_resolution' and parent.kind is distinct from 'expectation') or (p_kind='window_check' and parent.kind is distinct from 'window') then raise exception 'research parent type mismatch'; end if;
+  if p_kind='expectation_resolution' then
+    if p_payload->>'result' is null or p_payload->>'result' not in ('happened','not_happened','unknown') or nullif(btrim(p_payload->>'text'),'') is null then raise exception 'invalid resolution'; end if;
+    if p_payload->>'result'='not_happened' and clock_timestamp()<((parent.payload->>'dueAt')||'T23:59:59+09:00')::timestamptz then raise exception 'expectation deadline has not passed'; end if;
+    if p_payload->>'result'<>'unknown' and jsonb_array_length(coalesce(p_payload->'refs','[]'::jsonb))=0 then raise exception 'resolution needs source evidence'; end if;
+  end if;
+  if p_kind='unknown_answer' and p_payload->>'status'='answered' and jsonb_array_length(coalesce(p_payload->'refs','[]'::jsonb))=0 then raise exception 'answer needs source evidence'; end if;
+  if p_kind='connection' then
+    allowed_event:=(p_payload->>'targetEventId')::uuid;
+    if allowed_event=p_event_id or not exists(select 1 from public.signal_events where id=allowed_event and user_id=p_user_id) then raise exception 'connection target unavailable' using errcode='42501'; end if;
+    if nullif(btrim(p_payload->>'assumption'),'') is null or nullif(btrim(p_payload->>'counter'),'') is null or nullif(btrim(p_payload->>'alternative'),'') is null then raise exception 'connection requires assumptions and alternatives'; end if;
+    if not exists(select 1 from jsonb_array_elements(coalesce(p_payload->'refs','[]'::jsonb)) r join public.signal_event_memberships m on m.snapshot_id=(r->>'snapshotId')::uuid where m.user_id=p_user_id and m.event_id=p_event_id and m.action='include') or not exists(select 1 from jsonb_array_elements(coalesce(p_payload->'refs','[]'::jsonb)) r join public.signal_event_memberships m on m.snapshot_id=(r->>'snapshotId')::uuid where m.user_id=p_user_id and m.event_id=allowed_event and m.action='include') then raise exception 'connection needs sources from both events'; end if;
+  end if;
+  if jsonb_typeof(coalesce(p_payload->'refs','[]'::jsonb))<>'array' or jsonb_array_length(coalesce(p_payload->'refs','[]'::jsonb))>24 then raise exception 'invalid source refs'; end if;
+  for ref in select value from jsonb_array_elements(coalesce(p_payload->'refs','[]'::jsonb)) loop
+    target:=(ref->>'snapshotId')::uuid; proof:=ref->>'quote';
+    if p_kind in ('dossier','understanding') and not coalesce(p_payload->'selectedSnapshotIds','[]'::jsonb) @> jsonb_build_array(target::text) then raise exception 'unselected source in generated draft'; end if;
+    if nullif(btrim(proof),'') is null or length(proof)>2000 or not exists (
+      select 1 from public.signal_source_snapshots s where s.id=target and s.user_id=p_user_id and position(proof in s.captured_text)>0
+      and exists(select 1 from public.signal_event_memberships m where m.user_id=p_user_id and m.snapshot_id=s.id and m.action='include' and (m.event_id=p_event_id or m.event_id=allowed_event))
+    ) then raise exception 'source quote unavailable' using errcode='42501'; end if;
+  end loop;
+  if p_kind='source_link' then
+    from_id:=(p_payload->>'fromSnapshotId')::uuid; to_id:=(p_payload->>'toSnapshotId')::uuid;
+    if from_id is null or to_id is null or from_id=to_id or p_payload->>'relation' is null or p_payload->>'relation' not in ('cites','reprints') or not exists(select 1 from jsonb_array_elements(p_payload->'refs') r where r->>'snapshotId'=from_id::text) then raise exception 'source relation needs explicit proof'; end if;
+    if exists(select 1 from unnest(array[from_id,to_id]) s(id) where not exists(select 1 from public.signal_event_memberships m where m.user_id=p_user_id and m.event_id=p_event_id and m.snapshot_id=s.id and m.action='include')) then raise exception 'source relation owner mismatch'; end if;
+    if coalesce((p_payload->>'active')::boolean,true) and exists(
+      with recursive latest as (
+        select distinct on(payload->>'fromSnapshotId',payload->>'toSnapshotId') payload,created_at,id from public.signal_event_research_entries
+        where user_id=p_user_id and event_id=p_event_id and kind='source_link' order by payload->>'fromSnapshotId',payload->>'toSnapshotId',created_at desc,id desc
+      ), edges as (select payload->>'fromSnapshotId' as a,payload->>'toSnapshotId' as b from latest where coalesce((payload->>'active')::boolean,true)),
+      reach(id) as (select to_id::text union select edges.b from edges join reach on edges.a=reach.id)
+      select 1 from reach where id=from_id::text
+    ) then raise exception 'source lineage cycle'; end if;
+  end if;
+  insert into public.signal_event_research_entries(user_id,event_id,kind,subject_id,payload,client_request_id) values(p_user_id,p_event_id,p_kind,p_subject_id,p_payload,p_request_id) returning * into result;
+  return to_jsonb(result);
+end $$;
+revoke all on function public.append_signal_event_research(uuid,uuid,text,uuid,jsonb,uuid),public.preserve_event_research() from public,anon;
+grant execute on function public.append_signal_event_research(uuid,uuid,text,uuid,jsonb,uuid) to authenticated,service_role;
+
+-- Short leases prevent duplicate paid generations for the same explicit input.
+create table public.signal_event_ai_jobs (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  event_id uuid not null,
+  input_hash text not null check(input_hash ~ '^[a-f0-9]{64}$'),
+  status text not null check(status in ('running','done','failed')),
+  lease_until timestamptz not null,
+  updated_at timestamptz not null default now(),
+  primary key(user_id,event_id,input_hash),
+  foreign key(user_id,event_id) references public.signal_events(user_id,id) on delete cascade
+);
+alter table public.signal_event_ai_jobs enable row level security;
+revoke all on public.signal_event_ai_jobs from public,anon,authenticated;
+grant select,insert,update on public.signal_event_ai_jobs to service_role;
+create function public.claim_signal_event_ai_job(p_user_id uuid,p_event_id uuid,p_input_hash text) returns boolean
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare claimed boolean;
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  if coalesce(auth.role(),'')<>'service_role' or not exists(select 1 from public.signal_events where id=p_event_id and user_id=p_user_id) then raise exception 'server owned generation required' using errcode='42501'; end if;
+  if p_input_hash is null or p_input_hash !~ '^[a-f0-9]{64}$' then raise exception 'invalid input hash'; end if;
+  insert into public.signal_event_ai_jobs(user_id,event_id,input_hash,status,lease_until) values(p_user_id,p_event_id,p_input_hash,'running',clock_timestamp()+interval '180 seconds')
+  on conflict(user_id,event_id,input_hash) do update set status='running',lease_until=clock_timestamp()+interval '180 seconds',updated_at=clock_timestamp()
+  where signal_event_ai_jobs.status<>'running' or signal_event_ai_jobs.lease_until<=clock_timestamp() returning true into claimed;
+  if coalesce(claimed,false)=false then raise exception 'same event analysis is already running'; end if;
+  return true;
+end $$;
+revoke all on function public.claim_signal_event_ai_job(uuid,uuid,text) from public,anon,authenticated;
+grant execute on function public.claim_signal_event_ai_job(uuid,uuid,text) to service_role;
+
+
+-- ============================================================================
+-- Synced migration: 107_signal_event_replay.sql
+-- ============================================================================
+-- Replay packets never have a reader SELECT policy: future material stays server-side.
+create table public.signal_event_replays (
+ id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
+ event_id uuid not null, cutoff timestamptz not null, mode text not null check(mode in ('archived','recovered')),
+ request_id uuid not null, revealed integer not null default 0 check(revealed>=0), guess text, guess_request uuid,
+ created_at timestamptz not null default now(),
+ foreign key(user_id,event_id) references public.signal_events(user_id,id) on delete cascade,
+ unique(user_id,request_id), unique(user_id,id), check(guess is null or length(btrim(guess)) between 1 and 4000)
+);
+create table public.signal_event_replay_packets (
+ session_id uuid not null references public.signal_event_replays(id) on delete cascade,
+ step integer not null check(step>=0), materials jsonb not null, primary key(session_id,step)
+);
+create table public.signal_event_replay_advances (
+ session_id uuid not null references public.signal_event_replays(id) on delete cascade,
+ request_id uuid not null, step integer not null, primary key(session_id,request_id)
+);
+alter table public.signal_event_replays enable row level security;
+alter table public.signal_event_replay_packets enable row level security;
+alter table public.signal_event_replay_advances enable row level security;
+revoke all on public.signal_event_replays, public.signal_event_replay_packets,public.signal_event_replay_advances from public,anon,authenticated;
+grant all on public.signal_event_replays,public.signal_event_replay_packets,public.signal_event_replay_advances to service_role;
+
+create function public.read_signal_event_replay(p_user_id uuid,p_event_id uuid,p_session_id uuid) returns jsonb
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare r public.signal_event_replays; materials jsonb;
+begin
+ perform public.signal_event_guard_owner(p_user_id);
+ select * into r from public.signal_event_replays where id=p_session_id and user_id=p_user_id and event_id=p_event_id;
+ if not found then raise exception 'replay unavailable' using errcode='42501'; end if;
+ select coalesce(jsonb_agg(item order by p.step,n),'[]'::jsonb) into materials
+ from public.signal_event_replay_packets p cross join lateral jsonb_array_elements(p.materials) with ordinality x(item,n)
+ where p.session_id=r.id and p.step<=r.revealed;
+ return jsonb_build_object('id',r.id,'cutoff',r.cutoff,'mode',r.mode,'guess',r.guess,'revealed',r.revealed,'materials',materials,
+ 'complete',r.guess is not null
+   and exists(select 1 from public.signal_event_replay_advances where session_id=r.id)
+   and not exists(select 1 from public.signal_event_replay_packets where session_id=r.id and step=r.revealed+1));
+end $$;
+
+create function public.create_signal_event_replay(p_user_id uuid,p_event_id uuid,p_cutoff timestamptz,p_mode text,p_request_id uuid) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare r public.signal_event_replays;
+begin
+ perform public.signal_event_guard_owner(p_user_id);
+ if p_cutoff is null or not isfinite(p_cutoff) or p_cutoff>clock_timestamp() or p_mode is null or p_mode not in ('archived','recovered') or p_request_id is null then raise exception 'invalid replay input'; end if;
+ -- Lock the owned event so concurrent membership revisions cannot split the freeze.
+ perform 1 from public.signal_events where id=p_event_id and user_id=p_user_id for update;
+ if not found then raise exception 'event unavailable' using errcode='42501'; end if;
+ select * into r from public.signal_event_replays where user_id=p_user_id and request_id=p_request_id;
+ if found then
+  if r.event_id is distinct from p_event_id or r.cutoff is distinct from p_cutoff or r.mode is distinct from p_mode then raise exception 'request payload conflict'; end if;
+  return jsonb_build_object('id',r.id);
+ end if;
+ insert into public.signal_event_replays(user_id,event_id,cutoff,mode,request_id) values(p_user_id,p_event_id,p_cutoff,p_mode,p_request_id) returning * into r;
+ -- Archived uses the actual membership log and source capture clock. Recovered deliberately
+ -- uses today's curated set and publication dates; every such item is labelled hindsight.
+ with latest as (
+  select distinct on(signal_id) * from public.signal_event_memberships where user_id=p_user_id and event_id=p_event_id order by signal_id,revision desc
+ ), candidates as (
+  select m.*,s.title,s.source_name,s.source_url,s.published_at,s.captured_at,s.captured_text,
+    case when p_mode='archived' then case when m.action='exclude' then m.created_at else greatest(m.created_at,s.captured_at,coalesce(s.published_at,m.created_at)) end else s.published_at end as available_at
+  from public.signal_event_memberships m left join public.signal_source_snapshots s on s.user_id=m.user_id and s.id=m.snapshot_id and s.signal_id=m.signal_id
+  where m.user_id=p_user_id and m.event_id=p_event_id and
+   (p_mode='archived' or (m.id in(select id from latest where action='include') and s.published_at is not null))
+ ), initial_state as (
+  select distinct on(signal_id) * from candidates where available_at<=p_cutoff order by signal_id,revision desc
+ ), material as (
+  select *,jsonb_build_object('title',case when action='include' then title else '移出事件档案' end,
+   'text',case when action='include' then captured_text else '' end,'source',case when action='include' then source_name else '' end,
+   'url',case when action='include' then source_url else null end,'publishedAt',case when action='include' then published_at else null end,'capturedAt',case when action='include' then captured_at else null end,
+   'retrospective',p_mode='recovered','action',action,'availableAt',available_at) as payload from candidates
+ ), future as (
+  select row_number() over(order by available_at,revision)::integer as step,payload from material where available_at>p_cutoff
+ )
+ insert into public.signal_event_replay_packets(session_id,step,materials)
+ select r.id,0,coalesce((select jsonb_agg(m.payload order by m.available_at,m.revision) from material m join initial_state i on i.id=m.id where i.action='include'),'[]'::jsonb)
+ union all select r.id,step,jsonb_build_array(payload) from future;
+ return jsonb_build_object('id',r.id);
+end $$;
+
+create function public.guess_signal_event_replay(p_user_id uuid,p_event_id uuid,p_session_id uuid,p_guess text,p_request_id uuid) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare r public.signal_event_replays;
+begin
+ perform public.signal_event_guard_owner(p_user_id);
+ if p_guess is null or length(btrim(p_guess)) not between 1 and 4000 or p_request_id is null then raise exception 'invalid replay guess'; end if;
+ select * into r from public.signal_event_replays where id=p_session_id and user_id=p_user_id and event_id=p_event_id for update;
+ if not found then raise exception 'replay unavailable' using errcode='42501'; end if;
+ if r.guess is not null then
+  if r.guess_request is distinct from p_request_id or r.guess is distinct from btrim(p_guess) then raise exception 'practice guess is immutable'; end if;
+ else
+  update public.signal_event_replays set guess=btrim(p_guess),guess_request=p_request_id where id=r.id;
+ end if;
+ return public.read_signal_event_replay(p_user_id,p_event_id,p_session_id);
+end $$;
+
+create function public.advance_signal_event_replay(p_user_id uuid,p_event_id uuid,p_session_id uuid,p_request_id uuid) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare r public.signal_event_replays;
+begin
+ perform public.signal_event_guard_owner(p_user_id);
+ if p_request_id is null then raise exception 'request required'; end if;
+ select * into r from public.signal_event_replays where id=p_session_id and user_id=p_user_id and event_id=p_event_id for update;
+ if not found then raise exception 'replay unavailable' using errcode='42501'; end if;
+ if r.guess is null then raise exception 'record a practice guess first'; end if;
+ if not exists(select 1 from public.signal_event_replay_advances where session_id=r.id and request_id=p_request_id) then
+  if exists(select 1 from public.signal_event_replay_packets where session_id=r.id and step=r.revealed+1) then
+   update public.signal_event_replays set revealed=revealed+1 where id=r.id;
+  end if;
+  insert into public.signal_event_replay_advances(session_id,request_id,step) select r.id,p_request_id,revealed from public.signal_event_replays where id=r.id;
+ end if;
+ return public.read_signal_event_replay(p_user_id,p_event_id,p_session_id);
+end $$;
+revoke all on function public.create_signal_event_replay(uuid,uuid,timestamptz,text,uuid),public.read_signal_event_replay(uuid,uuid,uuid),public.guess_signal_event_replay(uuid,uuid,uuid,text,uuid),public.advance_signal_event_replay(uuid,uuid,uuid,uuid) from public,anon,authenticated;
+-- Only the authenticated server action may invoke these. Ownership remains explicit even with service role.
+grant execute on function public.create_signal_event_replay(uuid,uuid,timestamptz,text,uuid),public.read_signal_event_replay(uuid,uuid,uuid),public.guess_signal_event_replay(uuid,uuid,uuid,text,uuid),public.advance_signal_event_replay(uuid,uuid,uuid,uuid) to service_role;
+
+create function public.signal_replay_immutable() returns trigger
+language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+ if tg_table_name='signal_event_replays' then
+  if new.user_id is distinct from old.user_id or new.event_id is distinct from old.event_id or new.cutoff is distinct from old.cutoff or new.mode is distinct from old.mode or new.request_id is distinct from old.request_id or new.created_at is distinct from old.created_at or
+   (old.guess is not null and (new.guess is distinct from old.guess or new.guess_request is distinct from old.guess_request)) then
+   raise exception 'replay session and practice guess are immutable';
+  end if;
+  return new;
+ end if;
+ if tg_op='DELETE' and not exists(select 1 from public.signal_event_replays where id=old.session_id) then return old; end if;
+ raise exception 'replay packets and advance receipts are immutable';
+end $$;
+create trigger replay_session_immutable before update on public.signal_event_replays for each row execute function public.signal_replay_immutable();
+create trigger replay_packet_immutable before update or delete on public.signal_event_replay_packets for each row execute function public.signal_replay_immutable();
+create trigger replay_receipt_immutable before update or delete on public.signal_event_replay_advances for each row execute function public.signal_replay_immutable();
+revoke all on function public.signal_replay_immutable() from public,anon,authenticated;
+
+
+-- ============================================================================
+-- Synced migration: 108_decision_observations.sql
+-- ============================================================================
+-- Manual observation history. No validation/status/activity writes or external calls.
+begin;
+create unique index if not exists idea_info_gaps_owner_idea_id on public.idea_info_gaps(id,user_id,idea_id);
+create table public.decision_observation_tasks (
+ id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id),
+ object_type text not null default 'idea' check(object_type='idea'), object_id uuid not null references public.ideas(id),
+ gap_id uuid, created_at timestamptz not null default now(), unique(id,user_id),
+ foreign key(gap_id,user_id,object_id) references public.idea_info_gaps(id,user_id,idea_id) on delete restrict
+);
+create table public.decision_observation_versions (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,task_id uuid not null,
+ revision integer not null check(revision>0),config jsonb not null,decision_snapshot jsonb not null,gap_snapshot jsonb,
+ client_request_id uuid not null,request_payload jsonb not null,created_at timestamptz not null default now(),
+ unique(task_id,revision),unique(user_id,client_request_id),unique(id,task_id,user_id),
+ foreign key(task_id,user_id) references public.decision_observation_tasks(id,user_id) on delete restrict
+);
+create table public.decision_observation_runs (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,task_id uuid not null,task_version_id uuid not null,
+ payload jsonb not null,snapshots jsonb not null,client_request_id uuid not null,created_at timestamptz not null default now(),
+ unique(user_id,client_request_id),foreign key(task_version_id,task_id,user_id) references public.decision_observation_versions(id,task_id,user_id) on delete restrict
+);
+create table public.decision_observation_gap_refs (
+ user_id uuid not null,gap_id uuid not null references public.idea_info_gaps(id) on delete restrict,
+ run_id uuid not null references public.decision_observation_runs(id) on delete restrict,
+ request_id uuid not null,primary key(user_id,request_id)
+);
+create function public.observation_owner(p_user_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+ if p_user_id is null or (coalesce(auth.role(),'')<>'service_role' and auth.uid() is distinct from p_user_id) then raise exception 'observation owner required' using errcode='42501';end if;
+end $$;
+create function public.validate_observation_config(c jsonb) returns void language plpgsql set search_path=public,pg_temp as $$
+declare k text;item jsonb;
+begin
+ if jsonb_typeof(c) is distinct from 'object' or c->>'mode' is distinct from 'manual' or length(c::text)>60000 then raise exception 'invalid observation config';end if;
+ foreach k in array array['question','decisionToChange','stopCondition','region','language','timeRange'] loop
+ if jsonb_typeof(c->k) is distinct from 'string' or length(c->>k)>2000 or (k in ('question','decisionToChange','stopCondition') and length(trim(c->>k))=0) then raise exception 'invalid config text %',k;end if;
+ end loop;
+ foreach k in array array['sources','fixedPhrases','exploratoryPhrases','seeds'] loop
+ if jsonb_typeof(c->k) is distinct from 'array' then raise exception 'invalid config array %',k;end if;
+ if jsonb_array_length(c->k)>100 then raise exception 'config array too long';end if;
+ for item in select value from jsonb_array_elements(c->k) loop
+ if k='seeds' then
+ if jsonb_typeof(item) is distinct from 'object' or length(trim(coalesce(item->>'text','')))=0 or length(item->>'text')>2000 or coalesce(item->>'origin','') not in ('user','source','ai') then raise exception 'invalid seed';end if;
+ else
+ if jsonb_typeof(item) is distinct from 'string' or length(trim(item#>>'{}'))=0 or length(item#>>'{}')>2000 then raise exception 'invalid config phrase';end if;
+ end if;
+ end loop;
+ end loop;
+ if jsonb_typeof(c->'filters') is distinct from 'object' or (c->'resources' is distinct from 'null'::jsonb and jsonb_typeof(c->'resources') is distinct from 'object') then raise exception 'invalid config resources';end if;
+ if jsonb_typeof(c->'resources')='object' and exists(select 1 from jsonb_each(c->'resources') where jsonb_typeof(value)<>'boolean') then raise exception 'invalid resource flag';end if;
+end $$;
+create function public.observation_history_guard() returns trigger language plpgsql as $$
+begin
+ if tg_op<>'INSERT' or current_setting('ideaos.observation_write',true) is distinct from 'allowed' then raise exception 'immutable observation history; use RPC';end if;
+ return new;
+end $$;
+do $$ declare t text;begin
+ foreach t in array array['decision_observation_tasks','decision_observation_versions','decision_observation_runs','decision_observation_gap_refs'] loop
+ execute format('alter table public.%I enable row level security',t);
+ execute format('create policy observation_read on public.%I for select to authenticated using(auth.uid()=user_id)',t);
+ execute format('grant select on public.%I to authenticated,service_role',t);
+ execute format('revoke insert,update,delete on public.%I from anon,authenticated',t);
+ execute format('create trigger observation_immutable before insert or update or delete on public.%I for each row execute function public.observation_history_guard()',t);
+ end loop;
+end $$;
+create function public.save_decision_observation_version(p_user_id uuid,p_task_id uuid,p_object_id uuid,p_gap_id uuid,p_config jsonb,p_request_id uuid)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare t public.decision_observation_tasks; old public.decision_observation_versions; v_id uuid; rev integer; snap jsonb; gap jsonb; req jsonb;
+begin
+ perform public.observation_owner(p_user_id);
+ if p_request_id is null then raise exception 'request required';end if;
+ perform public.validate_observation_config(p_config);
+ req=jsonb_build_object('taskId',p_task_id,'objectId',p_object_id,'gapId',p_gap_id,'config',p_config);
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||p_request_id::text,0));
+ select * into old from public.decision_observation_versions where user_id=p_user_id and client_request_id=p_request_id;
+ if found then
+ if old.request_payload<>req then raise exception 'request payload conflict';end if;
+ return jsonb_build_object('id',old.id,'taskId',old.task_id,'revision',old.revision);end if;
+ perform set_config('ideaos.observation_write','allowed',true);
+ if p_task_id is null then
+ if not exists(select 1 from public.ideas where id=p_object_id and user_id=p_user_id) then raise exception 'idea unavailable';end if;
+ insert into public.decision_observation_tasks(user_id,object_id,gap_id) values(p_user_id,p_object_id,p_gap_id) returning * into t;
+ else
+ select * into t from public.decision_observation_tasks where id=p_task_id and user_id=p_user_id for update;
+ if not found or not exists(select 1 from public.ideas where id=t.object_id and user_id=p_user_id) then raise exception 'task unavailable';end if;
+ end if;
+ select to_jsonb(i) into snap from public.ideas i where id=t.object_id and user_id=p_user_id;
+ snap=jsonb_build_object('idea',snap,'currentClosure',(select to_jsonb(c) from public.decision_closures c where c.object_type='idea' and c.object_id=t.object_id and c.user_id=p_user_id and c.status='active' order by c.created_at desc limit 1));
+ if t.gap_id is not null then select to_jsonb(g) into gap from public.idea_info_gaps g where id=t.gap_id and user_id=p_user_id and idea_id=t.object_id;end if;
+ select coalesce(max(revision),0)+1 into rev from public.decision_observation_versions where task_id=t.id;
+ insert into public.decision_observation_versions(user_id,task_id,revision,config,decision_snapshot,gap_snapshot,client_request_id,request_payload)
+ values(p_user_id,t.id,rev,p_config,snap,gap,p_request_id,req) returning id into v_id;
+ perform set_config('ideaos.observation_write','',true);
+ return jsonb_build_object('id',v_id,'taskId',t.id,'revision',rev);
+end $$;
+create function public.save_decision_observation_run(p_user_id uuid,p_task_id uuid,p_version_id uuid,p_request_id uuid,p_payload jsonb)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare old public.decision_observation_runs;r jsonb; snaps jsonb='[]';rid uuid;k text;bound_config jsonb;
+begin
+ perform public.observation_owner(p_user_id);
+ select v.config into bound_config from public.decision_observation_versions v join public.decision_observation_tasks t on t.id=v.task_id join public.ideas i on i.id=t.object_id where v.id=p_version_id and v.task_id=p_task_id and v.user_id=p_user_id and i.user_id=p_user_id;
+ if p_request_id is null or not found then raise exception 'version unavailable';end if;
+ if jsonb_typeof(p_payload) is distinct from 'object' or jsonb_typeof(p_payload->'records') is distinct from 'array' then raise exception 'invalid run payload';end if;
+ if p_payload->>'parserVersion'='search-csv-v1' then
+ if p_payload->>'status' is distinct from 'success'
+ or length(trim(coalesce(bound_config->>'region','')))=0
+ or length(trim(coalesce(bound_config->>'language','')))=0
+ or length(trim(coalesce(bound_config->>'timeRange','')))=0
+ or p_payload#>'{requestConditions,region}' is distinct from bound_config->'region'
+ or p_payload#>'{requestConditions,language}' is distinct from bound_config->'language'
+ or p_payload#>'{requestConditions,timeframe}' is distinct from bound_config->'timeRange'
+ then raise exception 'search import context must match immutable task version';end if;
+ end if;
+ if jsonb_array_length(p_payload->'records')>500 or length(p_payload::text)>2000000
+ or coalesce(p_payload->>'status','') not in ('success','partial','failed','unavailable')
+ or coalesce(p_payload->>'resultState','') not in ('observed','zero','suppressed','unknown','failed') then raise exception 'invalid run payload';end if;
+ if p_payload->>'status' in ('failed','unavailable') and (jsonb_array_length(p_payload->'records')>0 or p_payload->>'resultState'<>'failed') then raise exception 'failure is not zero';end if;
+ if p_payload->>'resultState'='failed' and p_payload->>'status' not in ('failed','unavailable') then raise exception 'invalid failed status';end if;
+ if p_payload->>'resultState'='zero' and jsonb_array_length(p_payload->'records')>0 then raise exception 'invalid zero result';end if;
+ if p_payload->>'resultState'='observed' and jsonb_array_length(p_payload->'records')=0 then raise exception 'empty result must be explicit zero or unknown';end if;
+ if (p_payload->>'costMinor' is null)<>(p_payload->>'currency' is null) or (p_payload->>'costMinor' is not null and (jsonb_typeof(p_payload->'costMinor')<>'number' or (p_payload->>'costMinor')::numeric<0 or trunc((p_payload->>'costMinor')::numeric)<>(p_payload->>'costMinor')::numeric or p_payload->>'currency' !~ '^[A-Z]{3}$')) then raise exception 'invalid cost';end if;
+ foreach k in array array['parserVersion','returnedScope','dataPeriod','error','rawSnapshot','startedAt'] loop
+ if p_payload->>k is not null and jsonb_typeof(p_payload->k)<>'string' then raise exception 'invalid run text %',k;end if;
+ if k<>'rawSnapshot' and length(p_payload->>k)>2000 then raise exception 'run text too long';end if;
+ end loop;
+ if length(p_payload->>'rawSnapshot')>500000 or (p_payload ? 'truncated' and jsonb_typeof(p_payload->'truncated')<>'boolean') then raise exception 'invalid capture bounds';end if;
+ foreach k in array array['requestConditions','providerMetadata','pagination','providerUsage'] loop
+ if p_payload->>k is not null and jsonb_typeof(p_payload->k)<>'object' then raise exception 'invalid run metadata';end if;
+ end loop;
+ for r in select value from jsonb_array_elements(p_payload->'records') loop
+ if jsonb_typeof(r) is distinct from 'object' or jsonb_typeof(r->'text') is distinct from 'string' or length(trim(coalesce(r->>'text','')))=0 or length(r->>'text')>30000 or jsonb_typeof(r->'title') is distinct from 'string' or length(trim(coalesce(r->>'title','')))=0 or length(r->>'title')>2000 or coalesce(r->>'origin','') not in ('manual','public','synthetic','ai_seed') then raise exception 'invalid observation record';end if;
+ if r->>'origin'='public' and coalesce(r->>'sourceUrl','') !~ '^https?://' then raise exception 'public source required';end if;
+ if r->>'sourceUrl' is not null and (jsonb_typeof(r->'sourceUrl')<>'string' or r->>'sourceUrl' !~ '^https?://' or length(r->>'sourceUrl')>2000) then raise exception 'invalid source URL';end if;
+ foreach k in array array['metric','unit','time','region','publishedAt'] loop
+ if r->>k is not null and (jsonb_typeof(r->k)<>'string' or length(r->>k)>2000) then raise exception 'invalid record text %',k;end if;
+ end loop;
+ foreach k in array array['data','providerMetadata'] loop
+ if r->>k is not null and jsonb_typeof(r->k)<>'object' then raise exception 'invalid record metadata';end if;
+ end loop;
+ if r->'value'<>'null'::jsonb and jsonb_typeof(r->'value')<>'number' then raise exception 'invalid observed number';end if;
+ snaps=snaps||jsonb_build_array(jsonb_build_object('text',r->>'text','sourceUrl',r->>'sourceUrl','publishedAt',r->>'publishedAt','origin',r->>'origin','captureScope','user-provided-excerpt','capturedAt',now(),'hash',encode(sha256(convert_to(r::text,'UTF8')),'hex')));
+ end loop;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||p_request_id::text,1));
+ select * into old from public.decision_observation_runs where user_id=p_user_id and client_request_id=p_request_id;
+ if found then if old.task_id<>p_task_id or old.task_version_id<>p_version_id or old.payload<>p_payload then raise exception 'request payload conflict';end if;return jsonb_build_object('id',old.id);end if;
+ if p_payload->>'retryOf' is not null and not exists(select 1 from public.decision_observation_runs where id=(p_payload->>'retryOf')::uuid and user_id=p_user_id and task_id=p_task_id) then raise exception 'retry unavailable';end if;
+ perform set_config('ideaos.observation_write','allowed',true);
+ insert into public.decision_observation_runs(user_id,task_id,task_version_id,payload,snapshots,client_request_id)values(p_user_id,p_task_id,p_version_id,p_payload,snaps,p_request_id)returning id into rid;
+ perform set_config('ideaos.observation_write','',true);
+ return jsonb_build_object('id',rid);
+end $$;
+create function public.attach_observation_gap_ref(p_user_id uuid,p_gap_id uuid,p_run_id uuid,p_request_id uuid)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare g public.idea_info_gaps; old public.decision_observation_gap_refs; already_attached boolean;
+begin
+ perform public.observation_owner(p_user_id);
+ if p_request_id is null then raise exception 'request required';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||p_request_id::text,2));
+ select * into old from public.decision_observation_gap_refs where user_id=p_user_id and request_id=p_request_id;
+ if found then if old.gap_id<>p_gap_id or old.run_id<>p_run_id then raise exception 'request payload conflict';end if;return jsonb_build_object('id',old.run_id);end if;
+ select * into g from public.idea_info_gaps where id=p_gap_id and user_id=p_user_id for update;
+ if not found or not exists(select 1 from public.decision_observation_runs r join public.decision_observation_tasks t on t.id=r.task_id join public.ideas i on i.id=t.object_id where r.id=p_run_id and r.user_id=p_user_id and t.object_id=g.idea_id and i.user_id=p_user_id) then raise exception 'gap or run unavailable';end if;
+ perform set_config('ideaos.observation_write','allowed',true);
+ select exists(select 1 from public.decision_observation_gap_refs where gap_id=p_gap_id and run_id=p_run_id) into already_attached;
+ insert into public.decision_observation_gap_refs(user_id,gap_id,run_id,request_id)values(p_user_id,p_gap_id,p_run_id,p_request_id);
+ if not already_attached then update public.idea_info_gaps set evidence=coalesce(evidence,'[]'::jsonb)||jsonb_build_array(jsonb_build_object('at',now(),'title','人工观察记录','observation_run_id',p_run_id,'note','公开材料或人工摘录；痛点和付费仍须真实验证')) where id=p_gap_id and user_id=p_user_id;end if;
+ perform set_config('ideaos.observation_write','',true);
+ return jsonb_build_object('id',p_run_id);
+end $$;
+revoke all on function public.observation_owner(uuid) from public;
+revoke all on function public.observation_history_guard() from public;
+revoke all on function public.validate_observation_config(jsonb) from public;
+revoke all on function public.save_decision_observation_version(uuid,uuid,uuid,uuid,jsonb,uuid) from public;
+revoke all on function public.save_decision_observation_run(uuid,uuid,uuid,uuid,jsonb) from public;
+revoke all on function public.attach_observation_gap_ref(uuid,uuid,uuid,uuid) from public;
+grant execute on function public.save_decision_observation_version(uuid,uuid,uuid,uuid,jsonb,uuid),public.save_decision_observation_run(uuid,uuid,uuid,uuid,jsonb),public.attach_observation_gap_ref(uuid,uuid,uuid,uuid) to authenticated,service_role;
+commit;
+
+
+-- ============================================================================
+-- Synced migration: 109_idea_experiments.sql
+-- ============================================================================
+-- P1A independent of event dossiers: tests never write real-contact validations.
+begin;
+create unique index if not exists ideas_owner_id_experiment_uq on public.ideas(user_id,id);
+create unique index if not exists gaps_owner_idea_id_experiment_uq on public.idea_info_gaps(user_id,idea_id,id);
+create table public.idea_experiments (
+ id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id), idea_id uuid not null, gap_id uuid,
+ series_id uuid not null, revision integer not null check(revision>0), objective text not null check(objective in ('premise','workflow','delivery','demand')),
+ route text not null check(route in ('public_check','task_reconstruction','prototype_test','opt_in_trial','direct_contact','deferred_contact')),
+ access_context jsonb not null, question text not null check(length(question) between 1 and 2000), hypothesis_snapshot jsonb, gap_snapshot jsonb,
+ input_plan jsonb not null, steps jsonb not null, pass_criterion text not null check(length(pass_criterion) between 1 and 3000), fail_criterion text not null check(length(fail_criterion) between 1 and 3000), limits text not null check(length(limits) between 1 and 3000),
+ time_budget_minutes numeric check(time_budget_minutes>=0), cost_budget_minor bigint check(cost_budget_minor>=0), currency text,
+ deferred_questions jsonb not null, recheck_on date, client_request_id uuid not null, request_payload jsonb not null, created_at timestamptz not null default now(),
+ unique(user_id,series_id,revision), unique(user_id,client_request_id), unique(user_id,idea_id,id),
+ foreign key(user_id,idea_id) references public.ideas(user_id,id) on delete restrict,
+ foreign key(user_id,idea_id,gap_id) references public.idea_info_gaps(user_id,idea_id,id) on delete restrict,
+ check((cost_budget_minor is null and currency is null) or (cost_budget_minor is not null and currency is not null and currency ~ '^[A-Z]{3}$')),
+ check(jsonb_typeof(access_context)='object' and jsonb_typeof(input_plan)='object' and jsonb_typeof(steps)='array' and jsonb_array_length(steps)>0 and jsonb_typeof(deferred_questions)='array')
+);
+create table public.idea_experiment_cases (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,idea_id uuid not null,experiment_id uuid not null,input_origin text not null check(input_origin in ('public','owned','synthetic')),
+ input_text text not null check(length(input_text) between 1 and 30000),source_snapshot jsonb,expected_output text not null check(length(expected_output) between 1 and 10000),client_request_id uuid not null,request_payload jsonb not null,created_at timestamptz not null default now(),
+ unique(user_id,client_request_id),unique(user_id,idea_id,experiment_id,id),
+ foreign key(user_id,idea_id,experiment_id) references public.idea_experiments(user_id,idea_id,id) on delete restrict,
+ check((input_origin='synthetic' and source_snapshot is null) or (input_origin<>'synthetic' and jsonb_typeof(source_snapshot)='object'))
+);
+create table public.idea_experiment_runs (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,idea_id uuid not null,experiment_id uuid not null,case_manifest jsonb not null,criteria_snapshot jsonb not null,supersedes_run_id uuid,
+ started_at timestamptz not null default now(),finished_at timestamptz,status text not null default 'running' check(status in ('running','completed','failed','cancelled')),
+ actual_minutes numeric check(actual_minutes>=0),actual_cost_minor bigint check(actual_cost_minor>=0),currency text,output_artifact jsonb,
+ client_request_id uuid not null,request_payload jsonb not null,completion_request_id uuid,completion_payload jsonb,
+ unique(user_id,client_request_id),unique(user_id,completion_request_id),unique(user_id,idea_id,id),
+ foreign key(user_id,idea_id,experiment_id) references public.idea_experiments(user_id,idea_id,id) on delete restrict,
+ foreign key(user_id,idea_id,supersedes_run_id) references public.idea_experiment_runs(user_id,idea_id,id) on delete restrict,
+ check(jsonb_typeof(case_manifest)='array'),check((status='running' and finished_at is null) or (status<>'running' and finished_at is not null)),
+ check((actual_cost_minor is null and currency is null) or (actual_cost_minor is not null and currency is not null and currency ~ '^[A-Z]{3}$'))
+);
+create table public.idea_experiment_results (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,idea_id uuid not null,run_id uuid not null,case_id uuid not null,experiment_id uuid not null,
+ execution_context text not null check(execution_context in ('self_run','ai_simulation','external_feedback')),outcome text not null check(outcome in ('pass','fail','unresolved')),
+ actual_output jsonb not null,manual_intervention text not null,notes text not null,client_request_id uuid not null,created_at timestamptz not null default now(),
+ unique(user_id,run_id,case_id),foreign key(user_id,idea_id,run_id) references public.idea_experiment_runs(user_id,idea_id,id) on delete restrict,
+ foreign key(user_id,idea_id,experiment_id,case_id) references public.idea_experiment_cases(user_id,idea_id,experiment_id,id) on delete restrict
+);
+create function public.experiment_owner(p_user_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$begin
+ if p_user_id is null or (coalesce(auth.role(),'')<>'service_role' and auth.uid() is distinct from p_user_id) then raise exception 'experiment owner required' using errcode='42501';end if;
+end$$;
+create function public.experiment_immutable() returns trigger language plpgsql as $$begin raise exception 'experiment history immutable';end$$;
+create trigger experiment_version_immutable before update or delete on public.idea_experiments for each row execute function public.experiment_immutable();
+create trigger experiment_case_immutable before update or delete on public.idea_experiment_cases for each row execute function public.experiment_immutable();
+create trigger experiment_result_immutable before update or delete on public.idea_experiment_results for each row execute function public.experiment_immutable();
+create function public.experiment_run_guard() returns trigger language plpgsql as $$begin
+ if TG_OP='DELETE' then raise exception 'experiment history immutable';end if;
+ if old.status<>'running' or new.status='running' or (to_jsonb(new)-array['status','finished_at','actual_minutes','actual_cost_minor','currency','output_artifact','completion_request_id','completion_payload']) is distinct from (to_jsonb(old)-array['status','finished_at','actual_minutes','actual_cost_minor','currency','output_artifact','completion_request_id','completion_payload']) then raise exception 'invalid experiment transition';end if;return new;
+end$$;
+create trigger experiment_run_immutable before update or delete on public.idea_experiment_runs for each row execute function public.experiment_run_guard();
+create function public.experiment_text(p_value text,p_max integer,p_required boolean default true) returns void language plpgsql as $$begin if (p_required and coalesce(length(btrim(p_value)),0)=0) or length(p_value)>p_max then raise exception 'invalid experiment text';end if;end$$;
+create function public.experiment_artifact(p_user_id uuid,p_artifact jsonb) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare found_id uuid;begin
+ if p_artifact is null or p_artifact='null'::jsonb then return;end if;
+ if jsonb_typeof(p_artifact)<>'object' then raise exception 'invalid artifact';end if;
+ perform experiment_text(p_artifact->>'url',4000,false);
+ if p_artifact->>'url' is not null and p_artifact->>'url' !~ '^https?://' then raise exception 'invalid artifact URL';end if;
+ if p_artifact->>'material_id' is not null then
+ execute 'select id from public.reality_materials where id=$1 and user_id=$2' into found_id using (p_artifact->>'material_id')::uuid,p_user_id;
+ if found_id is null then raise exception 'material unavailable';end if;end if;
+ perform experiment_text(p_artifact->>'description',3000);
+end$$;
+create function public.save_idea_experiment_version(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare old_row idea_experiments; idea_row ideas; gap_row idea_info_gaps; new_id uuid; series uuid; rev integer; a jsonb; route text; s jsonb;begin
+ perform experiment_owner(p_user_id);if p_input is null or jsonb_typeof(p_input)<>'object' or nullif(p_input->>'requestId','') is null then raise exception 'invalid experiment payload';end if;perform (p_input->>'requestId')::uuid;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,109));
+ select * into old_row from idea_experiments where user_id=p_user_id and client_request_id=(p_input->>'requestId')::uuid;
+ if found then if old_row.request_payload<>p_input then raise exception 'request payload conflict';end if;return jsonb_build_object('id',old_row.id);end if;
+ select * into idea_row from ideas where id=(p_input->>'ideaId')::uuid and user_id=p_user_id for update;if not found then raise exception 'idea unavailable';end if;
+ if nullif(p_input->>'gapId','') is not null then select * into gap_row from idea_info_gaps where id=(p_input->>'gapId')::uuid and user_id=p_user_id and idea_id=idea_row.id for update;if not found then raise exception 'gap unavailable';end if;end if;
+ series=coalesce((p_input->>'seriesId')::uuid,gen_random_uuid());
+ if p_input->>'seriesId' is not null and not exists(select 1 from idea_experiments where user_id=p_user_id and idea_id=idea_row.id and series_id=series) then raise exception 'series unavailable';end if;
+ select coalesce(max(revision),0)+1 into rev from idea_experiments where user_id=p_user_id and series_id=series;
+ a=p_input->'accessContext';route=p_input->>'route';
+ if a is null or jsonb_typeof(a)<>'object' or jsonb_typeof(a->'publicSources') is distinct from 'boolean' or jsonb_typeof(a->'canRunPrototype') is distinct from 'boolean' or jsonb_typeof(a->'canPublishExample') is distinct from 'boolean' or jsonb_typeof(a->'canContactPeople') is distinct from 'boolean' then raise exception 'invalid access context';end if;
+ if not (case route when 'public_check' then (a->>'publicSources')::boolean when 'task_reconstruction' then (a->>'publicSources')::boolean when 'prototype_test' then (a->>'canRunPrototype')::boolean when 'opt_in_trial' then (a->>'canPublishExample')::boolean when 'direct_contact' then (a->>'canContactPeople')::boolean when 'deferred_contact' then not (a->>'canContactPeople')::boolean else false end) then raise exception 'route unavailable';end if;
+ perform experiment_text(p_input->>'question',2000);perform experiment_text(p_input->>'passCriterion',3000);perform experiment_text(p_input->>'failCriterion',3000);perform experiment_text(p_input->>'limits',3000);perform experiment_text(p_input->'inputPlan'->>'scope',5000);
+ if jsonb_typeof(p_input->'steps') is distinct from 'array' or jsonb_array_length(p_input->'steps') not between 1 and 30 or jsonb_typeof(p_input->'deferredQuestions') is distinct from 'array' or jsonb_array_length(p_input->'deferredQuestions')>30 then raise exception 'invalid steps/questions';end if;
+ for s in select value from jsonb_array_elements(p_input->'steps') loop if jsonb_typeof(s)<>'string' then raise exception 'invalid step';end if;perform experiment_text(s#>>'{}',2000);end loop;
+ if route='task_reconstruction' then if jsonb_typeof(p_input->'inputPlan'->'refs') is distinct from 'array' then raise exception 'task references required';end if;foreach route in array array['role','trigger','inputs','steps','current_alternative','obstacles','unknowns'] loop perform experiment_text(p_input->'inputPlan'->>route,5000);end loop;end if;
+ insert into idea_experiments(user_id,idea_id,gap_id,series_id,revision,objective,route,access_context,question,hypothesis_snapshot,gap_snapshot,input_plan,steps,pass_criterion,fail_criterion,limits,time_budget_minutes,cost_budget_minor,currency,deferred_questions,recheck_on,client_request_id,request_payload)
+ values(p_user_id,idea_row.id,gap_row.id,series,rev,p_input->>'objective',p_input->>'route',a,p_input->>'question',to_jsonb(idea_row)->'hypothesis',case when gap_row.id is not null then to_jsonb(gap_row) else null end,p_input->'inputPlan',p_input->'steps',p_input->>'passCriterion',p_input->>'failCriterion',p_input->>'limits',(p_input->>'timeBudgetMinutes')::numeric,(p_input->>'costBudgetMinor')::bigint,p_input->>'currency',p_input->'deferredQuestions',(p_input->>'recheckOn')::date,(p_input->>'requestId')::uuid,p_input) returning id into new_id;
+ return jsonb_build_object('id',new_id);end$$;
+create function public.append_idea_experiment_case(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare e idea_experiments;c idea_experiment_cases;s jsonb;new_id uuid; saved_source text; material_url text; material_kind text; source_record jsonb;begin
+ perform experiment_owner(p_user_id);if p_input is null or jsonb_typeof(p_input)<>'object' or nullif(p_input->>'requestId','') is null then raise exception 'invalid experiment payload';end if;perform (p_input->>'requestId')::uuid;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,109));
+ if jsonb_typeof(p_input->'sourceSnapshot')='object' then p_input=jsonb_set(p_input,'{sourceSnapshot}',(p_input->'sourceSnapshot')-'hash'-'captured_at');end if;
+ select * into c from idea_experiment_cases where user_id=p_user_id and client_request_id=(p_input->>'requestId')::uuid;if found then if c.request_payload<>p_input then raise exception 'request payload conflict';end if;return jsonb_build_object('id',c.id);end if;
+ select * into e from idea_experiments where id=(p_input->>'experimentId')::uuid and user_id=p_user_id for update;if not found then raise exception 'experiment unavailable';end if;
+ if (select count(*) from idea_experiment_cases where user_id=p_user_id and experiment_id=e.id)>=200 then raise exception 'sample limit reached; create a new version';end if;
+ if e.route in ('public_check','task_reconstruction') and p_input->>'inputOrigin'='synthetic' then raise exception 'material-backed route requires public or authorized owned source';end if;
+ perform experiment_text(p_input->>'inputText',30000);perform experiment_text(p_input->>'expectedOutput',10000);s=nullif(p_input->'sourceSnapshot','null'::jsonb);if s is not null then s=s||jsonb_build_object('captured_at',now());end if;
+ if p_input->>'inputOrigin'='synthetic' then if s is not null then raise exception 'synthetic source forbidden';end if;
+ else if s is null or jsonb_typeof(s)<>'object' then raise exception 'source snapshot required';end if;
+ perform experiment_text(s->>'source_type',200);perform experiment_text(s->>'excerpt',30000,false);perform experiment_text(s->>'capture_scope',2000);if (s->>'captured_at')::timestamptz is null or jsonb_typeof(s->'truncated') is distinct from 'boolean' or jsonb_typeof(s->'missing_text') is distinct from 'boolean' then raise exception 'invalid snapshot metadata';end if;
+ if p_input->>'inputOrigin'='public' and p_input->>'inputText' is distinct from s->>'excerpt' then raise exception 'public input must equal captured excerpt';end if;
+ if p_input->>'inputOrigin'='public' then perform experiment_text(s->>'publisher',1000);perform experiment_text(s->>'excerpt',30000);if coalesce(s->>'url',s->>'source_id') is null or (s->>'missing_text')::boolean then raise exception 'public source/excerpt required';end if;end if;
+ if p_input->>'inputOrigin'='owned' and coalesce((s->>'authorized')::boolean,false)=false then raise exception 'owned source permission required';end if;
+ if s->>'url' is not null and s->>'url' !~ '^https?://' then raise exception 'invalid source URL';end if;
+ if s->>'source_type'='material' then
+ select sanitized_text,source_url,source_type into saved_source,material_url,material_kind from public.reality_materials where id=(s->>'source_id')::uuid and user_id=p_user_id;
+ if not found then raise exception 'material unavailable';end if;
+ if p_input->>'inputOrigin'='public' and (material_kind<>'url' or material_url is distinct from s->>'url') then raise exception 'public material source mismatch';end if;
+ if length(coalesce(s->>'excerpt',''))>0 and position(s->>'excerpt' in coalesce(saved_source,''))=0 then raise exception 'material quote absent';end if;
+ end if;
+ if s->>'source_type'='observation_run' then
+ execute 'select item from public.decision_observation_runs r cross join lateral jsonb_array_elements(r.payload->''records'') item where r.id=$1 and r.user_id=$2 and item->>''origin''=$3 and item->>''sourceUrl'' is not distinct from $4 and position($5 in item->>''text'')>0 limit 1'
+ into source_record using (s->>'source_id')::uuid,p_user_id,case when p_input->>'inputOrigin'='public' then 'public' else 'manual' end,s->>'url',s->>'excerpt';
+ if source_record is null then raise exception 'observation source origin/url/quote mismatch';end if;
+ s=s||jsonb_build_object('publisher',coalesce(substring(source_record->>'sourceUrl' from '^https?://([^/]+)'),'用户授权的原始记录'));
+ end if; s=s||jsonb_build_object('captured_at',now());
+ s=s||jsonb_build_object('hash',encode(sha256(convert_to((s-'hash')::text,'UTF8')),'hex'));
+ end if;
+ insert into idea_experiment_cases(user_id,idea_id,experiment_id,input_origin,input_text,source_snapshot,expected_output,client_request_id,request_payload) values(p_user_id,e.idea_id,e.id,p_input->>'inputOrigin',p_input->>'inputText',s,p_input->>'expectedOutput',(p_input->>'requestId')::uuid,p_input) returning id into new_id;return jsonb_build_object('id',new_id);end$$;
+create function public.start_idea_experiment_run(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare e idea_experiments;r idea_experiment_runs;manifest jsonb;new_id uuid;begin
+ perform experiment_owner(p_user_id);if p_input is null or jsonb_typeof(p_input)<>'object' or nullif(p_input->>'requestId','') is null then raise exception 'invalid experiment payload';end if;perform (p_input->>'requestId')::uuid;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,109));
+ select * into r from idea_experiment_runs where user_id=p_user_id and client_request_id=(p_input->>'requestId')::uuid;if found then if r.request_payload<>p_input then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.id);end if;
+ select * into e from idea_experiments where id=(p_input->>'experimentId')::uuid and user_id=p_user_id for update;if not found then raise exception 'experiment unavailable';end if;
+ if p_input->>'supersedesRunId' is not null and not exists(select 1 from idea_experiment_runs where id=(p_input->>'supersedesRunId')::uuid and user_id=p_user_id and idea_id=e.idea_id and status<>'running') then raise exception 'prior final run unavailable';end if;
+ select coalesce(jsonb_agg(id order by created_at,id),'[]'::jsonb) into manifest from idea_experiment_cases where user_id=p_user_id and experiment_id=e.id;
+ if jsonb_array_length(manifest)=0 and e.route<>'deferred_contact' then raise exception 'samples required';end if;
+ if jsonb_array_length(manifest)>200 then raise exception 'too many samples';end if;
+ insert into idea_experiment_runs(user_id,idea_id,experiment_id,case_manifest,criteria_snapshot,supersedes_run_id,client_request_id,request_payload) values(p_user_id,e.idea_id,e.id,manifest,jsonb_build_object('pass',e.pass_criterion,'fail',e.fail_criterion,'limits',e.limits),(p_input->>'supersedesRunId')::uuid,(p_input->>'requestId')::uuid,p_input) returning id into new_id;return jsonb_build_object('id',new_id);end$$;
+create function public.complete_idea_experiment_run(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare r idea_experiment_runs;old_run idea_experiment_runs;item jsonb;got jsonb;begin
+ perform experiment_owner(p_user_id);if p_input is null or jsonb_typeof(p_input)<>'object' or nullif(p_input->>'requestId','') is null then raise exception 'invalid experiment payload';end if;perform (p_input->>'requestId')::uuid;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,109));
+ select * into old_run from idea_experiment_runs where user_id=p_user_id and completion_request_id=(p_input->>'requestId')::uuid;if found then if old_run.completion_payload<>p_input then raise exception 'request payload conflict';end if;return jsonb_build_object('id',old_run.id);end if;
+ select * into r from idea_experiment_runs where id=(p_input->>'runId')::uuid and user_id=p_user_id for update;if not found then raise exception 'run unavailable';end if;if r.status<>'running' then raise exception 'run already final';end if;
+ if jsonb_typeof(p_input->'results') is distinct from 'array' then raise exception 'results required';end if;
+ select coalesce(jsonb_agg(v order by v),'[]'::jsonb) into got from (select value->>'caseId' v from jsonb_array_elements(p_input->'results')) q;
+ if got<>(select coalesce(jsonb_agg(value#>>'{}' order by value#>>'{}'),'[]'::jsonb) from jsonb_array_elements(r.case_manifest)) then raise exception 'case manifest mismatch';end if;
+ perform experiment_artifact(p_user_id,nullif(p_input->'outputArtifact','null'::jsonb));
+ for item in select value from jsonb_array_elements(p_input->'results') loop
+ perform experiment_text(item->'actualOutput'->>'text',30000);perform experiment_text(item->>'manualIntervention',10000,false);perform experiment_text(item->>'notes',10000,false);perform experiment_artifact(p_user_id,nullif(item->'actualOutput'->'artifact','null'::jsonb));
+ if item->>'executionContext'='external_feedback' then perform experiment_text(item->>'notes',10000);end if;
+ insert into idea_experiment_results(user_id,idea_id,run_id,case_id,experiment_id,execution_context,outcome,actual_output,manual_intervention,notes,client_request_id) values(p_user_id,r.idea_id,r.id,(item->>'caseId')::uuid,r.experiment_id,item->>'executionContext',item->>'outcome',item->'actualOutput',item->>'manualIntervention',item->>'notes',(p_input->>'requestId')::uuid);
+ end loop;
+ update idea_experiment_runs set status=p_input->>'status',finished_at=now(),actual_minutes=(p_input->>'actualMinutes')::numeric,actual_cost_minor=(p_input->>'actualCostMinor')::bigint,currency=p_input->>'currency',output_artifact=nullif(p_input->'outputArtifact','null'::jsonb),completion_request_id=(p_input->>'requestId')::uuid,completion_payload=p_input where id=r.id;
+ return jsonb_build_object('id',r.id);end$$;
+create function public.attach_experiment_gap_ref(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare g idea_info_gaps;r idea_experiment_runs;existing jsonb;new_item jsonb;begin
+ perform experiment_owner(p_user_id);if p_input is null or jsonb_typeof(p_input)<>'object' or nullif(p_input->>'requestId','') is null then raise exception 'invalid experiment payload';end if;perform (p_input->>'requestId')::uuid;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,109));select * into g from idea_info_gaps where id=(p_input->>'gapId')::uuid and user_id=p_user_id for update;if not found then raise exception 'gap unavailable';end if;
+ select item.value into existing from idea_info_gaps gg cross join lateral jsonb_array_elements(gg.evidence) item where gg.user_id=p_user_id and item.value->>'request_id'=p_input->>'requestId';if found then if existing->'request_payload'<>p_input then raise exception 'request payload conflict';end if;return jsonb_build_object('id',g.id);end if;
+ select * into r from idea_experiment_runs where id=(p_input->>'runId')::uuid and user_id=p_user_id and idea_id=g.idea_id;if not found or r.status='running' then raise exception 'finished run unavailable';end if;perform experiment_text(p_input->>'note',3000,false);
+ new_item=jsonb_build_object('at',now(),'title','原型/公开资料核对（需求仍未知）','note',p_input->>'note','experiment_id',r.experiment_id,'experiment_run_id',r.id,'request_id',p_input->>'requestId','request_payload',p_input);
+ update idea_info_gaps set evidence=evidence||jsonb_build_array(new_item),updated_at=now() where id=g.id;return jsonb_build_object('id',g.id);end$$;
+-- Existing evidence callers retain their lock semantics; only append becomes atomic.
+create function public.append_idea_gap_evidence(p_user_id uuid,p_gap_id uuid,p_item jsonb,p_request_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare g idea_info_gaps;old_item jsonb;begin
+ perform experiment_owner(p_user_id);if p_request_id is null or p_item is null or jsonb_typeof(p_item)<>'object' then raise exception 'invalid evidence request';end if;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,109));select * into g from idea_info_gaps where id=p_gap_id and user_id=p_user_id for update;if not found then raise exception 'gap unavailable';end if;
+ select item.value into old_item from idea_info_gaps gg cross join lateral jsonb_array_elements(gg.evidence) item where gg.user_id=p_user_id and item.value->>'request_id'=p_request_id::text;if found then if old_item->'request_payload'<>jsonb_build_object('gap_id',p_gap_id,'item',p_item) then raise exception 'request payload conflict';end if;return;end if;
+ if p_item ? 'experiment_id' or p_item ? 'experiment_run_id' or p_item ? 'observation_run_id' then raise exception 'use experiment attach RPC';end if;
+ perform experiment_text(p_item->>'title',3000);
+ update idea_info_gaps set evidence=evidence||jsonb_build_array(p_item||jsonb_build_object('at',now(),'request_id',p_request_id,'request_payload',jsonb_build_object('gap_id',p_gap_id,'item',p_item))),updated_at=now() where id=g.id;
+end$$;
+do $$declare t text;f text;begin
+ foreach t in array array['idea_experiments','idea_experiment_cases','idea_experiment_runs','idea_experiment_results'] loop
+ execute format('alter table public.%I enable row level security',t);
+ execute format('create policy experiment_owner_read on public.%I for select using (auth.uid()=user_id)',t);
+ execute format('revoke all on public.%I from anon,authenticated',t);execute format('grant select on public.%I to authenticated',t);execute format('grant all on public.%I to service_role',t);
+ end loop;
+ for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('experiment_owner','experiment_artifact','save_idea_experiment_version','append_idea_experiment_case','start_idea_experiment_run','complete_idea_experiment_run','attach_experiment_gap_ref','append_idea_gap_evidence') loop execute 'revoke all on function '||f||' from public,anon,authenticated';execute 'grant execute on function '||f||' to service_role';end loop;
+end$$;
+commit;
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- ============================================================================
+-- Synced migration: 110_company_observations.sql
+-- ============================================================================
+begin;
+create table public.company_observation_entries (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),company_id uuid not null references public.companies(id) on delete restrict,
+ revision integer not null check(revision>0),
+ kind text not null check(kind in ('identity','activity','snapshot','review')),payload jsonb not null,
+ request_id uuid not null,request_payload jsonb not null,created_at timestamptz not null default clock_timestamp(),content_hash text not null,
+ unique(user_id,request_id),unique(company_id,revision)
+);
+create index company_observation_history on public.company_observation_entries(user_id,company_id,created_at desc,id desc);
+create index company_observation_identity_history on public.company_observation_entries(user_id,company_id,revision desc) where kind='identity';
+alter table public.company_observation_entries enable row level security;
+create policy company_observation_owner on public.company_observation_entries for select using(auth.uid()=user_id);
+grant select on public.company_observation_entries to authenticated,service_role;
+revoke insert,update,delete on public.company_observation_entries from anon,authenticated,service_role;
+create function public.company_observation_guard() returns trigger language plpgsql as $$begin
+ if tg_op<>'INSERT' or current_setting('ideaos.company_write',true) is distinct from 'allowed' then raise exception 'immutable company history; use RPC';end if;return new;end$$;
+create trigger company_observation_immutable before insert or update or delete on public.company_observation_entries for each row execute function public.company_observation_guard();
+create function public.validate_company_source(s jsonb) returns void language plpgsql as $$begin
+ if jsonb_typeof(s) is distinct from 'object' or coalesce(s->>'kind','') not in ('manual_import','official_response','web_capture','saved_job') or length(coalesce(s->>'rawText','')) not between 1 and 100000 or length(coalesce(s->>'quote','')) not between 1 and 20000 or position(s->>'quote' in s->>'rawText')=0 then raise exception 'invalid source quote';end if;
+ if s ? 'requestProof' and (jsonb_typeof(s->'requestProof') is distinct from 'string' or coalesce(s->>'requestProof','') !~ '^[a-f0-9]{64}$') then raise exception 'invalid request proof';end if;
+ if length(trim(coalesce(s->>'scope','')))=0 or length(s->>'scope')>2000 or (s->>'url' is not null and (s->>'url' !~ '^https?://' or s->>'url' ~ '^https?://[^/[:space:]]*@' or s->>'url' ~ '[[:cntrl:]]' or length(s->>'url')>8000)) then raise exception 'invalid source scope/url';end if;
+end$$;
+create function public.company_job_preview_hash(j public.job_postings) returns text language sql immutable set search_path=public,pg_temp as $$
+ select encode(sha256(convert_to(string_agg(case when value is null then '-1:' else octet_length(convert_to(value,'UTF8'))::text||':'||value end,'' order by ordinal),'UTF8')),'hex')
+ from unnest(array[j.id::text,j.company_id::text,j.company_name,j.title,j.body,j.url,j.found_on::text]) with ordinality as fields(value,ordinal)
+$$;
+create function public.save_company_observation(p_user_id uuid,p_company_id uuid,p_request_id uuid,p_kind text,p_payload jsonb,p_expected_identity_id uuid default null) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare old public.company_observation_entries;latest public.company_observation_entries;other_row record;result_id uuid;stored jsonb;req jsonb;job public.job_postings;idea public.ideas;v text;
+begin
+ if p_user_id is null then raise exception 'company owner required' using errcode='42501';end if;
+ if coalesce(auth.role(),'')<>'service_role' then raise exception 'service role required' using errcode='42501';end if;
+ if p_request_id is null or p_company_id is null or p_kind not in ('identity','activity','snapshot','review','job') or jsonb_typeof(p_payload) is distinct from 'object' or length(p_payload::text)>150000 then raise exception 'invalid company input';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,110));
+ req=jsonb_build_object('companyId',p_company_id,'kind',p_kind,'payload',p_payload,'expectedIdentityId',p_expected_identity_id);
+ select * into old from company_observation_entries where user_id=p_user_id and request_id=p_request_id;
+ if found then if old.request_payload is distinct from req then raise exception 'request conflict';end if;return jsonb_build_object('id',old.id);end if;
+ perform 1 from companies where id=p_company_id and user_id=p_user_id for update;if not found then raise exception 'company unavailable';end if;
+ stored=p_payload;
+ if p_kind='identity' then
+ select * into latest from company_observation_entries where user_id=p_user_id and company_id=p_company_id and kind='identity' order by revision desc limit 1;
+ if latest.id is distinct from p_expected_identity_id then raise exception 'stale identity';end if;
+ if coalesce(p_payload->>'action','') not in ('confirm','clear') then raise exception 'invalid identity action';end if;
+ if p_payload->>'action'='confirm' then
+ if coalesce(p_payload#>>'{identity,corporateNumber}','') !~ '^[0-9]{13}$' or length(trim(coalesce(p_payload#>>'{identity,legalName}','')))=0 or length(trim(coalesce(p_payload#>>'{identity,address}','')))=0 then raise exception 'invalid identity';end if;
+ perform validate_company_source(p_payload#>'{identity,source}');
+ for other_row in select distinct on(company_id) company_id,payload from company_observation_entries where user_id=p_user_id and kind='identity' and company_id<>p_company_id order by company_id,revision desc loop
+ if other_row.payload->>'action'='confirm' and other_row.payload#>>'{identity,corporateNumber}'=p_payload#>>'{identity,corporateNumber}' then raise exception 'corporate number already bound';end if;end loop;
+ end if;
+ elsif p_kind='review' then
+ perform 1 from company_observation_entries where id=(p_payload->>'sourceEntryId')::uuid and company_id=p_company_id and user_id=p_user_id and kind<>'review';if not found then raise exception 'entry unavailable';end if;
+ select * into idea from ideas where id=(p_payload->>'ideaId')::uuid and user_id=p_user_id;if not found then raise exception 'idea unavailable';end if;
+ if length(trim(coalesce(p_payload->>'assumption','')))=0 or length(trim(coalesce(p_payload->>'unknown','')))=0 then raise exception 'review assumption and unknown required';end if;
+ stored=stored||jsonb_build_object('ideaSnapshot',jsonb_build_object('id',idea.id,'title',idea.title));
+ elsif p_kind='job' then
+ select * into job from job_postings where id=(p_payload->>'jobId')::uuid and user_id=p_user_id for share;if not found or (job.company_id is not null and job.company_id<>p_company_id) then raise exception 'job unavailable';end if;
+ if job.company_id is null and coalesce(p_payload->>'confirmCandidate','false')<>'true' then raise exception 'candidate confirmation required';end if;
+ if p_payload->>'previewHash' is distinct from company_job_preview_hash(job) then raise exception 'job changed; reload preview';end if;
+ stored=jsonb_build_object('type','recruitment','stage','announcement','title',job.title,'occurredOn',job.found_on,'dateUnknown',job.found_on is null,'source',jsonb_build_object('kind','saved_job','url',job.url,'rawText',left(job.body,100000),'quote',left(job.body,20000),'scope',format('one saved job posting; body captured %s of %s characters%s; quote %s of %s captured characters%s',least(length(job.body),100000),length(job.body),case when length(job.body)>100000 then ' (clipped)' else '' end,least(length(job.body),20000),least(length(job.body),100000),case when length(job.body)>20000 then ' (clipped)' else '' end)),'details',jsonb_build_object('jobSnapshot',jsonb_build_object('id',job.id,'company_id',job.company_id,'company_name',job.company_name,'title',job.title,'url',job.url,'found_on',job.found_on,'facts',job.facts),'originalBodyHash',encode(sha256(convert_to(job.body,'UTF8')),'hex'),'capturedBodyHash',encode(sha256(convert_to(left(job.body,100000),'UTF8')),'hex'),'originalBodyLength',length(job.body),'capturedBodyLength',least(length(job.body),100000),'bodyTruncated',length(job.body)>100000,'quoteTruncated',length(job.body)>20000,'candidateConfirmed',job.company_id is null));
+ perform validate_company_source(stored->'source');
+ else
+ if coalesce(stored->>'type','') not in ('manual','procurement','subsidy','recruitment','price','feature','disclosure') or coalesce(stored->>'stage','') not in ('announcement','action','result') or length(trim(coalesce(stored->>'title','')))=0 then raise exception 'invalid activity';end if;
+ perform validate_company_source(stored->'source');
+ if p_kind='activity' and (stored#>>'{source,kind}'='official_response' or stored->'details' ? 'corporateNumber') then
+ select * into latest from company_observation_entries where user_id=p_user_id and company_id=p_company_id and kind='identity' order by revision desc limit 1;
+ if latest.id is null or latest.payload->>'action'<>'confirm' or latest.id::text is distinct from stored#>>'{details,identityEntryId}' or latest.payload#>>'{identity,corporateNumber}' is distinct from stored#>>'{details,corporateNumber}' then raise exception 'company identity changed; reload official data';end if;
+ end if;
+ if jsonb_typeof(stored->'dateUnknown') is distinct from 'boolean' or (stored->>'dateUnknown')::boolean is distinct from (stored->>'occurredOn' is null) then raise exception 'unknown date declaration required';end if;
+ if stored->>'occurredOn' is not null then v=(stored->>'occurredOn')::date::text;if v<>stored->>'occurredOn' then raise exception 'invalid activity date';end if;end if;
+ if jsonb_typeof(stored->'details') is distinct from 'object' then raise exception 'invalid details';end if;
+ end if;
+ perform set_config('ideaos.company_write','allowed',true);
+ insert into company_observation_entries(user_id,company_id,kind,payload,request_id,request_payload,content_hash,revision) values(p_user_id,p_company_id,case when p_kind='job' then 'activity' else p_kind end,stored,p_request_id,req,encode(sha256(convert_to(stored::text,'UTF8')),'hex'),(select coalesce(max(revision),0)+1 from company_observation_entries where company_id=p_company_id)) returning id into result_id;
+ perform set_config('ideaos.company_write','',true);
+ return jsonb_build_object('id',result_id);
+end$$;
+revoke all on function public.save_company_observation(uuid,uuid,uuid,text,jsonb,uuid) from public,anon,authenticated;
+grant execute on function public.save_company_observation(uuid,uuid,uuid,text,jsonb,uuid) to service_role;
+commit;
+
+
+
+
+
+
+
+
+
+-- ============================================================================
+-- Synced migration: 111_feedback_learning.sql
+-- ============================================================================
+begin;
+create table public.decision_feedback (
+ id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id),idea_id uuid not null references public.ideas(id),
+ revision integer not null check(revision>0),request_id uuid not null,request_payload jsonb not null,
+ source_kind text not null check(source_kind in ('validation','manual_contact','no_reply')),
+ validation_id uuid references public.validations(id),outreach_canvas_id uuid references public.outreach_canvases(id),
+ source_note text,source_has_pain text check(source_has_pain in ('yes','no','unsure')),source_will_pay text check(source_will_pay in ('yes','no','unsure')),
+ contacted_at timestamptz,verbatim boolean not null default false,role_context text not null,interpretation text not null,created_at timestamptz not null default clock_timestamp(),
+ unique(user_id,request_id),unique(user_id,revision),unique(id,user_id),
+ check((source_kind='validation' and validation_id is not null and not verbatim) or (source_kind<>'validation' and validation_id is null and source_has_pain is null and source_will_pay is null)),
+ check(source_kind<>'no_reply' or not verbatim)
+);
+create table public.decision_feedback_links (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),feedback_id uuid not null,target_idea_id uuid not null references public.ideas(id),
+ revision integer not null check(revision>0),request_id uuid not null,request_payload jsonb not null,action text not null check(action in ('confirm','retract')),
+ expected_link_id uuid references public.decision_feedback_links(id),assumption text not null,scope text not null,limits text not null,unknown text not null,created_at timestamptz not null default clock_timestamp(),
+ foreign key(feedback_id,user_id) references public.decision_feedback(id,user_id),unique(user_id,request_id),unique(user_id,revision)
+);
+create index feedback_anchor on public.decision_feedback(user_id,idea_id,revision desc);
+create index feedback_link_pair on public.decision_feedback_links(user_id,feedback_id,target_idea_id,revision desc);
+create index feedback_link_incoming on public.decision_feedback_links(user_id,target_idea_id,revision desc);
+alter table public.decision_feedback enable row level security;
+alter table public.decision_feedback_links enable row level security;
+create policy feedback_owner on public.decision_feedback for select using(auth.uid()=user_id);
+create policy feedback_link_owner on public.decision_feedback_links for select using(auth.uid()=user_id);
+grant select on public.decision_feedback,public.decision_feedback_links to authenticated,service_role;
+revoke insert,update,delete on public.decision_feedback,public.decision_feedback_links from anon,authenticated,service_role;
+create function public.feedback_immutable_guard() returns trigger language plpgsql as $$begin
+ if tg_op<>'INSERT' or current_setting('ideaos.feedback_write',true) is distinct from 'allowed' then raise exception 'immutable feedback; use RPC';end if;return new;end$$;
+create trigger feedback_immutable before insert or update or delete on public.decision_feedback for each row execute function public.feedback_immutable_guard();
+create trigger feedback_link_immutable before insert or update or delete on public.decision_feedback_links for each row execute function public.feedback_immutable_guard();
+create function public.save_decision_feedback(p_user_id uuid,p_payload jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare old decision_feedback;v public.validations;c public.outreach_canvases;new_id uuid;source text;note_text text;contact_time timestamptz;field text;
+begin
+ if p_user_id is null or coalesce(auth.role(),'')<>'service_role' then raise exception 'service owner required' using errcode='42501';end if;
+ if jsonb_typeof(p_payload) is distinct from 'object' or length(p_payload::text)>50000 then raise exception 'invalid feedback';end if;
+ for field in select jsonb_object_keys(p_payload) loop if field not in ('ideaId','requestId','sourceKind','validationId','outreachCanvasId','sourceNote','contactedAt','verbatim','roleContext','interpretation') then raise exception 'unsupported feedback field';end if;end loop;
+ if p_payload->>'requestId' is null or p_payload->>'ideaId' is null then raise exception 'feedback identity required';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,111));
+ select * into old from decision_feedback where user_id=p_user_id and request_id=(p_payload->>'requestId')::uuid;
+ if found then if old.request_payload is distinct from p_payload then raise exception 'request conflict';end if;return jsonb_build_object('id',old.id);end if;
+ perform 1 from ideas where id=(p_payload->>'ideaId')::uuid and user_id=p_user_id for share;if not found then raise exception 'idea unavailable';end if;
+ source=p_payload->>'sourceKind';
+ if source is null or source not in ('validation','manual_contact','no_reply') then raise exception 'invalid source kind';end if;
+ foreach field in array array['roleContext','interpretation'] loop if jsonb_typeof(p_payload->field) is distinct from 'string' or length(trim(p_payload->>field)) not between 1 and 4000 then raise exception 'feedback context required';end if;end loop;
+ if p_payload ? 'verbatim' and jsonb_typeof(p_payload->'verbatim') is distinct from 'boolean' then raise exception 'invalid verbatim';end if;
+ if p_payload->>'outreachCanvasId' is not null then
+ select * into c from outreach_canvases where id=(p_payload->>'outreachCanvasId')::uuid and user_id=p_user_id for share;
+ if not found or (c.source_id is not null and (c.source_type is distinct from 'idea' or c.source_id<>(p_payload->>'ideaId')::uuid)) then raise exception 'canvas unavailable for idea';end if;end if;
+ if source='validation' then
+ if p_payload ? 'sourceNote' or p_payload ? 'contactedAt' or coalesce((p_payload->>'verbatim')::boolean,false) then raise exception 'validation snapshot is server owned';end if;
+ select * into v from validations where id=(p_payload->>'validationId')::uuid and idea_id=(p_payload->>'ideaId')::uuid for share;if not found then raise exception 'validation unavailable';end if;
+ note_text=v.note;contact_time=v.contacted_at;
+ else
+ if p_payload->>'validationId' is not null then raise exception 'manual source cannot copy signals';end if;
+ if p_payload ? 'sourceNote' and jsonb_typeof(p_payload->'sourceNote') not in ('string','null') then raise exception 'invalid source note';end if;
+ note_text=p_payload->>'sourceNote';if length(note_text)>20000 then raise exception 'note too long';end if;
+ if coalesce((p_payload->>'verbatim')::boolean,false) and length(trim(coalesce(note_text,'')))=0 then raise exception 'verbatim quote requires source text';end if;
+ contact_time=(p_payload->>'contactedAt')::timestamptz;
+ if source='no_reply' and coalesce((p_payload->>'verbatim')::boolean,false) then raise exception 'no reply has no quote';end if;
+ end if;
+ perform set_config('ideaos.feedback_write','allowed',true);
+ insert into decision_feedback(user_id,idea_id,revision,request_id,request_payload,source_kind,validation_id,outreach_canvas_id,source_note,source_has_pain,source_will_pay,contacted_at,verbatim,role_context,interpretation)
+ values(p_user_id,(p_payload->>'ideaId')::uuid,(select coalesce(max(revision),0)+1 from decision_feedback where user_id=p_user_id),(p_payload->>'requestId')::uuid,p_payload,source,v.id,c.id,note_text,v.has_pain::text,v.will_pay::text,contact_time,coalesce((p_payload->>'verbatim')::boolean,false),trim(p_payload->>'roleContext'),trim(p_payload->>'interpretation')) returning id into new_id;
+ perform set_config('ideaos.feedback_write','',true);return jsonb_build_object('id',new_id);
+end$$;
+create function public.save_decision_feedback_link(p_user_id uuid,p_payload jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare old decision_feedback_links;latest decision_feedback_links;f decision_feedback;new_id uuid;field text;
+begin
+ if p_user_id is null or coalesce(auth.role(),'')<>'service_role' then raise exception 'service owner required' using errcode='42501';end if;
+ if jsonb_typeof(p_payload) is distinct from 'object' or length(p_payload::text)>30000 then raise exception 'invalid feedback link';end if;
+ for field in select jsonb_object_keys(p_payload) loop if field not in ('feedbackId','targetIdeaId','requestId','expectedLinkId','action','assumption','scope','limits','unknown') then raise exception 'unsupported link field';end if;end loop;
+ if p_payload->>'requestId' is null or p_payload->>'feedbackId' is null or p_payload->>'targetIdeaId' is null or not(p_payload ? 'expectedLinkId') then raise exception 'link identity required';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,111));
+ select * into old from decision_feedback_links where user_id=p_user_id and request_id=(p_payload->>'requestId')::uuid;
+ if found then if old.request_payload is distinct from p_payload then raise exception 'request conflict';end if;return jsonb_build_object('id',old.id);end if;
+ select * into f from decision_feedback where id=(p_payload->>'feedbackId')::uuid and user_id=p_user_id for share;if not found then raise exception 'feedback unavailable';end if;
+ perform 1 from ideas where id=(p_payload->>'targetIdeaId')::uuid and user_id=p_user_id for share;if not found or f.idea_id=(p_payload->>'targetIdeaId')::uuid then raise exception 'target idea unavailable';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||f.id::text||(p_payload->>'targetIdeaId')::uuid::text,113));
+ select * into latest from decision_feedback_links where user_id=p_user_id and feedback_id=f.id and target_idea_id=(p_payload->>'targetIdeaId')::uuid order by revision desc limit 1;
+ if latest.id is distinct from (p_payload->>'expectedLinkId')::uuid then raise exception 'stale feedback link';end if;
+ if coalesce(p_payload->>'action','') not in ('confirm','retract') or (p_payload->>'action'='retract' and (latest.id is null or latest.action<>'confirm')) then raise exception 'invalid link action';end if;
+ foreach field in array array['assumption','scope','limits','unknown'] loop
+ if jsonb_typeof(p_payload->field) is distinct from 'string' or length(p_payload->>field)>4000 or (p_payload->>'action'='confirm' and length(trim(p_payload->>field))=0) then raise exception 'link scope required';end if;end loop;
+ perform set_config('ideaos.feedback_write','allowed',true);
+ insert into decision_feedback_links(user_id,feedback_id,target_idea_id,revision,request_id,request_payload,action,expected_link_id,assumption,scope,limits,unknown)
+ values(p_user_id,f.id,(p_payload->>'targetIdeaId')::uuid,(select coalesce(max(revision),0)+1 from decision_feedback_links where user_id=p_user_id),(p_payload->>'requestId')::uuid,p_payload,p_payload->>'action',latest.id,p_payload->>'assumption',p_payload->>'scope',p_payload->>'limits',p_payload->>'unknown') returning id into new_id;
+ perform set_config('ideaos.feedback_write','',true);return jsonb_build_object('id',new_id);
+end$$;
+revoke all on function public.save_decision_feedback(uuid,jsonb),public.save_decision_feedback_link(uuid,jsonb) from public,anon,authenticated;
+grant execute on function public.save_decision_feedback(uuid,jsonb),public.save_decision_feedback_link(uuid,jsonb) to service_role;
+create function public.list_decision_feedback(p_user_id uuid,p_idea_id uuid default null,p_before integer default null) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare result jsonb;
+begin
+ if p_user_id is null or coalesce(auth.role(),'')<>'service_role' then raise exception 'service owner required' using errcode='42501';end if;
+ if p_before is not null and p_before<1 then raise exception 'invalid feedback cursor';end if;
+ if p_idea_id is not null then perform 1 from ideas where id=p_idea_id and user_id=p_user_id;if not found then raise exception 'idea unavailable';end if;end if;
+ with latest as (select distinct on(feedback_id,target_idea_id) * from decision_feedback_links where user_id=p_user_id order by feedback_id,target_idea_id,revision desc),
+ rows as (select f.* from decision_feedback f where f.user_id=p_user_id and (p_before is null or f.revision<p_before) and (p_idea_id is null or f.idea_id=p_idea_id or exists(select 1 from latest l where l.feedback_id=f.id and l.target_idea_id=p_idea_id and l.action='confirm')) order by f.revision desc limit 31),
+ page as(select * from rows order by revision desc limit 30)
+ select jsonb_build_object('status','ready','items',coalesce((select jsonb_agg(to_jsonb(p) order by revision desc) from page p),'[]'::jsonb),'links',coalesce((select jsonb_agg(to_jsonb(l) order by revision desc) from latest l where l.feedback_id in(select id from page)),'[]'::jsonb),'nextBefore',case when (select count(*) from rows)>30 then (select min(revision) from page) else null end) into result;
+ return result;
+end$$;
+revoke all on function public.list_decision_feedback(uuid,uuid,integer) from public,anon,authenticated;
+grant execute on function public.list_decision_feedback(uuid,uuid,integer) to service_role;
+commit;
+
+
+-- ============================================================================
+-- Synced migration: 112_idea_reconsideration.sql
+-- ============================================================================
+-- Manual archived condition history; no automatic decision or real-contact side effects.
+begin;
+create unique index if not exists ideas_reconsideration_owner on public.ideas(id,user_id);
+create table public.idea_reconsideration_entries(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),idea_id uuid not null,
+ revision integer generated always as identity unique,kind text not null check(kind in ('condition','retract','evaluation','cue','ack')),
+ condition_version_id uuid,expected_version_id uuid,cue_id uuid,evaluation_id uuid,
+ learned text,change_required text,criterion text,scope text,decision_snapshot jsonb,
+ outcome text check(outcome in ('met','not_met','unknown')),coverage text,source_snapshot jsonb,
+ request_id uuid,request_payload jsonb,created_at timestamptz not null default clock_timestamp(),
+ unique(id,user_id,idea_id),unique(user_id,request_id),
+ foreign key(idea_id,user_id) references public.ideas(id,user_id) on delete restrict,
+ foreign key(condition_version_id,user_id,idea_id) references public.idea_reconsideration_entries(id,user_id,idea_id) on delete restrict,
+ foreign key(expected_version_id,user_id,idea_id) references public.idea_reconsideration_entries(id,user_id,idea_id) on delete restrict,
+ foreign key(cue_id,user_id,idea_id) references public.idea_reconsideration_entries(id,user_id,idea_id) on delete restrict,
+ foreign key(evaluation_id,user_id,idea_id) references public.idea_reconsideration_entries(id,user_id,idea_id) on delete restrict
+);
+create table public.idea_reconsideration_requests(
+ user_id uuid not null references auth.users(id),request_id uuid not null,idea_id uuid not null,entry_id uuid not null,cue_id uuid,
+ request_payload jsonb not null,result jsonb not null,primary key(user_id,request_id),
+ foreign key(entry_id,user_id,idea_id) references public.idea_reconsideration_entries(id,user_id,idea_id) on delete restrict,
+ foreign key(cue_id,user_id,idea_id) references public.idea_reconsideration_entries(id,user_id,idea_id) on delete restrict
+);
+alter table public.idea_reconsideration_requests enable row level security;
+create policy reconsideration_request_owner on public.idea_reconsideration_requests for select to authenticated using(auth.uid()=user_id);
+grant select on public.idea_reconsideration_requests to authenticated,service_role;
+revoke insert,update,delete on public.idea_reconsideration_requests from anon,authenticated,service_role;
+create unique index reconsideration_one_cue on public.idea_reconsideration_entries(condition_version_id) where kind='cue';
+create unique index reconsideration_one_ack on public.idea_reconsideration_entries(cue_id) where kind='ack';
+create index reconsideration_history on public.idea_reconsideration_entries(user_id,idea_id,revision desc);
+alter table public.idea_reconsideration_entries enable row level security;
+create policy reconsideration_owner on public.idea_reconsideration_entries for select to authenticated using(auth.uid()=user_id);
+grant select on public.idea_reconsideration_entries to authenticated,service_role;
+revoke insert,update,delete on public.idea_reconsideration_entries from anon,authenticated,service_role;
+create function public.reconsideration_history_guard() returns trigger language plpgsql as $$begin
+ if tg_op<>'INSERT' or current_setting('ideaos.reconsideration_write',true) is distinct from 'allowed' then raise exception 'immutable reconsideration history';end if;return new;end$$;
+create trigger reconsideration_immutable before insert or update or delete on public.idea_reconsideration_entries for each row execute function public.reconsideration_history_guard();
+create trigger reconsideration_request_immutable before insert or update or delete on public.idea_reconsideration_requests for each row execute function public.reconsideration_history_guard();
+create function public.save_idea_reconsideration(p_user_id uuid,p_idea_id uuid,p_request_id uuid,p_kind text,p_expected_version_id uuid,p_payload jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare old idea_reconsideration_requests;latest idea_reconsideration_entries;receipt idea_reconsideration_entries;req jsonb;result_id uuid;cue uuid;source jsonb;raw_source jsonb;record_source jsonb;decision jsonb;quote text;k text;idx integer;
+begin
+ if p_user_id is null then raise exception 'reconsideration owner required' using errcode='42501';end if;
+ if coalesce(auth.role(),'')<>'service_role' then raise exception 'service role required' using errcode='42501';end if;
+ if p_idea_id is null or p_request_id is null or p_kind is null or p_kind not in ('condition','retract','evaluation','ack') or jsonb_typeof(p_payload) is distinct from 'object' or length(p_payload::text)>180000 then raise exception 'invalid reconsideration input';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,112));
+ req=jsonb_build_object('ideaId',p_idea_id,'kind',p_kind,'expectedVersionId',p_expected_version_id,'payload',p_payload);
+ select * into old from idea_reconsideration_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if old.request_payload is distinct from req then raise exception 'request conflict';end if;
+ return old.result;end if;
+ perform 1 from ideas where id=p_idea_id and user_id=p_user_id for update;if not found then raise exception 'idea unavailable';end if;
+ if not exists(select 1 from ideas where id=p_idea_id and user_id=p_user_id and status::text='归档') then raise exception 'archived idea required';end if;
+ select * into latest from idea_reconsideration_entries where user_id=p_user_id and idea_id=p_idea_id and kind in ('condition','retract') order by revision desc limit 1;
+ if latest.id is distinct from p_expected_version_id then raise exception 'stale condition version';end if;
+ if p_kind<>'condition' and (latest.id is null or latest.kind<>'condition') then raise exception 'active condition required';end if;
+ if p_kind='condition' then
+ foreach k in array array['learned','changeRequired','criterion','scope'] loop
+ if jsonb_typeof(p_payload->k) is distinct from 'string' or length(trim(p_payload->>k)) not between 1 and 4000 then raise exception 'condition text required %',k;end if;end loop;
+ if p_payload->>'decisionId' is not null then
+ select jsonb_build_object('id',d.id,'learned',d.learned,'verdict',d.verdict) into decision from decisions d where d.id=(p_payload->>'decisionId')::uuid and d.idea_id=p_idea_id and lower(d.verdict::text)='kill';
+ if decision is null then raise exception 'Kill learning unavailable';end if;end if;
+ elsif p_kind='evaluation' then
+ if coalesce(p_payload->>'outcome','') not in ('met','not_met','unknown') or length(trim(coalesce(p_payload->>'coverage',''))) not between 1 and 4000 then raise exception 'evaluation outcome and coverage required';end if;
+ raw_source=p_payload->'source';quote=raw_source->>'quote';
+ if jsonb_typeof(raw_source) is distinct from 'object' or jsonb_typeof(raw_source->'quote') is distinct from 'string' or length(trim(quote)) not between 1 and 20000 then raise exception 'source quote required';end if;
+ if raw_source->>'kind'='manual' then
+ if jsonb_typeof(raw_source->'rawText') is distinct from 'string' or length(raw_source->>'rawText') not between 1 and 100000 or coalesce(raw_source->>'url','') !~ '^https?://' or raw_source->>'url' ~ '^https?://[^/[:space:]]*@' or raw_source->>'url' ~ '[[:cntrl:][:space:]]' or length(raw_source->>'url')>8000 then raise exception 'manual source URL and material required';end if;
+ source=jsonb_build_object('kind','manual','origin','user_provided','url',raw_source->>'url','rawText',raw_source->>'rawText','quote',quote);
+ elsif raw_source->>'kind'='observation_run' then
+ if to_regclass('public.decision_observation_runs') is null then raise exception 'observation source unavailable: migration 108 required';end if;
+ if coalesce(raw_source->>'recordIndex','') !~ '^[0-9]{1,3}$' then raise exception 'invalid record index';end if;idx=(raw_source->>'recordIndex')::integer;if idx>499 then raise exception 'invalid record index';end if;
+ execute 'select payload from public.decision_observation_runs where id=$1 and user_id=$2' into record_source using (raw_source->>'runId')::uuid,p_user_id;
+ if record_source is null then raise exception 'observation source unavailable';end if;
+ record_source=record_source->'records'->idx;if record_source is null then raise exception 'observation record unavailable';end if;
+ if coalesce(record_source->>'origin','') not in ('manual','public','synthetic','ai_seed') then raise exception 'observation origin unavailable';end if;
+ if p_payload->>'outcome'='met' and record_source->>'origin' in ('synthetic','ai_seed') then raise exception 'synthetic/AI material cannot meet real condition';end if;
+ if record_source->>'origin'='public' and coalesce(record_source->>'sourceUrl','') !~ '^https?://' then raise exception 'public record URL required';end if;
+ source=jsonb_build_object('kind','observation_run','runId',raw_source->>'runId','recordIndex',idx,'origin',record_source->>'origin','url',record_source->>'sourceUrl','rawText',record_source->>'text','quote',quote,'title',record_source->>'title');
+ elsif raw_source->>'kind'='company_entry' then
+ if to_regclass('public.company_observation_entries') is null then raise exception 'company source unavailable: migration 110 required';end if;
+ execute 'select payload->''source'' from public.company_observation_entries where id=$1 and user_id=$2 and kind in (''activity'',''snapshot'')' into record_source using (raw_source->>'entryId')::uuid,p_user_id;
+ if record_source is null or coalesce(record_source->>'kind','') not in ('manual_import','official_response','web_capture','saved_job') then raise exception 'company source unavailable';end if;
+ source=jsonb_build_object('kind','company_entry','entryId',raw_source->>'entryId','origin',record_source->>'kind','url',record_source->>'url','rawText',record_source->>'rawText','quote',quote,'scope',record_source->>'scope');
+ else raise exception 'invalid material source';end if;
+ if length(coalesce(source->>'rawText','')) not between 1 and 100000 or position(quote in source->>'rawText')=0 then raise exception 'quote not found in actual material text';end if;
+ elsif p_kind='ack' then
+ select id into cue from idea_reconsideration_entries where id=(p_payload->>'cueId')::uuid and user_id=p_user_id and idea_id=p_idea_id and condition_version_id=latest.id and kind='cue';if cue is null then raise exception 'cue unavailable';end if;
+ select * into receipt from idea_reconsideration_entries where kind='ack' and cue_id=cue;
+ if found then
+ perform set_config('ideaos.reconsideration_write','allowed',true);
+ insert into idea_reconsideration_requests(user_id,request_id,idea_id,entry_id,cue_id,request_payload,result) values(p_user_id,p_request_id,p_idea_id,receipt.id,cue,req,jsonb_build_object('id',receipt.id,'cueId',cue));
+ perform set_config('ideaos.reconsideration_write','',true);
+ return jsonb_build_object('id',receipt.id,'cueId',cue);end if;
+ end if;
+ perform set_config('ideaos.reconsideration_write','allowed',true);
+ insert into idea_reconsideration_entries(user_id,idea_id,kind,condition_version_id,expected_version_id,cue_id,learned,change_required,criterion,scope,decision_snapshot,outcome,coverage,source_snapshot,request_id,request_payload)
+ values(p_user_id,p_idea_id,p_kind,case when p_kind='condition' then null else latest.id end,p_expected_version_id,cue,case when p_kind='condition' then p_payload->>'learned' end,case when p_kind='condition' then p_payload->>'changeRequired' end,case when p_kind='condition' then p_payload->>'criterion' end,case when p_kind='condition' then p_payload->>'scope' end,decision,case when p_kind='evaluation' then p_payload->>'outcome' end,case when p_kind='evaluation' then p_payload->>'coverage' end,source,p_request_id,req) returning id into result_id;
+ if p_kind='evaluation' then
+ select id into cue from idea_reconsideration_entries where condition_version_id=latest.id and kind='cue';
+ if p_payload->>'outcome'='met' and cue is null then
+ insert into idea_reconsideration_entries(user_id,idea_id,kind,condition_version_id,evaluation_id) values(p_user_id,p_idea_id,'cue',latest.id,result_id) returning id into cue;
+ end if;end if;
+ insert into idea_reconsideration_requests(user_id,request_id,idea_id,entry_id,cue_id,request_payload,result) values(p_user_id,p_request_id,p_idea_id,result_id,cue,req,jsonb_build_object('id',result_id,'cueId',cue));
+ perform set_config('ideaos.reconsideration_write','',true);
+ return jsonb_build_object('id',result_id,'cueId',cue);
+end$$;
+create function public.list_idea_reconsideration_cues(p_user_id uuid,p_before_revision integer default null) returns setof public.idea_reconsideration_entries language plpgsql security definer set search_path=public,pg_temp as $$begin
+ if p_user_id is null then raise exception 'reconsideration owner required' using errcode='42501';end if;
+ if coalesce(auth.role(),'')<>'service_role' then raise exception 'service role required' using errcode='42501';end if;
+ return query select c.* from idea_reconsideration_entries c join ideas i on i.id=c.idea_id and i.user_id=c.user_id
+ where c.user_id=p_user_id and c.kind='cue' and i.status::text='归档' and (p_before_revision is null or c.revision<p_before_revision)
+ and c.condition_version_id=(select v.id from idea_reconsideration_entries v where v.idea_id=c.idea_id and v.user_id=p_user_id and v.kind in ('condition','retract') order by v.revision desc limit 1)
+ and (select e.outcome from idea_reconsideration_entries e where e.kind='evaluation' and e.user_id=p_user_id and e.condition_version_id=c.condition_version_id order by e.revision desc limit 1)='met'
+ and not exists(select 1 from idea_reconsideration_entries a where a.kind='ack' and a.cue_id=c.id and a.user_id=p_user_id)
+ order by c.revision desc limit 21;
+end$$;
+revoke all on function public.save_idea_reconsideration(uuid,uuid,uuid,text,uuid,jsonb) from public,anon,authenticated;
+revoke all on function public.list_idea_reconsideration_cues(uuid,integer) from public,anon,authenticated;
+grant execute on function public.save_idea_reconsideration(uuid,uuid,uuid,text,uuid,jsonb) to service_role;
+grant execute on function public.list_idea_reconsideration_cues(uuid,integer) to service_role;
+commit;
+
+
+
+-- ============================================================================
+-- Synced migration: 113_feedback_task_adjustments.sql
+-- ============================================================================
+-- Confirmed feedback may propose a new manual task version. No validation/activity writes.
+begin;
+create table public.feedback_task_proposals (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),
+ revision bigint generated always as identity unique,
+ feedback_id uuid not null references public.decision_feedback(id),task_id uuid not null,
+ base_version_id uuid not null,source_link_id uuid references public.decision_feedback_links(id),
+ before_config jsonb not null,next_config jsonb not null,reason text not null,
+ request_id uuid not null,request_payload jsonb not null,created_at timestamptz not null default clock_timestamp(),
+ unique(user_id,request_id),unique(id,user_id),
+ foreign key(base_version_id,task_id,user_id) references public.decision_observation_versions(id,task_id,user_id)
+);
+create table public.feedback_task_applications (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,
+ proposal_id uuid not null unique,task_id uuid not null,new_task_version_id uuid not null,
+ request_id uuid not null,created_at timestamptz not null default clock_timestamp(),
+ unique(user_id,request_id),foreign key(proposal_id,user_id) references public.feedback_task_proposals(id,user_id),
+ foreign key(new_task_version_id,task_id,user_id) references public.decision_observation_versions(id,task_id,user_id)
+);
+create table public.feedback_task_requests (
+ user_id uuid not null,request_id uuid not null,proposal_id uuid not null,
+ application_id uuid not null references public.feedback_task_applications(id),
+ primary key(user_id,request_id),foreign key(proposal_id,user_id) references public.feedback_task_proposals(id,user_id)
+);
+create function public.feedback_task_guard() returns trigger language plpgsql as $$
+begin
+ if tg_op<>'INSERT' or current_setting('ideaos.feedback_task_write',true) is distinct from 'allowed' then raise exception 'immutable feedback task history';end if;
+ return new;
+end $$;
+do $$ declare t text;begin
+ foreach t in array array['feedback_task_proposals','feedback_task_applications','feedback_task_requests'] loop
+ execute format('alter table public.%I enable row level security',t);
+ execute format('create policy feedback_task_read on public.%I for select to authenticated using(auth.uid()=user_id)',t);
+ execute format('grant select on public.%I to authenticated,service_role',t);
+ execute format('revoke insert,update,delete on public.%I from anon,authenticated',t);
+ execute format('create trigger immutable_feedback_task before insert or update or delete on public.%I for each row execute function public.feedback_task_guard()',t);
+ end loop;
+end $$;
+create function public.save_feedback_task_proposal(p_user_id uuid,p_feedback_id uuid,p_task_id uuid,p_base_version_id uuid,p_next_config jsonb,p_reason text,p_request_id uuid)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare old public.feedback_task_proposals;t public.decision_observation_tasks;v public.decision_observation_versions;f public.decision_feedback;l public.decision_feedback_links;req jsonb;rid uuid;
+begin
+ if p_user_id is null or coalesce(auth.role(),'')<>'service_role' then raise exception 'feedback task owner required' using errcode='42501';end if;
+ if p_request_id is null then raise exception 'request required';end if;
+ perform public.validate_observation_config(p_next_config);
+ if p_reason is null or length(trim(p_reason))=0 or length(p_reason)>4000 then raise exception 'adjustment reason required';end if;
+ req=jsonb_build_object('feedbackId',p_feedback_id,'taskId',p_task_id,'baseVersionId',p_base_version_id,'nextConfig',p_next_config,'reason',p_reason);
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||p_request_id::text,113));
+ select * into old from public.feedback_task_proposals where user_id=p_user_id and request_id=p_request_id;
+ if found then
+ if old.request_payload<>req then raise exception 'request payload conflict';end if;
+ return jsonb_build_object('id',old.id);end if;
+ select * into t from public.decision_observation_tasks where id=p_task_id and user_id=p_user_id for update;
+ if not found or not exists(select 1 from public.ideas where id=t.object_id and user_id=p_user_id) then raise exception 'task unavailable';end if;
+ select * into v from public.decision_observation_versions where task_id=t.id and user_id=p_user_id order by revision desc limit 1;
+ if v.id is distinct from p_base_version_id then raise exception '观察配置已变化，请重新读取并预览';end if;
+ if v.config=p_next_config then raise exception '配置没有变化';end if;
+ select * into f from public.decision_feedback where id=p_feedback_id and user_id=p_user_id;
+ if not found or not exists(select 1 from public.ideas where id=f.idea_id and user_id=p_user_id) then raise exception 'feedback unavailable';end if;
+ if f.idea_id<>t.object_id then
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||p_feedback_id::text||t.object_id::text,113));
+ select * into l from public.decision_feedback_links where user_id=p_user_id and feedback_id=f.id and target_idea_id=t.object_id order by revision desc limit 1;
+ if not found or l.action<>'confirm' then raise exception '反馈适用关系已撤回或未确认';end if;
+ end if;
+ perform set_config('ideaos.feedback_task_write','allowed',true);
+ insert into public.feedback_task_proposals(user_id,feedback_id,task_id,base_version_id,source_link_id,before_config,next_config,reason,request_id,request_payload)
+ values(p_user_id,f.id,t.id,v.id,l.id,v.config,p_next_config,p_reason,p_request_id,req) returning id into rid;
+ perform set_config('ideaos.feedback_task_write','',true);
+ return jsonb_build_object('id',rid);
+end $$;
+create function public.apply_feedback_task_proposal(p_user_id uuid,p_proposal_id uuid,p_request_id uuid)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare old public.feedback_task_applications;receipt public.feedback_task_requests;p public.feedback_task_proposals;t public.decision_observation_tasks;v_id uuid;f public.decision_feedback;l public.decision_feedback_links;result jsonb;rid uuid;
+begin
+ if p_user_id is null or coalesce(auth.role(),'')<>'service_role' then raise exception 'feedback task owner required' using errcode='42501';end if;
+ if p_request_id is null then raise exception 'request required';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||p_request_id::text,113));
+ select * into receipt from public.feedback_task_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then
+ if receipt.proposal_id is distinct from p_proposal_id then raise exception 'request payload conflict';end if;
+ select * into old from public.feedback_task_applications where id=receipt.application_id and user_id=p_user_id;
+ return jsonb_build_object('id',old.id,'versionId',old.new_task_version_id);end if;
+ select * into p from public.feedback_task_proposals where id=p_proposal_id and user_id=p_user_id for update;
+ if not found then raise exception 'proposal unavailable';end if;
+ select * into old from public.feedback_task_applications where proposal_id=p.id and user_id=p_user_id;
+ if found then
+ perform set_config('ideaos.feedback_task_write','allowed',true);
+ insert into public.feedback_task_requests(user_id,request_id,proposal_id,application_id) values(p_user_id,p_request_id,p.id,old.id);
+ perform set_config('ideaos.feedback_task_write','',true);
+ return jsonb_build_object('id',old.id,'versionId',old.new_task_version_id);end if;
+ select * into t from public.decision_observation_tasks where id=p.task_id and user_id=p_user_id for update;
+ if not found or not exists(select 1 from public.ideas where id=t.object_id and user_id=p_user_id) then raise exception 'task unavailable';end if;
+ select id into v_id from public.decision_observation_versions where task_id=t.id and user_id=p_user_id order by revision desc limit 1;
+ if v_id is distinct from p.base_version_id then raise exception '观察配置已变化，请重新读取并预览';end if;
+ select * into f from public.decision_feedback where id=p.feedback_id and user_id=p_user_id;
+ if not found or not exists(select 1 from public.ideas where id=f.idea_id and user_id=p_user_id) then raise exception 'feedback unavailable';end if;
+ if f.idea_id<>t.object_id then
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||f.id::text||t.object_id::text,113));
+ select * into l from public.decision_feedback_links where user_id=p_user_id and feedback_id=f.id and target_idea_id=t.object_id order by revision desc limit 1;
+ if not found or l.action<>'confirm' or l.id is distinct from p.source_link_id then raise exception '反馈适用关系已变化，请重新确认';end if;
+ end if;
+ result=public.save_decision_observation_version(p_user_id,t.id,null,null,p.next_config,p_request_id);
+ perform set_config('ideaos.feedback_task_write','allowed',true);
+ insert into public.feedback_task_applications(user_id,proposal_id,task_id,new_task_version_id,request_id)
+ values(p_user_id,p.id,t.id,(result->>'id')::uuid,p_request_id) returning id into rid;
+ insert into public.feedback_task_requests(user_id,request_id,proposal_id,application_id) values(p_user_id,p_request_id,p.id,rid);
+ perform set_config('ideaos.feedback_task_write','',true);
+ return jsonb_build_object('id',rid,'versionId',result->>'id');
+end $$;
+revoke all on function public.save_feedback_task_proposal(uuid,uuid,uuid,uuid,jsonb,text,uuid), public.apply_feedback_task_proposal(uuid,uuid,uuid) from public,anon,authenticated;
+grant execute on function public.save_feedback_task_proposal(uuid,uuid,uuid,uuid,jsonb,text,uuid), public.apply_feedback_task_proposal(uuid,uuid,uuid) to service_role;
+commit;
+
+
+-- ============================================================================
+-- Synced migration: 114_reasoning_quality.sql
+-- ============================================================================
+begin;
+-- Manual reasoning journal and immutable source-correction notices. No AI or idea writes.
+create table public.event_reasoning_entries (
+  id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
+  event_id uuid not null, revision bigint not null check(revision between 1 and 9007199254740991),
+  kind text not null check(kind in ('claim','increment','denominator','comparability','disagreement','mechanism','applicability','review','correction','ack')),
+  payload jsonb not null check(jsonb_typeof(payload)='object' and octet_length(payload::text)<=65000),
+  created_at timestamptz not null default clock_timestamp(),
+  unique(id,user_id,event_id),unique(event_id,revision),
+  foreign key(user_id,event_id) references public.signal_events(user_id,id) on delete cascade
+);
+create table public.event_reasoning_impacts (
+  id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,event_id uuid not null,
+  revision bigint generated always as identity check(revision<=9007199254740991),correction_id uuid not null,
+  subject_kind text not null check(subject_kind in ('reasoning','research')),subject_id uuid not null,
+  old_conclusion jsonb not null,created_at timestamptz not null default clock_timestamp(),
+  foreign key(correction_id,user_id,event_id) references public.event_reasoning_entries(id,user_id,event_id) on delete cascade,
+  foreign key(user_id,event_id) references public.signal_events(user_id,id) on delete cascade,
+  unique(correction_id,subject_kind,subject_id),unique(id,user_id,event_id)
+);
+create table public.event_reasoning_requests (
+  user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,event_id uuid not null,
+  kind text not null,payload jsonb not null,expected_revision bigint not null,entry_id uuid not null,
+  primary key(user_id,request_id),foreign key(entry_id,user_id,event_id) references public.event_reasoning_entries(id,user_id,event_id) on delete cascade
+);
+create index event_reasoning_history on public.event_reasoning_entries(user_id,event_id,revision);
+create index event_reasoning_impact_history on public.event_reasoning_impacts(user_id,event_id,revision);
+create function public.preserve_event_reasoning() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  if tg_op='DELETE' and (not exists(select 1 from auth.users where id=old.user_id) or not exists(select 1 from public.signal_events where id=old.event_id and user_id=old.user_id)) then return old;end if;
+  raise exception 'reasoning history is immutable';
+end $$;
+create trigger reasoning_entries_immutable before update or delete on public.event_reasoning_entries for each row execute function public.preserve_event_reasoning();
+create trigger reasoning_impacts_immutable before update or delete on public.event_reasoning_impacts for each row execute function public.preserve_event_reasoning();
+create trigger reasoning_requests_immutable before update or delete on public.event_reasoning_requests for each row execute function public.preserve_event_reasoning();
+alter table public.event_reasoning_entries enable row level security;
+alter table public.event_reasoning_impacts enable row level security;
+alter table public.event_reasoning_requests enable row level security;
+create policy reasoning_entry_owner on public.event_reasoning_entries for select to authenticated using(auth.uid()=user_id);
+create policy reasoning_impact_owner on public.event_reasoning_impacts for select to authenticated using(auth.uid()=user_id);
+revoke all on public.event_reasoning_entries,public.event_reasoning_impacts,public.event_reasoning_requests from public,anon,authenticated,service_role;
+grant select on public.event_reasoning_entries,public.event_reasoning_impacts to authenticated,service_role;
+
+create function public.guard_event_reasoning(p_user_id uuid,p_event_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  if p_user_id is null or coalesce(auth.role(),'')<>'service_role' then raise exception 'reasoning service owner required' using errcode='42501';end if;
+  if not exists(select 1 from public.signal_events where id=p_event_id and user_id=p_user_id) then raise exception 'event owner required' using errcode='42501';end if;
+end $$;
+create function public.validate_event_reasoning_ref(p_user_id uuid,p_event_id uuid,p_ref jsonb) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  if jsonb_typeof(p_ref) is distinct from 'object' or exists(select 1 from jsonb_object_keys(p_ref) k where k not in ('snapshotId','quote')) or jsonb_typeof(p_ref->'quote') is distinct from 'string' or length(btrim(p_ref->>'quote')) not between 1 and 2000 then raise exception 'invalid source ref';end if;
+  if not exists(select 1 from public.signal_source_snapshots s join public.signal_event_memberships m on m.snapshot_id=s.id and m.user_id=s.user_id where s.id=(p_ref->>'snapshotId')::uuid and s.user_id=p_user_id and m.event_id=p_event_id and m.action='include' and position(p_ref->>'quote' in s.captured_text)>0) then raise exception 'source membership or exact quote unavailable' using errcode='42501';end if;
+end $$;
+create function public.validate_event_reasoning_payload(p_user_id uuid,p_event_id uuid,p_kind text,p jsonb) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+declare allowed text[];required text[];k text;r jsonb;link jsonb;pair jsonb;sid uuid;
+begin
+  if p is null or jsonb_typeof(p)<>'object' or octet_length(p::text)>65000 then raise exception 'invalid reasoning payload';end if;
+  case p_kind
+    when 'claim' then allowed:=array[]::text[];required:=array[]::text[];
+    when 'increment' then allowed:=array['baseline','addition','increment','independence','independenceBasis'];required:=array['increment','independenceBasis'];
+    when 'denominator' then allowed:=array['sample','population','denominator','omittedGroups'];required:=allowed;
+    when 'comparability' then allowed:=array['dimensions','verdict','reason'];required:=array['reason'];
+    when 'disagreement' then allowed:=array['left','right','cause','checkQuestion'];required:=array['checkQuestion'];
+    when 'mechanism' then allowed:=array['links'];required:=array[]::text[];
+    when 'applicability' then allowed:=array['conditions','invalidators','followUp'];required:=allowed;
+    when 'review' then allowed:=array[]::text[];required:=array[]::text[];
+    when 'correction' then allowed:=array['oldSnapshotId','newSnapshotId'];required:=array[]::text[];
+    when 'ack' then allowed:=array['impactId'];required:=array[]::text[];
+    else raise exception 'invalid reasoning kind';
+  end case;
+  if exists(select 1 from jsonb_object_keys(p) key where not key=any(allowed||array['text','refs','claimIds'])) then raise exception 'unsupported reasoning field';end if;
+  foreach k in array required||array['text'] loop
+    if jsonb_typeof(p->k) is distinct from 'string' or length(btrim(p->>k)) not between 1 and 4000 then raise exception 'required reasoning text: %',k;end if;
+  end loop;
+  if jsonb_typeof(p->'refs') is distinct from 'array' or jsonb_array_length(p->'refs')>24 or jsonb_typeof(p->'claimIds') is distinct from 'array' or jsonb_array_length(p->'claimIds')>24 then raise exception 'invalid reasoning refs or dependencies';end if;
+  for r in select value from jsonb_array_elements(p->'refs') loop perform public.validate_event_reasoning_ref(p_user_id,p_event_id,r);end loop;
+  for r in select value from jsonb_array_elements(p->'claimIds') loop
+    if jsonb_typeof(r)<>'string' or not exists(select 1 from public.event_reasoning_entries e where e.id=(r#>>'{}')::uuid and e.user_id=p_user_id and e.kind not in ('correction','ack')) then raise exception 'reasoning dependency unavailable' using errcode='42501';end if;
+  end loop;
+  if p_kind in ('claim','increment','denominator','comparability','disagreement','applicability') and jsonb_array_length(p->'refs')+jsonb_array_length(p->'claimIds')=0 then raise exception 'source or dependency required';end if;
+  if p_kind='increment' then
+    if p->>'independence' is null or p->>'independence' not in ('independent','shared','unknown') then raise exception 'source independence basis required';end if;
+    foreach k in array array['baseline','addition'] loop
+      perform public.validate_event_reasoning_ref(p_user_id,p_event_id,p->k);
+      if not (p->'refs') @> jsonb_build_array(p->k) then raise exception 'increment citation missing from refs';end if;
+    end loop;
+    if p->'baseline'->>'snapshotId'=p->'addition'->>'snapshotId' then raise exception 'distinct baseline and new snapshot required';end if;
+  end if;
+  if p_kind='comparability' then
+    if jsonb_typeof(p->'dimensions') is distinct from 'object' or exists(select 1 from jsonb_object_keys(p->'dimensions') key where key not in ('definition','unit','period','geography','priceBasis','quantityBasis')) then raise exception 'invalid dimensions';end if;
+    if p->>'verdict' is null or p->>'verdict' not in ('comparable','not_comparable') then raise exception 'comparability verdict required';end if;
+    foreach k in array array['definition','unit','period','geography','priceBasis','quantityBasis'] loop
+      pair:=p->'dimensions'->k;
+      if jsonb_typeof(pair) is distinct from 'object' or exists(select 1 from jsonb_object_keys(pair) key where key not in ('left','right')) or jsonb_typeof(pair->'left') is distinct from 'string' or jsonb_typeof(pair->'right') is distinct from 'string' or length(btrim(pair->>'left')) not between 1 and 4000 or length(btrim(pair->>'right')) not between 1 and 4000 then raise exception 'dimension missing; explicitly retain unknown';end if;
+      if p->>'verdict'='comparable' and (btrim(pair->>'left')<>btrim(pair->>'right') or (pair->>'left')~*'未知|不明|unknown|unsure' or (pair->>'right')~*'未知|不明|unknown|unsure') then raise exception 'unknown or different dimension is not comparable';end if;
+    end loop;
+  end if;
+  if p_kind='disagreement' then
+    if p->>'cause' is null or p->>'cause' not in ('fact','definition','time','mechanism','value') then raise exception 'disagreement cause required';end if;
+    foreach k in array array['left','right'] loop perform public.validate_event_reasoning_ref(p_user_id,p_event_id,p->k);if not (p->'refs')@>jsonb_build_array(p->k) then raise exception 'disagreement citation missing';end if;end loop;
+  end if;
+  if p_kind='mechanism' then
+    if jsonb_typeof(p->'links') is distinct from 'array' or jsonb_array_length(p->'links') not between 1 and 12 then raise exception 'mechanism links required';end if;
+    for link in select value from jsonb_array_elements(p->'links') loop
+      if jsonb_typeof(link) is distinct from 'object' or exists(select 1 from jsonb_object_keys(link) key where key not in ('text','refs','counterexample','unknown')) or jsonb_typeof(link->'text') is distinct from 'string' or length(btrim(link->>'text')) not between 1 and 4000 or jsonb_typeof(link->'refs') is distinct from 'array' or jsonb_array_length(link->'refs')>24 or jsonb_typeof(link->'counterexample') is distinct from 'string' or jsonb_typeof(link->'unknown') is distinct from 'string' or length(link->>'counterexample')>4000 or length(link->>'unknown')>4000 then raise exception 'invalid mechanism link';end if;
+      if jsonb_array_length(link->'refs')=0 and btrim(link->>'counterexample')='' and btrim(link->>'unknown')='' then raise exception 'each link needs evidence counterexample or unknown';end if;
+      for r in select value from jsonb_array_elements(link->'refs') loop if not (p->'refs')@>jsonb_build_array(r) then raise exception 'mechanism citation missing';end if;end loop;
+    end loop;
+  end if;
+  if p_kind='review' and jsonb_array_length(p->'claimIds')=0 then raise exception 'review requires original claim';end if;
+  if p_kind='correction' then
+    if p->>'oldSnapshotId' is null or p->>'newSnapshotId' is null or p->>'oldSnapshotId'=p->>'newSnapshotId' or jsonb_array_length(p->'claimIds')<>0 then raise exception 'correction requires distinct old and new sources';end if;
+    foreach k in array array['oldSnapshotId','newSnapshotId'] loop sid:=(p->>k)::uuid;if not exists(select 1 from jsonb_array_elements(p->'refs') v where (v->>'snapshotId')::uuid=sid) then raise exception 'correction needs exact old and new quotes';end if;end loop;
+  end if;
+  if p_kind='ack' then
+    if jsonb_array_length(p->'refs')<>0 or jsonb_array_length(p->'claimIds')<>0 or not exists(select 1 from public.event_reasoning_impacts i where i.id=(p->>'impactId')::uuid and i.user_id=p_user_id and (i.event_id=p_event_id or i.old_conclusion->>'event_id'=p_event_id::text)) then raise exception 'correction impact unavailable' using errcode='42501';end if;
+  end if;
+end $$;
+
+-- Only typed provenance fields participate. Text containing JSON/UUIDs never creates a dependency.
+create function public.refresh_event_reasoning_impacts(p_user_id uuid,p_event_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+declare c public.event_reasoning_entries;old_id text;
+begin
+  for c in select * from public.event_reasoning_entries where user_id=p_user_id and event_id=p_event_id and kind='correction' order by revision loop
+    old_id:=c.payload->>'oldSnapshotId';
+    with recursive affected as (
+      select e.id from public.event_reasoning_entries e where e.user_id=p_user_id and e.kind not in ('correction','ack') and exists(select 1 from jsonb_array_elements(e.payload->'refs') r where r->>'snapshotId'=old_id)
+      union
+      select e.id from public.event_reasoning_entries e join affected a on (e.payload->'claimIds')@>jsonb_build_array(a.id::text) where e.user_id=p_user_id and e.kind not in ('correction','ack')
+    ) insert into public.event_reasoning_impacts(user_id,event_id,correction_id,subject_kind,subject_id,old_conclusion)
+      select p_user_id,p_event_id,c.id,'reasoning',e.id,to_jsonb(e) from affected a join public.event_reasoning_entries e on e.id=a.id on conflict(correction_id,subject_kind,subject_id) do nothing;
+    with recursive affected as (
+      select r.id from public.signal_event_research_entries r where r.user_id=p_user_id and (
+        exists(select 1 from jsonb_array_elements(coalesce(r.payload->'refs','[]')) ref where ref->>'snapshotId'=old_id)
+        or coalesce(r.payload->'selectedSnapshotIds','[]')@>jsonb_build_array(old_id)
+        or (r.kind='source_link' and old_id in (r.payload->>'fromSnapshotId',r.payload->>'toSnapshotId'))
+      )
+      union
+      select r.id from public.signal_event_research_entries r join affected a on r.subject_id=a.id or coalesce(r.payload->'selectedNoteIds','[]')@>jsonb_build_array(a.id::text) or exists(select 1 from jsonb_array_elements(coalesce(r.payload->'noteRefs','[]')) n where n->>'recordId'=a.id::text) where r.user_id=p_user_id
+    ) insert into public.event_reasoning_impacts(user_id,event_id,correction_id,subject_kind,subject_id,old_conclusion)
+      select p_user_id,p_event_id,c.id,'research',r.id,to_jsonb(r) from affected a join public.signal_event_research_entries r on r.id=a.id on conflict(correction_id,subject_kind,subject_id) do nothing;
+  end loop;
+end $$;
+create function public.research_reasoning_correction_notice() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  perform 1 from public.signal_events where id=new.event_id and user_id=new.user_id for update;
+  perform public.refresh_event_reasoning_impacts(new.user_id,e.event_id) from (select distinct event_id from public.event_reasoning_entries where user_id=new.user_id and kind='correction') e;return new;
+end $$;
+create trigger research_correction_notice after insert on public.signal_event_research_entries for each row execute function public.research_reasoning_correction_notice();
+
+-- Serialize old research RPCs before their existing event lock, keeping all 106 validation intact.
+alter function public.append_signal_event_research(uuid,uuid,text,uuid,jsonb,uuid) rename to append_signal_event_research_before_reasoning;
+revoke all on function public.append_signal_event_research_before_reasoning(uuid,uuid,text,uuid,jsonb,uuid) from public,anon,authenticated,service_role;
+create function public.append_signal_event_research(p_user_id uuid,p_event_id uuid,p_kind text,p_subject_id uuid,p_payload jsonb,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  perform public.signal_event_guard_owner(p_user_id);
+  perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,114));
+  return public.append_signal_event_research_before_reasoning(p_user_id,p_event_id,p_kind,p_subject_id,p_payload,p_request_id);
+end $$;
+revoke all on function public.append_signal_event_research(uuid,uuid,text,uuid,jsonb,uuid) from public,anon,authenticated;
+grant execute on function public.append_signal_event_research(uuid,uuid,text,uuid,jsonb,uuid) to service_role;
+create function public.lock_research_reasoning_owner() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+begin perform pg_advisory_xact_lock(hashtextextended(new.user_id::text,114));return new;end $$;
+create trigger research_reasoning_owner_lock before insert on public.signal_event_research_entries for each row execute function public.lock_research_reasoning_owner();
+
+create function public.append_event_reasoning(p_user_id uuid,p_event_id uuid,p_kind text,p_payload jsonb,p_request_id uuid,p_expected_revision bigint) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare prior public.event_reasoning_requests;result public.event_reasoning_entries;current_revision bigint;
+begin
+  perform public.guard_event_reasoning(p_user_id,p_event_id);
+  if p_request_id is null or p_expected_revision is null or p_expected_revision not between 0 and 9007199254740991 then raise exception 'invalid request or revision';end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,114));
+  perform 1 from public.signal_events where user_id=p_user_id and id=p_event_id and archived_at is null for update;
+  if not found then raise exception 'event owner required' using errcode='42501';end if;
+  select * into prior from public.event_reasoning_requests where user_id=p_user_id and request_id=p_request_id;
+  if found then
+    if prior.event_id is distinct from p_event_id or prior.kind is distinct from p_kind or prior.payload is distinct from p_payload or prior.expected_revision is distinct from p_expected_revision then raise exception 'reasoning request conflict' using errcode='23505';end if;
+    select * into result from public.event_reasoning_entries where id=prior.entry_id;return to_jsonb(result);
+  end if;
+  perform public.validate_event_reasoning_payload(p_user_id,p_event_id,p_kind,p_payload);
+  if p_kind='ack' then
+    select * into result from public.event_reasoning_entries where user_id=p_user_id and event_id=p_event_id and kind='ack' and payload->>'impactId'=p_payload->>'impactId' order by revision limit 1;
+    if found then
+      insert into public.event_reasoning_requests values(p_user_id,p_request_id,p_event_id,p_kind,p_payload,p_expected_revision,result.id);return to_jsonb(result);
+    end if;
+  end if;
+  select coalesce(max(revision),0) into current_revision from public.event_reasoning_entries where user_id=p_user_id and event_id=p_event_id;
+  if current_revision<>p_expected_revision then raise exception 'stale reasoning revision; reload history';end if;
+  insert into public.event_reasoning_entries(user_id,event_id,revision,kind,payload) values(p_user_id,p_event_id,current_revision+1,p_kind,p_payload) returning * into result;
+  insert into public.event_reasoning_requests values(p_user_id,p_request_id,p_event_id,p_kind,p_payload,p_expected_revision,result.id);
+  if p_kind<>'ack' then perform public.refresh_event_reasoning_impacts(p_user_id,e.event_id) from (select distinct event_id from public.event_reasoning_entries where user_id=p_user_id and kind='correction') e;end if;
+  return to_jsonb(result);
+end $$;
+create function public.list_event_reasoning(p_user_id uuid,p_event_id uuid,p_after_revision bigint default 0,p_after_impact_revision bigint default 0,p_limit integer default 50) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare entries jsonb;impacts jsonb;next_revision bigint;next_impact bigint;current_revision bigint;
+begin
+  perform public.guard_event_reasoning(p_user_id,p_event_id);
+  perform pg_advisory_xact_lock_shared(hashtextextended(p_user_id::text,114));
+  if p_after_revision is null or p_after_impact_revision is null or p_after_revision not between 0 and 9007199254740991 or p_after_impact_revision not between 0 and 9007199254740991 or p_limit is null or p_limit not between 1 and 100 then raise exception 'invalid reasoning cursor or page size';end if;
+  select coalesce(jsonb_agg(to_jsonb(e) order by revision),'[]'),max(revision) into entries,next_revision from (select * from public.event_reasoning_entries where user_id=p_user_id and event_id=p_event_id and revision>p_after_revision order by revision limit p_limit) e;
+  if not exists(select 1 from public.event_reasoning_entries where user_id=p_user_id and event_id=p_event_id and revision>next_revision) then next_revision:=null;end if;
+  select coalesce(max(revision),0) into current_revision from public.event_reasoning_entries where user_id=p_user_id and event_id=p_event_id;
+  select coalesce(jsonb_agg(to_jsonb(i)||jsonb_build_object('correction',(select to_jsonb(c) from public.event_reasoning_entries c where c.id=i.correction_id and c.user_id=p_user_id),'acknowledged',exists(select 1 from public.event_reasoning_entries a where a.user_id=p_user_id and a.kind='ack' and a.payload->>'impactId'=i.id::text)) order by revision),'[]'),max(revision) into impacts,next_impact from (select * from public.event_reasoning_impacts where user_id=p_user_id and (event_id=p_event_id or old_conclusion->>'event_id'=p_event_id::text) and revision>p_after_impact_revision order by revision limit p_limit) i;
+  if not exists(select 1 from public.event_reasoning_impacts where user_id=p_user_id and (event_id=p_event_id or old_conclusion->>'event_id'=p_event_id::text) and revision>next_impact) then next_impact:=null;end if;
+  return jsonb_build_object('available',true,'entries',entries,'currentRevision',current_revision,'nextRevision',next_revision,'impacts',impacts,'nextImpactRevision',next_impact);
+end $$;
+revoke all on function public.guard_event_reasoning(uuid,uuid),public.validate_event_reasoning_ref(uuid,uuid,jsonb),public.validate_event_reasoning_payload(uuid,uuid,text,jsonb),public.refresh_event_reasoning_impacts(uuid,uuid),public.research_reasoning_correction_notice(),public.lock_research_reasoning_owner(),public.preserve_event_reasoning() from public,anon,authenticated,service_role;
+revoke all on function public.append_event_reasoning(uuid,uuid,text,jsonb,uuid,bigint),public.list_event_reasoning(uuid,uuid,bigint,bigint,integer) from public,anon,authenticated;
+grant execute on function public.append_event_reasoning(uuid,uuid,text,jsonb,uuid,bigint),public.list_event_reasoning(uuid,uuid,bigint,bigint,integer) to service_role;
+
+commit;
+
+
+
+
+-- ============================================================================
+-- Synced migration: 115_reading_attention.sql
+-- ============================================================================
+begin;
+-- Manual event-scoped attention history; never filters feeds or changes idea state.
+create table public.reading_attention_entries (
+ id uuid primary key default gen_random_uuid(), revision bigint generated always as identity unique,
+ user_id uuid not null references auth.users(id) on delete cascade,
+ event_id uuid not null, kind text not null check(kind in ('contract','contract_exit','register','review','blind_start','blind_judge','blind_exit','blind_reveal')),
+ version_id uuid references public.reading_attention_entries(id), payload jsonb not null,
+ created_at timestamptz not null default clock_timestamp(),
+ foreign key(user_id,event_id) references public.signal_events(user_id,id) on delete cascade
+);
+create index reading_attention_page on public.reading_attention_entries(user_id,event_id,revision);
+create unique index reading_attention_registration on public.reading_attention_entries(version_id,(payload->>'snapshotId')) where kind='register';
+create table public.reading_attention_requests (
+ user_id uuid not null references auth.users(id) on delete cascade, request_id uuid not null,
+ input jsonb not null, entry_id uuid not null references public.reading_attention_entries(id), primary key(user_id,request_id)
+);
+alter table public.reading_attention_entries enable row level security;
+alter table public.reading_attention_requests enable row level security;
+-- All access through service-only RPCs; raw storage contains frozen titles.
+revoke all on public.reading_attention_entries,public.reading_attention_requests from public,anon,authenticated,service_role;
+create function public.reading_attention_immutable() returns trigger language plpgsql set search_path=public,pg_temp as $$
+begin raise exception 'reading attention history is immutable'; end $$;
+create trigger reading_attention_immutable before update or delete on public.reading_attention_entries for each row execute function public.reading_attention_immutable();
+create trigger reading_attention_request_immutable before update or delete on public.reading_attention_requests for each row execute function public.reading_attention_immutable();
+create function public.reading_attention_owner(p_user_id uuid,p_event_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+ if p_user_id is null or coalesce(auth.role(),'')<>'service_role' or not exists(select 1 from signal_events where id=p_event_id and user_id=p_user_id) then raise exception 'reading attention owner required' using errcode='42501'; end if;
+end $$;
+create function public.reading_attention_dto(r public.reading_attention_entries) returns jsonb language sql immutable set search_path=public,pg_temp as $$
+ select jsonb_build_object('id',r.id,'revision',r.revision::text,'event_id',r.event_id,'version_id',r.version_id,'kind',r.kind,'payload',case when r.kind='register' then r.payload-'privateTitle' when r.kind='blind_start' then r.payload-'privateTitle' else r.payload end,'created_at',r.created_at)
+$$;
+create function public.save_reading_attention(p_user_id uuid,p_event_id uuid,p_kind text,p_version_id uuid,p_payload jsonb,p_request_id uuid) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare r reading_attention_entries; prior reading_attention_requests; latest reading_attention_entries; target reading_attention_entries; snap signal_source_snapshots; n integer; rule integer; body jsonb; request jsonb;
+begin
+ perform reading_attention_owner(p_user_id,p_event_id);
+ if p_request_id is null or p_payload is null or jsonb_typeof(p_payload)<>'object' then raise exception 'invalid reading attention input'; end if;
+ -- User lock protects request identities across events; event lock serializes ordinals and state transitions.
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,115));
+ perform 1 from signal_events where id=p_event_id and user_id=p_user_id for update;
+ request:=jsonb_build_object('eventId',p_event_id,'kind',p_kind,'versionId',p_version_id,'payload',p_payload);
+ select * into prior from reading_attention_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then
+  if prior.input<>request then raise exception 'request payload conflict'; end if;
+  select * into r from reading_attention_entries where id=prior.entry_id; return reading_attention_dto(r);
+ end if;
+ select * into latest from reading_attention_entries where event_id=p_event_id and user_id=p_user_id and kind in ('contract','contract_exit') order by revision desc limit 1;
+ body:=p_payload;
+ if p_kind in ('contract','contract_exit') then
+  if p_version_id is distinct from latest.id then raise exception 'contract changed; reload'; end if;
+  if p_kind='contract' then
+   if not (p_payload ?& array['triggers','counterevidence','everyNth']) or (p_payload-array['triggers','counterevidence','everyNth'])<>'{}'::jsonb or jsonb_typeof(p_payload->'triggers')<>'string' or jsonb_typeof(p_payload->'counterevidence')<>'string' or length(btrim(p_payload->>'triggers')) not between 1 and 4000 or length(btrim(p_payload->>'counterevidence')) not between 1 and 4000 or coalesce(p_payload->>'everyNth','')!~'^[0-9]{1,4}$' or (p_payload->>'everyNth')::integer not between 1 and 1000 then raise exception 'invalid contract'; end if;
+  elsif p_payload<>'{}'::jsonb or latest.kind is distinct from 'contract' then raise exception 'no active contract'; end if;
+ elsif p_kind='register' then
+  if latest.kind is distinct from 'contract' or p_version_id is distinct from latest.id then raise exception 'contract changed; reload'; end if;
+  if not(p_payload ?& array['snapshotId','choice']) or (p_payload-array['snapshotId','choice','contractMatch','matchReason'])<>'{}'::jsonb or coalesce(p_payload->>'choice','') not in ('seen','open','skip','pending') then raise exception 'explicit user choice required'; end if;
+  if coalesce(p_payload->>'contractMatch','unknown') not in ('matched','not_matched','unknown') or (p_payload ? 'matchReason' and (jsonb_typeof(p_payload->'matchReason')<>'string' or length(p_payload->>'matchReason')>4000)) then raise exception 'invalid manual match'; end if;
+  select * into snap from signal_source_snapshots s where s.id=(p_payload->>'snapshotId')::uuid and s.user_id=p_user_id and exists(select 1 from signal_event_memberships m where m.user_id=p_user_id and m.event_id=p_event_id and m.snapshot_id=s.id and m.action='include');
+  if not found then raise exception 'source unavailable' using errcode='42501'; end if;
+  select * into r from reading_attention_entries where event_id=p_event_id and version_id=p_version_id and kind='register' and payload->>'snapshotId'=snap.id::text;
+  if found then insert into reading_attention_requests values(p_user_id,p_request_id,request,r.id); return reading_attention_dto(r); end if;
+  select count(*)::integer+1 into n from reading_attention_entries where version_id=p_version_id and kind='register'; rule:=(latest.payload->>'everyNth')::integer;
+  body:=jsonb_build_object('contractMatch','unknown')||p_payload||jsonb_build_object('ordinal',n,'sampled',(n-1)%rule=0,'rule',latest.payload,'snapshot',jsonb_build_object('snapshotId',snap.id,'body',snap.captured_text,'sourceUrl',snap.source_url,'capturedAt',snap.captured_at,'captureScope',snap.capture_scope),'privateTitle',snap.title);
+ elsif p_kind in ('review','blind_start') then
+  if not(p_payload ? 'registrationId') or (p_payload - case when p_kind='review' then array['registrationId','note'] else array['registrationId'] end)<>'{}'::jsonb then raise exception 'invalid registration reference'; end if;
+  select * into target from reading_attention_entries where id=(p_payload->>'registrationId')::uuid and user_id=p_user_id and event_id=p_event_id and kind='register';
+  if not found then raise exception 'registration unavailable' using errcode='42501'; end if;
+  p_version_id:=target.version_id;
+  if p_kind='review' then
+   if jsonb_typeof(p_payload->'note') is distinct from 'string' or length(btrim(p_payload->>'note')) not between 1 and 4000 then raise exception 'review note required'; end if;
+  else
+   select * into r from reading_attention_entries where event_id=p_event_id and kind='blind_start' and payload->>'registrationId'=target.id::text;
+   if found then insert into reading_attention_requests values(p_user_id,p_request_id,request,r.id); return reading_attention_dto(r); end if;
+   if target.payload->>'sampled'<>'true' then raise exception 'blind reading requires fixed sample'; end if;
+   body:=jsonb_build_object('registrationId',target.id,'body',target.payload->'snapshot'->'body','sourceUrl',target.payload->'snapshot'->'sourceUrl','privateTitle',target.payload->'privateTitle');
+  end if;
+ elsif p_kind in ('blind_judge','blind_reveal','blind_exit') then
+  if not(p_payload ? 'sessionId') or (p_payload - case when p_kind='blind_judge' then array['sessionId','judgment'] else array['sessionId'] end)<>'{}'::jsonb then raise exception 'invalid session reference'; end if;
+  select * into target from reading_attention_entries where id=(p_payload->>'sessionId')::uuid and user_id=p_user_id and event_id=p_event_id and kind='blind_start';
+  if not found then raise exception 'blind session unavailable' using errcode='42501'; end if;
+  p_version_id:=target.version_id;
+  if exists(select 1 from reading_attention_entries where event_id=p_event_id and kind in ('blind_reveal','blind_exit') and payload->>'sessionId'=target.id::text) then raise exception 'blind session closed'; end if;
+  if p_kind='blind_judge' then
+   if jsonb_typeof(p_payload->'judgment') is distinct from 'string' or length(btrim(p_payload->>'judgment')) not between 1 and 4000 then raise exception 'judgment required'; end if;
+   if exists(select 1 from reading_attention_entries where event_id=p_event_id and kind='blind_judge' and payload->>'sessionId'=target.id::text) then raise exception 'judgment already frozen'; end if;
+  else
+   if p_kind='blind_reveal' and not exists(select 1 from reading_attention_entries where event_id=p_event_id and kind='blind_judge' and payload->>'sessionId'=target.id::text) then raise exception 'judgment required before reveal'; end if;
+   body:=p_payload||jsonb_build_object('title',target.payload->'privateTitle','body',target.payload->'body','sourceUrl',target.payload->'sourceUrl');
+  end if;
+ else raise exception 'invalid attention kind'; end if;
+ insert into reading_attention_entries(user_id,event_id,kind,version_id,payload) values(p_user_id,p_event_id,p_kind,p_version_id,body) returning * into r;
+ insert into reading_attention_requests values(p_user_id,p_request_id,request,r.id);
+ return reading_attention_dto(r);
+end $$;
+create function public.page_reading_attention(p_user_id uuid,p_event_id uuid,p_after bigint default null,p_samples_only boolean default false,p_limit integer default 50) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare rows jsonb; cursor text;
+begin
+ perform reading_attention_owner(p_user_id,p_event_id);
+ if p_limit is null or p_limit not between 1 and 100 or (p_after is not null and p_after<1) then raise exception 'invalid attention page'; end if;
+ select coalesce(jsonb_agg(reading_attention_dto(t) order by t.revision),'[]'::jsonb),max(t.revision)::text into rows,cursor from (select * from reading_attention_entries where user_id=p_user_id and event_id=p_event_id and (p_after is null or revision>p_after) and (not p_samples_only or (kind='register' and payload->>'sampled'='true')) order by revision limit p_limit) t;
+ return jsonb_build_object('available',true,'entries',rows,'nextCursor',case when jsonb_array_length(rows)=p_limit then cursor else null end);
+end $$;
+revoke all on function public.reading_attention_owner(uuid,uuid),public.reading_attention_dto(public.reading_attention_entries),public.save_reading_attention(uuid,uuid,text,uuid,jsonb,uuid),public.page_reading_attention(uuid,uuid,bigint,boolean,integer) from public,anon,authenticated;
+grant execute on function public.save_reading_attention(uuid,uuid,text,uuid,jsonb,uuid),public.page_reading_attention(uuid,uuid,bigint,boolean,integer) to service_role;
+
+
+commit;
+
+
+
+-- ============================================================================
+-- Synced migration: 116_statistical_denominators.sql
+-- ============================================================================
+begin;
+create table public.statistical_source_configs (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,
+ table_id text not null check(table_id='0004006264'),filters jsonb not null,metadata jsonb not null,metadata_hash text not null,
+ preview_hash text not null,approval_state text not null check(approval_state in ('approved','needs_review','deleted')),
+ approved_at timestamptz not null default clock_timestamp(),deleted_at timestamptz,unique(user_id,id)
+);
+create table public.statistical_snapshots (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,config_id uuid not null,payload jsonb not null,
+ metadata_hash text not null,request_id uuid not null,created_at timestamptz not null default clock_timestamp(),
+ foreign key(user_id,config_id) references public.statistical_source_configs(user_id,id) on delete cascade,
+ unique(user_id,request_id)
+);
+create table public.statistical_idea_links (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,config_id uuid not null,
+ idea_id uuid references public.ideas(id) on delete set null,scope text,unknown_note text,created_at timestamptz not null default clock_timestamp(),deleted_at timestamptz,
+ foreign key(user_id,config_id) references public.statistical_source_configs(user_id,id) on delete cascade
+);
+create table public.statistical_requests(user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,operation text not null,input_hash text not null,result_id uuid not null,approval_semantic_hash text check(approval_semantic_hash is null or approval_semantic_hash ~ '^[a-f0-9]{64}$'),primary key(user_id,request_id));
+create index statistical_source_page on public.statistical_source_configs(user_id,approved_at desc,id desc);
+create index statistical_snapshot_page on public.statistical_snapshots(user_id,config_id,created_at desc);
+alter table public.statistical_source_configs enable row level security;alter table public.statistical_snapshots enable row level security;alter table public.statistical_idea_links enable row level security;alter table public.statistical_requests enable row level security;
+-- Private owner data is exposed only by service-guarded RPCs, never direct client writes.
+revoke all on public.statistical_source_configs,public.statistical_snapshots,public.statistical_idea_links,public.statistical_requests from public,anon,authenticated,service_role;
+create function public.statistics_owner(p_user_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+begin if p_user_id is null or coalesce(auth.role(),'')<>'service_role' or not exists(select 1 from auth.users where id=p_user_id) then raise exception 'statistics owner required' using errcode='42501';end if;end $$;
+create function public.statistics_input_hash(p_value jsonb) returns text language sql immutable set search_path=public,pg_temp as $$select encode(sha256(convert_to(p_value::text,'UTF8')),'hex')$$;
+create function public.statistics_immutable() returns trigger language plpgsql set search_path=public,pg_temp as $$begin if tg_op='DELETE' and current_setting('app.statistics_privacy_delete',true)='yes' then return old;end if;raise exception 'statistical revision is immutable';end $$;
+create trigger statistical_snapshot_immutable before update or delete on public.statistical_snapshots for each row execute function public.statistics_immutable();
+create function public.get_statistical_request(p_user_id uuid,p_request_id uuid,p_operation text,p_config_id uuid default null) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare r statistical_requests;begin perform statistics_owner(p_user_id);select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;if not found then return null;end if;if r.operation<>p_operation or (p_config_id is not null and not exists(select 1 from statistical_snapshots where id=r.result_id and user_id=p_user_id and config_id=p_config_id)) then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end $$;
+-- A committed approval can be acknowledged before another network attempt. Its semantic
+-- digest survives privacy deletion without retaining filters or private association text.
+create function public.get_statistical_approval_request(p_user_id uuid,p_request_id uuid,p_filters jsonb,p_metadata_hash text,p_preview_hash text) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare r statistical_requests;h text;begin
+ perform statistics_owner(p_user_id);if p_request_id is null or p_filters is null or jsonb_typeof(p_filters)<>'object' or coalesce(p_metadata_hash,'')!~'^[a-f0-9]{64}$' or coalesce(p_preview_hash,'')!~'^[a-f0-9]{64}$' then raise exception 'invalid approval request identity';end if;
+ select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;if not found then return null;end if;
+ h:=statistics_input_hash(jsonb_build_object('filters',p_filters,'metadataHash',p_metadata_hash,'previewHash',p_preview_hash));
+ if r.operation<>'approve' or r.approval_semantic_hash is distinct from h then raise exception 'request payload conflict';end if;
+ return jsonb_build_object('id',r.result_id);end $$;
+create function public.persist_statistical_snapshot_internal(p_user_id uuid,p_config_id uuid,p_payload jsonb,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;s statistical_snapshots;h text;begin
+ perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;
+ if c.approval_state<>'approved' then raise exception 'statistical source not approved';end if;
+ if p_request_id is null or p_payload is null or jsonb_typeof(p_payload)<>'object' or octet_length(p_payload::text)>2000000 then raise exception 'invalid statistical payload';end if;
+ if p_payload->>'tableId' is distinct from c.table_id or p_payload->>'metadataHash' is distinct from c.metadata_hash or p_payload->'filters' is distinct from c.filters or p_payload->>'sourceType' is distinct from 'live' or jsonb_typeof(p_payload->'cells') is distinct from 'array' or jsonb_array_length(p_payload->'cells')>1 then raise exception 'source configuration mismatch';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('configId',p_config_id,'payload',p_payload));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'snapshot' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ insert into statistical_snapshots(user_id,config_id,payload,metadata_hash,request_id) values(p_user_id,p_config_id,p_payload,c.metadata_hash,p_request_id) returning * into s;
+ insert into statistical_requests(user_id,request_id,operation,input_hash,result_id) values(p_user_id,p_request_id,'snapshot',h,s.id);return jsonb_build_object('id',s.id);end $$;
+create function public.approve_statistical_source(p_user_id uuid,p_filters jsonb,p_metadata jsonb,p_payload jsonb,p_preview_hash text,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;h text;d jsonb;begin
+ perform statistics_owner(p_user_id);if p_request_id is null or p_filters is null or jsonb_typeof(p_filters)<>'object' or p_metadata is null or jsonb_typeof(p_metadata)<>'object' or p_payload is null or jsonb_typeof(p_payload)<>'object' then raise exception 'invalid approved statistical source';end if;
+ if p_metadata->>'tableId' is distinct from '0004006264' or p_payload->>'tableId' is distinct from '0004006264' or coalesce(p_metadata->>'metadataHash','')!~'^[a-f0-9]{64}$' or p_payload->>'metadataHash' is distinct from p_metadata->>'metadataHash' or p_payload->'filters' is distinct from p_filters or p_payload->>'sourceType' is distinct from 'live' or coalesce(p_preview_hash,'')!~'^[a-f0-9]{64}$' or jsonb_typeof(p_metadata->'dimensions') is distinct from 'array' or jsonb_array_length(p_metadata->'dimensions')<>6 or (select count(*) from jsonb_object_keys(p_filters))<>6 or octet_length(p_metadata::text)>1000000 or octet_length(p_payload::text)>2000000 then raise exception 'invalid approved statistical source';end if;
+ for d in select value from jsonb_array_elements(p_metadata->'dimensions') loop if not(p_filters ? (d->>'id')) or jsonb_typeof(p_filters->(d->>'id')) is distinct from 'string' or not exists(select 1 from jsonb_array_elements(d->'categories') k where k->>'code'=p_filters->>(d->>'id')) then raise exception 'unknown statistical category';end if;end loop;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('filters',p_filters,'metadataHash',p_metadata->>'metadataHash','previewHash',p_preview_hash,'cells',p_payload->'cells','scope',p_payload->'scope'));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'approve' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ insert into statistical_source_configs(user_id,table_id,filters,metadata,metadata_hash,preview_hash,approval_state) values(p_user_id,'0004006264',p_filters,p_metadata,p_metadata->>'metadataHash',p_preview_hash,'approved') returning * into c;
+ insert into statistical_snapshots(user_id,config_id,payload,metadata_hash,request_id) values(p_user_id,c.id,p_payload,c.metadata_hash,p_request_id);
+ insert into statistical_requests(user_id,request_id,operation,input_hash,result_id,approval_semantic_hash) values(p_user_id,p_request_id,'approve',h,c.id,statistics_input_hash(jsonb_build_object('filters',p_filters,'metadataHash',p_metadata->>'metadataHash','previewHash',p_preview_hash)));return jsonb_build_object('id',c.id);end $$;
+create function public.load_approved_statistical_source(p_user_id uuid,p_config_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;begin perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;if c.approval_state<>'approved' then raise exception 'statistical source not approved';end if;return to_jsonb(c);end $$;
+create function public.invalidate_statistical_config(p_user_id uuid,p_config_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;begin perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;if c.approval_state='approved' then update statistical_source_configs set approval_state='needs_review' where id=c.id;end if;return jsonb_build_object('id',c.id);end $$;
+create function public.link_statistical_idea(p_user_id uuid,p_config_id uuid,p_idea_id uuid,p_scope text,p_unknown text,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;h text;result_id uuid;begin
+ perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found or c.approval_state='deleted' or not exists(select 1 from ideas where id=p_idea_id and user_id=p_user_id) then raise exception 'statistics or idea owner required' using errcode='42501';end if;
+ if p_request_id is null or p_scope is null or p_unknown is null or length(btrim(p_scope)) not between 1 and 2000 or length(btrim(p_unknown)) not between 1 and 2000 then raise exception 'scope and unknown required';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('configId',p_config_id,'ideaId',p_idea_id,'scope',p_scope,'unknown',p_unknown));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'link' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ insert into statistical_idea_links(user_id,config_id,idea_id,scope,unknown_note) values(p_user_id,p_config_id,p_idea_id,btrim(p_scope),btrim(p_unknown)) returning id into result_id;insert into statistical_requests(user_id,request_id,operation,input_hash,result_id) values(p_user_id,p_request_id,'link',h,result_id);return jsonb_build_object('id',result_id);end $$;
+create function public.delete_statistical_source(p_user_id uuid,p_config_id uuid,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;r statistical_requests;h text;begin
+ perform statistics_owner(p_user_id);select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;if not found then raise exception 'statistics source owner required' using errcode='42501';end if;
+ if p_request_id is null then raise exception 'request identity required';end if;perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,116));h:=statistics_input_hash(jsonb_build_object('configId',p_config_id));select * into r from statistical_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if r.operation<>'delete' or r.input_hash<>h then raise exception 'request payload conflict';end if;return jsonb_build_object('id',r.result_id);end if;
+ perform set_config('app.statistics_privacy_delete','yes',true);delete from statistical_snapshots where user_id=p_user_id and config_id=p_config_id;perform set_config('app.statistics_privacy_delete','no',true);
+ update statistical_idea_links set idea_id=null,scope=null,unknown_note=null,deleted_at=coalesce(deleted_at,clock_timestamp()) where user_id=p_user_id and config_id=p_config_id;
+ update statistical_source_configs set approval_state='deleted',filters='{}',metadata='{}',metadata_hash='',preview_hash='',deleted_at=coalesce(deleted_at,clock_timestamp()) where id=p_config_id;
+ insert into statistical_requests(user_id,request_id,operation,input_hash,result_id) values(p_user_id,p_request_id,'delete',h,p_config_id);return jsonb_build_object('id',p_config_id);end $$;
+create function public.load_statistical_snapshot(p_user_id uuid,p_snapshot_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s statistical_snapshots;begin perform statistics_owner(p_user_id);select * into s from statistical_snapshots where id=p_snapshot_id and user_id=p_user_id;if not found then raise exception 'statistics snapshot owner required' using errcode='42501';end if;return to_jsonb(s);end $$;
+revoke all on function public.load_statistical_snapshot(uuid,uuid) from public,anon,authenticated;grant execute on function public.load_statistical_snapshot(uuid,uuid) to service_role;
+create function public.page_statistical_sources(p_user_id uuid,p_before uuid default null,p_limit integer default 30) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare rows jsonb;ids uuid[];next_id uuid;begin perform statistics_owner(p_user_id);if p_limit not between 1 and 30 then raise exception 'invalid page limit';end if;
+ if p_before is not null and not exists(select 1 from statistical_source_configs where id=p_before and user_id=p_user_id) then raise exception 'statistics cursor owner required' using errcode='42501';end if;
+ select coalesce(jsonb_agg(to_jsonb(c) order by approved_at desc,id desc),'[]'),array_agg(id order by approved_at desc,id desc) into rows,ids from (select * from statistical_source_configs c where user_id=p_user_id and (p_before is null or (approved_at,id)<(select approved_at,id from statistical_source_configs where id=p_before and user_id=p_user_id)) order by approved_at desc,id desc limit p_limit)c;
+ if array_length(ids,1)=p_limit then next_id:=ids[p_limit];end if;
+ return jsonb_build_object('status','ready','configs',rows,'snapshots',coalesce((select jsonb_agg(to_jsonb(s) order by s.created_at desc,s.id desc) from (select * from statistical_snapshots where user_id=p_user_id and config_id=any(ids) order by created_at desc,id desc limit 300)s),'[]'),'links',coalesce((select jsonb_agg((to_jsonb(l)-'unknown_note')||jsonb_build_object('unknown',unknown_note) order by created_at desc,id desc) from (select * from statistical_idea_links where user_id=p_user_id and config_id=any(ids) order by created_at desc,id desc limit 300)l),'[]'),'nextCursor',next_id);end $$;
+revoke all on function public.statistics_owner(uuid),public.statistics_input_hash(jsonb),public.statistics_immutable(),public.get_statistical_request(uuid,uuid,text,uuid),public.get_statistical_approval_request(uuid,uuid,jsonb,text,text),public.persist_statistical_snapshot_internal(uuid,uuid,jsonb,uuid),public.approve_statistical_source(uuid,jsonb,jsonb,jsonb,text,uuid),public.load_approved_statistical_source(uuid,uuid),public.invalidate_statistical_config(uuid,uuid),public.link_statistical_idea(uuid,uuid,uuid,text,text,uuid),public.delete_statistical_source(uuid,uuid,uuid),public.page_statistical_sources(uuid,uuid,integer) from public,anon,authenticated;
+grant execute on function public.get_statistical_request(uuid,uuid,text,uuid),public.get_statistical_approval_request(uuid,uuid,jsonb,text,text),public.persist_statistical_snapshot_internal(uuid,uuid,jsonb,uuid),public.approve_statistical_source(uuid,jsonb,jsonb,jsonb,text,uuid),public.load_approved_statistical_source(uuid,uuid),public.invalidate_statistical_config(uuid,uuid),public.link_statistical_idea(uuid,uuid,uuid,text,text,uuid),public.delete_statistical_source(uuid,uuid,uuid),public.page_statistical_sources(uuid,uuid,integer) to service_role;
+commit;
+
+
+-- ============================================================================
+-- Synced migration: 117_product_events.sql
+-- ============================================================================
+begin;
+-- Voluntary server-to-server prototype events; default-off application entrypoints.
+create table public.product_event_sources(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,
+ revision bigint not null default 1 check(revision between 1 and 9007199254740991),prototype_url text,notice_url text,notice_version text,event_kinds text[],
+ retention_days integer not null check(retention_days between 1 and 30),active boolean not null default false,confirmed_at timestamptz,deleted_at timestamptz,created_at timestamptz not null default clock_timestamp(),unique(id,user_id)
+);
+create table public.product_event_tokens(token_hash text primary key check(token_hash~'^[a-f0-9]{64}$'),source_id uuid not null,user_id uuid not null references auth.users(id) on delete cascade,issued_at timestamptz not null default clock_timestamp(),revoked_at timestamptz,foreign key(source_id,user_id) references public.product_event_sources(id,user_id) on delete cascade);
+create unique index product_event_one_active_token on public.product_event_tokens(source_id) where revoked_at is null;
+create table public.product_events(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,source_id uuid not null,revision bigint generated always as identity check(revision<=9007199254740991),
+ external_id uuid,subject_hash text check(subject_hash is null or subject_hash~'^[a-f0-9]{64}$'),kind text,attributes jsonb,occurred_at timestamptz,captured_at timestamptz default clock_timestamp(),payload_digest text,deleted_at timestamptz,
+ foreign key(source_id,user_id) references public.product_event_sources(id,user_id) on delete cascade,unique(id,user_id),unique(source_id,external_id),
+ check((deleted_at is null and external_id is not null and kind in ('query','no_result','task_completed','return_visit','inquiry','payment') and attributes is not null and occurred_at is not null and captured_at is not null and payload_digest is not null) or (deleted_at is not null and external_id is null and subject_hash is null and kind is null and attributes is null and occurred_at is null and captured_at is null and payload_digest is null))
+);
+create index product_event_history on public.product_events(user_id,revision);
+create index product_event_rate_window on public.product_events(source_id,captured_at) where deleted_at is null;
+create table public.product_event_links(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,event_id uuid not null,idea_id uuid not null references public.ideas(id) on delete cascade,scope text,unknown text,created_at timestamptz not null default clock_timestamp(),foreign key(event_id,user_id) references public.product_events(id,user_id) on delete cascade,unique(event_id,idea_id)
+);
+create table public.product_event_receipts(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,removed_count integer not null check(removed_count>=0),reason text not null check(reason in ('retention','source_deleted')),created_at timestamptz not null default clock_timestamp());
+create table public.product_event_requests(user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,digest text not null,source_id uuid,link_id uuid,receipt_id uuid,primary key(user_id,request_id));
+alter table public.product_event_sources enable row level security;alter table public.product_event_tokens enable row level security;alter table public.product_events enable row level security;alter table public.product_event_links enable row level security;alter table public.product_event_receipts enable row level security;alter table public.product_event_requests enable row level security;
+create policy product_source_owner on public.product_event_sources for select to authenticated using(auth.uid()=user_id);
+create policy product_event_owner on public.product_events for select to authenticated using(auth.uid()=user_id and (deleted_at is not null or captured_at>clock_timestamp()-make_interval(days=>(select s.retention_days from public.product_event_sources s where s.id=source_id and s.user_id=auth.uid()))));
+create policy product_link_owner on public.product_event_links for select to authenticated using(auth.uid()=user_id and exists(select 1 from public.product_events e where e.id=event_id));
+create policy product_receipt_owner on public.product_event_receipts for select to authenticated using(auth.uid()=user_id);
+revoke all on public.product_event_sources,public.product_event_tokens,public.product_events,public.product_event_links,public.product_event_receipts,public.product_event_requests from public,anon,authenticated,service_role;
+grant select on public.product_event_sources,public.product_events,public.product_event_links,public.product_event_receipts to authenticated,service_role;
+create function public.product_event_service() returns void language plpgsql stable security definer set search_path=public,pg_temp as $$begin if coalesce(auth.role(),'')<>'service_role' then raise exception 'product event service required' using errcode='42501';end if;end $$;
+create function public.product_event_owner(p_user_id uuid) returns void language plpgsql stable security definer set search_path=public,pg_temp as $$begin perform public.product_event_service();if p_user_id is null or not exists(select 1 from auth.users where id=p_user_id) then raise exception 'owner required' using errcode='42501';end if;end $$;
+create function public.preserve_product_event_history() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+ if tg_op='DELETE' and not exists(select 1 from auth.users where id=old.user_id) then return old;end if;
+ if tg_table_name='product_events' then
+  if tg_op='UPDATE' and old.deleted_at is null and new.deleted_at is not null and new.external_id is null and new.subject_hash is null and new.kind is null and new.attributes is null and new.occurred_at is null and new.captured_at is null and new.payload_digest is null and (to_jsonb(new)-array['external_id','subject_hash','kind','attributes','occurred_at','captured_at','payload_digest','deleted_at'])=(to_jsonb(old)-array['external_id','subject_hash','kind','attributes','occurred_at','captured_at','payload_digest','deleted_at']) then return new;end if;
+ elsif tg_table_name='product_event_links' then
+  if tg_op='UPDATE' and new.scope is null and new.unknown is null and (to_jsonb(new)-array['scope','unknown'])=(to_jsonb(old)-array['scope','unknown']) then return new;end if;
+  if tg_op='DELETE' and not exists(select 1 from public.ideas where id=old.idea_id) then return old;end if;
+ end if;
+ raise exception 'product event history immutable except privacy erasure';
+end $$;
+create trigger product_event_immutable before update or delete on public.product_events for each row execute function public.preserve_product_event_history();
+create trigger product_link_immutable before update or delete on public.product_event_links for each row execute function public.preserve_product_event_history();
+create trigger product_receipt_immutable before update or delete on public.product_event_receipts for each row execute function public.preserve_product_event_history();
+create trigger product_request_immutable before update or delete on public.product_event_requests for each row execute function public.preserve_product_event_history();
+create function public.erase_product_event_rows(p_user_id uuid,p_source_id uuid,p_expired_only boolean,p_limit integer) returns integer language plpgsql security definer set search_path=public,pg_temp as $$
+declare affected uuid[];removed integer;
+begin
+ select array_agg(id) into affected from (select e.id from public.product_events e join public.product_event_sources s on s.id=e.source_id where e.user_id=p_user_id and (p_source_id is null or e.source_id=p_source_id) and e.deleted_at is null and (not p_expired_only or e.captured_at<=clock_timestamp()-make_interval(days=>s.retention_days)) order by e.revision limit p_limit) q;
+ removed:=coalesce(array_length(affected,1),0);if removed=0 then return 0;end if;
+ update public.product_event_links set scope=null,unknown=null where user_id=p_user_id and event_id=any(affected);
+ update public.product_events set external_id=null,subject_hash=null,kind=null,attributes=null,occurred_at=null,captured_at=null,payload_digest=null,deleted_at=clock_timestamp() where user_id=p_user_id and id=any(affected);
+ return removed;
+end $$;
+create function public.validate_product_event(p jsonb) returns void language plpgsql immutable set search_path=public,pg_temp as $$
+declare a jsonb;k text;
+begin
+ if p is null or jsonb_typeof(p)<>'object' or octet_length(p::text)>8192 or exists(select 1 from jsonb_object_keys(p) key where key not in ('externalId','kind','occurredAt','noticeVersion','attributes','subjectHash')) then raise exception 'unsupported product event body';end if;
+ if p->>'externalId' is null or p->>'externalId'!~*'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' or p->>'occurredAt' is null or p->>'occurredAt'!~'^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$' or p->>'noticeVersion' is null or p->>'noticeVersion'!~'^[A-Za-z0-9._-]{1,32}$' then raise exception 'invalid event identity or time';end if;
+ perform (p->>'occurredAt')::timestamptz;
+ if p?'subjectHash' and (jsonb_typeof(p->'subjectHash')<>'string' or p->>'subjectHash'!~'^[a-f0-9]{64}$') then raise exception 'anonymous one-way subject hash required';end if;
+ a:=p->'attributes';k:=p->>'kind';if jsonb_typeof(a) is distinct from 'object' then raise exception 'invalid event attributes';end if;
+ case k
+ when 'query' then if (select count(*) from jsonb_object_keys(a))<>1 or jsonb_typeof(a->'resultCount') is distinct from 'number' or a->>'resultCount'!~'^\d+$' or (a->>'resultCount')::numeric not between 0 and 1000000 then raise exception 'invalid query attributes';end if;
+ when 'no_result' then if a<>'{}'::jsonb then raise exception 'invalid no_result attributes';end if;
+ when 'task_completed' then if (select count(*) from jsonb_object_keys(a))<>1 or a->>'durationBucket' is null or a->>'durationBucket' not in ('under_minute','one_to_five_minutes','over_five_minutes','unknown') then raise exception 'invalid task attributes';end if;
+ when 'return_visit' then if (select count(*) from jsonb_object_keys(a))<>1 or a->>'interval' is null or a->>'interval' not in ('day','week','month','unknown') then raise exception 'invalid return attributes';end if;
+ when 'inquiry' then if (select count(*) from jsonb_object_keys(a))<>1 or a->>'channel' is null or a->>'channel' not in ('form','email','other') then raise exception 'invalid inquiry attributes';end if;
+ when 'payment' then if exists(select 1 from jsonb_object_keys(a) key where key not in ('amountMinor','currency','kind')) or jsonb_typeof(a->'amountMinor') is distinct from 'number' or a->>'amountMinor'!~'^\d+$' or (a->>'amountMinor')::numeric not between 0 and 1000000000 or a->>'currency' is null or a->>'currency' not in ('JPY','USD','EUR') or a->>'kind' is null or a->>'kind' not in ('one_time','recurring') then raise exception 'invalid payment attributes';end if;
+ else raise exception 'event kind not allowed';end case;
+end $$;
+create function public.mutate_product_event_source(p_user_id uuid,p jsonb,p_token_hash text default null) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare prior public.product_event_requests;s public.product_event_sources;c jsonb;action text;digest text;removed integer:=0;receipt public.product_event_receipts;token_issued boolean:=false;k text;
+begin
+ perform public.product_event_owner(p_user_id);perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,117));
+ if p is null or jsonb_typeof(p)<>'object' or octet_length(p::text)>12000 or p->>'requestId' is null or exists(select 1 from jsonb_object_keys(p) key where key not in ('action','requestId','sourceId','expectedRevision','config','confirmPrototype')) then raise exception 'unsupported source command';end if;
+ digest:=encode(sha256(convert_to(p::text,'UTF8')),'hex');select * into prior from public.product_event_requests where user_id=p_user_id and request_id=(p->>'requestId')::uuid;
+ if found then if prior.digest<>digest then raise exception 'request conflict' using errcode='23505';end if;select * into s from public.product_event_sources where id=prior.source_id and user_id=p_user_id;select * into receipt from public.product_event_receipts where id=prior.receipt_id and user_id=p_user_id;return jsonb_build_object('source',case when s.id is null then null else to_jsonb(s)-'user_id' end,'receipt',case when receipt.id is null then null else to_jsonb(receipt)-'user_id' end,'tokenIssued',false,'replayed',true);end if;
+ action:=p->>'action';
+ if action='create' then
+  if p?'sourceId' or p?'expectedRevision' or p?'confirmPrototype' then raise exception 'create draft first';end if;
+  c:=p->'config';if jsonb_typeof(c) is distinct from 'object' or exists(select 1 from jsonb_object_keys(c) key where key not in ('prototypeUrl','noticeUrl','noticeVersion','eventKinds','retentionDays')) then raise exception 'invalid source config';end if;
+  foreach k in array array['prototypeUrl','noticeUrl'] loop if jsonb_typeof(c->k) is distinct from 'string' or length(c->>k)>2048 or (c->>k)!~*'^https://([a-z0-9-]+\.)+[a-z]{2,}(/[^?#[:space:]]*)?$' then raise exception 'HTTPS prototype and notice URL required';end if;end loop;
+  if c->>'noticeVersion' is null or c->>'noticeVersion'!~'^[A-Za-z0-9._-]{1,32}$' or jsonb_typeof(c->'eventKinds') is distinct from 'array' or jsonb_array_length(c->'eventKinds') not between 1 and 6 or exists(select 1 from jsonb_array_elements_text(c->'eventKinds') v where v not in ('query','no_result','task_completed','return_visit','inquiry','payment')) or (select count(distinct v) from jsonb_array_elements_text(c->'eventKinds') v)<>jsonb_array_length(c->'eventKinds') or jsonb_typeof(c->'retentionDays') is distinct from 'number' or c->>'retentionDays'!~'^\d+$' or (c->>'retentionDays')::numeric not between 1 and 30 then raise exception 'invalid event definitions or retention cap';end if;
+  insert into public.product_event_sources(user_id,prototype_url,notice_url,notice_version,event_kinds,retention_days) values(p_user_id,c->>'prototypeUrl',c->>'noticeUrl',c->>'noticeVersion',array(select jsonb_array_elements_text(c->'eventKinds')),(c->>'retentionDays')::int) returning * into s;
+ elsif action='purge' then
+  if p?'sourceId' or p?'expectedRevision' or p?'config' or p?'confirmPrototype' then raise exception 'invalid retention purge';end if;
+  removed:=public.erase_product_event_rows(p_user_id,null,true,2147483647);insert into public.product_event_receipts(user_id,removed_count,reason) values(p_user_id,removed,'retention') returning * into receipt;
+ elsif action in ('activate','pause','rotate','revoke','delete') then
+  if p?'config' or p->>'sourceId' is null or p->>'expectedRevision' is null or p->>'expectedRevision'!~'^\d+$' then raise exception 'source and revision required';end if;
+  select * into s from public.product_event_sources where id=(p->>'sourceId')::uuid and user_id=p_user_id for update;if not found then raise exception 'source owner required' using errcode='42501';end if;
+  if s.deleted_at is not null then raise exception 'source deleted';end if;if s.revision<>(p->>'expectedRevision')::bigint then raise exception 'stale source revision';end if;
+  if action='activate' and p->'confirmPrototype' is distinct from 'true'::jsonb then raise exception 'actual prototype and notice confirmation required';end if;
+  if action<>'activate' and p?'confirmPrototype' then raise exception 'unexpected confirmation';end if;
+  if action in ('activate','rotate') then
+   if p_token_hash is null or p_token_hash!~'^[a-f0-9]{64}$' then raise exception 'server token hash required';end if;
+   if action='rotate' and (not s.active or s.confirmed_at is null) then raise exception 'activate confirmed prototype first';end if;
+   update public.product_event_tokens set revoked_at=clock_timestamp() where source_id=s.id and revoked_at is null;
+   insert into public.product_event_tokens(token_hash,source_id,user_id) values(p_token_hash,s.id,p_user_id);token_issued:=true;
+  end if;
+  if action in ('pause','revoke','delete') then update public.product_event_tokens set revoked_at=clock_timestamp() where source_id=s.id and revoked_at is null;end if;
+  if action='delete' then
+   removed:=public.erase_product_event_rows(p_user_id,s.id,false,2147483647);delete from public.product_event_tokens where source_id=s.id;
+   insert into public.product_event_receipts(user_id,removed_count,reason) values(p_user_id,removed,'source_deleted') returning * into receipt;
+   update public.product_event_sources set prototype_url=null,notice_url=null,notice_version=null,event_kinds=null,active=false,confirmed_at=null,deleted_at=clock_timestamp(),revision=revision+1 where id=s.id returning * into s;
+  else update public.product_event_sources set active=case when action='activate' then true when action in ('pause','revoke') then false else active end,confirmed_at=case when action='activate' then clock_timestamp() else confirmed_at end,revision=revision+1 where id=s.id returning * into s;end if;
+ else raise exception 'unsupported source action';end if;
+ insert into public.product_event_requests(user_id,request_id,digest,source_id,receipt_id) values(p_user_id,(p->>'requestId')::uuid,digest,s.id,receipt.id);
+ return jsonb_build_object('source',case when s.id is null then null else to_jsonb(s)-'user_id' end,'receipt',case when receipt.id is null then null else to_jsonb(receipt)-'user_id' end,'tokenIssued',token_issued,'replayed',false);
+end $$;
+create function public.ingest_product_event(p_token_hash text,p jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare owner_id uuid;s public.product_event_sources;e public.product_events;digest text;removed integer;
+begin
+ perform public.product_event_service();perform public.validate_product_event(p);
+ select user_id into owner_id from public.product_event_tokens where token_hash=p_token_hash and revoked_at is null;if not found then raise exception 'prototype token unavailable' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended(owner_id::text,117));
+ select src.* into s from public.product_event_sources src join public.product_event_tokens t on t.source_id=src.id and t.user_id=src.user_id where t.token_hash=p_token_hash and t.revoked_at is null and src.active and src.confirmed_at is not null and src.deleted_at is null for update of src;
+ if not found then raise exception 'prototype not active or token revoked' using errcode='42501';end if;
+ if p->>'noticeVersion'<>s.notice_version then raise exception 'notice version mismatch';end if;if not (p->>'kind')=any(s.event_kinds) then raise exception 'event kind outside confirmed definitions';end if;
+ if (p->>'occurredAt')::timestamptz>clock_timestamp() or (p->>'occurredAt')::timestamptz<=clock_timestamp()-make_interval(days=>s.retention_days) then raise exception 'event time outside retention window';end if;
+ digest:=encode(sha256(convert_to(p::text,'UTF8')),'hex');select * into e from public.product_events where source_id=s.id and external_id=(p->>'externalId')::uuid;
+ if found then if e.payload_digest<>digest then raise exception 'external event request conflict' using errcode='23505';end if;return jsonb_build_object('id',e.id,'capturedAt',e.captured_at,'replayed',true);end if;
+ if (select count(*) from public.product_events where source_id=s.id and captured_at>clock_timestamp()-interval '1 minute')>=60 or (select count(*) from public.product_events where source_id=s.id and captured_at>clock_timestamp()-interval '1 day')>=5000 then raise exception 'prototype event rate limit' using errcode='54000';end if;
+ removed:=public.erase_product_event_rows(owner_id,s.id,true,500);if removed>0 then insert into public.product_event_receipts(user_id,removed_count,reason) values(owner_id,removed,'retention');end if;
+ insert into public.product_events(user_id,source_id,external_id,subject_hash,kind,attributes,occurred_at,payload_digest) values(owner_id,s.id,(p->>'externalId')::uuid,p->>'subjectHash',p->>'kind',p->'attributes',(p->>'occurredAt')::timestamptz,digest) returning * into e;
+ return jsonb_build_object('id',e.id,'capturedAt',e.captured_at,'replayed',false);
+end $$;
+create function public.link_product_event(p_user_id uuid,p jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare prior public.product_event_requests;e public.product_events;l public.product_event_links;digest text;
+begin
+ perform public.product_event_owner(p_user_id);perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,117));
+ if p is null or jsonb_typeof(p)<>'object' or exists(select 1 from jsonb_object_keys(p) key where key not in ('requestId','eventId','ideaId','scope','unknown')) or p->>'requestId' is null or p->>'eventId' is null or p->>'ideaId' is null or jsonb_typeof(p->'scope') is distinct from 'string' or length(btrim(p->>'scope')) not between 1 and 2000 or jsonb_typeof(p->'unknown') is distinct from 'string' or length(btrim(p->>'unknown')) not between 1 and 2000 then raise exception 'explicit idea scope and unknown required';end if;
+ digest:=encode(sha256(convert_to(p::text,'UTF8')),'hex');select * into prior from public.product_event_requests where user_id=p_user_id and request_id=(p->>'requestId')::uuid;if found then if prior.digest<>digest then raise exception 'request conflict' using errcode='23505';end if;select * into l from public.product_event_links where id=prior.link_id and user_id=p_user_id;return to_jsonb(l)-'user_id';end if;
+ select e0.* into e from public.product_events e0 join public.product_event_sources s on s.id=e0.source_id where e0.id=(p->>'eventId')::uuid and e0.user_id=p_user_id and e0.deleted_at is null and e0.captured_at>clock_timestamp()-make_interval(days=>s.retention_days);
+ if not found or not exists(select 1 from public.ideas where id=(p->>'ideaId')::uuid and user_id=p_user_id) then raise exception 'event or idea owner required' using errcode='42501';end if;
+ select * into l from public.product_event_links where event_id=e.id and idea_id=(p->>'ideaId')::uuid;
+ if found then if l.scope is distinct from p->>'scope' or l.unknown is distinct from p->>'unknown' then raise exception 'idea link already exists with different scope' using errcode='23505';end if;
+ else insert into public.product_event_links(user_id,event_id,idea_id,scope,unknown) values(p_user_id,e.id,(p->>'ideaId')::uuid,p->>'scope',p->>'unknown') returning * into l;end if;
+ insert into public.product_event_requests(user_id,request_id,digest,link_id) values(p_user_id,(p->>'requestId')::uuid,digest,l.id);return to_jsonb(l)-'user_id';
+end $$;
+create function public.list_product_events(p_user_id uuid,p_after_revision bigint default 0,p_limit integer default 50) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare events jsonb;sources jsonb;links jsonb;receipts jsonb;next_revision bigint;removed integer;
+begin
+ perform public.product_event_owner(p_user_id);perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,117));
+ if p_after_revision is null or p_after_revision not between 0 and 9007199254740991 or p_limit is null or p_limit not between 1 and 100 then raise exception 'invalid product event cursor';end if;
+ removed:=public.erase_product_event_rows(p_user_id,null,true,500);if removed>0 then insert into public.product_event_receipts(user_id,removed_count,reason) values(p_user_id,removed,'retention');end if;
+ select coalesce(jsonb_agg(to_jsonb(s)-'user_id' order by created_at,id),'[]') into sources from public.product_event_sources s where user_id=p_user_id;
+ select coalesce(jsonb_agg(to_jsonb(e)-array['user_id','external_id','subject_hash','payload_digest'] order by revision),'[]'),max(revision) into events,next_revision from (select e.* from public.product_events e join public.product_event_sources s on s.id=e.source_id where e.user_id=p_user_id and e.revision>p_after_revision and (e.deleted_at is not null or e.captured_at>clock_timestamp()-make_interval(days=>s.retention_days)) order by e.revision limit p_limit) e;
+ if not exists(select 1 from public.product_events where user_id=p_user_id and revision>next_revision) then next_revision:=null;end if;
+ select coalesce(jsonb_agg(case when e.deleted_at is not null or e.captured_at<=clock_timestamp()-make_interval(days=>s.retention_days) then (to_jsonb(l)-array['user_id','scope','unknown'])||jsonb_build_object('scope',null,'unknown',null,'event',(to_jsonb(e)-array['user_id','external_id','subject_hash','payload_digest','kind','attributes','occurred_at','captured_at'])||jsonb_build_object('kind',null,'attributes',null,'occurred_at',null,'captured_at',null,'deleted_at',coalesce(e.deleted_at,clock_timestamp()))) else (to_jsonb(l)-'user_id')||jsonb_build_object('event',to_jsonb(e)-array['user_id','external_id','subject_hash','payload_digest']) end order by l.created_at,l.id),'[]') into links from public.product_event_links l join public.product_events e on e.id=l.event_id join public.product_event_sources s on s.id=e.source_id where l.user_id=p_user_id;
+ select coalesce(jsonb_agg(to_jsonb(r)-'user_id' order by created_at,id),'[]') into receipts from public.product_event_receipts r where user_id=p_user_id;
+ return jsonb_build_object('available',true,'sources',sources,'events',events,'links',links,'receipts',receipts,'nextRevision',next_revision);
+end $$;
+create function public.purge_expired_product_events(p_limit integer default 500) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare owner_id uuid;removed integer;total integer:=0;
+begin
+ perform public.product_event_service();if p_limit is null or p_limit not between 1 and 5000 then raise exception 'invalid retention batch';end if;
+ for owner_id in select distinct e.user_id from public.product_events e join public.product_event_sources s on s.id=e.source_id where e.deleted_at is null and e.captured_at<=clock_timestamp()-make_interval(days=>s.retention_days) order by e.user_id loop
+  perform pg_advisory_xact_lock(hashtextextended(owner_id::text,117));removed:=public.erase_product_event_rows(owner_id,null,true,p_limit-total);if removed>0 then insert into public.product_event_receipts(user_id,removed_count,reason) values(owner_id,removed,'retention');end if;total:=total+removed;exit when total>=p_limit;
+ end loop;return jsonb_build_object('erased',total);
+end $$;
+revoke all on function public.product_event_service(),public.product_event_owner(uuid),public.preserve_product_event_history(),public.erase_product_event_rows(uuid,uuid,boolean,integer),public.validate_product_event(jsonb) from public,anon,authenticated,service_role;
+revoke all on function public.mutate_product_event_source(uuid,jsonb,text),public.ingest_product_event(text,jsonb),public.link_product_event(uuid,jsonb),public.list_product_events(uuid,bigint,integer),public.purge_expired_product_events(integer) from public,anon,authenticated;
+grant execute on function public.mutate_product_event_source(uuid,jsonb,text),public.ingest_product_event(text,jsonb),public.link_product_event(uuid,jsonb),public.list_product_events(uuid,bigint,integer),public.purge_expired_product_events(integer) to service_role;
+commit;
+
+
+
+-- ============================================================================
+-- Synced migration: 118_observation_scheduling.sql
+-- ============================================================================
+begin;
+-- Budgeted manual opt-in schedules for approved immutable e-Stat configurations only.
+create table public.observation_schedules (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),config_id uuid not null references public.statistical_source_configs(id),
+ source_binding jsonb not null,revision bigint not null default 1,enabled boolean not null,
+ interval_minutes integer not null check(interval_minutes between 60 and 43200),daily_budget integer not null check(daily_budget between 1 and 10000),max_attempts integer not null check(max_attempts between 1 and 5),
+ failures integer not null default 0,health text not null default 'ready' check(health in ('ready','running','paused','blocked','failed')),
+ last_error text,next_run_at timestamptz not null default clock_timestamp(),created_at timestamptz not null default clock_timestamp(),updated_at timestamptz not null default clock_timestamp(),unique(user_id,id)
+);
+create table public.observation_schedule_budgets (
+ schedule_id uuid not null references public.observation_schedules(id),budget_day date not null,charged integer not null default 0 check(charged>=0),primary key(schedule_id,budget_day)
+);
+create table public.observation_schedule_runs (
+ id uuid primary key default gen_random_uuid(),sequence bigint generated always as identity unique,schedule_id uuid not null references public.observation_schedules(id),user_id uuid not null references auth.users(id),config_id uuid not null,
+ schedule_revision bigint not null,source_binding jsonb not null,settings jsonb not null,
+ token uuid not null default gen_random_uuid(),status text not null check(status in ('running','completed','failed','cancelled','expired')),
+ lease_until timestamptz not null,budget_day date not null,reserved integer not null default 2 check(reserved=2),requests_attempted integer not null default 0 check(requests_attempted between 0 and 2),
+ error text,snapshot_id uuid,created_at timestamptz not null default clock_timestamp(),finished_at timestamptz,result jsonb
+);
+create unique index observation_schedule_one_worker on public.observation_schedule_runs(schedule_id) where status='running';
+create index observation_schedule_run_page on public.observation_schedule_runs(user_id,sequence desc);
+create table public.observation_schedule_requests(user_id uuid not null references auth.users(id),request_id uuid not null,input jsonb not null,result jsonb not null,primary key(user_id,request_id));
+alter table public.observation_schedules enable row level security;
+alter table public.observation_schedule_budgets enable row level security;
+alter table public.observation_schedule_runs enable row level security;
+alter table public.observation_schedule_requests enable row level security;
+revoke all on public.observation_schedules,public.observation_schedule_budgets,public.observation_schedule_runs,public.observation_schedule_requests from public,anon,authenticated,service_role;
+create function public.observation_schedule_service(p_user_id uuid default null) returns void language plpgsql security definer set search_path=public,pg_temp as $$
+begin if coalesce(auth.role(),'')<>'service_role' then raise exception 'schedule service required' using errcode='42501'; end if;end $$;
+create function public.observation_schedule_binding(p_user_id uuid,p_config_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c statistical_source_configs;begin
+ select * into c from statistical_source_configs where id=p_config_id and user_id=p_user_id for update;
+ if not found or c.approval_state<>'approved' or c.deleted_at is not null or c.approved_at is null or c.table_id<>'0004006264' then raise exception 'approved source unavailable' using errcode='42501';end if;
+ return jsonb_build_object('tableId',c.table_id,'filters',c.filters,'metadataHash',c.metadata_hash,'approvedAt',c.approved_at);
+end $$;
+create function public.observation_schedule_dto(s public.observation_schedules) returns jsonb language sql immutable as $$select to_jsonb(s)||jsonb_build_object('revision',s.revision::text)$$;
+create function public.save_observation_schedule(p_user_id uuid,p_schedule_id uuid,p_expected_revision bigint,p_config jsonb,p_request_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s observation_schedules; prior observation_schedule_requests; r observation_schedule_runs; binding jsonb; input jsonb; v_result jsonb; v_config_id uuid;
+begin
+ perform observation_schedule_service();if p_user_id is null or not exists(select 1 from auth.users where id=p_user_id) then raise exception 'schedule owner required' using errcode='42501';end if;
+ if p_request_id is null or p_config is null or jsonb_typeof(p_config)<>'object' or not(p_config ?& array['configId','enabled','intervalMinutes','dailyBudget','maxAttempts']) or (p_config-array['configId','enabled','intervalMinutes','dailyBudget','maxAttempts'])<>'{}'::jsonb or jsonb_typeof(p_config->'enabled')<>'boolean' or coalesce(p_config->>'intervalMinutes','')!~'^[0-9]{1,5}$' or (p_config->>'intervalMinutes')::integer not between 60 and 43200 or coalesce(p_config->>'dailyBudget','')!~'^[0-9]{1,5}$' or (p_config->>'dailyBudget')::integer not between 1 and 10000 or coalesce(p_config->>'maxAttempts','')!~'^[1-5]$' then raise exception 'invalid schedule config';end if;
+ v_config_id:=(p_config->>'configId')::uuid;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,118));
+ input:=jsonb_build_object('scheduleId',p_schedule_id,'expectedRevision',p_expected_revision,'config',p_config);
+ select * into prior from observation_schedule_requests where user_id=p_user_id and request_id=p_request_id;
+ if found then if prior.input<>input then raise exception 'request payload conflict';end if;return prior.result;end if;
+ if p_schedule_id is null then
+  if p_expected_revision is not null then raise exception 'unexpected schedule revision';end if;
+  binding:=observation_schedule_binding(p_user_id,v_config_id);
+  insert into observation_schedules(user_id,config_id,source_binding,enabled,interval_minutes,daily_budget,max_attempts,health) values(p_user_id,v_config_id,binding,(p_config->>'enabled')::boolean,(p_config->>'intervalMinutes')::integer,(p_config->>'dailyBudget')::integer,(p_config->>'maxAttempts')::integer,case when (p_config->>'enabled')::boolean then 'ready' else 'paused' end) returning * into s;
+ else
+  select * into s from observation_schedules where id=p_schedule_id and user_id=p_user_id for update;
+  if not found then raise exception 'schedule owner required' using errcode='42501';end if;
+  if p_expected_revision is distinct from s.revision then raise exception 'schedule revision changed';end if;
+  -- Pausing always remains possible even when the source has been invalidated/deleted.
+  if not (p_config->>'enabled')::boolean and v_config_id=s.config_id then binding:=s.source_binding;else binding:=observation_schedule_binding(p_user_id,v_config_id);end if;
+  for r in select * from observation_schedule_runs where schedule_id=s.id and status='running' for update loop
+   if r.lease_until<=clock_timestamp() then
+    update observation_schedule_runs set status='expired',error='lease_expired_conservative_charge',finished_at=clock_timestamp() where id=r.id;
+   else
+    update observation_schedule_budgets set charged=charged-(r.reserved-r.requests_attempted) where schedule_id=s.id and budget_day=r.budget_day;
+    update observation_schedule_runs set status='cancelled',error='schedule_changed',finished_at=clock_timestamp() where id=r.id;
+   end if;
+  end loop;
+  update observation_schedules set config_id=v_config_id,source_binding=binding,revision=revision+1,enabled=(p_config->>'enabled')::boolean,interval_minutes=(p_config->>'intervalMinutes')::integer,daily_budget=(p_config->>'dailyBudget')::integer,max_attempts=(p_config->>'maxAttempts')::integer,failures=0,health=case when (p_config->>'enabled')::boolean then 'ready' else 'paused' end,last_error=null,next_run_at=clock_timestamp(),updated_at=clock_timestamp() where id=s.id returning * into s;
+ end if;
+ v_result:=observation_schedule_dto(s);insert into observation_schedule_requests values(p_user_id,p_request_id,input,v_result);return v_result;
+end $$;
+create function public.claim_observation_schedule(p_user_id uuid default null,p_schedule_id uuid default null) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s observation_schedules;r observation_schedule_runs;b observation_schedule_budgets;binding jsonb;today date:=(clock_timestamp() at time zone 'Asia/Tokyo')::date;
+begin
+ perform observation_schedule_service();
+ if (p_user_id is null)<>(p_schedule_id is null) then raise exception 'schedule owner required' using errcode='42501';end if;
+ if p_schedule_id is not null and not exists(select 1 from observation_schedules where id=p_schedule_id and user_id=p_user_id) then raise exception 'schedule owner required' using errcode='42501';end if;
+ select * into s from observation_schedules where (p_schedule_id is null or (id=p_schedule_id and user_id=p_user_id)) and enabled and health<>'failed' and (next_run_at<=clock_timestamp() or exists(select 1 from observation_schedule_runs active_run where active_run.schedule_id=observation_schedules.id and active_run.status='running' and active_run.lease_until<=clock_timestamp())) order by next_run_at,id for update skip locked limit 1;
+ if not found then return null;end if;
+ select * into r from observation_schedule_runs where schedule_id=s.id and status='running' for update;
+ if found then
+  if r.lease_until>clock_timestamp() then return null;end if;
+  -- Expiry keeps the entire reservation charged: a crashed worker may have sent requests.
+  update observation_schedule_runs set status='expired',error='lease_expired_conservative_charge',finished_at=clock_timestamp() where id=r.id;
+  update observation_schedules set failures=failures+1,health=case when failures+1>=max_attempts then 'failed' else 'ready' end,last_error='lease_expired_conservative_charge',next_run_at=clock_timestamp()+make_interval(mins=>least(60,power(2,failures)::integer)) where id=s.id;
+  return null;
+ end if;
+ begin binding:=observation_schedule_binding(s.user_id,s.config_id);exception when sqlstate '42501' then update observation_schedules set health='blocked',last_error='source_unavailable',next_run_at=clock_timestamp()+interval '1 hour' where id=s.id;return null;end;
+ if binding<>s.source_binding then update observation_schedules set health='blocked',last_error='source_changed_reconfirm',next_run_at=clock_timestamp()+interval '1 hour' where id=s.id;return null;end if;
+ insert into observation_schedule_budgets values(s.id,today,0) on conflict do nothing;select * into b from observation_schedule_budgets where schedule_id=s.id and budget_day=today for update;
+ if b.charged+2>s.daily_budget then update observation_schedules set health='blocked',last_error='daily_request_budget_exhausted',next_run_at=((today+1)::timestamp at time zone 'Asia/Tokyo') where id=s.id;return null;end if;
+ update observation_schedule_budgets set charged=charged+2 where schedule_id=s.id and budget_day=today;
+ insert into observation_schedule_runs(schedule_id,user_id,config_id,schedule_revision,source_binding,settings,status,lease_until,budget_day) values(s.id,s.user_id,s.config_id,s.revision,s.source_binding,jsonb_build_object('intervalMinutes',s.interval_minutes,'dailyBudget',s.daily_budget,'maxAttempts',s.max_attempts),'running',clock_timestamp()+interval '2 minutes',today) returning * into r;
+ update observation_schedules set health='running',last_error=null,next_run_at=clock_timestamp()+make_interval(mins=>s.interval_minutes) where id=s.id;
+ return to_jsonb(r)||jsonb_build_object('sequence',r.sequence::text,'schedule_revision',r.schedule_revision::text);
+end $$;
+create function public.begin_observation_request(p_run_id uuid,p_token uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s observation_schedules;r observation_schedule_runs;binding jsonb;
+begin
+ perform observation_schedule_service();
+ select * into r from observation_schedule_runs where id=p_run_id;if not found then raise exception 'worker lease unavailable' using errcode='42501';end if;
+ select * into s from observation_schedules where id=r.schedule_id for update;select * into r from observation_schedule_runs where id=p_run_id for update;
+ if r.token is distinct from p_token or r.status<>'running' or r.lease_until<=clock_timestamp() or not s.enabled or s.revision<>r.schedule_revision or r.budget_day<>(clock_timestamp() at time zone 'Asia/Tokyo')::date then raise exception 'worker lease expired or disabled' using errcode='42501';end if;
+ binding:=observation_schedule_binding(s.user_id,s.config_id);if binding<>r.source_binding then raise exception 'source changed' using errcode='42501';end if;
+ if r.requests_attempted>=r.reserved then raise exception 'request allowance exhausted';end if;
+ update observation_schedule_runs set requests_attempted=requests_attempted+1 where id=r.id;
+ return jsonb_build_object('authorized',true,'requestNumber',r.requests_attempted+1);
+end $$;
+create function public.finish_observation_run(p_run_id uuid,p_token uuid,p_success boolean,p_payload jsonb,p_error text) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s observation_schedules;r observation_schedule_runs;binding jsonb;saved jsonb;v_result jsonb;
+begin
+ perform observation_schedule_service();select * into r from observation_schedule_runs where id=p_run_id;
+ if not found then raise exception 'worker lease unavailable' using errcode='42501';end if;
+ select * into s from observation_schedules where id=r.schedule_id for update;select * into r from observation_schedule_runs where id=p_run_id for update;
+ if r.token is distinct from p_token then raise exception 'worker lease unavailable' using errcode='42501';end if;
+ if r.status in ('completed','failed') then return r.result;end if;
+ if r.status<>'running' or r.lease_until<=clock_timestamp() or not s.enabled or s.revision<>r.schedule_revision then raise exception 'worker lease expired or disabled' using errcode='42501';end if;
+ if p_success is null then raise exception 'completion result required';end if;
+ if p_success then
+  binding:=observation_schedule_binding(s.user_id,s.config_id);if binding<>r.source_binding then raise exception 'source changed' using errcode='42501';end if;
+  if r.requests_attempted<>2 or p_payload is null or p_payload->>'sourceType' is distinct from 'live' then raise exception 'provider request sequence incomplete';end if;
+  -- This call remains in the transaction that holds schedule and approved source locks.
+  saved:=persist_statistical_snapshot_internal(s.user_id,s.config_id,p_payload,r.id);
+ end if;
+ update observation_schedule_budgets set charged=charged-(r.reserved-r.requests_attempted) where schedule_id=s.id and budget_day=r.budget_day;
+ v_result:=jsonb_build_object('runId',r.id,'status',case when p_success then 'completed' else 'failed' end,'snapshotId',saved->>'id','requestsAttempted',r.requests_attempted);
+ update observation_schedule_runs set status=case when p_success then 'completed' else 'failed' end,snapshot_id=(saved->>'id')::uuid,error=case when p_success then null else left(coalesce(p_error,'provider_failed'),500) end,finished_at=clock_timestamp(),result=v_result where id=r.id;
+ update observation_schedules set failures=case when p_success then 0 else failures+1 end,health=case when not p_success and failures+1>=max_attempts then 'failed' else 'ready' end,last_error=case when p_success then null else left(coalesce(p_error,'provider_failed'),500) end,next_run_at=clock_timestamp()+make_interval(mins=>case when p_success then interval_minutes else least(60,power(2,failures)::integer) end),updated_at=clock_timestamp() where id=s.id;
+ return v_result;
+end $$;
+create function public.page_observation_scheduling(p_user_id uuid,p_before bigint default null) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare runs jsonb;cursor text;schedules jsonb;sources jsonb;budgets jsonb;
+begin
+ perform observation_schedule_service();if p_user_id is null then raise exception 'schedule owner required' using errcode='42501';end if;
+ if p_before is not null and p_before<1 then raise exception 'invalid scheduling page';end if;
+ select coalesce(jsonb_agg(observation_schedule_dto(s) order by created_at,id),'[]'::jsonb) into schedules from observation_schedules s where user_id=p_user_id;
+ select coalesce(jsonb_agg(jsonb_build_object('id',id,'table_id',table_id,'approved_at',approved_at,'filters',filters) order by approved_at desc,id),'[]'::jsonb) into sources from statistical_source_configs where user_id=p_user_id and approval_state='approved' and deleted_at is null and table_id='0004006264';
+ select coalesce(jsonb_agg(to_jsonb(r)||jsonb_build_object('sequence',r.sequence::text,'schedule_revision',r.schedule_revision::text) order by sequence desc),'[]'::jsonb),min(sequence)::text into runs,cursor from (select * from observation_schedule_runs where user_id=p_user_id and (p_before is null or sequence<p_before) order by sequence desc limit 50) r;
+ select coalesce(jsonb_agg(to_jsonb(b)),'[]'::jsonb) into budgets from observation_schedule_budgets b where schedule_id in(select id from observation_schedules where user_id=p_user_id) and budget_day=(clock_timestamp() at time zone 'Asia/Tokyo')::date;
+ return jsonb_build_object('available',true,'schedules',schedules,'sources',sources,'runs',runs,'budgets',budgets,'nextCursor',case when jsonb_array_length(runs)=50 then cursor else null end);
+end $$;
+revoke all on function public.observation_schedule_service(uuid),public.observation_schedule_binding(uuid,uuid),public.observation_schedule_dto(public.observation_schedules),public.save_observation_schedule(uuid,uuid,bigint,jsonb,uuid),public.claim_observation_schedule(uuid,uuid),public.begin_observation_request(uuid,uuid),public.finish_observation_run(uuid,uuid,boolean,jsonb,text),public.page_observation_scheduling(uuid,bigint) from public,anon,authenticated;
+grant execute on function public.save_observation_schedule(uuid,uuid,bigint,jsonb,uuid),public.claim_observation_schedule(uuid,uuid),public.begin_observation_request(uuid,uuid),public.finish_observation_run(uuid,uuid,boolean,jsonb,text),public.page_observation_scheduling(uuid,bigint) to service_role;
+commit;
+
+
+
+
+-- ============================================================================
+-- Synced migration: 119_business_teardown_foundation.sql
+-- ============================================================================
+begin;
+create table public.business_merchants (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),platform text not null check(platform in ('rakuten','xiaohongshu')),
+ platform_shop_id text not null check(length(platform_shop_id) between 1 and 200),name text not null,source_url text not null,
+ identity_scope text not null check(identity_scope in ('platform_shop_id','user_supplied_unverified')),created_at timestamptz not null default clock_timestamp(),
+ unique(user_id,id),unique(user_id,platform,platform_shop_id)
+);
+create table public.business_material_snapshots (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),merchant_id uuid not null,
+ platform text not null check(platform in ('rakuten','xiaohongshu')),item_id text,origin text not null check(origin in ('official_api','public_excerpt','manual_excerpt')),
+ source_url text not null,captured_at timestamptz not null default clock_timestamp(),published_at timestamptz,
+ capture_scope text not null check(capture_scope in ('api_fields','excerpt','manual_transcription')),captured_text text,
+ quantities jsonb not null check(jsonb_typeof(quantities)='array'),structured jsonb not null check(jsonb_typeof(structured)='object'),coverage text not null check(length(trim(coverage))>0),content_hash text not null,
+ unique(user_id,id),unique(user_id,id,merchant_id),foreign key(user_id,merchant_id) references business_merchants(user_id,id)
+);
+create table public.business_daily_cases (
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),local_date date not null,timezone text not null default 'Asia/Tokyo' check(timezone='Asia/Tokyo'),merchant_id uuid not null,
+ state text not null default 'preparing' check(state in ('preparing','ready','unavailable')),published_revision_id uuid,failure_reason text,revision integer not null default 1 check(revision>0),selection_reason text not null,
+ created_at timestamptz not null default clock_timestamp(),unique(user_id,id),unique(user_id,local_date),unique(user_id,merchant_id),foreign key(user_id,merchant_id) references business_merchants(user_id,id)
+);
+create table public.business_case_members (
+ user_id uuid not null,case_id uuid not null,snapshot_id uuid not null,merchant_id uuid not null,role text not null check(role in ('primary','product','comparison')),selection_reason text not null,
+ added_at timestamptz not null default clock_timestamp(),primary key(case_id,snapshot_id),foreign key(user_id,case_id) references business_daily_cases(user_id,id),foreign key(user_id,snapshot_id,merchant_id) references business_material_snapshots(user_id,id,merchant_id)
+);
+create unique index business_case_one_primary on business_case_members(case_id) where role='primary';
+create table public.business_case_requests (
+ user_id uuid not null references auth.users(id),request_id uuid not null,operation text not null,user_input_hash text not null,input jsonb not null,result jsonb not null,created_at timestamptz not null default clock_timestamp(),primary key(user_id,request_id)
+);
+create table public.business_case_preparations (
+ user_id uuid not null references auth.users(id),request_id uuid not null,operation text not null check(operation='primary'),user_input_hash text not null,case_id uuid not null,
+ created_at timestamptz not null default clock_timestamp(),primary key(user_id,request_id),foreign key(user_id,case_id) references business_daily_cases(user_id,id)
+);
+create function public.business_today() returns date language sql stable set search_path=public,pg_temp as $$select (statement_timestamp() at time zone 'Asia/Tokyo')::date$$;
+create function public.business_service(p_user_id uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$begin
+ if coalesce(auth.role(),'')<>'service_role' or p_user_id is null or not exists(select 1 from auth.users where id=p_user_id) then raise exception 'business owner/service required' using errcode='42501';end if;
+end $$;
+create function public.business_case_dto(c business_daily_cases) returns jsonb language sql immutable as $$select jsonb_build_object('id',c.id,'localDate',c.local_date,'timezone',c.timezone,'merchantId',c.merchant_id,'state',c.state,'publishedRevisionId',c.published_revision_id,'failureReason',c.failure_reason,'revision',c.revision,'selectionReason',c.selection_reason)$$;
+create function public.business_immutable() returns trigger language plpgsql set search_path=public,pg_temp as $$begin raise exception 'business historical material is immutable';end $$;
+create trigger business_snapshot_immutable before update or delete on business_material_snapshots for each row execute function business_immutable();
+create trigger business_member_immutable before update or delete on business_case_members for each row execute function business_immutable();
+create function public.business_merchant_identity_immutable() returns trigger language plpgsql set search_path=public,pg_temp as $$begin
+ if tg_op='DELETE' then raise exception 'business merchant is immutable';end if;
+ if new.id<>old.id or new.user_id<>old.user_id or new.platform<>old.platform or new.platform_shop_id<>old.platform_shop_id or exists(select 1 from business_material_snapshots where merchant_id=old.id) then raise exception 'business merchant identity/history is immutable';end if;return new;
+end $$;
+create trigger business_merchant_immutable before update or delete on business_merchants for each row execute function business_merchant_identity_immutable();
+create function public.business_case_identity_immutable() returns trigger language plpgsql set search_path=public,pg_temp as $$begin
+ if new.user_id<>old.user_id or new.local_date<>old.local_date or new.merchant_id<>old.merchant_id or new.timezone<>old.timezone or new.selection_reason<>old.selection_reason then raise exception 'business daily identity is immutable';end if;return new;
+end $$;
+create function public.business_prepare_case(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c business_daily_cases;m business_merchants;prep business_case_preparations;r business_case_requests;mi jsonb;v_request uuid;v_hash text;v_needs boolean;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or octet_length(p_input::text)>10000 then raise exception 'invalid preparation input';end if;
+ v_request:=(p_input->>'requestId')::uuid;v_hash:=p_input->>'userInputHash';mi:=p_input->'merchant';
+ if v_request is null or coalesce(v_hash,'')='' or coalesce(mi->>'platform','') not in ('rakuten','xiaohongshu') or coalesce(mi->>'platformShopId','')='' or coalesce(p_input->>'selectionReason','')='' then raise exception 'invalid preparation identity';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ select * into r from business_case_requests where user_id=p_user_id and request_id=v_request;
+ if found then if r.operation<>'primary' or r.user_input_hash<>v_hash then raise exception 'business request payload conflict';end if;return jsonb_build_object('dailyCase',r.result,'needsMaterial',false);end if;
+ select * into prep from business_case_preparations where user_id=p_user_id and request_id=v_request;
+ if found then
+  if prep.operation<>'primary' or prep.user_input_hash<>v_hash then raise exception 'business request payload conflict';end if;
+  select * into c from business_daily_cases where user_id=p_user_id and id=prep.case_id for update;
+ else
+  select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today() for update;
+  if not found then
+   select * into m from business_merchants where user_id=p_user_id and platform=mi->>'platform' and platform_shop_id=mi->>'platformShopId';
+   if not found then insert into business_merchants(user_id,platform,platform_shop_id,name,source_url,identity_scope) values(p_user_id,mi->>'platform',mi->>'platformShopId',mi->>'name',mi->>'sourceUrl','user_supplied_unverified') returning * into m;end if;
+   insert into business_daily_cases(user_id,local_date,merchant_id,selection_reason) values(p_user_id,business_today(),m.id,p_input->>'selectionReason') returning * into c;
+  end if;
+  insert into business_case_preparations(user_id,request_id,operation,user_input_hash,case_id) values(p_user_id,v_request,'primary',v_hash,c.id);
+ end if;
+ select * into m from business_merchants where id=c.merchant_id and user_id=p_user_id;
+ v_needs:=m.platform=mi->>'platform' and m.platform_shop_id=mi->>'platformShopId' and not exists(select 1 from business_case_members where case_id=c.id and role='primary');
+ return jsonb_build_object('dailyCase',business_case_dto(c),'needsMaterial',v_needs);
+end $$;
+create function public.business_fail_preparation(p_user_id uuid,p_request_id uuid,p_user_input_hash text) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare prep business_case_preparations;begin
+ perform business_service(p_user_id);perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ select * into prep from business_case_preparations where user_id=p_user_id and request_id=p_request_id;
+ if not found or prep.user_input_hash is distinct from p_user_input_hash then raise exception 'business preparation conflict';end if;
+ update business_daily_cases c set state='unavailable',failure_reason='官方来源暂不可用，请重试或补充该店公开摘录。' where c.user_id=p_user_id and c.id=prep.case_id and not exists(select 1 from business_case_members where case_id=c.id and role='primary');
+end $$;
+create trigger business_case_identity_immutable before update on business_daily_cases for each row execute function business_case_identity_immutable();
+create function public.business_request_receipt(p_user_id uuid,p_request_id uuid,p_operation text,p_user_input_hash text) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare r business_case_requests;prep business_case_preparations;begin
+ perform business_service(p_user_id);select * into r from business_case_requests where user_id=p_user_id and request_id=p_request_id;
+ if not found then
+  select * into prep from business_case_preparations where user_id=p_user_id and request_id=p_request_id;
+  if found and (prep.operation is distinct from p_operation or prep.user_input_hash is distinct from p_user_input_hash) then raise exception 'business request payload conflict';end if;return null;
+ end if;
+ if r.operation is distinct from p_operation or r.user_input_hash is distinct from p_user_input_hash then raise exception 'business request payload conflict';end if;return r.result;
+end $$;
+create function public.business_load_today(p_user_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare c business_daily_cases;begin
+ perform business_service(p_user_id);select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today();if not found then return null;end if;return business_case_dto(c);
+end $$;
+create function public.business_validate_quantities(p_quantities jsonb) returns void language plpgsql set search_path=public,pg_temp as $$declare q jsonb;begin
+ if jsonb_typeof(p_quantities) is distinct from 'array' or jsonb_array_length(p_quantities)>100 then raise exception 'invalid business quantities';end if;
+ if (select count(*) from jsonb_array_elements(p_quantities))<>(select count(distinct value->>'id') from jsonb_array_elements(p_quantities)) then raise exception 'quantity identity conflict';end if;
+ for q in select value from jsonb_array_elements(p_quantities) loop
+  if jsonb_typeof(q) is distinct from 'object' or coalesce(q->>'id','')='' or coalesce(q->>'raw','')='' or coalesce(q->>'sampleScope','')='' or
+   coalesce(q->>'metric','') not in ('pack_contents','units_per_order','displayed_sales','review_count','repeat_mention') or
+   coalesce(q->>'relation','') not in ('eq','gte','unknown') or coalesce(q->>'unit','') not in ('pieces','packs','orders','buyers','mentions','unknown') or
+   coalesce(q->>'attribution','') not in ('platform','merchant','review_excerpt','user_supplied') or jsonb_typeof(q->'period') is distinct from 'object' or
+   not(q ? 'value') or (q->>'relation'='unknown' and q->'value'<>'null'::jsonb) or (q->>'relation'<>'unknown' and jsonb_typeof(q->'value') is distinct from 'number') then raise exception 'invalid business quantity observation';end if;
+  if jsonb_typeof(q->'value')='number' and (q->>'value')::numeric<0 then raise exception 'negative business quantity';end if;
+ end loop;
+end $$;
+create function public.business_save_case_material(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c business_daily_cases;m business_merchants;r business_case_requests;prep business_case_preparations;s jsonb;mi jsonb;v_snapshot uuid;v_result jsonb;v_request uuid;v_operation text;v_role text;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input)<>'object' or octet_length(p_input::text)>100000 then raise exception 'invalid business input';end if;
+ v_request:=(p_input->>'requestId')::uuid;v_operation:=p_input->>'operation';
+ if v_request is null or v_operation not in ('primary','attach') or coalesce(p_input->>'userInputHash','')='' then raise exception 'invalid business request';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ select * into r from business_case_requests where user_id=p_user_id and request_id=v_request;
+ if found then if r.input is distinct from p_input then raise exception 'business request payload conflict';end if;return r.result;end if;
+ select * into prep from business_case_preparations where user_id=p_user_id and request_id=v_request;
+ if found and (v_operation<>'primary' or prep.user_input_hash is distinct from p_input->>'userInputHash') then raise exception 'business request payload conflict';end if;
+ if v_operation='primary' then
+  if prep.case_id is not null then select * into c from business_daily_cases where user_id=p_user_id and id=prep.case_id for update;
+  else select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today() for update;end if;
+  if found and (exists(select 1 from business_case_members where case_id=c.id and role='primary') or not exists(select 1 from business_merchants where id=c.merchant_id and platform=p_input->'merchant'->>'platform' and platform_shop_id=p_input->'merchant'->>'platformShopId')) then v_result:=business_case_dto(c);insert into business_case_requests values(p_user_id,v_request,v_operation,p_input->>'userInputHash',p_input,v_result,clock_timestamp());return v_result;end if;
+  v_role:='primary';
+ else
+  select * into c from business_daily_cases where id=(p_input->>'caseId')::uuid and user_id=p_user_id for update;
+  if not found then raise exception 'business case owner required' using errcode='42501';end if;
+  if c.revision is distinct from (p_input->>'expectedRevision')::integer then raise exception 'business case revision conflict';end if;
+  v_role:=p_input->>'role';if v_role not in ('product','comparison') then raise exception 'invalid member role';end if;
+ end if;
+ mi:=p_input->'merchant';s:=p_input->'snapshot';
+ if coalesce(mi->>'platform','') not in ('rakuten','xiaohongshu') or coalesce(mi->>'platformShopId','')='' or coalesce(mi->>'name','')='' or mi->>'platform' is distinct from s->>'platform' or coalesce(p_input->>'selectionReason','')='' then raise exception 'invalid merchant material';end if;
+ if coalesce(s->>'coverage','')='' or jsonb_typeof(s->'quantities') is distinct from 'array' or jsonb_typeof(s->'structured') is distinct from 'object' then raise exception 'invalid source coverage';end if;
+ perform business_validate_quantities(s->'quantities');
+ if s->>'origin'='official_api' and (mi->>'platform'<>'rakuten' or mi->>'identityScope'<>'platform_shop_id' or s->>'captureScope'<>'api_fields') then raise exception 'invalid official source';end if;
+ if s->>'origin'='official_api' and (coalesce(s->>'sourceUrl','') !~ '^https://item[.]rakuten[.]co[.]jp/' or coalesce(mi->>'sourceUrl','') !~ '^https://www[.]rakuten[.]co[.]jp/' or split_part(s->>'sourceUrl','/',4) is distinct from mi->>'platformShopId' or split_part(s->>'itemId',':',1) is distinct from mi->>'platformShopId') then raise exception 'official source identity mismatch';end if;
+ if s->>'origin'='manual_excerpt' and s->>'captureScope'<>'manual_transcription' then raise exception 'manual source scope mismatch';end if;
+ select * into m from business_merchants where user_id=p_user_id and platform=mi->>'platform' and platform_shop_id=mi->>'platformShopId';
+ if not found then insert into business_merchants(user_id,platform,platform_shop_id,name,source_url,identity_scope) values(p_user_id,mi->>'platform',mi->>'platformShopId',mi->>'name',mi->>'sourceUrl',mi->>'identityScope') returning * into m;
+ elsif not exists(select 1 from business_material_snapshots where merchant_id=m.id) then update business_merchants set name=mi->>'name',source_url=mi->>'sourceUrl',identity_scope=mi->>'identityScope' where id=m.id returning * into m;end if;
+ if v_operation='primary' then
+  if c.id is null then insert into business_daily_cases(user_id,local_date,merchant_id,selection_reason) values(p_user_id,business_today(),m.id,p_input->>'selectionReason') returning * into c;end if;
+ else
+  if (v_role='comparison' and m.id=c.merchant_id) or (v_role='product' and m.id<>c.merchant_id) then raise exception 'material merchant does not match role';end if;
+  update business_daily_cases set revision=revision+1 where id=c.id returning * into c;
+  if v_role='product' and not exists(select 1 from business_case_members where case_id=c.id and role='primary') then v_role:='primary';end if;
+ end if;
+ insert into business_material_snapshots(user_id,merchant_id,platform,item_id,origin,source_url,published_at,capture_scope,captured_text,quantities,structured,coverage,content_hash)
+ values(p_user_id,m.id,s->>'platform',s->>'itemId',s->>'origin',s->>'sourceUrl',(s->>'publishedAt')::timestamptz,s->>'captureScope',s->>'capturedText',s->'quantities',s->'structured',s->>'coverage',md5(s::text)) returning id into v_snapshot;
+ insert into business_case_members(user_id,case_id,snapshot_id,merchant_id,role,selection_reason) values(p_user_id,c.id,v_snapshot,m.id,v_role,p_input->>'selectionReason');
+ if v_role='primary' then update business_daily_cases set state='ready',failure_reason=null where id=c.id returning * into c;end if;
+ v_result:=business_case_dto(c);insert into business_case_requests values(p_user_id,v_request,v_operation,p_input->>'userInputHash',p_input,v_result,clock_timestamp());return v_result;
+end $$;
+alter table business_merchants enable row level security;
+alter table business_material_snapshots enable row level security;
+alter table business_daily_cases enable row level security;
+alter table business_case_members enable row level security;
+alter table business_case_requests enable row level security;
+alter table business_case_preparations enable row level security;
+create policy business_merchants_read on business_merchants for select to authenticated using(user_id=auth.uid());
+create policy business_material_read on business_material_snapshots for select to authenticated using(user_id=auth.uid());
+create policy business_cases_read on business_daily_cases for select to authenticated using(user_id=auth.uid());
+create policy business_members_read on business_case_members for select to authenticated using(user_id=auth.uid());
+revoke all on business_merchants,business_material_snapshots,business_daily_cases,business_case_members,business_case_requests,business_case_preparations from public,anon,authenticated,service_role;
+grant select on business_merchants,business_material_snapshots,business_daily_cases,business_case_members to authenticated,service_role;
+revoke all on function business_service(uuid),business_request_receipt(uuid,uuid,text,text),business_save_case_material(uuid,jsonb),business_load_today(uuid) from public,anon,authenticated;
+grant execute on function business_request_receipt(uuid,uuid,text,text),business_save_case_material(uuid,jsonb),business_load_today(uuid) to service_role;
+revoke all on function business_prepare_case(uuid,jsonb),business_fail_preparation(uuid,uuid,text) from public,anon,authenticated;
+grant execute on function business_prepare_case(uuid,jsonb),business_fail_preparation(uuid,uuid,text) to service_role;
+commit;
+
+
+-- ============================================================================
+-- Synced migration: 120_business_teardown_research.sql
+-- ============================================================================
+begin;
+create table public.business_ai_consents(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),case_id uuid not null,material_revision integer not null,payload jsonb not null,request_id uuid not null,revoked_at timestamptz,consumed_by_request_id uuid,created_at timestamptz not null default clock_timestamp(),unique(user_id,request_id),foreign key(user_id,case_id) references business_daily_cases(user_id,id));
+create table public.business_case_revisions(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),case_id uuid not null,revision integer not null,material_revision integer not null,manifest jsonb not null,input_manifest_hash text not null,payload jsonb not null,erased_at timestamptz,created_at timestamptz not null default clock_timestamp(),unique(user_id,id),unique(case_id,revision),foreign key(user_id,case_id) references business_daily_cases(user_id,id));
+create table public.business_report_requests(user_id uuid not null references auth.users(id),request_id uuid not null,case_id uuid not null,input jsonb not null,input_hash text not null,manifest jsonb not null,consent_id uuid not null references business_ai_consents(id),lease_token uuid not null default gen_random_uuid(),lease_until timestamptz not null default clock_timestamp()+interval '5 minutes',status text not null default 'pending' check(status in ('pending','completed','failed','unknown')),report_id uuid references business_case_revisions(id),primary key(user_id,request_id),foreign key(user_id,case_id) references business_daily_cases(user_id,id));
+create table public.business_case_lessons(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),case_id uuid not null,report_id uuid not null,payload jsonb not null,request_id uuid not null,created_at timestamptz not null default clock_timestamp(),unique(user_id,request_id),foreign key(user_id,report_id) references business_case_revisions(user_id,id));
+create table public.business_case_action_refs(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),case_id uuid not null,report_id uuid not null,kind text not null check(kind in ('observation','experiment')),request_id uuid not null,input jsonb not null,input_hash text not null,preview_token uuid not null default gen_random_uuid(),target_id uuid,source_invalidated_at timestamptz,created_at timestamptz not null default clock_timestamp(),unique(user_id,request_id),foreign key(user_id,report_id) references business_case_revisions(user_id,id));
+create table public.business_report_publications(user_id uuid not null references auth.users(id),request_id uuid not null,input jsonb not null,report_id uuid not null references business_case_revisions(id),primary key(user_id,request_id));
+alter table business_material_snapshots add column erased_at timestamptz;
+create function public.business_report_dto(r business_case_revisions) returns jsonb language sql stable as $$select r.payload||jsonb_build_object('id',r.id,'caseId',r.case_id,'revision',r.revision,'materialRevision',r.material_revision,'inputManifestHash',r.input_manifest_hash,'createdAt',r.created_at,'erasedAt',r.erased_at)$$;
+create function public.business_consent_dto(r business_ai_consents) returns jsonb language sql stable as $$select r.payload||jsonb_build_object('id',r.id,'caseId',r.case_id,'materialRevision',r.material_revision,'createdAt',r.created_at,'revokedAt',r.revoked_at,'consumedByRequestId',r.consumed_by_request_id,'consumedRequestStatus',(select status from business_report_requests q where q.user_id=r.user_id and q.request_id=r.consumed_by_request_id),'consumedExpectedReportRevision',(select (input->>'expectedReportRevision')::integer from business_report_requests q where q.user_id=r.user_id and q.request_id=r.consumed_by_request_id))$$;
+create function public.business_selected_manifest(p_user_id uuid,p_case uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare result jsonb;n integer;selected jsonb;begin
+ perform business_service(p_user_id);
+ if jsonb_typeof(p_input->'snapshotIds') is distinct from 'array' or jsonb_typeof(p_input->'comparisonSnapshotIds') is distinct from 'array' or jsonb_array_length(p_input->'snapshotIds')=0 then raise exception 'select sources explicitly';end if;
+ selected=(p_input->'snapshotIds')||(p_input->'comparisonSnapshotIds');n=jsonb_array_length(selected);
+ if n>30 or (select count(distinct value) from jsonb_array_elements_text(selected))<>n then raise exception 'invalid source selection';end if;
+ select jsonb_agg(jsonb_build_object('id',s.id,'merchantId',s.merchant_id,'platform',s.platform,'itemId',s.item_id,'origin',s.origin,'sourceUrl',s.source_url,'capturedAt',s.captured_at,'publishedAt',s.published_at,'captureScope',s.capture_scope,'capturedText',s.captured_text,'quantities',s.quantities,'structured',s.structured,'coverage',s.coverage,'contentHash',s.content_hash,'role',m.role) order by s.id) into result
+ from business_case_members m join business_material_snapshots s on s.id=m.snapshot_id and s.user_id=m.user_id where m.user_id=p_user_id and m.case_id=p_case and s.erased_at is null and ((m.role in ('primary','product') and p_input->'snapshotIds' ? s.id::text) or (m.role='comparison' and p_input->'comparisonSnapshotIds' ? s.id::text));
+ if result is null or jsonb_array_length(result)<>n then raise exception 'source unavailable or role mismatch';end if;return result;
+end$$;
+create function public.business_report_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c business_daily_cases;con business_ai_consents;r business_case_revisions;req business_report_requests;l business_case_lessons;ref business_case_action_refs;pub business_report_publications;v_case uuid;v_id uuid;v_manifest jsonb;v_hash text;v_result jsonb;v_revision integer;v_target uuid;v_key text;v_count integer;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input)<>'object' or octet_length(p_input::text)>200000 then raise exception 'invalid report input';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));
+ if p_operation='revoke' then update business_ai_consents set revoked_at=coalesce(revoked_at,clock_timestamp()) where user_id=p_user_id and id=(p_input->>'consentId')::uuid; if not found then raise exception 'consent unavailable';end if;return '{}'::jsonb;end if;
+ if p_operation in ('verify','finish','fail') then
+  select * into req from business_report_requests where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid for update;
+  if not found or req.lease_token is distinct from (p_input->>'leaseToken')::uuid or req.input_hash is distinct from p_input->>'inputManifestHash' then raise exception 'lease unavailable';end if;
+  if p_operation='finish' and req.status='completed' then select * into r from business_case_revisions where id=req.report_id;return business_report_dto(r);end if;
+  if p_operation='fail' then update business_report_requests set status='failed' where user_id=p_user_id and request_id=req.request_id and status='pending';return '{}'::jsonb;end if;
+  v_case=req.case_id;
+ else v_case=(p_input->>'caseId')::uuid;end if;
+ select * into c from business_daily_cases where user_id=p_user_id and id=v_case for update;if not found then raise exception 'case unavailable' using errcode='42501';end if;
+ if p_operation='state' then
+  return jsonb_build_object('available',true,'publishedReportId',c.published_revision_id,'reports',coalesce((select jsonb_agg(business_report_dto(x) order by revision desc) from business_case_revisions x where x.user_id=p_user_id and x.case_id=c.id),'[]'::jsonb),'consents',coalesce((select jsonb_agg(business_consent_dto(x) order by created_at desc) from business_ai_consents x where x.user_id=p_user_id and x.case_id=c.id),'[]'::jsonb),'lessons',coalesce((select jsonb_agg(x.payload||jsonb_build_object('id',x.id,'createdAt',x.created_at)) from business_case_lessons x where x.user_id=p_user_id and x.case_id=c.id),'[]'::jsonb));
+ end if;
+ if p_operation='consent' then
+  select * into con from business_ai_consents where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then if con.payload<>p_input then raise exception 'request payload conflict';end if;return business_consent_dto(con);end if;
+  if c.revision is distinct from (p_input->>'materialRevision')::integer then raise exception 'material revision changed';end if;
+  v_manifest=business_selected_manifest(p_user_id,c.id,p_input);
+  if (p_input->>'publicExcerptDeidentified')::boolean is distinct from true then raise exception 'public deidentified source confirmation required';end if;
+  insert into business_ai_consents(user_id,case_id,material_revision,payload,request_id) values(p_user_id,c.id,c.revision,p_input,(p_input->>'requestId')::uuid) returning * into con;return business_consent_dto(con);
+ end if;
+ if p_operation='start' then
+  select * into req from business_report_requests where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid for update;
+  if found then
+   if req.input<>p_input then raise exception 'request payload conflict';end if;
+   if req.status='completed' then select * into r from business_case_revisions where id=req.report_id;return jsonb_build_object('status','completed','report',business_report_dto(r));end if;
+   if req.status='pending' and req.lease_until>clock_timestamp() then return jsonb_build_object('status','busy');end if;
+   update business_report_requests set status=case when status='pending' then 'unknown' else status end where user_id=p_user_id and request_id=req.request_id;return jsonb_build_object('status','unknown');
+  end if;
+  if c.revision is distinct from (p_input->>'materialRevision')::integer then raise exception 'material revision changed';end if;
+  select coalesce(max(revision),0) into v_revision from business_case_revisions where case_id=c.id;
+  if v_revision is distinct from (p_input->>'expectedReportRevision')::integer then raise exception 'report revision changed';end if;
+  select * into con from business_ai_consents where user_id=p_user_id and id=(p_input->>'consentId')::uuid and case_id=c.id and revoked_at is null and material_revision=c.revision;
+  if not found or con.payload->'snapshotIds' is distinct from p_input->'snapshotIds' or con.payload->'comparisonSnapshotIds' is distinct from p_input->'comparisonSnapshotIds' then raise exception 'consent unavailable or selection changed';end if;
+  if con.consumed_by_request_id is not null then raise exception 'consent already consumed; explicitly grant a new generation';end if;
+  v_manifest=business_selected_manifest(p_user_id,c.id,p_input);v_hash=md5(jsonb_build_object('input',p_input,'sources',v_manifest)::text);
+  insert into business_report_requests(user_id,request_id,case_id,input,input_hash,manifest,consent_id) values(p_user_id,(p_input->>'requestId')::uuid,c.id,p_input,v_hash,v_manifest,con.id) returning * into req;
+  update business_ai_consents set consumed_by_request_id=req.request_id where id=con.id returning * into con;
+  return jsonb_build_object('status','ready','lease',jsonb_build_object('requestId',req.request_id,'leaseToken',req.lease_token,'caseId',c.id,'inputManifestHash',v_hash,'materialRevision',c.revision),'sources',v_manifest,'consent',business_consent_dto(con));
+ end if;
+ if p_operation in ('verify','finish') then
+  if req.status<>'pending' or req.lease_until<=clock_timestamp() then raise exception 'lease expired; result or usage unknown; confirm a new request';end if;
+  select * into con from business_ai_consents where user_id=p_user_id and id=req.consent_id and revoked_at is null and material_revision=c.revision and consumed_by_request_id=req.request_id;
+  if not found or c.revision is distinct from (req.input->>'materialRevision')::integer or business_selected_manifest(p_user_id,c.id,req.input) is distinct from req.manifest then raise exception 'sources or consent changed';end if;
+  if p_operation='verify' then return jsonb_build_object('sources',req.manifest,'consent',business_consent_dto(con));end if;
+  select coalesce(max(revision),0) into v_revision from business_case_revisions where case_id=c.id;
+  if v_revision is distinct from (req.input->>'expectedReportRevision')::integer then raise exception 'report revision changed';end if;
+  if jsonb_typeof(p_input->'report'->'sections') is distinct from 'array' or jsonb_array_length(p_input->'report'->'sections')<>12 then raise exception 'twelve sections required';end if;
+  foreach v_key in array array['offering','trigger','buyers','volume','journey','value','operations','economics','comparison','failure_conditions','transfer','experiment'] loop select count(*) into v_count from jsonb_array_elements(p_input->'report'->'sections') s where s->>'key'=v_key;if v_count<>1 then raise exception 'section keys invalid';end if;end loop;
+  insert into business_case_revisions(user_id,case_id,revision,material_revision,manifest,input_manifest_hash,payload) values(p_user_id,c.id,v_revision+1,c.revision,req.manifest,req.input_hash,(p_input->'report')||jsonb_build_object('primarySnapshotIds',req.input->'snapshotIds','comparisonSnapshotIds',req.input->'comparisonSnapshotIds','authorship','ai_draft')) returning * into r;
+  update business_report_requests set status='completed',report_id=r.id where user_id=p_user_id and request_id=req.request_id;return business_report_dto(r);
+ end if;
+ select * into r from business_case_revisions where user_id=p_user_id and case_id=c.id and id=(p_input->>'reportId')::uuid;
+ if not found or r.erased_at is not null then raise exception 'report unavailable';end if;
+ if p_operation='publish' then
+  select * into pub from business_report_publications where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then if pub.input<>p_input then raise exception 'request payload conflict';end if;return business_report_dto(r);end if;
+  if c.published_revision_id is distinct from (p_input->>'expectedPublishedReportId')::uuid or c.revision<>r.material_revision then raise exception 'publication or material changed';end if;
+  update business_daily_cases set published_revision_id=r.id where id=c.id;insert into business_report_publications values(p_user_id,(p_input->>'requestId')::uuid,p_input,r.id);return business_report_dto(r);
+ elsif p_operation='lesson' then
+  select * into l from business_case_lessons where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then if l.payload<>p_input then raise exception 'request payload conflict';end if;return l.payload||jsonb_build_object('id',l.id,'createdAt',l.created_at);end if;
+  foreach v_key in array array['method','conditions','unknowns'] loop if length(btrim(coalesce(p_input->>v_key,''))) not between 1 and 4000 then raise exception 'user method, conditions and unknowns required';end if;end loop;
+  insert into business_case_lessons(user_id,case_id,report_id,payload,request_id) values(p_user_id,c.id,r.id,p_input,(p_input->>'requestId')::uuid) returning * into l;return l.payload||jsonb_build_object('id',l.id,'createdAt',l.created_at);
+ elsif p_operation='preview' then
+  if c.revision<>r.material_revision then raise exception 'material changed';end if;
+  if p_input->>'kind'='observation' then if length(btrim(coalesce(p_input->>'takeaway',''))) not between 1 and 12000 then raise exception 'write your observation';end if;
+  elsif p_input->>'kind'='experiment' then
+   if to_regprocedure('public.save_idea_experiment_version(uuid,jsonb)') is null then raise exception 'experiment schema unavailable';end if;
+   execute 'select id from public.ideas where user_id=$1 and id=$2' into v_target using p_user_id,(p_input->'experiment'->>'ideaId')::uuid;if v_target is null then raise exception 'target idea unavailable';end if;
+  else raise exception 'invalid action kind';end if;
+  select * into ref from business_case_action_refs where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then if ref.input<>p_input then raise exception 'request payload conflict';end if;
+  else insert into business_case_action_refs(user_id,case_id,report_id,kind,request_id,input,input_hash) values(p_user_id,c.id,r.id,p_input->>'kind',(p_input->>'requestId')::uuid,p_input,md5(p_input::text)) returning * into ref;end if;
+  return ref.input||jsonb_build_object('token',ref.preview_token,'inputHash',ref.input_hash,'localCaseLink','/business-lab/'||c.id::text);
+ elsif p_operation='confirm' then
+  select * into ref from business_case_action_refs where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid for update;
+  if not found or ref.preview_token is distinct from (p_input->>'token')::uuid or ref.input_hash is distinct from p_input->>'inputHash' or ref.input is distinct from p_input-array['token','inputHash','localCaseLink'] then raise exception 'preview input changed';end if;
+  if ref.target_id is not null then return jsonb_build_object('targetId',ref.target_id,'kind',ref.kind);end if;
+  if c.revision<>r.material_revision or ref.source_invalidated_at is not null then raise exception 'preview stale';end if;
+  if ref.kind='observation' then execute 'insert into public.observations(user_id,raw_text,tags) values($1,$2,$3) returning id' into v_target using p_user_id,ref.input->>'takeaway'||E'\n出处：/business-lab/'||c.id::text,array[]::text[];
+  else execute 'select public.save_idea_experiment_version($1,$2)' into v_result using p_user_id,ref.input->'experiment';v_target=(v_result->>'id')::uuid;end if;
+  if v_target is null then raise exception 'action target not saved';end if;update business_case_action_refs set target_id=v_target where id=ref.id;return jsonb_build_object('targetId',v_target,'kind',ref.kind);
+ end if;
+ raise exception 'invalid report operation';
+end$$;
+create function public.business_erase_guard() returns trigger language plpgsql set search_path=public,pg_temp as $$begin
+ if current_setting('business.erase_case',true) is distinct from old.user_id::text or coalesce(auth.role(),'')<>'service_role' or tg_op<>'UPDATE' or old.erased_at is not null or new.erased_at is null then raise exception 'business history immutable';end if;
+ if tg_table_name='business_material_snapshots' then
+  if (to_jsonb(new)-array['captured_text','quantities','structured','coverage','content_hash','erased_at']) is distinct from (to_jsonb(old)-array['captured_text','quantities','structured','coverage','content_hash','erased_at']) or new.captured_text is not null or new.structured<>'{}'::jsonb or new.quantities<>'[]'::jsonb or new.coverage<>'来源已清除' then raise exception 'invalid erase';end if;
+ else if (to_jsonb(new)-array['payload','manifest','erased_at']) is distinct from (to_jsonb(old)-array['payload','manifest','erased_at']) or new.manifest<>'[]'::jsonb or new.payload<>'{"sections":[],"authorship":"ai_draft","primarySnapshotIds":[],"comparisonSnapshotIds":[],"model":null,"promptVersion":null}'::jsonb then raise exception 'invalid report erase';end if;end if;return new;
+end$$;
+drop trigger business_snapshot_immutable on business_material_snapshots;
+create trigger business_snapshot_immutable before update or delete on business_material_snapshots for each row execute function business_erase_guard();
+create trigger business_report_immutable before update or delete on business_case_revisions for each row execute function business_erase_guard();
+create function public.business_erase_content(p_user_id uuid,p_case_id uuid,p_snapshot_id uuid default null,p_report_id uuid default null) returns void language plpgsql security definer set search_path=public,pg_temp as $$declare c business_daily_cases;v_cases uuid[];begin
+ perform business_service(p_user_id);perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));select * into c from business_daily_cases where id=p_case_id and user_id=p_user_id for update;if not found then raise exception 'case unavailable' using errcode='42501';end if;
+ if (p_snapshot_id is null)=(p_report_id is null) then raise exception 'choose one source or report';end if;
+ perform set_config('business.erase_case',p_user_id::text,true);
+ if p_snapshot_id is not null then
+  if not exists(select 1 from business_case_members where user_id=p_user_id and case_id=c.id and snapshot_id=p_snapshot_id) then raise exception 'source unavailable';end if;
+  select array_agg(distinct case_id) into v_cases from business_case_members where user_id=p_user_id and snapshot_id=p_snapshot_id;
+  update business_material_snapshots set captured_text=null,structured='{}',quantities='[]',coverage='来源已清除',content_hash='erased:'||id::text,erased_at=clock_timestamp() where user_id=p_user_id and id=p_snapshot_id and erased_at is null;
+  update business_case_revisions set payload='{"sections":[],"authorship":"ai_draft","primarySnapshotIds":[],"comparisonSnapshotIds":[],"model":null,"promptVersion":null}',manifest='[]',erased_at=clock_timestamp() where user_id=p_user_id and erased_at is null and exists(select 1 from jsonb_array_elements(manifest) s where s->>'id'=p_snapshot_id::text);
+  update business_report_requests set manifest='[]',status=case when status='pending' then 'unknown' else status end where user_id=p_user_id and case_id=any(v_cases);
+  update business_case_requests set input='{"erased":true}' where user_id=p_user_id and result->>'id' in(select unnest(v_cases)::text);
+  update business_ai_consents set revoked_at=coalesce(revoked_at,clock_timestamp()) where user_id=p_user_id and case_id=any(v_cases);
+  update business_daily_cases set revision=revision+1 where user_id=p_user_id and id=any(v_cases);
+ else
+  if not exists(select 1 from business_case_revisions where user_id=p_user_id and case_id=c.id and id=p_report_id) then raise exception 'report unavailable';end if;
+  update business_case_revisions set payload='{"sections":[],"authorship":"ai_draft","primarySnapshotIds":[],"comparisonSnapshotIds":[],"model":null,"promptVersion":null}',manifest='[]',erased_at=clock_timestamp() where user_id=p_user_id and case_id=c.id and id=p_report_id and erased_at is null;
+ end if;
+ update business_case_action_refs a set source_invalidated_at=coalesce(source_invalidated_at,clock_timestamp()) where a.user_id=p_user_id and exists(select 1 from business_case_revisions r where r.id=a.report_id and r.erased_at is not null);
+ update business_daily_cases d set published_revision_id=null where d.user_id=p_user_id and exists(select 1 from business_case_revisions r where r.id=d.published_revision_id and r.erased_at is not null);
+ perform set_config('business.erase_case','',true);
+end$$;
+create trigger business_lesson_immutable before update or delete on business_case_lessons for each row execute function business_immutable();
+do $$declare t text;begin foreach t in array array['business_ai_consents','business_case_revisions','business_report_requests','business_case_lessons','business_case_action_refs','business_report_publications'] loop execute format('alter table public.%I enable row level security',t);execute format('create policy owner_read on public.%I for select to authenticated using(auth.uid()=user_id)',t);execute format('grant select on public.%I to authenticated',t);execute format('grant all on public.%I to service_role',t);end loop;end$$;
+revoke all on function public.business_selected_manifest(uuid,uuid,jsonb),public.business_report_command(uuid,text,jsonb),public.business_erase_content(uuid,uuid,uuid,uuid) from public,anon,authenticated;
+grant execute on function public.business_selected_manifest(uuid,uuid,jsonb),public.business_report_command(uuid,text,jsonb),public.business_erase_content(uuid,uuid,uuid,uuid) to service_role;
+commit;
+
+
+-- ============================================================================
+-- Synced migration: 121_business_teardown_jobs.sql
+-- ============================================================================
+begin;
+create table public.business_job_settings(
+ user_id uuid primary key references auth.users(id),revision integer not null default 0,
+ payload jsonb not null default '{"enabled":false,"prepareOnOpen":false,"schedule":"07:00","httpBudget":12,"aiBudget":1,"sources":[],"excluded":[],"autoAI":false,"policyVersion":"official-rakuten-scalars-v1"}',
+ consent_version uuid,consent_revoked_at timestamptz,updated_at timestamptz not null default clock_timestamp());
+create table public.business_job_setting_receipts(user_id uuid not null references auth.users(id),request_id uuid not null,input jsonb not null,result jsonb not null,primary key(user_id,request_id));
+create table public.business_job_candidates(user_id uuid not null references auth.users(id),identity text not null,item_code text not null,payload jsonb not null,discovered_at timestamptz not null default clock_timestamp(),primary key(user_id,identity,item_code));
+create table public.business_job_source_cursors(user_id uuid not null references auth.users(id),source_key text not null,next_page integer not null check(next_page>0),coverage text not null,captured_at timestamptz not null,primary key(user_id,source_key));
+create table public.business_job_runs(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),local_date date not null,
+ status text not null default 'running' check(status in('running','materials_ready','completed','failed','unknown')),
+ trigger text not null check(trigger in('manual','cron','open')),settings_revision integer not null,settings jsonb not null,parent_consent_version uuid,
+ lease_token uuid not null default gen_random_uuid(),lease_until timestamptz not null default clock_timestamp()+interval '15 minutes',
+ candidate jsonb,rule_version text,selection_reason text,case_id uuid,material_request uuid not null default gen_random_uuid(),material_hash text,
+ material_status text not null default 'pending',report_status text not null default 'pending',report_request uuid not null default gen_random_uuid(),child_consent_id uuid,publication_base uuid,
+ result jsonb,message text,created_at timestamptz not null default clock_timestamp(),finished_at timestamptz,
+ unique(user_id,local_date),unique(user_id,id),foreign key(user_id,case_id) references business_daily_cases(user_id,id));
+create table public.business_job_attempts(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null,run_id uuid not null,request_id uuid not null,
+ kind text not null check(kind in('http','ai')),stage text not null,status text not null default 'pending' check(status in('pending','completed','failed','unknown')),
+ usage jsonb,operation_reference text,receipt jsonb,created_at timestamptz not null default clock_timestamp(),settled_at timestamptz,
+ unique(user_id,request_id),foreign key(user_id,run_id) references business_job_runs(user_id,id));
+create table public.business_job_child_consents(consent_id uuid primary key references business_ai_consents(id),user_id uuid not null,run_id uuid not null,parent_version uuid not null,settings_revision integer not null,foreign key(user_id,run_id) references business_job_runs(user_id,id));
+create function public.business_job_settings_dto(s business_job_settings) returns jsonb language sql stable as $$select s.payload||jsonb_build_object('revision',s.revision,'consentVersion',s.consent_version,'consentRevokedAt',s.consent_revoked_at)$$;
+create function public.business_job_run_dto(r business_job_runs) returns jsonb language sql stable as $$select jsonb_build_object('runId',r.id,'leaseToken',r.lease_token,'localDate',r.local_date,'status',r.status,'settings',r.settings,'caseId',r.case_id,'candidate',r.candidate,'ruleVersion',r.rule_version,'message',r.message,'materialStatus',r.material_status,'reportStatus',r.report_status,'reportRequestId',r.report_request)$$;
+-- D may replace this function with an identity-link aware exclusion set.
+create function public.business_excluded_merchants(p_user_id uuid) returns text[] language sql stable security definer set search_path=public,pg_temp as $$select coalesce(array_agg(m.platform||':'||m.platform_shop_id),array[]::text[]) from business_daily_cases c join business_merchants m on m.id=c.merchant_id where c.user_id=p_user_id$$;
+create function public.business_job_assert(p_user_id uuid,p_input jsonb,p_ai boolean default false) returns business_job_runs language plpgsql security definer set search_path=public,pg_temp as $$declare r business_job_runs;s business_job_settings;begin
+ select * into r from business_job_runs where user_id=p_user_id and id=(p_input->>'runId')::uuid for update;
+ if not found then raise exception 'run owner unavailable' using errcode='42501';end if;
+ if r.status<>'running' or r.lease_token is distinct from (p_input->>'leaseToken')::uuid or r.lease_until<=clock_timestamp() then raise exception 'job lease unavailable';end if;
+ select * into s from business_job_settings where user_id=p_user_id;
+ if s.revision<>r.settings_revision or (s.payload->>'enabled')::boolean is distinct from true then raise exception 'job settings changed or paused';end if;
+ if p_ai and ((s.payload->>'autoAI')::boolean is distinct from true or s.consent_revoked_at is not null or s.consent_version is distinct from r.parent_consent_version) then raise exception 'automatic consent revoked';end if;
+ return r;
+end$$;
+-- Wrap the existing B API without changing its implementation. Derived consents are
+-- checked even when a caller uses B's public verify/finish entry point directly.
+alter function public.business_report_command(uuid,text,jsonb) rename to business_report_command_v120;
+revoke all on function public.business_report_command_v120(uuid,text,jsonb) from public,anon,authenticated,service_role;
+create function public.business_report_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare link business_job_child_consents;r business_job_runs;v_consent uuid;begin
+ perform business_service(p_user_id);
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,721));
+ if p_operation in('verify','finish','start') then
+  if p_operation='start' then v_consent=(p_input->>'consentId')::uuid;else select consent_id into v_consent from business_report_requests where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;end if;
+  select * into link from business_job_child_consents where user_id=p_user_id and consent_id=v_consent;
+  if found then
+   select * into r from business_job_runs where id=link.run_id and user_id=p_user_id;
+   perform business_job_assert(p_user_id,jsonb_build_object('runId',r.id,'leaseToken',r.lease_token),true);
+   if p_operation='finish' and current_setting('business.job_finish',true) is distinct from r.id::text then raise exception 'automatic report requires atomic job finalization';end if;
+  end if;
+ end if;
+ return business_report_command_v120(p_user_id,p_operation,p_input);
+end$$;
+create function public.business_job_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s business_job_settings;r business_job_runs;receipt business_job_setting_receipts;a business_job_attempts;c business_daily_cases;v jsonb;v_payload jsonb;v_candidate jsonb;item jsonb;v_identity text;v_case uuid;v_count integer;v_revision integer;v_consent jsonb;v_start jsonb;v_manifest jsonb;v_report jsonb;v_snapshots jsonb;v_comparisons jsonb;v_request uuid;v_budget integer;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input)<>'object' or octet_length(p_input::text)>250000 then raise exception 'invalid job input';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,721));
+ insert into business_job_settings(user_id) values(p_user_id) on conflict do nothing;select * into s from business_job_settings where user_id=p_user_id for update;
+ if p_operation='settings' then
+  select * into receipt from business_job_setting_receipts where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then if receipt.input<>p_input then raise exception 'settings request conflict';end if;return receipt.result;end if;
+  if s.revision is distinct from (p_input->>'expectedRevision')::integer then raise exception 'settings revision changed';end if;
+  if jsonb_typeof(p_input->'httpBudget') is distinct from 'number' or jsonb_typeof(p_input->'aiBudget') is distinct from 'number' then raise exception 'integer HTTP and AI budgets required';end if;
+  if (p_input->>'httpBudget')::numeric%1<>0 or (p_input->>'aiBudget')::numeric%1<>0 or (p_input->>'httpBudget')::numeric not between 1 and 1000 or (p_input->>'aiBudget')::numeric not between 0 and 10 then raise exception 'integer request budgets outside bounds';end if;
+  if coalesce(p_input->>'schedule','') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' or (p_input->>'httpBudget')::integer not between 1 and 1000 or (p_input->>'aiBudget')::integer not between 0 and 10 or jsonb_typeof(p_input->'sources') is distinct from 'array' or jsonb_typeof(p_input->'excluded') is distinct from 'array' or jsonb_typeof(p_input->'enabled') is distinct from 'boolean' or jsonb_typeof(p_input->'prepareOnOpen') is distinct from 'boolean' or jsonb_typeof(p_input->'autoAI') is distinct from 'boolean' then raise exception 'invalid job settings';end if;
+  for item in select value from jsonb_array_elements(p_input->'sources') loop
+   if coalesce(item->>'mode','') not in('search','ranking') or jsonb_typeof(item->'category') is distinct from 'string' or jsonb_typeof(item->'priceBand') is distinct from 'string' or jsonb_typeof(item->'businessModel') is distinct from 'string' or length(btrim(coalesce(item->>'category',''))) not between 1 and 120 or length(btrim(coalesce(item->>'priceBand',''))) not between 1 and 120 or length(btrim(coalesce(item->>'businessModel',''))) not between 1 and 120 or (item->>'mode'='search' and (jsonb_typeof(item->'keyword') is distinct from 'string' or length(btrim(coalesce(item->>'keyword',''))) not between 1 and 128)) or (item->>'mode'='ranking' and item ? 'keyword') or (item ? 'genreId' and (jsonb_typeof(item->'genreId') is distinct from 'string' or item->>'genreId' !~ '^[0-9]+$')) then raise exception 'invalid official source configuration';end if;
+   if item-array['mode','keyword','genreId','category','priceBand','businessModel']<>'{}'::jsonb then raise exception 'unsupported source configuration';end if;
+  end loop;
+  if exists(select 1 from jsonb_array_elements_text(p_input->'excluded') x where x.value !~ '^rakuten:[a-zA-Z0-9_-]+$') then raise exception 'invalid exclusion';end if;
+  if (p_input->>'autoAI')::boolean and (p_input->>'policyVersion' is distinct from 'official-rakuten-scalars-v1' or ((s.payload->>'autoAI')::boolean is distinct from true and p_input->'autoAIConfirmed' is distinct from 'true'::jsonb)) then raise exception 'explicit automatic AI policy confirmation required';end if;
+  v_payload=jsonb_build_object('enabled',(p_input->>'enabled')::boolean,'prepareOnOpen',(p_input->>'prepareOnOpen')::boolean,'schedule',p_input->>'schedule','httpBudget',(p_input->>'httpBudget')::integer,'aiBudget',(p_input->>'aiBudget')::integer,'sources',p_input->'sources','excluded',p_input->'excluded','autoAI',(p_input->>'autoAI')::boolean,'policyVersion','official-rakuten-scalars-v1');
+  if s.payload->'sources' is distinct from p_input->'sources' then delete from business_job_candidates where user_id=p_user_id;delete from business_job_source_cursors where user_id=p_user_id;end if;
+  update business_job_settings set revision=revision+1,payload=v_payload,consent_version=case when (p_input->>'autoAI')::boolean then case when (s.payload->>'autoAI')::boolean then s.consent_version else gen_random_uuid() end else s.consent_version end,consent_revoked_at=case when (p_input->>'autoAI')::boolean then null else coalesce(s.consent_revoked_at,clock_timestamp()) end,updated_at=clock_timestamp() where user_id=p_user_id returning * into s;
+  v=business_job_settings_dto(s);insert into business_job_setting_receipts values(p_user_id,(p_input->>'requestId')::uuid,p_input,v);return v;
+ elsif p_operation='state' then
+  select * into r from business_job_runs where user_id=p_user_id and local_date=business_today();
+  return jsonb_build_object('available',true,'settings',business_job_settings_dto(s),'run',case when r.id is null then null else business_job_run_dto(r) end,'attempts',coalesce((select jsonb_agg(to_jsonb(x) order by created_at,id) from business_job_attempts x where x.user_id=p_user_id and x.run_id=r.id),'[]'::jsonb),'sourceCursors',coalesce((select jsonb_object_agg(source_key,next_page) from business_job_source_cursors where user_id=p_user_id),'{}'::jsonb),'candidates',coalesce((select jsonb_agg(payload order by identity,item_code) from business_job_candidates where user_id=p_user_id),'[]'::jsonb),'history',jsonb_build_object('excluded',s.payload->'excluded','priorMain',to_jsonb(business_excluded_merchants(p_user_id)),'recent',coalesce((select jsonb_agg(candidate order by local_date desc) from business_job_runs where user_id=p_user_id and candidate is not null),'[]'::jsonb)));
+ elsif p_operation='history' then
+  select coalesce(jsonb_agg(business_job_run_dto(x)||jsonb_build_object('attemptSummary',jsonb_build_object('http',(select count(*) from business_job_attempts ba where ba.run_id=x.id and ba.kind='http'),'ai',(select count(*) from business_job_attempts ba where ba.run_id=x.id and ba.kind='ai'))) order by local_date desc),'[]'::jsonb) into v from (select * from business_job_runs where user_id=p_user_id and (p_input->>'before' is null or local_date<(p_input->>'before')::date) order by local_date desc limit 21) x;
+  return jsonb_build_object('items',case when jsonb_array_length(v)>20 then v-20 else v end,'nextCursor',case when jsonb_array_length(v)>20 then v->19->>'localDate' else null end);
+ elsif p_operation='claim' then
+  select * into r from business_job_runs where user_id=p_user_id and local_date=business_today() for update;
+  if found then
+   if r.status<>'running' then return coalesce(r.result,business_job_run_dto(r));end if;
+   if r.lease_until<=clock_timestamp() then update business_job_runs set status='unknown',message='Worker lease expired; usage or result may be unknown',finished_at=clock_timestamp() where id=r.id returning * into r;update business_job_attempts set status='unknown' where run_id=r.id and status='pending';return business_job_run_dto(r);end if;
+   return jsonb_build_object('status','busy','runId',r.id);
+  end if;
+  if (s.payload->>'enabled')::boolean is distinct from true then return jsonb_build_object('status','disabled');end if;
+  if p_input->>'trigger'='open' and (s.payload->>'prepareOnOpen')::boolean is distinct from true then return jsonb_build_object('status','disabled');end if;
+  if p_input->>'trigger'='cron' and to_char(clock_timestamp() at time zone 'Asia/Tokyo','HH24:MI')<s.payload->>'schedule' then return jsonb_build_object('status','not_due');end if;
+  select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today();
+  insert into business_job_runs(user_id,local_date,trigger,settings_revision,settings,parent_consent_version,case_id,material_status) values(p_user_id,business_today(),p_input->>'trigger',s.revision,s.payload,s.consent_version,c.id,case when c.state='ready' then 'ready' else 'pending' end) returning * into r;return business_job_run_dto(r);
+ end if;
+ -- Successful terminal receipts precede live lease/settings checks.
+ if p_operation in('finish','complete') then select * into r from business_job_runs where user_id=p_user_id and id=(p_input->>'runId')::uuid;if found and r.lease_token=(p_input->>'leaseToken')::uuid and r.result is not null then return r.result;end if;end if;
+ if p_operation='settle' then
+  select * into a from business_job_attempts where user_id=p_user_id and run_id=(p_input->>'runId')::uuid and id=(p_input->>'ticketId')::uuid;
+  if found and a.receipt is not null and exists(select 1 from business_job_runs where id=a.run_id and user_id=p_user_id and lease_token=(p_input->>'leaseToken')::uuid) then if a.receipt<>p_input-array['runId','leaseToken','settings','statusUnused'] then raise exception 'attempt receipt conflict';end if;return to_jsonb(a);end if;
+ end if;
+ if p_operation='fail' then
+  select * into r from business_job_runs where user_id=p_user_id and id=(p_input->>'runId')::uuid for update;
+  if not found or r.lease_token is distinct from (p_input->>'leaseToken')::uuid then raise exception 'run owner unavailable';end if;
+  if r.status<>'running' then return coalesce(r.result,business_job_run_dto(r));end if;
+  update business_job_attempts set status='unknown',settled_at=clock_timestamp() where run_id=r.id and status='pending';
+  update business_job_runs set status=case when exists(select 1 from business_job_attempts where run_id=r.id and kind='ai') then 'unknown' else 'failed' end,material_status=case when material_status='ready' then material_status else 'failed' end,report_status=case when exists(select 1 from business_job_attempts where run_id=r.id and kind='ai') then 'unknown' else 'not_started' end,message=left(coalesce(p_input->>'message','worker failed'),2000),finished_at=clock_timestamp() where id=r.id returning * into r;
+  if r.case_id is not null and r.material_status<>'ready' and exists(select 1 from business_case_preparations where user_id=p_user_id and request_id=r.material_request) then perform business_fail_preparation(p_user_id,r.material_request,r.material_hash);end if;return business_job_run_dto(r);
+ end if;
+ r=business_job_assert(p_user_id,p_input,p_operation in('verify_ai','finish'));
+ if p_operation='check' then return business_job_run_dto(r);
+ elsif p_operation='enqueue' then
+  for v_candidate in select value from jsonb_array_elements(p_input->'candidates') loop
+   if v_candidate->'merchant'->>'platform' is distinct from 'rakuten' or v_candidate->'merchant'->>'identityScope' is distinct from 'platform_shop_id' or split_part(v_candidate->>'itemCode',':',1) is distinct from v_candidate->'merchant'->>'platformShopId' or coalesce(v_candidate->>'coverage','')='' or (v_candidate->>'sourcePage')::integer<1 or v_candidate->>'capturedAt' is null then raise exception 'invalid official candidate';end if;
+   v_identity='rakuten:'||(v_candidate->'merchant'->>'platformShopId');insert into business_job_candidates(user_id,identity,item_code,payload) values(p_user_id,v_identity,v_candidate->>'itemCode',v_candidate) on conflict(user_id,identity,item_code) do update set payload=excluded.payload,discovered_at=clock_timestamp();
+  end loop;
+  if p_input ? 'sourceCursor' then insert into business_job_source_cursors values(p_user_id,p_input->'sourceCursor'->>'sourceKey',(p_input->'sourceCursor'->>'nextPage')::integer,p_input->'sourceCursor'->>'coverage',(p_input->'sourceCursor'->>'capturedAt')::timestamptz) on conflict(user_id,source_key) do update set next_page=excluded.next_page,coverage=excluded.coverage,captured_at=excluded.captured_at;end if;return '{}'::jsonb;
+ elsif p_operation='reserve' then
+  if r.case_id is not null then return business_job_run_dto(r);end if;
+  if r.local_date<>business_today() then raise exception 'run date changed before slot reservation';end if;
+  v_candidate=p_input->'candidate';v_identity='rakuten:'||(v_candidate->'merchant'->>'platformShopId');
+  if not exists(select 1 from business_job_candidates where user_id=p_user_id and identity=v_identity and item_code=v_candidate->>'itemCode' and payload=v_candidate) then raise exception 'candidate not queued';end if;
+  if v_identity=any(business_excluded_merchants(p_user_id)) or s.payload->'excluded' ? v_identity then raise exception 'main merchant already used or excluded';end if;
+  v=business_prepare_case(p_user_id,jsonb_build_object('requestId',r.material_request,'userInputHash',md5(v_candidate::text),'merchant',v_candidate->'merchant','selectionReason',p_input->>'reason'));
+  update business_job_runs set case_id=(v->'dailyCase'->>'id')::uuid,candidate=v_candidate,rule_version=p_input->>'ruleVersion',selection_reason=p_input->>'reason',material_hash=md5(v_candidate::text) where id=r.id returning * into r;return business_job_run_dto(r);
+ elsif p_operation='ticket' then
+  select * into a from business_job_attempts where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then raise exception 'request ticket already issued; outcome may be unknown';end if;
+  if p_input->>'kind'='ai' then perform business_job_assert(p_user_id,p_input,true);end if;
+  if p_input->>'stage'='inspect' and r.case_id is null then raise exception 'reserve daily slot before inspect HTTP';end if;
+  if jsonb_typeof(r.settings->(case when p_input->>'kind'='ai' then 'aiBudget' else 'httpBudget' end)) is distinct from 'number' then raise exception 'valid frozen numeric request budget required';end if;
+  if (r.settings->>(case when p_input->>'kind'='ai' then 'aiBudget' else 'httpBudget' end))::numeric%1<>0 then raise exception 'integer frozen request budget required';end if;
+  select count(*) into v_count from business_job_attempts where user_id=p_user_id and run_id=r.id and kind=p_input->>'kind';v_budget=(r.settings->>case when p_input->>'kind'='ai' then 'aiBudget' else 'httpBudget' end)::integer;
+  if v_budget is null or (p_input->>'kind'='http' and v_budget not between 1 and 1000) or (p_input->>'kind'='ai' and v_budget not between 0 and 10) then raise exception 'valid frozen request budget required';end if;
+  if v_count>=v_budget then raise exception 'daily request budget exhausted';end if;
+  if p_input->>'kind'='http' and p_input->>'stage'='discovery' and v_count>=v_budget-1 then raise exception 'HTTP discovery budget exhausted; one request reserved for shop inspection';end if;
+  if p_input->>'kind'='ai' and v_count>0 then raise exception 'AI result may be unknown; no automatic retry';end if;
+  insert into business_job_attempts(user_id,run_id,request_id,kind,stage,operation_reference) values(p_user_id,r.id,(p_input->>'requestId')::uuid,p_input->>'kind',p_input->>'stage',case when p_input->>'kind'='ai' then 'business_teardown_report:'||r.report_request::text else null end) returning * into a;return to_jsonb(a);
+ elsif p_operation='settle' then
+  select * into a from business_job_attempts where user_id=p_user_id and run_id=r.id and id=(p_input->>'ticketId')::uuid for update;
+  if not found then raise exception 'ticket unavailable';end if;
+  if a.receipt is not null then if a.receipt<>p_input-array['runId','leaseToken','settings','statusUnused'] then raise exception 'attempt receipt conflict';end if;return to_jsonb(a);end if;
+  if a.kind='ai' then perform business_job_assert(p_user_id,p_input,true);end if;
+  update business_job_attempts set status=p_input->>'status',usage=nullif(p_input->'usage','null'::jsonb),receipt=p_input-array['runId','leaseToken','settings','statusUnused'],settled_at=clock_timestamp() where id=a.id returning * into a;return to_jsonb(a);
+ elsif p_operation='material' then
+  if r.material_status='ready' then return business_job_run_dto(r);end if;
+  if r.case_id is null or r.candidate is null then raise exception 'reserved official candidate required';end if;
+  if p_input->'merchant' is distinct from r.candidate->'merchant' or p_input->'snapshot'->>'itemId' is distinct from r.candidate->>'itemCode' or p_input->'snapshot'->>'origin' is distinct from 'official_api' or p_input->'snapshot'->>'capturedText' is not null or exists(select 1 from jsonb_each(p_input->'snapshot'->'structured') e where jsonb_typeof(e.value) not in('string','number','boolean','null')) then raise exception 'automatic material must be official public scalar fields';end if;
+  perform business_save_case_material(p_user_id,jsonb_build_object('requestId',r.material_request,'operation','primary','userInputHash',r.material_hash,'merchant',p_input->'merchant','snapshot',p_input->'snapshot','selectionReason',r.selection_reason));
+  update business_job_runs set material_status='ready' where id=r.id returning * into r;return business_job_run_dto(r);
+ elsif p_operation='ai_start' then
+  if (s.payload->>'autoAI')::boolean is distinct from true then return jsonb_build_object('status','not_permitted');end if;
+  perform business_job_assert(p_user_id,p_input,true);
+  if r.material_status<>'ready' then raise exception 'material not ready';end if;
+  if exists(select 1 from business_report_requests where user_id=p_user_id and request_id=r.report_request) then raise exception 'AI request already started; result may be unknown';end if;
+  select * into c from business_daily_cases where user_id=p_user_id and id=r.case_id;
+  select coalesce(jsonb_agg(x.snapshot_id order by x.snapshot_id) filter(where x.role in('primary','product')),'[]'::jsonb),coalesce(jsonb_agg(x.snapshot_id order by x.snapshot_id) filter(where x.role='comparison'),'[]'::jsonb) into v_snapshots,v_comparisons from business_case_members x join business_material_snapshots t on t.id=x.snapshot_id and t.user_id=x.user_id where x.user_id=p_user_id and x.case_id=c.id and t.platform='rakuten' and t.origin='official_api' and t.capture_scope='api_fields' and t.captured_text is null and t.erased_at is null;
+  if jsonb_array_length(v_snapshots)=0 then raise exception 'no official scalar primary materials';end if;
+  select coalesce(max(revision),0) into v_revision from business_case_revisions where user_id=p_user_id and case_id=c.id;
+  v=jsonb_build_object('caseId',c.id,'materialRevision',c.revision,'snapshotIds',v_snapshots,'comparisonSnapshotIds',v_comparisons,'publicExcerptDeidentified',true,'requestId',r.report_request);
+  v_consent=business_report_command(p_user_id,'consent',v);insert into business_job_child_consents values((v_consent->>'id')::uuid,p_user_id,r.id,r.parent_consent_version,r.settings_revision);
+  update business_job_runs set child_consent_id=(v_consent->>'id')::uuid,report_status='started',publication_base=c.published_revision_id where id=r.id;
+  v_start=business_report_command(p_user_id,'start',(v-'publicExcerptDeidentified')||jsonb_build_object('consentId',v_consent->>'id','expectedReportRevision',v_revision));return v_start;
+ elsif p_operation='verify_ai' then
+  if p_input->'draftLease'->>'requestId' is distinct from r.report_request::text then raise exception 'report run mismatch';end if;return business_report_command(p_user_id,'verify',p_input->'draftLease');
+ elsif p_operation='finish' then
+  if p_input->'draftLease'->>'requestId' is distinct from r.report_request::text then raise exception 'report run mismatch';end if;
+  if not exists(select 1 from business_job_attempts where user_id=p_user_id and run_id=r.id and kind='ai' and status='completed') then raise exception 'completed AI ticket required before finalization';end if;
+  perform set_config('business.job_finish',r.id::text,true);
+  v_report=business_report_command(p_user_id,'finish',(p_input->'draftLease')||jsonb_build_object('report',p_input->'report'));
+  select * into c from business_daily_cases where user_id=p_user_id and id=r.case_id;
+  perform business_report_command(p_user_id,'publish',jsonb_build_object('caseId',c.id,'reportId',v_report->>'id','expectedPublishedReportId',r.publication_base,'requestId',r.report_request));
+  v=jsonb_build_object('status','completed','runId',r.id,'caseId',c.id,'reportId',v_report->>'id');
+  update business_job_runs set status='completed',report_status='published',result=v,finished_at=clock_timestamp() where id=r.id;return v;
+ elsif p_operation='complete' then
+  if r.material_status<>'ready' then raise exception 'materials not ready';end if;
+  v=jsonb_build_object('status','materials_ready','runId',r.id,'caseId',r.case_id,'message',p_input->>'message');update business_job_runs set status='materials_ready',report_status='not_permitted',message=p_input->>'message',result=v,finished_at=clock_timestamp() where id=r.id;return v;
+ end if;
+ raise exception 'unknown business job operation';
+end$$;
+alter table business_job_source_cursors enable row level security;alter table business_job_settings enable row level security;alter table business_job_setting_receipts enable row level security;alter table business_job_candidates enable row level security;alter table business_job_runs enable row level security;alter table business_job_attempts enable row level security;alter table business_job_child_consents enable row level security;
+revoke all on business_job_source_cursors,business_job_settings,business_job_setting_receipts,business_job_candidates,business_job_runs,business_job_attempts,business_job_child_consents from public,anon,authenticated,service_role;
+grant select on business_job_settings,business_job_runs,business_job_attempts to service_role;
+revoke all on function business_job_command(uuid,text,jsonb),business_job_assert(uuid,jsonb,boolean),business_excluded_merchants(uuid),business_report_command(uuid,text,jsonb) from public,anon,authenticated;
+grant execute on function business_job_command(uuid,text,jsonb),business_report_command(uuid,text,jsonb) to service_role;
+commit;
+
+
+
+
+
+
+-- ============================================================================
+-- Synced migration: 122_business_teardown_followups.sql
+-- ============================================================================
+begin;
+-- Every learning record is historical. Receipts retain a digest, never another copy of a quotation.
+create function public.business_learning_now() returns timestamptz language sql volatile set search_path=public,pg_temp as $$select clock_timestamp()$$;
+create table public.business_learning_entries(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),case_id uuid not null,
+ operation text not null check(operation in('identity','expectation','followup','correction','method')),payload jsonb not null check(jsonb_typeof(payload)='object'),
+ created_at timestamptz not null default business_learning_now(),identity_version bigint,left_merchant_id uuid,right_merchant_id uuid,
+ report_id uuid,snapshot_id uuid,expectation_id uuid,lesson_id uuid,
+ unique(user_id,id),unique(user_id,case_id,id),unique(user_id,identity_version),
+ foreign key(user_id,case_id) references business_daily_cases(user_id,id),
+ foreign key(user_id,left_merchant_id) references business_merchants(user_id,id),foreign key(user_id,right_merchant_id) references business_merchants(user_id,id),
+ foreign key(user_id,report_id) references business_case_revisions(user_id,id),foreign key(user_id,snapshot_id) references business_material_snapshots(user_id,id),
+ foreign key(user_id,case_id,expectation_id) references business_learning_entries(user_id,case_id,id),
+ check((operation='identity')=(identity_version is not null)),check(operation<>'identity' or (left_merchant_id is not null and right_merchant_id is not null and left_merchant_id<right_merchant_id))
+);
+create unique index business_lessons_owner_id_learning on business_case_lessons(user_id,id);
+alter table business_learning_entries add foreign key(user_id,lesson_id) references business_case_lessons(user_id,id);
+create table public.business_learning_receipts(user_id uuid not null references auth.users(id),request_id uuid not null,input_hash text not null,entry_id uuid not null,primary key(user_id,request_id),foreign key(user_id,entry_id) references business_learning_entries(user_id,id));
+create table public.business_learning_sources(user_id uuid not null,entry_id uuid not null,snapshot_id uuid not null,primary key(entry_id,snapshot_id),foreign key(user_id,entry_id) references business_learning_entries(user_id,id),foreign key(user_id,snapshot_id) references business_material_snapshots(user_id,id));
+create table public.business_learning_report_reviews(user_id uuid not null,correction_id uuid not null,report_id uuid not null,section_keys jsonb not null check(jsonb_typeof(section_keys)='array'),primary key(correction_id,report_id),foreign key(user_id,correction_id) references business_learning_entries(user_id,id),foreign key(user_id,report_id) references business_case_revisions(user_id,id));
+create table public.business_learning_erasures(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),case_id uuid not null,snapshot_id uuid,report_id uuid,created_at timestamptz not null default business_learning_now(),foreign key(user_id,case_id) references business_daily_cases(user_id,id),foreign key(user_id,snapshot_id) references business_material_snapshots(user_id,id),foreign key(user_id,report_id) references business_case_revisions(user_id,id),check((snapshot_id is null)<>(report_id is null)));
+create index business_learning_case_history on business_learning_entries(user_id,case_id,created_at desc,id desc);
+create index business_learning_methods on business_learning_entries(user_id,created_at desc,id desc) where operation='method';
+
+create function public.business_learning_entry_guard() returns trigger language plpgsql set search_path=public,pg_temp as $$begin
+ if tg_op='UPDATE' and coalesce(auth.role(),'')='service_role' and current_setting('business.learning_erase',true)=old.user_id::text and old.operation='followup'
+ and new.payload=old.payload||jsonb_build_object('quote','') and new.payload->>'quote'='' and
+ (to_jsonb(new)-'payload')=(to_jsonb(old)-'payload') then return new;end if;
+ raise exception 'business learning history is immutable';
+end$$;
+create trigger business_learning_entries_immutable before update or delete on business_learning_entries for each row execute function business_learning_entry_guard();
+do $$declare t text;begin foreach t in array array['business_learning_receipts','business_learning_sources','business_learning_report_reviews','business_learning_erasures'] loop execute format('create trigger learning_immutable before update or delete on %I for each row execute function business_immutable()',t);end loop;end$$;
+
+-- Only explicitly confirmed latest events form edges; names never participate in identity.
+create function public.business_learning_component(p_user_id uuid,p_merchant_id uuid) returns setof uuid language sql stable security definer set search_path=public,pg_temp as $$
+ with recursive latest as (select distinct on(left_merchant_id,right_merchant_id) left_merchant_id l,right_merchant_id r,payload->>'action' action from business_learning_entries where user_id=p_user_id and operation='identity' order by left_merchant_id,right_merchant_id,identity_version desc),
+ edges as (select l,r from latest where action='link' union all select r,l from latest where action='link'),
+ reached(id) as (select id from business_merchants where user_id=p_user_id and id=p_merchant_id union select e.r from reached c join edges e on e.l=c.id)
+ select id from reached
+$$;
+create or replace function public.business_excluded_merchants(p_user_id uuid) returns text[] language plpgsql stable security definer set search_path=public,pg_temp as $$declare result text[];begin
+ perform business_service(p_user_id);
+ select coalesce(array_agg(distinct m.platform||':'||m.platform_shop_id),array[]::text[]) into result from business_daily_cases c cross join lateral business_learning_component(p_user_id,c.merchant_id) component(id) join business_merchants m on m.id=component.id and m.user_id=p_user_id where c.user_id=p_user_id;
+ return result;
+end$$;
+create function public.business_learning_case_guard() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$begin
+ perform business_service(new.user_id);
+ perform pg_advisory_xact_lock(hashtextextended(new.user_id::text,719));perform pg_advisory_xact_lock(hashtextextended(new.user_id::text,720));perform pg_advisory_xact_lock(hashtextextended(new.user_id::text,721));perform pg_advisory_xact_lock(hashtextextended(new.user_id::text,722));
+ if exists(select 1 from business_daily_cases c where c.user_id=new.user_id and c.merchant_id in(select business_learning_component(new.user_id,new.merchant_id))) then raise exception 'main merchant already used or linked to an excluded merchant';end if;
+ return new;
+end$$;
+create trigger business_learning_case_dedupe before insert on business_daily_cases for each row execute function business_learning_case_guard();
+
+create function public.business_learning_dto(e business_learning_entries) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$
+ select jsonb_build_object('id',e.id,'operation',e.operation,'caseId',e.case_id,'createdAt',e.created_at,'payload',e.payload,
+ 'sourceInvalidated',exists(select 1 from business_learning_sources d join business_material_snapshots s on s.id=d.snapshot_id and s.user_id=d.user_id where d.user_id=e.user_id and d.entry_id=e.id and s.erased_at is not null) or exists(select 1 from business_case_revisions r where r.user_id=e.user_id and r.id=e.report_id and r.erased_at is not null),
+ 'reviewNeeded',exists(select 1 from business_learning_sources d join business_learning_entries correction on correction.user_id=d.user_id and correction.snapshot_id=d.snapshot_id and correction.operation='correction' where d.user_id=e.user_id and d.entry_id=e.id and correction.id<>e.id) or exists(select 1 from business_learning_report_reviews r where r.user_id=e.user_id and r.report_id=e.report_id))
+$$;
+create function public.business_learning_text(p_input jsonb,p_key text,p_max integer default 3000) returns void language plpgsql set search_path=public,pg_temp as $$begin
+ if jsonb_typeof(p_input->p_key) is distinct from 'string' or length(trim(p_input->>p_key))=0 or length(p_input->>p_key)>p_max then raise exception 'invalid learning text: %',p_key;end if;
+end$$;
+create function public.business_learning_uuid(p_input jsonb,p_key text) returns uuid language plpgsql set search_path=public,pg_temp as $$declare v uuid;begin
+ if jsonb_typeof(p_input->p_key) is distinct from 'string' then raise exception 'invalid learning identifier: %',p_key;end if;v:=(p_input->>p_key)::uuid;if v is null then raise exception 'missing learning identifier';end if;return v;
+end$$;
+
+create function public.business_learning_section_keys(p_payload jsonb,p_snapshot uuid) returns jsonb language sql immutable set search_path=public,pg_temp as $$
+ select coalesce(jsonb_agg(distinct section->>'key'),'[]'::jsonb) from jsonb_array_elements(coalesce(p_payload->'sections','[]')) section
+ where exists(select 1 from jsonb_array_elements(coalesce(section->'observations','[]')) observation where observation->>'snapshotId'=p_snapshot::text)
+ or exists(select 1 from jsonb_array_elements(coalesce(section->'interpretations','[]')) interpretation cross join lateral jsonb_array_elements(coalesce(interpretation->'refs','[]')) ref where ref->>'snapshotId'=p_snapshot::text)
+$$;
+-- Date-only manual sightings cannot establish an ordering within the prediction's local day.
+create function public.business_learning_seen_after(p_seen jsonb,p_prediction timestamptz,p_now timestamptz) returns boolean language plpgsql immutable set search_path=public,pg_temp as $$declare seen_date date;seen_text text;begin
+ if jsonb_typeof(p_seen) is distinct from 'string' then return false;end if;seen_text:=p_seen#>>'{}';
+ if seen_text !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then return false;end if;
+ begin seen_date:=seen_text::date;exception when invalid_datetime_format or datetime_field_overflow then return false;end;
+ return to_char(seen_date,'YYYY-MM-DD')=seen_text and seen_date>(p_prediction at time zone 'Asia/Tokyo')::date and seen_date<=(p_now at time zone 'Asia/Tokyo')::date;
+end$$;
+create function public.business_learning_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_request uuid;v_case uuid;v_report uuid;v_snapshot uuid;v_expectation uuid;v_lesson uuid;v_left uuid;v_right uuid;v_version bigint;v_now timestamptz;v_hash text;v_keys text[];k text;e business_learning_entries;prediction business_learning_entries;r business_learning_receipts;s business_material_snapshots;base business_material_snapshots;rep business_case_revisions;v_payload jsonb;v_outcome text;v_report_ids uuid[];
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input) is distinct from 'object' or octet_length(p_input::text)>40000 or p_operation is null or p_operation not in('identity','expectation','followup','correction','method') or p_input->>'operation' is distinct from p_operation then raise exception 'invalid learning operation';end if;
+ v_request:=business_learning_uuid(p_input,'requestId');v_case:=business_learning_uuid(p_input,'caseId');v_hash:=md5(p_input::text);
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,721));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,722));
+ select * into r from business_learning_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if r.input_hash is distinct from v_hash then raise exception 'learning request payload conflict';end if;select * into e from business_learning_entries where user_id=p_user_id and id=r.entry_id;return business_learning_dto(e);end if;
+ if not exists(select 1 from business_daily_cases where user_id=p_user_id and id=v_case) then raise exception 'learning case owner unavailable' using errcode='42501';end if;
+ v_keys:=array['operation','requestId','caseId']||case p_operation when 'identity' then array['expectedVersion','leftMerchantId','rightMerchantId','leftSource','rightSource','reason','confirmed','action'] when 'expectation' then array['reportId','baselineSnapshotId','question','scope','deadline','supportCriteria','refuteCriteria'] when 'followup' then array['expectationId','snapshotId','outcome','quote','sameScopeConfirmed','scope','note','accessStatus','coverage'] when 'correction' then array['snapshotId','explanation'] else array['reportId','method','scenario','conditions','failureConditions','unknowns','confirmed','lessonId'] end;
+ if exists(select 1 from jsonb_object_keys(p_input) key where not(key=any(v_keys))) then raise exception 'unsupported learning field; timestamps are database owned';end if;
+ v_now:=business_learning_now();v_payload:=p_input-array['operation','requestId','caseId'];
+ if p_operation='identity' then
+  v_left:=business_learning_uuid(p_input,'leftMerchantId');v_right:=business_learning_uuid(p_input,'rightMerchantId');
+  if v_left=v_right or p_input->'confirmed' is distinct from 'true'::jsonb or jsonb_typeof(p_input->'expectedVersion') is distinct from 'number' or (p_input->>'expectedVersion') !~ '^[0-9]+$' or coalesce(p_input->>'action','') not in('link','revoke') then raise exception 'invalid identity confirmation/version';end if;
+  foreach k in array array['leftSource','rightSource','reason'] loop perform business_learning_text(p_input,k);end loop;
+  if (select count(*) from business_merchants where user_id=p_user_id and id in(v_left,v_right))<>2 then raise exception 'merchant owner unavailable' using errcode='42501';end if;
+  select coalesce(max(identity_version),0) into v_version from business_learning_entries where user_id=p_user_id and operation='identity';
+  if v_version is distinct from (p_input->>'expectedVersion')::bigint then raise exception 'identity version conflict';end if;v_version:=v_version+1;
+  if p_input->>'action'='revoke' and (select payload->>'action' from business_learning_entries where user_id=p_user_id and left_merchant_id=least(v_left,v_right) and right_merchant_id=greatest(v_left,v_right) and operation='identity' order by identity_version desc limit 1) is distinct from 'link' then raise exception 'identity link unavailable';end if;
+ elsif p_operation='expectation' then
+  v_report:=business_learning_uuid(p_input,'reportId');v_snapshot:=business_learning_uuid(p_input,'baselineSnapshotId');
+  foreach k in array array['question','scope','supportCriteria','refuteCriteria'] loop perform business_learning_text(p_input,k);end loop;perform business_learning_text(p_input,'deadline',100);
+  if not isfinite((p_input->>'deadline')::timestamptz) or (p_input->>'deadline')::timestamptz<=v_now then raise exception 'expectation deadline must be future';end if;
+ elsif p_operation='followup' then
+  v_expectation:=business_learning_uuid(p_input,'expectationId');v_snapshot:=business_learning_uuid(p_input,'snapshotId');
+  if coalesce(p_input->>'outcome','') not in('support','refute','unknown') or coalesce(p_input->>'accessStatus','') not in('public','partial','login_required','unavailable') or coalesce(p_input->>'coverage','') not in('complete','insufficient','failed_fetch','list_absence') or jsonb_typeof(p_input->'sameScopeConfirmed') is distinct from 'boolean' or jsonb_typeof(p_input->'quote') is distinct from 'string' or length(p_input->>'quote')>12000 then raise exception 'invalid followup fields';end if;
+  perform business_learning_text(p_input,'scope');perform business_learning_text(p_input,'note');
+  select * into prediction from business_learning_entries where user_id=p_user_id and case_id=v_case and id=v_expectation and operation='expectation';if not found then raise exception 'expectation owner unavailable' using errcode='42501';end if;
+  v_report:=prediction.report_id;select * into base from business_material_snapshots where user_id=p_user_id and id=prediction.snapshot_id;
+ elsif p_operation='correction' then
+  v_snapshot:=business_learning_uuid(p_input,'snapshotId');perform business_learning_text(p_input,'explanation',6000);
+ else
+  v_report:=business_learning_uuid(p_input,'reportId');if p_input ? 'lessonId' then v_lesson:=business_learning_uuid(p_input,'lessonId');end if;
+  foreach k in array array['method','scenario','conditions','failureConditions','unknowns'] loop perform business_learning_text(p_input,k,6000);end loop;
+  if p_input->'confirmed' is distinct from 'true'::jsonb then raise exception 'method requires user confirmation';end if;
+  if v_lesson is not null and not exists(select 1 from business_case_lessons where user_id=p_user_id and case_id=v_case and report_id=v_report and id=v_lesson) then raise exception 'lesson owner/report unavailable' using errcode='42501';end if;
+ end if;
+ if v_report is not null then
+  select * into rep from business_case_revisions where user_id=p_user_id and case_id=v_case and id=v_report and erased_at is null;
+  if not found then raise exception 'report owner unavailable' using errcode='42501';end if;
+ end if;
+ if v_snapshot is not null then
+  select material.* into s from business_material_snapshots material join business_case_members member on member.user_id=material.user_id and member.snapshot_id=material.id where material.user_id=p_user_id and material.id=v_snapshot and member.case_id=v_case and material.erased_at is null;
+  if not found then raise exception 'snapshot owner/case unavailable' using errcode='42501';end if;
+  if s.captured_at>v_now then raise exception 'future source unavailable';end if;
+ end if;
+ if p_operation='expectation' then
+  if not exists(select 1 from jsonb_array_elements(rep.manifest) src where src->>'id'=v_snapshot::text) then raise exception 'baseline absent from selected report manifest';end if;
+ elsif p_operation='followup' then
+  if s.captured_at<=prediction.created_at then raise exception 'followup source must be obtained after prediction';end if;
+  if length(trim(p_input->>'quote'))>0 and position((p_input->>'quote') in coalesce(s.captured_text,''))=0 then raise exception 'followup quote must be exact source text';end if;
+  v_outcome:=p_input->>'outcome';
+  if v_now<(prediction.payload->>'deadline')::timestamptz or p_input->'sameScopeConfirmed'<>'true'::jsonb or p_input->>'scope' is distinct from prediction.payload->>'scope' or length(trim(p_input->>'quote'))=0 or p_input->>'accessStatus'<>'public' or p_input->>'coverage'<>'complete' or coalesce(s.structured->>'accessStatus','public')<>'public' or base.erased_at is not null or s.merchant_id is distinct from base.merchant_id or (nullif(s.item_id,'') is not null and nullif(base.item_id,'') is not null and s.item_id is distinct from base.item_id) or ((s.origin='manual_excerpt' or s.structured ? 'dateSeen') and not business_learning_seen_after(s.structured->'dateSeen',prediction.created_at,v_now)) then v_outcome:='unknown';end if;
+  v_payload:=v_payload||jsonb_build_object('outcome',v_outcome);
+ end if;
+ if p_operation='correction' then
+  v_payload:=v_payload||jsonb_build_object('dependencies',coalesce((select jsonb_agg(distinct label order by label) from (
+   select '报告版本 '||revision.revision||' · '||case section_key when 'offering' then '卖什么' when 'trigger' then '购买触发' when 'buyers' then '谁在购买' when 'volume' then '热销依据' when 'journey' then '购买路径' when 'value' then '交付价值' when 'operations' then '运营条件' when 'economics' then '成本与收入' when 'comparison' then '对照材料' when 'failure_conditions' then '失效条件' when 'transfer' then '可迁移方法' when 'experiment' then '下一步验证' else '引用来源' end label
+   from business_case_revisions revision cross join lateral jsonb_array_elements_text(case when jsonb_array_length(business_learning_section_keys(revision.payload,v_snapshot))>0 then business_learning_section_keys(revision.payload,v_snapshot) else '["source"]'::jsonb end) section(section_key)
+   where revision.user_id=p_user_id and (exists(select 1 from jsonb_array_elements(revision.manifest) src where src->>'id'=v_snapshot::text) or jsonb_array_length(business_learning_section_keys(revision.payload,v_snapshot))>0)
+   union all select '本人确认的方法 · 引用受影响报告' from business_learning_entries method join business_learning_sources dep on dep.user_id=method.user_id and dep.entry_id=method.id where method.user_id=p_user_id and method.operation='method' and dep.snapshot_id=v_snapshot
+   union all select '本人确认的经验 · 引用受影响报告' from business_case_lessons lesson join business_case_revisions revision on revision.user_id=lesson.user_id and revision.id=lesson.report_id where lesson.user_id=p_user_id and (exists(select 1 from jsonb_array_elements(revision.manifest) src where src->>'id'=v_snapshot::text) or jsonb_array_length(business_learning_section_keys(revision.payload,v_snapshot))>0)
+   union all select '后续核对记录 · 引用该来源' from business_learning_entries followup join business_learning_sources dep on dep.user_id=followup.user_id and dep.entry_id=followup.id where followup.user_id=p_user_id and followup.operation='followup' and dep.snapshot_id=v_snapshot
+  ) affected),'[]'::jsonb));
+ end if;
+ insert into business_learning_entries(user_id,case_id,operation,payload,created_at,identity_version,left_merchant_id,right_merchant_id,report_id,snapshot_id,expectation_id,lesson_id)
+ values(p_user_id,v_case,p_operation,v_payload,v_now,v_version,least(v_left,v_right),greatest(v_left,v_right),v_report,v_snapshot,v_expectation,v_lesson) returning * into e;
+ if v_snapshot is not null then insert into business_learning_sources values(p_user_id,e.id,v_snapshot);end if;
+ if p_operation='followup' then insert into business_learning_sources values(p_user_id,e.id,prediction.snapshot_id) on conflict do nothing;end if;
+ if v_report is not null then insert into business_learning_sources select p_user_id,e.id,snap.id from business_material_snapshots snap where snap.user_id=p_user_id and exists(select 1 from jsonb_array_elements(rep.manifest) src where src->>'id'=snap.id::text) on conflict do nothing;end if;
+ if p_operation='correction' then
+  insert into business_learning_report_reviews(user_id,correction_id,report_id,section_keys)
+  select p_user_id,e.id,revision.id,business_learning_section_keys(revision.payload,v_snapshot)
+  from business_case_revisions revision where revision.user_id=p_user_id and (exists(select 1 from jsonb_array_elements(revision.manifest) src where src->>'id'=v_snapshot::text) or jsonb_array_length(business_learning_section_keys(revision.payload,v_snapshot))>0);
+ end if;
+ insert into business_learning_receipts values(p_user_id,v_request,v_hash,e.id);
+ return business_learning_dto(e);
+end$$;
+
+create function public.business_learning_read(p_user_id uuid,p_case_id uuid,p_before uuid default null) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare c business_daily_cases;boundary business_learning_entries;v_items jsonb;v_more boolean;v_next uuid;v_merchants jsonb;v_duplicates jsonb;begin
+ perform business_service(p_user_id);select * into c from business_daily_cases where user_id=p_user_id and id=p_case_id;if not found then raise exception 'learning case owner unavailable' using errcode='42501';end if;
+ if p_before is not null then select * into boundary from business_learning_entries where user_id=p_user_id and case_id=p_case_id and id=p_before;if not found then raise exception 'learning cursor unavailable' using errcode='42501';end if;end if;
+ select coalesce(jsonb_agg(business_learning_dto(page) order by page.created_at desc,page.id desc),'[]'::jsonb) into v_items from(select * from business_learning_entries where user_id=p_user_id and case_id=p_case_id and (p_before is null or (created_at,id)<(boundary.created_at,boundary.id)) order by created_at desc,id desc limit 50) page;
+ v_next:=(v_items->-1->>'id')::uuid;
+ select exists(select 1 from business_learning_entries where user_id=p_user_id and case_id=p_case_id and (created_at,id)<((select created_at from business_learning_entries where id=v_next),v_next)) into v_more;
+ select coalesce(jsonb_agg(jsonb_build_object('merchantId',m.id,'name',m.name,'platform',m.platform,'platformShopId',m.platform_shop_id,'caseIds',coalesce((select jsonb_agg(id order by local_date,id) from business_daily_cases where user_id=p_user_id and merchant_id=m.id),'[]'::jsonb)) order by m.created_at,m.id),'[]'::jsonb) into v_merchants from business_merchants m where m.user_id=p_user_id;
+ select coalesce(jsonb_agg(id order by local_date,id),'[]'::jsonb) into v_duplicates from business_daily_cases where user_id=p_user_id and id<>p_case_id and merchant_id in(select business_learning_component(p_user_id,c.merchant_id));
+ return jsonb_build_object('available',true,'version',(select coalesce(max(identity_version),0) from business_learning_entries where user_id=p_user_id),'items',v_items,'nextCursor',case when v_more then v_next else null end,'merchants',v_merchants,'duplicateCaseIds',v_duplicates);
+end$$;
+
+create function public.business_method_rows(p_user_id uuid) returns table(id uuid,created_at timestamptz,item jsonb) language sql stable security definer set search_path=public,pg_temp as $$
+ select e.id,e.created_at,business_learning_dto(e) from business_learning_entries e where e.user_id=p_user_id and e.operation='method'
+ union all
+ select l.id,l.created_at,jsonb_build_object('id',l.id,'operation','method','caseId',l.case_id,'createdAt',l.created_at,'payload',l.payload||jsonb_build_object('source','confirmed_lesson'),
+ 'sourceInvalidated',r.erased_at is not null,'reviewNeeded',exists(select 1 from business_learning_report_reviews review where review.user_id=l.user_id and review.report_id=l.report_id)) from business_case_lessons l join business_case_revisions r on r.user_id=l.user_id and r.id=l.report_id where l.user_id=p_user_id
+$$;
+create function public.business_method_search(p_user_id uuid,p_query text,p_before uuid default null) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$declare v_created timestamptz;v_items jsonb;v_next uuid;v_more boolean;begin
+ perform business_service(p_user_id);if p_query is null or length(p_query)>500 then raise exception 'invalid method query';end if;
+ if p_before is not null then select created_at into v_created from business_method_rows(p_user_id) where id=p_before;if not found then raise exception 'method cursor owner unavailable' using errcode='42501';end if;end if;
+ select coalesce(jsonb_agg(item order by created_at desc,id desc),'[]'::jsonb) into v_items from(select * from business_method_rows(p_user_id) where (p_before is null or (created_at,id)<(v_created,p_before)) and (trim(p_query)='' or position(lower(trim(p_query)) in lower(concat_ws(' ',item->'payload'->>'method',item->'payload'->>'scenario',item->'payload'->>'conditions',item->'payload'->>'failureConditions',item->'payload'->>'unknowns')))>0) order by created_at desc,id desc limit 51) page;
+ v_more:=jsonb_array_length(v_items)>50;if v_more then v_items:=v_items-50;end if;v_next:=(v_items->-1->>'id')::uuid;
+ return jsonb_build_object('available',true,'items',v_items,'nextCursor',case when v_more then v_next else null end);
+end$$;
+
+-- Keep the B/C erase behavior behind a single D-aware entry point and a consistent lock order.
+alter function public.business_erase_content(uuid,uuid,uuid,uuid) rename to business_erase_content_before_learning;
+revoke all on function public.business_erase_content_before_learning(uuid,uuid,uuid,uuid) from public,anon,authenticated,service_role;
+create function public.business_erase_content(p_user_id uuid,p_case_id uuid,p_snapshot_id uuid default null,p_report_id uuid default null) returns void language plpgsql security definer set search_path=public,pg_temp as $$begin
+ perform business_service(p_user_id);
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,721));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,722));
+ perform business_erase_content_before_learning(p_user_id,p_case_id,p_snapshot_id,p_report_id);
+ insert into business_learning_erasures(user_id,case_id,snapshot_id,report_id) values(p_user_id,p_case_id,p_snapshot_id,p_report_id);
+ perform set_config('business.learning_erase',p_user_id::text,true);
+ update business_learning_entries e set payload=e.payload||jsonb_build_object('quote','') where e.user_id=p_user_id and e.operation='followup' and e.payload->>'quote'<>'' and (e.snapshot_id=p_snapshot_id or (p_report_id is not null and exists(select 1 from business_learning_entries prediction where prediction.user_id=e.user_id and prediction.id=e.expectation_id and prediction.report_id=p_report_id)));
+ perform set_config('business.learning_erase','',true);
+end$$;
+
+do $$declare t text;begin foreach t in array array['business_learning_entries','business_learning_receipts','business_learning_sources','business_learning_report_reviews','business_learning_erasures'] loop execute format('alter table %I enable row level security',t);execute format('create policy learning_owner_read on %I for select to authenticated using(user_id=auth.uid())',t);execute format('revoke all on %I from public,anon,authenticated,service_role',t);execute format('grant select on %I to authenticated,service_role',t);end loop;end$$;
+revoke all on function business_learning_component(uuid,uuid),business_learning_dto(business_learning_entries),business_learning_text(jsonb,text,integer),business_learning_section_keys(jsonb,uuid),business_learning_seen_after(jsonb,timestamptz,timestamptz),business_learning_uuid(jsonb,text),business_method_rows(uuid),business_learning_case_guard(),business_learning_entry_guard() from public,anon,authenticated,service_role;
+revoke all on function business_learning_command(uuid,text,jsonb),business_learning_read(uuid,uuid,uuid),business_method_search(uuid,text,uuid),business_excluded_merchants(uuid),business_erase_content(uuid,uuid,uuid,uuid),business_learning_now() from public,anon,authenticated;
+grant execute on function business_learning_command(uuid,text,jsonb),business_learning_read(uuid,uuid,uuid),business_method_search(uuid,text,uuid),business_excluded_merchants(uuid),business_erase_content(uuid,uuid,uuid,uuid) to service_role;
+commit;
+
+
+
+-- ============================================================================
+-- Synced migration: 123_business_job_partial_drafts.sql
+-- ============================================================================
+begin;
+
+alter table public.business_job_runs drop constraint business_job_runs_status_check;
+alter table public.business_job_runs add constraint business_job_runs_status_check check(status in('running','materials_ready','completed','draft_ready','failed','unknown'));
+
+create function public.business_job_draft_capability(p_user_id uuid) returns boolean
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+begin
+ perform business_service(p_user_id);
+ return true;
+end$$;
+
+alter function public.business_job_command(uuid,text,jsonb) rename to business_job_command_v121;
+revoke all on function public.business_job_command_v121(uuid,text,jsonb) from public,anon,authenticated,service_role;
+
+create function public.business_job_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare r business_job_runs;v_report jsonb;v_result jsonb;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input)<>'object' or octet_length(p_input::text)>250000 then raise exception 'invalid job input';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,721));
+
+ if p_operation='finish' and exists(select 1 from jsonb_array_elements(p_input->'report'->'sections') section where jsonb_typeof(section->'validationGaps')='array' and jsonb_array_length(section->'validationGaps')>0) then
+  raise exception 'partial report requires draft finalization';
+ end if;
+ if p_operation<>'finish_draft' then return business_job_command_v121(p_user_id,p_operation,p_input);end if;
+
+ -- A completed receipt is safe to replay after settings or leases have changed.
+ select * into r from business_job_runs where user_id=p_user_id and id=(p_input->>'runId')::uuid for update;
+ if not found or r.lease_token is distinct from (p_input->>'leaseToken')::uuid then raise exception 'run owner unavailable' using errcode='42501';end if;
+ if r.result is not null then
+  if r.status<>'draft_ready' or p_input->'draftLease'->>'requestId' is distinct from r.report_request::text then raise exception 'draft terminal receipt conflict';end if;
+  return r.result;
+ end if;
+ r=business_job_assert(p_user_id,p_input,true);
+ if r.material_status<>'ready' or p_input->'draftLease'->>'caseId' is distinct from r.case_id::text or p_input->'draftLease'->>'requestId' is distinct from r.report_request::text then raise exception 'report run mismatch';end if;
+ if not exists(select 1 from business_job_attempts where user_id=p_user_id and run_id=r.id and kind='ai' and status='completed') then raise exception 'completed AI ticket required before finalization';end if;
+
+ perform set_config('business.job_finish',r.id::text,true);
+ v_report=business_report_command(p_user_id,'finish',(p_input->'draftLease')||jsonb_build_object('report',p_input->'report'));
+ v_result=jsonb_build_object('status','draft_ready','runId',r.id,'caseId',r.case_id,'reportId',v_report->>'id','message','部分报告与拦截记录已保存为草稿，请打开案例核对；未自动发布。');
+ update business_job_runs set status='draft_ready',report_status='draft',result=v_result,message=v_result->>'message',finished_at=clock_timestamp() where id=r.id;
+ return v_result;
+end$$;
+
+revoke all on function public.business_job_draft_capability(uuid),public.business_job_command(uuid,text,jsonb) from public,anon,authenticated;
+grant execute on function public.business_job_draft_capability(uuid),public.business_job_command(uuid,text,jsonb) to service_role;
+
+commit;

@@ -1,3 +1,4 @@
+import {businessJobOwner} from './owner';
 import {randomUUID} from 'node:crypto';
 import {generateBusinessTeardownReport,MODEL,BUSINESS_REPORT_PROMPT_VERSION} from '@/lib/ai';
 import {searchBusinessCandidates,inspectRakutenItem} from '../providers/rakuten';
@@ -9,15 +10,16 @@ import type {SnapshotInput} from '../domain';
 import {jobCommand,businessJobsEnabled,businessJobDraftsAvailable} from './commands';
 import {fitBusinessReportArchive} from '../report-archive';
 import type {JobResult,JobLease,JobState} from './types';
-export type JobDependencies={command:<T>(operation:string,input?:object)=>Promise<T>;search:typeof searchBusinessCandidates;inspect:typeof inspectRakutenItem;generate:typeof generateBusinessTeardownReport;enabled:()=>boolean;aiEnabled:()=>boolean;draftsAvailable:()=>Promise<boolean>;sleep:(ms:number)=>Promise<void>;now:()=>Date};
+export type JobDependencies={command:<T>(operation:string,input?:object)=>Promise<T>;search:typeof searchBusinessCandidates;inspect:typeof inspectRakutenItem;generate:typeof generateBusinessTeardownReport;enabled:()=>boolean;aiEnabled:()=>boolean;draftsAvailable:()=>Promise<boolean>;allowedOwner:()=>Promise<boolean>;sleep:(ms:number)=>Promise<void>;now:()=>Date};
 const AUTO_SCALARS=new Set(['itemCode','itemName','shopCode','shopName','itemUrl','shopUrl','itemPrice','hasPriceRange','itemPriceBaseField','itemPriceMin1','itemPriceMax1','itemPriceMin2','itemPriceMax2','itemPriceMin3','itemPriceMax3','reviewCount','availability','taxFlag','postageFlag','creditCardFlag','giftFlag','startTime','endTime','genreId','currency']);
 export function officialScalarSnapshot(snapshot:SnapshotInput):SnapshotInput{
  if(snapshot.platform!=='rakuten'||snapshot.origin!=='official_api'||snapshot.captureScope!=='api_fields'||snapshot.capturedText!==null)throw new Error('自动任务只允许官方公开标量材料');
  return {...snapshot,capturedText:null,structured:Object.fromEntries(Object.entries(snapshot.structured).filter(([key,value])=>AUTO_SCALARS.has(key)&&['string','number','boolean'].includes(typeof value)))};
 }
 export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'open',injected?:JobDependencies):Promise<JobResult>{
- const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',draftsAvailable:()=>businessJobDraftsAvailable(owner),sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
+ const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',draftsAvailable:()=>businessJobDraftsAvailable(owner),allowedOwner:async()=>await businessJobOwner()===owner,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
  if(!d.enabled())return {status:'disabled'};
+ if(!await d.allowedOwner())return {status:'owner_only',message:'每日生意任务目前仅供主账号使用'};
  if(!await d.draftsAvailable())return {status:'schema_required',message:'请先执行123迁移，再准备今日材料或生成报告'};
  let run=await d.command<JobLease>('claim',{trigger});if(run.status!=='running')return run;
  let httpReservations=0;

@@ -1,10 +1,12 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest';
-vi.mock('@/lib/supabase',()=>({supabaseAdmin:{from:vi.fn()}}));
+vi.mock('./owner',()=>({businessJobOwner:vi.fn()}));
 vi.mock('./executor',()=>({executeBusinessJob:vi.fn()}));
-import {supabaseAdmin} from '@/lib/supabase';
+import {businessJobOwner} from './owner';
 import {executeBusinessJob} from './executor';
 import {runBusinessJobs} from './cron';
-describe('independent cron workers',()=>{
- beforeEach(()=>vi.clearAllMocks());
- it('keeps owner failures explicit while continuing independent owners',async()=>{const chain={select:vi.fn().mockReturnThis(),order:vi.fn().mockReturnThis(),range:vi.fn().mockResolvedValue({data:[{user_id:'a'},{user_id:'b'}],error:null})};vi.mocked(supabaseAdmin.from).mockReturnValue(chain as never);vi.mocked(executeBusinessJob).mockRejectedValueOnce(new Error('lease unavailable')).mockResolvedValueOnce({status:'materials_ready'});const result=await runBusinessJobs();expect(result.failed).toBe(1);expect(result.results).toEqual([{owner:'a',status:'error',message:'lease unavailable'},{owner:'b',status:'materials_ready'}]);});
+describe('owner-only cron worker',()=>{
+ beforeEach(()=>vi.resetAllMocks());
+ it('executes only the configured main account',async()=>{vi.mocked(businessJobOwner).mockResolvedValue('main');vi.mocked(executeBusinessJob).mockResolvedValue({status:'materials_ready'});expect((await runBusinessJobs()).failed).toBe(0);expect(executeBusinessJob).toHaveBeenCalledExactlyOnceWith('main','cron');});
+ it('does not enumerate users or execute without a configured owner',async()=>{vi.mocked(businessJobOwner).mockResolvedValue(null);await expect(runBusinessJobs()).rejects.toThrow('主账号');expect(executeBusinessJob).not.toHaveBeenCalled();});
+ it('exposes owner execution failures',async()=>{vi.mocked(businessJobOwner).mockResolvedValue('main');vi.mocked(executeBusinessJob).mockRejectedValue(new Error('lease unavailable'));expect(await runBusinessJobs()).toEqual({failed:1,results:[{owner:'main',status:'error',message:'lease unavailable'}]});});
 });

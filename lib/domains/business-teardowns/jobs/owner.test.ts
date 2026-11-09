@@ -1,0 +1,10 @@
+import {it,expect,vi,afterEach} from 'vitest';
+vi.mock('@/lib/supabase',()=>({supabaseAdmin:{auth:{admin:{listUsers:vi.fn()}}}}));
+import {supabaseAdmin} from '@/lib/supabase';
+import {businessJobOwner} from './owner';
+const list=vi.mocked(supabaseAdmin.auth.admin.listUsers);
+afterEach(()=>{vi.unstubAllEnvs();vi.resetAllMocks();});
+it('does not fall back to another account when unconfigured',async()=>{vi.stubEnv('IDEAOS_USER_EMAIL',' ');expect(await businessJobOwner()).toBeNull();expect(list).not.toHaveBeenCalled();});
+it('resolves only the explicit normalized email across auth pages',async()=>{vi.stubEnv('IDEAOS_USER_EMAIL',' MAIN@Example.com ');list.mockResolvedValueOnce({data:{users:Array.from({length:100},(_,i)=>({id:String(i),email:`other${i}@example.com`}))},error:null} as never).mockResolvedValueOnce({data:{users:[{id:'main',email:'main@example.com'}]},error:null} as never);expect(await businessJobOwner()).toBe('main');expect(list).toHaveBeenNthCalledWith(2,{page:2,perPage:100});});
+it('propagates lookup failures without broadening scope',async()=>{vi.stubEnv('IDEAOS_USER_EMAIL','main@example.com');list.mockResolvedValue({data:{users:[]},error:{message:'lookup unavailable'}} as never);await expect(businessJobOwner()).rejects.toThrow('lookup unavailable');});
+it('stops when the configured account does not exist',async()=>{vi.stubEnv('IDEAOS_USER_EMAIL','main@example.com');list.mockResolvedValue({data:{users:[{id:'other',email:'other@example.com'}]},error:null} as never);await expect(businessJobOwner()).rejects.toThrow('主账号');});
