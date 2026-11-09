@@ -8,14 +8,35 @@ on:
   schedule:
     - cron: "30 22 * * *" # 日本时间 7:30（早上的报告出来以后）
     - cron: "0 10 * * *" # 日本时间 19:00
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      business_only:
+        description: Only run the daily business teardown
+        type: boolean
+        default: false
 
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      - name: Prepare daily business teardown for the owner
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: https://startup-prepare.vercel.app
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET is missing"; exit 1; fi
+          code=$(curl --silent --show-error --max-time 190 --output business-result.json --write-out '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/business-teardowns")
+          cat business-result.json
+          if [ "$code" = "503" ] && jq -e '.error == "business_jobs_disabled"' business-result.json >/dev/null; then
+            echo "Daily business jobs are disabled; skipped."
+            exit 0
+          fi
+          if [ "$code" != "200" ]; then exit 1; fi
       - name: Run steps
+        if: ${{ !cancelled() && inputs.business_only != true }}
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           APP_URL: https://startup-prepare.vercel.app
