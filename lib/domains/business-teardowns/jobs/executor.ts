@@ -18,10 +18,10 @@ export function officialScalarSnapshot(snapshot:SnapshotInput):SnapshotInput{
 }
 export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'open',injected?:JobDependencies):Promise<JobResult>{
  const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',draftsAvailable:()=>businessJobDraftsAvailable(owner),allowedOwner:async()=>await businessJobOwner()===owner,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
- if(!d.enabled())return {status:'disabled'};
+ if(!d.enabled())return {status:'disabled',message:'部署任务开关尚未开启'};
  if(!await d.allowedOwner())return {status:'owner_only',message:'每日生意任务目前仅供主账号使用'};
  if(!await d.draftsAvailable())return {status:'schema_required',message:'请先执行123迁移，再准备今日材料或生成报告'};
- let run=await d.command<JobLease>('claim',{trigger});if(run.status!=='running')return run;
+ let run=await d.command<JobLease>('claim',{trigger});if(run.status==='disabled')return {...run,message:'账号任务设置未允许本次执行'};if(run.status!=='running')return run;
  let httpReservations=0;
  const assertEnabled=()=>{if(!d.enabled())throw new Error('自动任务开关已暂停');};
  const check=async(ai=false)=>{assertEnabled();if(ai&&!d.aiEnabled())throw new Error('自动AI开关已暂停');await d.command('check',run);};
