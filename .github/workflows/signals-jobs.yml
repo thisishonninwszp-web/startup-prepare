@@ -26,10 +26,11 @@ jobs:
           APP_URL: https://startup-prepare.vercel.app
         run: |
           if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET is missing"; exit 1; fi
-          code=$(curl --silent --show-error --max-time 190 --output business-result.json --write-out '%{http_code}' \
+          code=$(curl --silent --show-error --max-time 190 --dump-header business-response.headers --output business-result.json --write-out '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/business-teardowns")
+            "$APP_URL/api/cron/business-teardowns?invocation=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT")
           cat business-result.json
+          grep -iE '^(date|age|cache-control|x-vercel-cache|x-vercel-id):' business-response.headers || true
           if [ "$code" = "503" ] && jq -e '.error == "business_jobs_disabled"' business-result.json >/dev/null; then
             echo "Daily business jobs are disabled; skipped."
             exit 0
