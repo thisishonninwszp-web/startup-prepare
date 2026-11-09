@@ -67,8 +67,8 @@ export async function middleware(request: NextRequest) {
 
   if (!user && pathname !== "/login") return redirectTo("/login");
 
-  // 不在使用名单上的账号（配了 IDEAOS_USER_EMAIL / IDEAOS_MEMBERS 时）：哪里都去不了，只停在「还没对你开放」。
-  // server action 走的是页面地址的 POST，也会在这里被拦下 —— 陌生人注册了也花不了 AI 的钱。
+  // 只让名单上的人用时（IDEAOS_MEMBERS_ONLY=1，见 lib/members.ts）：不在名单上的账号哪里都去不了，只停在「还没对你开放」。
+  // server action 走的是页面地址的 POST，也会在这里被拦下 —— 陌生人注册了也花不了 AI 的钱。不配就谁都放进来。
   if (user && !isAllowedEmail(user.email)) {
     if (pathname === "/not-member") return supabaseResponse;
     return redirectTo("/not-member");
