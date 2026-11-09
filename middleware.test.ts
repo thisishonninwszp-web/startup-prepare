@@ -44,6 +44,7 @@ describe("middleware 换了新 token 之后", () => {
     refreshed.user = { id: "u1", email: "owner@example.com" };
     vi.stubEnv("IDEAOS_USER_EMAIL", "");
     vi.stubEnv("IDEAOS_MEMBERS", "");
+    vi.stubEnv("IDEAOS_MEMBERS_ONLY", "");
   });
 
   it("从 / 跳到 /dashboard 时把新 token 带上（不然浏览器留着用过的那个，下次就被登出）", async () => {
@@ -53,11 +54,18 @@ describe("middleware 换了新 token 之后", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
-  it("不在名单上的账号跳到 /not-member 时也带上", async () => {
+  it("只让名单上的人用时，不在名单上的账号跳到 /not-member 时也带上", async () => {
     vi.stubEnv("IDEAOS_USER_EMAIL", "someone-else@example.com");
+    vi.stubEnv("IDEAOS_MEMBERS_ONLY", "1");
     const response = await middleware(request("/capture"));
     expect(response.headers.get("location")).toBe("https://ideaos.example/not-member");
     expect(response.cookies.get("sb-test-auth-token")?.value).toBe("new-refresh");
+  });
+
+  it("不拦人时，配了主账号也让新注册的人进来", async () => {
+    vi.stubEnv("IDEAOS_USER_EMAIL", "someone-else@example.com");
+    const response = await middleware(request("/capture"));
+    expect(response.headers.get("location")).toBeNull();
   });
 
   it("不跳转的请求照旧带上新 token 和不许缓存的头", async () => {
