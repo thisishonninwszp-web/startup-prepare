@@ -762,18 +762,27 @@ export type PortraitSnapshot = {
   chars: number;
 };
 
-/** 写法画像，新的在前。只给自己回头看，不进任何台账推理。 */
+/**
+ * 写法画像，新的在前。只给自己回头看，不进任何台账推理。
+ * 返回 null = 迁移 051 还没跑：整页照常出，只有写法这一格说还差一步。
+ */
 export async function getPortraits(
   userId: string,
   limit = 6
-): Promise<PortraitSnapshot[]> {
+): Promise<PortraitSnapshot[] | null> {
   const { data, error } = await supabaseAdmin
     .from("self_portraits")
     .select("id, created_at, model, answers, sources, source_counts, chars")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      console.warn("self_portraits 还没建表（迁移 051），写法画像先不显示", error.message);
+      return null;
+    }
+    throw new Error(error.message);
+  }
   return (
     (data ?? []) as {
       id: string;
