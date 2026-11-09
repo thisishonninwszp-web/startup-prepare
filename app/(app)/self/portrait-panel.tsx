@@ -155,7 +155,14 @@ function History({ snapshots }: { snapshots: PortraitSnapshot[] }) {
   );
 }
 
-export function PortraitPanel({ snapshots }: { snapshots: PortraitSnapshot[] }) {
+export function PortraitPanel({
+  snapshots,
+  tableReady,
+}: {
+  snapshots: PortraitSnapshot[];
+  /** false = 迁移 051 没跑，存不下画像，按钮先关着，免得 Jev 读完了才发现没地方放。 */
+  tableReady: boolean;
+}) {
   const { pending, error, run } = useAction();
   const [latest, previous] = snapshots;
 
@@ -189,10 +196,15 @@ export function PortraitPanel({ snapshots }: { snapshots: PortraitSnapshot[] }) 
                 />
               ))}
             </div>
-          ) : (
+          ) : tableReady ? (
             <p className="py-4 text-sm">
               这里空着。点下面的按钮，Jev 会把你最近的复盘发言、随手捕捉、自述和「学到了」
               读一遍，在四个方向上各给一个判断。
+            </p>
+          ) : (
+            <p className="py-4 text-sm">
+              还差一步：迁移 051 没跑。执行 supabase/migrations/051_self_portraits.sql
+              之后，这里才存得下 Jev 读出来的画像。
             </p>
           )}
 
@@ -201,7 +213,7 @@ export function PortraitPanel({ snapshots }: { snapshots: PortraitSnapshot[] }) 
               type="button"
               size="sm"
               variant={latest ? "outline" : "default"}
-              disabled={pending}
+              disabled={pending || !tableReady}
               onClick={() => run(() => generatePortrait())}
             >
               {pending ? "Jev 在读…" : latest ? "再读一遍" : "让 Jev 读一遍"}

@@ -1383,6 +1383,17 @@ export async function skipWindowCandidate(input: {
 export async function generatePortrait(): Promise<void> {
   const userId = await requireUserId();
 
+  // 先看存不存得下，再花 Jev 的额度。
+  const probe = await supabaseAdmin.from("self_portraits").select("id").limit(0);
+  if (probe.error) {
+    if (probe.error.code === "42P01" || probe.error.code === "PGRST205") {
+      throw new Error(
+        "还差一步：迁移 051 没跑。执行 supabase/migrations/051_self_portraits.sql 之后再来。"
+      );
+    }
+    throw new Error(probe.error.message);
+  }
+
   const [retros, commitments, observations, declarations, decisions] =
     await Promise.all([
       supabaseAdmin

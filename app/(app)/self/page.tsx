@@ -1922,7 +1922,10 @@ export default async function SelfPage() {
       </TabsContent>
 
       <TabsContent value="portrait" className="mt-6 space-y-8">
-        <PortraitPanel snapshots={portraits} />
+        <PortraitPanel
+          snapshots={portraits ?? []}
+          tableReady={portraits !== null}
+        />
       </TabsContent>
       </Tabs>
 
