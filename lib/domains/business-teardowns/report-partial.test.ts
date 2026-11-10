@@ -5,6 +5,13 @@ const report=()=>({sections:SECTION_KEYS.map(key=>({key,observations:[],interpre
 const source={id:'selected',capturedText:'买3盒送朋友。',quantities:[{id:'pack'}]} as ReportSource;
 const valid={text:'假设：赠礼可能是购买情境',refs:[{snapshotId:'selected',quote:'买3盒送朋友。'}],competingExplanation:'假设：也可能是自用囤货',distinguishingObservation:'访谈实际购买者'};
 describe('partial business report',()=>{
+ it.each(['business-validator-v2','business-validator-v3','business-validator-v4'])('keeps archived diagnostics unchanged under %s',version=>{
+  const input=report();input.sections[0].unknowns=['销量300单'];const saved=filterBusinessReport(input,[]);
+  saved[0].validationDiagnostics![0].validatorVersion=version;
+  expect(validateSavedBusinessReport({sections:saved},[])).toEqual(saved);
+  expect(saved[0].unknowns).toEqual([]);
+  expect(saved[0].validationDiagnostics![0].rejectedText).toBe('销量300单');
+ });
  it('keeps valid items, discards whole invalid items and stores only fixed gap metadata',()=>{
   const input=report();Object.assign(input.sections[0],{observations:[{snapshotId:'selected',metricId:'pack'},{snapshotId:'private',metricId:'made-up'}],interpretations:[valid,{...valid,text:'假设：有300个买家私密正文'}],unknowns:['实际利润未知','有300个买家私密正文']});
   const result=filterBusinessReport(input,[source]);

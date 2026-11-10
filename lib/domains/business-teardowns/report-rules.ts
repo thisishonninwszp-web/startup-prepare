@@ -1,6 +1,6 @@
 export const REPORT_VALIDATION_RULES=['numeric_claim','fractional_claim','flattery_or_score','population_or_profit','missing_hypothesis','metric_source','quote_source'] as const;
 export type ReportValidationRule=typeof REPORT_VALIDATION_RULES[number];
-export const REPORT_VALIDATOR_VERSION='business-validator-v3';
+export const REPORT_VALIDATOR_VERSION='business-validator-v4';
 export const REPORT_DETAIL_FIELDS=['text','competingExplanation','distinguishingObservation','unknowns','observations','refs'] as const;
 export type ReportDetailField=typeof REPORT_DETAIL_FIELDS[number];
 export class BusinessReportValidationError extends Error{
@@ -13,11 +13,15 @@ const actionPrefix='(?:(?:建议|计划|准备|尝试|需要|先|请|可以|拟)
 const interview=new RegExp(`^${actionPrefix}(?:访谈|访问|联系|询问|采访)\\s*[0-9一二三四五六七八九十百两]{1,3}\\s*(?:位|名|个)?(?:受访者|用户|顾客|买家|人)`,'u');
 const smallTest=new RegExp(`^${actionPrefix}(?:做|安排|开展|进行)(?:一|1)(?:次|个)(?:访谈|小实验|实验|测试)`,'u');
 const compare=new RegExp(`^${actionPrefix}(?:比较|对照|核对)(?:两|二|2)(?:种|个)(?:解释|假设|方案)`,'u');
+const compoundCompare=new RegExp(`^${actionPrefix}比较(?:两|二|2)种解释[，,]\\s*可以通过进一步(?:访谈|询问)\\s*[0-9一二三四五六七八九十百两]{1,3}\\s*(?:位|名|个)?(?:用户|顾客|买家|人)来区分$`,'u');
+const interviewQuestion=new RegExp(`^${actionPrefix}(?:访谈|询问|采访|访问)\\s*(?:机构采购人员|采购人员|购买者|顾客|用户|买家)[，,]\\s*(?:了解|询问)(?:他们|其|顾客|用户)(?:在[^，,。；;]{1,40}时)?最看重的[0-9一二三四五六七八九十两]{1,2}项因素$`,'u');
 
 // Only an imperative/future action prefix may carry a sample count; observed outcomes never qualify.
 function withoutPlannedCounts(text:string):string{
  if(/已经|已完成|曾经|结果|发现|显示|证明|成交|占比|支付了|付了/.test(text))return text;
  return text.split(/([。；;！？!?])/u).map(clause=>{
+  if(compoundCompare.test(clause.trim()))return '比较解释并访谈顾客来区分';
+  if(interviewQuestion.test(clause.trimStart()))clause=clause.replace(/最看重的[0-9一二三四五六七八九十两]{1,2}项因素/gu,'最看重的因素');
   const researchPrefix=clause.trimStart().match(/^(?:(?:建议|计划|准备|尝试|需要|先|请|可以|拟)\s*)*对[^，,。；;]{1,40}(?:进行|开展)(?:市场调研|调研|核对|验证)[，,]\s*/u)?.[0]??'';
   const trimmed=clause.trimStart().slice(researchPrefix.length);
   for(const pattern of [interview,smallTest,compare]){
@@ -30,7 +34,7 @@ function withoutPlannedCounts(text:string):string{
 }
 export function checkReportProse(text:string,field:ReportDetailField,allowPlannedActions:boolean):void{
  if(prohibited.test(text))throw new BusinessReportValidationError('flattery_or_score',field,'报告校验失败：自由文字含数值、迎合或评分');
- const qualitative=text.replace(/第三方|三方物流/g,'外部').replace(/零部件/g,'部件').replace(/一个(?:普遍的)?特征/g,'定性特征');
+ const qualitative=text.replace(/(?<![A-Za-z0-9])B2[BC](?![A-Za-z0-9])/giu,'经营模式').replace(/第三方|三方物流/g,'外部').replace(/零部件/g,'部件').replace(/一个(?:普遍的)?特征/g,'定性特征');
  const checked=allowPlannedActions?withoutPlannedCounts(qualitative):qualitative;
  if(quantitative.test(checked))throw new BusinessReportValidationError('numeric_claim',field,'报告校验失败：自由文字含数值、迎合或评分');
  if(fractional.test(checked))throw new BusinessReportValidationError('fractional_claim',field,'报告校验失败：自由文字含数值、迎合或评分');

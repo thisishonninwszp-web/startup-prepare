@@ -1,6 +1,11 @@
 import {describe,it,expect} from 'vitest';
 import {checkReportProse,BusinessReportValidationError} from './report-rules';
 describe('business report prose rules',()=>{
+ it.each(['假设：B2B采购也可能是渠道来源','假设：b2c渠道可能面向个人'])('allows exact business model identifiers: %s',text=>{expect(()=>checkReportProse(text,'text',false)).not.toThrow();});
+ it.each(['B2B月销300单','B2C利润50%','AB2B产品','B2B3渠道','2B2B','B2B2','B2B一万元'])('keeps numeric claims beside identifiers blocked: %s',text=>{expect(()=>checkReportProse(text,'text',false)).toThrow();});
+ it.each(['比较两种解释，可以通过进一步访谈五位顾客来区分','访谈机构采购人员，了解他们在选择备蓄水时最看重的三项因素'])('accepts archived future actions without business quantities: %s',text=>{expect(()=>checkReportProse(text,'distinguishingObservation',true)).not.toThrow();expect(()=>checkReportProse(text,'text',false)).toThrow();});
+ it.each(['访谈过机构采购人员，了解他们最看重的三项因素','访谈了机构采购人员，了解他们最看重的三项因素','访谈机构采购人员了，了解他们最看重的三项因素','访谈机构采购人员，了解到他们最看重的三项因素','访谈机构采购人员，了解他们最看重的三项因素，均表示愿意付费','访谈机构采购人员，了解他们均表示愿意付费后最看重的三项因素','比较两种解释，可以通过进一步访谈五位顾客来区分，月销300单','比较两种解释，可以通过进一步访谈五位顾客来区分，结果均愿意付费','已经访谈机构采购人员，了解他们最看重的三项因素','访谈月销300单的机构采购人员，了解他们最看重的三项因素','访谈机构采购人员，了解他们是否愿意付一万元及最看重的三项因素'])('does not strip business facts with planned question quantities: %s',text=>{expect(()=>checkReportProse(text,'distinguishingObservation',true)).toThrow();});
+
  it.each(['访谈5人','计划访谈五位用户，核对购买情境','做一个访谈','比较两种解释','建议先比较两种解释','对目标家居品类进行市场调研，访谈5人，了解消费者需求'])('allows explicit planned action quantity: %s',text=>{expect(()=>checkReportProse(text,'distinguishingObservation',true)).not.toThrow();});
  it.each(['假设：日本制造只是一个普遍的特征','假设：零部件可能来自其他地区'])('does not mistake fixed qualitative terms for business quantities: %s',text=>{expect(()=>checkReportProse(text,'text',false)).not.toThrow();});
  it.each(['假设：有一个买家愿意付费','假设：可以零成本获客','对顾客进行市场调研，访谈5人均愿意付费'])('keeps genuine quantities and results blocked beside qualitative exceptions: %s',text=>{expect(()=>checkReportProse(text,'distinguishingObservation',true)).toThrow();});
