@@ -189,6 +189,11 @@ if (process.argv.includes("--business-learning")) {
     if(response.ok || body.code!=="42501") {failed=true;console.error(`BUSINESS LEARNING RPC ERROR ${name}: ${body.code??response.status} ${body.message??"owner guard absent"}`);}
   }
 }
+if (process.argv.includes("--business-research")) {
+  const response = await fetch(`${baseUrl}/rest/v1/rpc/business_research_command`, {method:"POST",headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,"Content-Type":"application/json"},body:JSON.stringify({p_user_id:null,p_operation:"list",p_input:{}})});
+  const body = await response.json().catch(()=>({}));
+  if(response.ok || body.code!=="42501") {failed=true;console.error(`BUSINESS RESEARCH RPC ERROR (124): ${body.code??response.status} ${body.message??"owner guard absent"}`);}
+}
 if (process.argv.includes("--business-job-drafts")) {
   const response = await fetch(`${baseUrl}/rest/v1/rpc/business_job_draft_capability`, {method:"POST",headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,"Content-Type":"application/json"},body:JSON.stringify({p_user_id:null})});
   const body = await response.json().catch(()=>({}));
