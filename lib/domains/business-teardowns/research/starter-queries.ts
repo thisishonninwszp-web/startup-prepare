@@ -51,7 +51,7 @@ export async function loadResearchStarter(owner:string,input:{caseIds:string[];k
    });
   }
   if(row.published_revision_id){
-   const {data:report,error:reportError}=await supabaseAdminUncached.from('business_case_revisions').select('id,revision,sections').eq('user_id',owner).eq('case_id',row.id).eq('id',row.published_revision_id).is('erased_at',null).maybeSingle();
+   const {data:report,error:reportError}=await supabaseAdminUncached.from('business_case_revisions').select('id,revision,sections:payload->sections').eq('user_id',owner).eq('case_id',row.id).eq('id',row.published_revision_id).is('erased_at',null).maybeSingle();
    if(reportError)throw new Error(reportError.message);
    if(report)item.report={id:report.id,revision:report.revision,sections:((report.sections??[]) as CaseSection[]).map(section=>{
     const {validationDiagnostics,validationGaps,...content}=section;

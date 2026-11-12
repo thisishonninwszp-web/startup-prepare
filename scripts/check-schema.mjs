@@ -190,6 +190,17 @@ if (process.argv.includes("--business-learning")) {
   }
 }
 if (process.argv.includes("--business-research")) {
+  const starterContracts = [
+    ["business_daily_cases", "id,user_id,merchant_id,local_date,published_revision_id"],
+    ["business_merchants", "id,user_id,name,platform"],
+    ["business_case_members", "snapshot_id,user_id,case_id,added_at"],
+    ["business_material_snapshots", "id,user_id,captured_text,source_url,captured_at,published_at,coverage,erased_at"],
+    ["business_case_revisions", "id,user_id,revision,sections:payload->sections,case_id,erased_at"],
+  ];
+  for (const contract of starterContracts) {
+    const error = await probe(contract);
+    if (error) { failed = true; console.error(`BUSINESS RESEARCH SOURCE ERROR ${error}`); }
+  }
   const response = await fetch(`${baseUrl}/rest/v1/rpc/business_research_command`, {method:"POST",headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,"Content-Type":"application/json"},body:JSON.stringify({p_user_id:null,p_operation:"list",p_input:{}})});
   const body = await response.json().catch(()=>({}));
   if(response.ok || body.code!=="42501") {failed=true;console.error(`BUSINESS RESEARCH RPC ERROR (124): ${body.code??response.status} ${body.message??"owner guard absent"}`);}

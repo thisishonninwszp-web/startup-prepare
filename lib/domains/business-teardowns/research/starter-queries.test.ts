@@ -46,7 +46,9 @@ describe('loadResearchStarter',()=>{
   expect(recent).toEqual([{id:id(3),name:'店铺 3',date:'2026-11-10',merchantId:id(13),platform:'shopify',sources:[],sourcesTruncated:false,report:null}]);
   for(const q of readQueries())expect(q.eq).toHaveBeenCalledWith('user_id',owner);
   const queries=readQueries();
-  expect(queries.find(q=>q.select.mock.calls[0][0]==='id,revision,sections')?.eq).toHaveBeenCalledWith('id',id(21));
+  const reportQuery=queries.find(q=>q.select.mock.calls[0][0].startsWith('id,revision,sections'))!;
+  expect(reportQuery.select).toHaveBeenCalledWith('id,revision,sections:payload->sections');
+  expect(reportQuery.eq).toHaveBeenCalledWith('id',id(21));
   expect(from.mock.calls.map(call=>call[0])).not.toEqual(expect.arrayContaining(['ideas','business_report_diagnostics','career_entries']));
  });
  it('preserves selected input order even when the database returns the opposite order',async()=>{
@@ -61,7 +63,7 @@ describe('loadResearchStarter',()=>{
  it('treats erased report and missing snapshots as absent evidence and scopes the current revision',async()=>{
   fixture({snapshots:[],report:null});await loadResearchStarter(owner,{caseIds:[id(1)],kind:'apprenticeship'});
   const cases=build.mock.calls[0][1] as StarterCase[];expect(cases[0].report).toBeNull();expect(cases[0].sources).toEqual([]);
-  const revisions=readQueries().find(q=>q.select.mock.calls[0][0]==='id,revision,sections')!;
+  const revisions=readQueries().find(q=>q.select.mock.calls[0][0].startsWith('id,revision,sections'))!;
   expect(revisions.eq).toHaveBeenCalledWith('case_id',id(1));expect(revisions.is).toHaveBeenCalledWith('erased_at',null);
   const snapshots=readQueries().find(q=>q.select.mock.calls[0][0].includes('captured_text'))!;
   expect(snapshots.is).toHaveBeenCalledWith('erased_at',null);expect(snapshots.not).toHaveBeenCalledWith('captured_text','is',null);expect(snapshots.neq).toHaveBeenCalledWith('captured_text','');
