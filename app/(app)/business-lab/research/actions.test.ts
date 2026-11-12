@@ -1,10 +1,13 @@
 import {beforeEach,it,expect,vi} from 'vitest';
-const f=vi.hoisted(()=>({user:{id:'owner-a'} as {id:string}|null,save:vi.fn(),erase:vi.fn(),list:vi.fn(),get:vi.fn(),cases:vi.fn(),sources:vi.fn(),experiences:vi.fn()}));
+const f=vi.hoisted(()=>({user:{id:'owner-a'} as {id:string}|null,save:vi.fn(),erase:vi.fn(),list:vi.fn(),get:vi.fn(),cases:vi.fn(),sources:vi.fn(),experiences:vi.fn(),starter:vi.fn()}));
 vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:async()=>({data:{user:f.user}})}})}));
 vi.mock('@/lib/domains/business-teardowns/research/commands',()=>({saveResearch:f.save,eraseResearch:f.erase}));
 vi.mock('@/lib/domains/business-teardowns/research/queries',()=>({listResearch:f.list,getResearch:f.get,listResearchCases:f.cases,listResearchSources:f.sources,listResearchExperiences:f.experiences}));
 import {loadResearchAction,loadResearchSourcesAction,eraseResearchAction} from './actions';
+import {loadResearchStarterAction} from './actions';
+vi.mock('@/lib/domains/business-teardowns/research/starter-queries',()=>({loadResearchStarter:f.starter}));
 beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('BUSINESS_TEARDOWNS_ENABLED','true');f.user={id:'owner-a'};});
 it('rejects unauthenticated source access before any privileged query',async()=>{f.user=null;await expect(loadResearchSourcesAction({kind:'job'})).rejects.toThrow('登录');expect(f.sources).not.toHaveBeenCalled();});
 it('derives the owner from auth for reads and erasure',async()=>{await loadResearchAction({before:'cursor'});await eraseResearchAction({id:'record',requestId:'request'});expect(f.list).toHaveBeenCalledWith('owner-a',{before:'cursor'});expect(f.erase).toHaveBeenCalledWith('owner-a',{id:'record',requestId:'request'});});
 it('does not query research when the parent feature is off',async()=>{vi.stubEnv('BUSINESS_TEARDOWNS_ENABLED','false');await expect(loadResearchAction()).rejects.toThrow('尚未开启');expect(f.list).not.toHaveBeenCalled();});
+it('requires auth and derives starter ownership from the logged-in account',async()=>{f.user=null;await expect(loadResearchStarterAction({caseIds:['case-a'],kind:'comparison'})).rejects.toThrow('登录');expect(f.starter).not.toHaveBeenCalled();f.user={id:'owner-a'};await loadResearchStarterAction({caseIds:['case-a'],kind:'comparison'});expect(f.starter).toHaveBeenCalledWith('owner-a',{caseIds:['case-a'],kind:'comparison'});});
