@@ -4,6 +4,11 @@ import {DIMENSIONS,RESEARCH_LABELS} from './presentation';
 import type {AdoptedResearchDraft,DraftHint,ResearchStarter,StarterCase} from './starter-types';
 
 const dimensionSections = {buyer:'buyers',trigger:'trigger',delivery:'operations',alternative:'comparison'} as const;
+const sectionLabels:Record<string,string>={buyers:'购买者',trigger:'触发场景',operations:'经营与交付',comparison:'替代与对照'};
+
+export function researchSectionLabel(section:string):string {
+  return sectionLabels[section]??'相关解释';
+}
 
 export function researchDraftMatchesCases(draftCaseIds:string[],currentCaseIds:string[],selectionChanged=false):boolean {
   return !selectionChanged&&draftCaseIds.length===currentCaseIds.length&&draftCaseIds.every((id,index)=>id===currentCaseIds[index]);
@@ -16,7 +21,8 @@ export function buildResearchStarter(kind:ResearchKind,selected:StarterCase[],re
   const payload:Record<string,unknown>={};
 
   function explanation(item:StarterCase,section:CaseSection['key'],field:string):string {
-    const interpretations=item.report?.sections.find(s=>s.key===section)?.interpretations??[];
+    if(!item.report)return '';
+    const interpretations=item.report.sections.find(s=>s.key===section)?.interpretations??[];
     for(const interpretation of interpretations){
       if(typeof interpretation.text!=='string'||!interpretation.text.trim()||interpretation.text.length>2800||!Array.isArray(interpretation.refs)||!interpretation.refs.length)continue;
       const refs=interpretation.refs;
@@ -29,7 +35,7 @@ export function buildResearchStarter(kind:ResearchKind,selected:StarterCase[],re
       hints.push(...ids);bindings[field]=ids.map(h=>h.id);
       return `报告解释（待核对）：${interpretation.text.trim()}`;
     }
-    gaps.push(`${item.name}：${section} 没有可逐字核对的已发布解释，此项留空。`);
+    gaps.push(`${item.name}：${researchSectionLabel(section)}没有可逐字核对的已发布解释，此项留空。`);
     return '';
   }
 
