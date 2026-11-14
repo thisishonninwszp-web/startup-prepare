@@ -12,11 +12,30 @@ function fixture(){
  const candidate={merchant,itemCode:'tools:item',itemName:'Tool',itemUrl:'https://item.rakuten.co.jp/tools/item/',price:{itemPrice:100},reviewCount:null,rank:null,coverage:'page=1'};
  let queued:unknown[]=[];const events:string[]=[];const command=vi.fn<(op:string,input?:Record<string,unknown>)=>Promise<unknown>>(async(op:string,input:Record<string,unknown>={})=>{events.push(op);if(op==='claim')return run;if(op==='enqueue'){queued=input.candidates as unknown[];return run;}if(op==='state')return {candidates:queued,history:{excluded:[],priorMain:[],recent:[]}};if(op==='ticket')return {id:'ticket'};if(op==='reserve')return {...run,caseId:'case',candidate:input.candidate};if(op==='material')return {...run,caseId:'case',materialStatus:'ready'};if(op==='ai_start')return {status:'not_permitted'};if(op==='complete')return {status:'materials_ready'};if(op==='fail')return {status:'failed',message:input.message};return run;});
  const search=vi.fn<typeof searchBusinessCandidates>(async(input)=>{await input.beforeRequest?.();events.push('http');return {items:[candidate],coverage:'page=1',nextCursor:null};});
- const inspect=vi.fn(async(_code:string,options:{beforeRequest?:()=>Promise<void>})=>{await options.beforeRequest?.();events.push('inspectHttp');return {merchant,snapshot:{platform:'rakuten',itemId:'tools:item',origin:'official_api',sourceUrl:candidate.itemUrl,publishedAt:null,captureScope:'api_fields',capturedText:null,quantities:[],structured:{itemName:'Tool',query:{itemCode:'tools:item'},privateNested:{body:'secret'}},coverage:'official'}};});
+ const inspect=vi.fn<JobDependencies['inspect']>(async(_code,options={})=>{await options.beforeRequest?.();events.push('inspectHttp');return {merchant,snapshot:{platform:'rakuten',itemId:'tools:item',origin:'official_api',sourceUrl:candidate.itemUrl,publishedAt:null,captureScope:'api_fields',capturedText:null,quantities:[],structured:{itemName:'Tool',query:{itemCode:'tools:item'},privateNested:{body:'secret'}},coverage:'official'}};});
  const deps={command,search,inspect,generate:vi.fn(),enabled:()=>true,aiEnabled:()=>false,draftsAvailable:async()=>true,allowedOwner:async()=>true,sleep:vi.fn(),now:()=>new Date('2026-10-29T00:00:00Z')} as unknown as JobDependencies;
  return {deps,command,search,inspect,events,run};
 }
 describe('controlled business job executor',()=>{
+ it('keeps the reserved merchant identity when fresh official display metadata changes',async()=>{
+  const f=fixture();const inspect=f.inspect.getMockImplementation()!;
+  f.inspect.mockImplementation(async(...args)=>{const item=await inspect(...args);return {...item,merchant:{...item.merchant,name:'Tools 官方店 · 新名称',sourceUrl:'https://www.rakuten.co.jp/tools/?tracking=latest'},snapshot:{...item.snapshot,structured:{...item.snapshot.structured,shopName:'Tools 官方店 · 新名称'}}};});
+  const command=f.command.getMockImplementation()!;
+  f.command.mockImplementation(async(op,input)=>{if(op==='material'&&JSON.stringify(input?.merchant)!==JSON.stringify({platform:'rakuten',platformShopId:'tools',name:'Tools',sourceUrl:'https://www.rakuten.co.jp/tools/',identityScope:'platform_shop_id'}))throw new Error('automatic material must be official public scalar fields');return command(op,input);});
+  expect(await executeBusinessJob('owner','cron',f.deps)).toMatchObject({status:'materials_ready'});
+  const material=f.command.mock.calls.find(([op])=>op==='material')![1]!;
+  expect(material.merchant).toEqual({platform:'rakuten',platformShopId:'tools',name:'Tools',sourceUrl:'https://www.rakuten.co.jp/tools/',identityScope:'platform_shop_id'});
+  expect((material.snapshot as {structured:Record<string,unknown>}).structured.shopName).toBe('Tools 官方店 · 新名称');
+  expect(f.inspect).toHaveBeenCalledTimes(1);expect(f.deps.generate).not.toHaveBeenCalled();
+ });
+ it('rejects changed merchant or item identities before storing or generating',async()=>{
+  for(const mutation of ['shop','item','shop-url','item-url','scope'] as const){
+   const f=fixture();const inspect=f.inspect.getMockImplementation()!;
+   f.inspect.mockImplementation(async(...args)=>{const item=await inspect(...args);return {...item,merchant:{...item.merchant,...(mutation==='shop'?{platformShopId:'other'}:{}),...(mutation==='shop-url'?{sourceUrl:'https://www.rakuten.co.jp/other/'}:{}),...(mutation==='scope'?{identityScope:'user_supplied_unverified'}:{})},snapshot:{...item.snapshot,...(mutation==='item'?{itemId:'tools:other'}:{}),...(mutation==='item-url'?{sourceUrl:'https://item.rakuten.co.jp/other/item/'}:{})}} as typeof item;});
+   expect((await executeBusinessJob('owner','cron',f.deps)).status).toBe('failed');
+   expect(f.command.mock.calls.some(([op])=>op==='material')).toBe(false);expect(f.deps.generate).not.toHaveBeenCalled();
+  }
+ });
  it('distinguishes a disabled account from a disabled deployment',async()=>{const f=fixture();f.command.mockImplementationOnce(async()=>({status:'disabled'}));expect(await executeBusinessJob('owner','cron',f.deps)).toMatchObject({status:'disabled',message:'账号任务设置未允许本次执行'});expect(f.search).not.toHaveBeenCalled();});
  it('blocks non-owner daily preparation before any work',async()=>{const f=fixture();f.deps.allowedOwner=async()=>false;expect((await executeBusinessJob('stranger','manual',f.deps)).status).toBe('owner_only');expect(f.command).not.toHaveBeenCalled();expect(f.search).not.toHaveBeenCalled();expect(f.deps.generate).not.toHaveBeenCalled();});
  it('atomically saves a partial report as a draft instead of discarding it or publishing',async()=>{

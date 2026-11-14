@@ -2,6 +2,7 @@ import {businessJobOwner} from './owner';
 import {randomUUID} from 'node:crypto';
 import {generateBusinessTeardownReport,MODEL,BUSINESS_REPORT_PROMPT_VERSION} from '@/lib/ai';
 import {searchBusinessCandidates,inspectRakutenItem} from '../providers/rakuten';
+import {publicSourceUrl} from '../providers/shared';
 import {selectCandidate} from '../selection';
 import {admissible,type QueuedCandidate} from '../rules';
 import {validateSavedBusinessReport,hasBusinessReportGaps} from '../report-partial';
@@ -15,6 +16,14 @@ const AUTO_SCALARS=new Set(['itemCode','itemName','shopCode','shopName','itemUrl
 export function officialScalarSnapshot(snapshot:SnapshotInput):SnapshotInput{
  if(snapshot.platform!=='rakuten'||snapshot.origin!=='official_api'||snapshot.captureScope!=='api_fields'||snapshot.capturedText!==null)throw new Error('自动任务只允许官方公开标量材料');
  return {...snapshot,capturedText:null,structured:Object.fromEntries(Object.entries(snapshot.structured).filter(([key,value])=>AUTO_SCALARS.has(key)&&['string','number','boolean'].includes(typeof value)))};
+}
+function materialForPinnedCandidate(candidate:QueuedCandidate,item:Awaited<ReturnType<typeof inspectRakutenItem>>){
+ const pinned=candidate.merchant,current=item.merchant;
+ if(pinned.platform!=='rakuten'||pinned.identityScope!=='platform_shop_id'||current.platform!==pinned.platform||current.identityScope!=='platform_shop_id'||current.platformShopId!==pinned.platformShopId||item.snapshot.itemId!==candidate.itemCode)throw new Error('官方材料的店铺或商品身份与今日固定候选不一致');
+ const shopUrl=new URL(publicSourceUrl(current.sourceUrl,'rakuten'));
+ const itemUrl=new URL(publicSourceUrl(item.snapshot.sourceUrl,'rakuten'));
+ if(shopUrl.hostname!=='www.rakuten.co.jp'||shopUrl.pathname.split('/')[1]!==pinned.platformShopId||itemUrl.hostname!=='item.rakuten.co.jp'||itemUrl.pathname.split('/')[1]!==pinned.platformShopId)throw new Error('官方材料链接不属于今日固定店铺');
+ return {merchant:pinned,snapshot:officialScalarSnapshot(item.snapshot)};
 }
 export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'open',injected?:JobDependencies):Promise<JobResult>{
  const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',draftsAvailable:()=>businessJobDraftsAvailable(owner),allowedOwner:async()=>await businessJobOwner()===owner,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
@@ -71,7 +80,7 @@ export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'o
   if(run.materialStatus!=='ready'){
    if(!run.candidate)throw new Error('今日已有手动槽位；请为该店补充公开材料，自动任务不会换店');
    const item=await http('inspect',beforeRequest=>d.inspect(run.candidate!.itemCode,{shopCode:run.candidate!.merchant.platformShopId,beforeRequest}));
-   await check();run=await d.command<JobLease>('material',{...run,merchant:item.merchant,snapshot:officialScalarSnapshot(item.snapshot)});
+   await check();run=await d.command<JobLease>('material',{...run,...materialForPinnedCandidate(run.candidate,item)});
   }
   await check();
   if(!run.settings.autoAI||!d.aiEnabled())return await d.command<JobResult>('complete',{...run,message:'材料已准备；自动AI未明确启用。对照资料如未采集则保持缺口。'});
