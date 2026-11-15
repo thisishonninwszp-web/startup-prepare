@@ -48,6 +48,7 @@ export default async function WorkbenchPage() {
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             这里按“正在推进的判断对象”组织系统。工具退到后台，入口变成对象、证据、框架和下一步。
           </p>
+          <Link href="/workbench/premises" className="mt-3 inline-block text-sm text-primary underline underline-offset-4">检查几件事共同依赖的前提 →</Link>
         </header>
 
         {dueObjects.length > 0 && (

@@ -10,13 +10,15 @@
 
 ## Task 1: Common premises
 
-Files: create `lib/domains/premises/{domain,commands,queries}.ts`, tests; `app/(app)/workbench/premises/{page,actions,premises-panel}.tsx` (server actions in actions.ts), `supabase/migrations/125_shared_premises.sql`; modify workbench/page.tsx and append migration verbatim to supabase/schema.sql.
+Files: create `lib/domains/premises/{domain,commands,queries}.ts`, tests; `app/(app)/workbench/premises/{page,panel}.tsx` and `actions.ts`, `supabase/migrations/125_shared_premises.sql`; modify workbench/page.tsx and append migration verbatim to supabase/schema.sql.
 
-- [ ] RED: owner mismatch, unknown targets, idempotent replay/payload conflict, revision conflict, source disappears, literal matching and pagination tests. Target logical contract: `type TargetKind='idea'|'business_case'|'method'; type Premise={id:string;revision:number;text:string;invalidator:string;keywords:string[]}`. No client-provided owner.
-- [ ] Implement strict input parsers and RPC boundary: authenticated server action obtains `user.id`; client helpers call `supabaseAdminUncached.rpc('shared_premise_command',{p_user_id:owner,p_operation:operation,p_input:input})`. Use service-role guard and owner checks inside SQL; receipts contain identifiers/digests only.
-- [ ] GREEN: `npm test -- lib/domains/premises` and actual125 PGlite integration. Reads resolve references live; missing source is not zero relevant news. Search terms are literal, never interpreted as regex or SQL filters.
-- [ ] Build create/edit/delete/attach/unlink/review flows, restore inputs on errors, retain request ID until same logical mutation completes. Render matching news as candidate; user confirmation and rationale required for review. Scope phrase warns no automatic invalidation.
-- [ ] Independent spec review, then quality review; fix actionable findings before integration.
+- [x] RED: owner mismatch, unknown targets, idempotent replay/payload conflict, revision conflict, source disappears, literal matching and pagination tests. Contract: `type TargetKind='idea'|'business_case'|'method'; type Premise={id:string;revision:number;text:string;invalidWhen:string;keywords:string[];createdAt:string}`. No client-provided owner.
+- [x] Implement strict input parsers and RPC boundary: authenticated server action obtains `user.id`; client helpers call `supabaseAdminUncached.rpc('shared_premise_command',{p_user_id:owner,p_operation:operation,p_input:input})`. Use service-role guard and owner checks inside SQL; receipts contain identifiers/digests only.
+- [x] GREEN: 13 scoped tests and actual125 PGlite integration. Reads resolve references live; missing source is not zero relevant news. Search terms are literal, never interpreted as regex or SQL filters.
+- [x] Build create/edit/delete/attach/unlink/review flows, restore inputs on errors, retain request ID until same logical mutation completes. Render matching news as candidate; user confirmation and rationale required for review. Scope phrase warns no automatic invalidation.
+- [x] Independent spec review, then quality review; selection/source generation and deleted-news cache findings fixed and approved.
+
+Task1 verification: full working-tree run at phase1 checkpoint 320 files/2083 tests; tsc/lint exit0. Actual109/119/120/121/122+125 chain also passed with real confirmed-method and case targets. Synthetic browser confirmed lost-response retry is1write/1record, links/review and missing-news redaction;391px mobile displayed without clipped form controls. 125 appended verbatim to schema.sql. Production125 executed in SQL Editor after source hash+editor text match; all4 tables RLS=true and anon/authenticated direct RPC=false. Production read-only list available=true,0personal records, owner guard42501. No production synthetic writes or provider calls.
 
 ## Task 2: Business making practice
 

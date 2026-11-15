@@ -1,0 +1,4 @@
+import {expect,it} from 'vitest';
+import {createReadGeneration,readIfCurrent} from './generation';
+it('rejects delayed work after moving A to B and back to A',()=>{const guard=createReadGeneration();const oldA=guard.next();guard.next();const newA=guard.next();expect(guard.isCurrent(oldA)).toBe(false);expect(guard.isCurrent(newA)).toBe(true);});
+it('drops an old manual source response after a fresh reread completed',async()=>{const guard=createReadGeneration();const old=guard.next();let release!:(value:string[])=>void;const request=new Promise<string[]>(resolve=>{release=resolve;});const oldRead=readIfCurrent(request,()=>guard.isCurrent(old));const fresh=guard.next();expect(await readIfCurrent(Promise.resolve([]),()=>guard.isCurrent(fresh))).toEqual([]);release(['deleted source title']);expect(await oldRead).toBeUndefined();});
