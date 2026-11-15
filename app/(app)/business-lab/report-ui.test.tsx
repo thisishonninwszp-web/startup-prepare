@@ -10,6 +10,11 @@ import { buildBusinessExperiment } from './action-preview-panel';
 import { BusinessAIConsentPanel } from './ai-consent-panel';
 import { SECTION_KEYS, type CaseRevision } from '@/lib/domains/business-teardowns/report-domain';
 const report:CaseRevision={id:'r',caseId:'c',revision:2,materialRevision:1,primarySnapshotIds:[],comparisonSnapshotIds:[],inputManifestHash:'h',sections:SECTION_KEYS.map(key=>({key,observations:[],interpretations:key==='value'?[{text:'可能减少选择负担',refs:[{snapshotId:'missing',quote:'independent'}],competingExplanation:'也可能只是配送便利',distinguishingObservation:'同配送条件下是否仍选择它？'}]:[],unknowns:['实际利润未知']})),authorship:'ai_draft',promptVersion:'v',model:'mock',createdAt:'2026-10-28',erasedAt:null};
+it('labels quarantined model fields as chapter structure gaps',()=>{
+ const partial={...report,sections:report.sections.map((section,index)=>index?section:{...section,validationGaps:[{field:'structure' as const,reason:'content_rejected' as const,count:1,rule:'unexpected_field' as const,detailField:'section' as const}]})};
+ const html=renderToStaticMarkup(<BusinessReportView report={partial} sources={[]} published={false}/>);
+ expect(html).toContain('章节结构：已剔除');expect(html).toContain('多余字段已隔离');
+});
 it('keeps archived rejected originals out of the ordinary report and loads diagnostics only on demand',()=>{
  const raw={...report,sections:report.sections.map((section,index)=>index?section:{...section,validationDiagnostics:[{field:'unknowns' as const,itemIndex:0,rule:'numeric_claim' as const,detailField:'unknowns' as const,rejectedText:'<script>invalid-report-body</script>',truncated:false,validatorVersion:'business-validator-v2'}]})};
  const html=renderToStaticMarkup(<BusinessReportView report={raw} sources={[]} published/>);expect(html).not.toContain('invalid-report-body');

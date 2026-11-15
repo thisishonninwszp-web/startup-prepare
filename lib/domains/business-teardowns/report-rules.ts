@@ -1,7 +1,7 @@
-export const REPORT_VALIDATION_RULES=['numeric_claim','fractional_claim','flattery_or_score','population_or_profit','missing_hypothesis','metric_source','quote_source'] as const;
+export const REPORT_VALIDATION_RULES=['numeric_claim','fractional_claim','flattery_or_score','population_or_profit','missing_hypothesis','metric_source','quote_source','unexpected_field'] as const;
 export type ReportValidationRule=typeof REPORT_VALIDATION_RULES[number];
-export const REPORT_VALIDATOR_VERSION='business-validator-v4';
-export const REPORT_DETAIL_FIELDS=['text','competingExplanation','distinguishingObservation','unknowns','observations','refs'] as const;
+export const REPORT_VALIDATOR_VERSION='business-validator-v5';
+export const REPORT_DETAIL_FIELDS=['text','competingExplanation','distinguishingObservation','unknowns','observations','refs','section'] as const;
 export type ReportDetailField=typeof REPORT_DETAIL_FIELDS[number];
 export class BusinessReportValidationError extends Error{
  constructor(readonly rule:ReportValidationRule,readonly detailField:ReportDetailField,message:string){super(message);this.name='BusinessReportValidationError';}

@@ -3,7 +3,7 @@ import type {MaterialSnapshot} from './domain';
 import type {ReportValidationRule,ReportDetailField} from './report-rules';
 export const SECTION_KEYS=['offering','trigger','buyers','volume','journey','value','operations','economics','comparison','failure_conditions','transfer','experiment'] as const;
 export type Reference={snapshotId:string;quote:string};
-export type ReportValidationGap={field:'observations'|'interpretations'|'unknowns';reason:'citation_rejected'|'content_rejected';count:number;rule?:ReportValidationRule;detailField?:ReportDetailField};
+export type ReportValidationGap={field:'observations'|'interpretations'|'unknowns'|'structure';reason:'citation_rejected'|'content_rejected';count:number;rule?:ReportValidationRule;detailField?:ReportDetailField};
 export type ReportValidationDiagnostic={field:ReportValidationGap['field'];itemIndex:number;rule:ReportValidationRule;detailField:ReportDetailField;rejectedText:string;truncated:boolean;validatorVersion:string};
 export type CaseSection={key:typeof SECTION_KEYS[number];observations:{metricId:string;snapshotId:string}[];interpretations:{text:string;refs:Reference[];competingExplanation:string;distinguishingObservation:string}[];unknowns:string[];validationGaps?:ReportValidationGap[];validationDiagnostics?:ReportValidationDiagnostic[];factCoverage?:{displayed:number;available:number}};
 export function hasBusinessReportGaps(sections:CaseSection[]):boolean{return sections.some(section=>section.validationGaps?.length);}

@@ -6,6 +6,7 @@ import {AUTO_POLICY_VERSION} from '../rules';
 import type {JobLease} from './types';
 import type {searchBusinessCandidates} from '../providers/rakuten';
 import {SECTION_KEYS} from '../report-domain';
+import {filterBusinessReport} from '../report-partial';
 function fixture(){
  const run={runId:'run',leaseToken:'lease',status:'running',localDate:'2026-10-29',caseId:null,materialStatus:'pending',reportStatus:'pending',reportRequestId:'report-request',settings:{enabled:true,prepareOnOpen:false,schedule:'07:00',httpBudget:8,aiBudget:1,sources:[{mode:'search',keyword:'道具',category:'tools',priceBand:'mixed',businessModel:'retail'}],excluded:[],autoAI:false,policyVersion:AUTO_POLICY_VERSION,revision:1}} as JobLease;
  const merchant={platform:'rakuten',platformShopId:'tools',name:'Tools',sourceUrl:'https://www.rakuten.co.jp/tools/',identityScope:'platform_shop_id'} as const;
@@ -17,6 +18,17 @@ function fixture(){
  return {deps,command,search,inspect,events,run};
 }
 describe('controlled business job executor',()=>{
+ it('settles once and saves structural quarantine as a draft without publishing or resending',async()=>{
+  const f=fixture();f.run.settings.autoAI=true;f.deps.aiEnabled=()=>true;const original=f.command.getMockImplementation()!;
+  f.command.mockImplementation(async(op,input)=>{if(op==='ai_start')return {status:'ready',lease:{caseId:'case',requestId:'report-request'},sources:[]};if(op==='verify_ai')return {sources:[]};if(op==='finish_draft')return {status:'draft_ready',reportId:'draft'};return original(op,input);});
+  const sections=SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:['未知']}));Object.assign(sections[11],{distinguishingObservation:'访谈实际购买者'});
+  vi.mocked(f.deps.generate).mockResolvedValue(filterBusinessReport({sections},[]));
+  expect(await executeBusinessJob('owner','cron',f.deps)).toMatchObject({status:'draft_ready'});
+  const report=f.command.mock.calls.find(([op])=>op==='finish_draft')![1]!.report as {sections:{validationGaps?:{rule:string}[]}[]};
+  expect(report.sections[11].validationGaps?.[0].rule).toBe('unexpected_field');
+  expect(f.deps.generate).toHaveBeenCalledTimes(1);expect(f.command.mock.calls.some(([op])=>op==='finish'||op==='fail')).toBe(false);
+  expect(f.command.mock.calls.filter(([op,input])=>op==='settle'&&input?.status==='completed'&&input?.ticketId==='ticket').length).toBeGreaterThan(0);
+ });
  it('keeps the reserved merchant identity when fresh official display metadata changes',async()=>{
   const f=fixture();const inspect=f.inspect.getMockImplementation()!;
   f.inspect.mockImplementation(async(...args)=>{const item=await inspect(...args);return {...item,merchant:{...item.merchant,name:'Tools 官方店 · 新名称',sourceUrl:'https://www.rakuten.co.jp/tools/?tracking=latest'},snapshot:{...item.snapshot,structured:{...item.snapshot.structured,shopName:'Tools 官方店 · 新名称'}}};});

@@ -2,22 +2,30 @@ import {z} from 'zod';
 import {SECTION_KEYS,type CaseSection,type ReportSource,type ReportValidationGap,type ReportValidationDiagnostic} from './report-domain';
 import {parseBusinessReportStructure,validateBusinessReport} from './report-validation';
 import {BusinessReportValidationError,REPORT_VALIDATION_RULES,REPORT_DETAIL_FIELDS,REPORT_VALIDATOR_VERSION} from './report-rules';
+import {parseBusinessModelStructure} from './report-model-structure';
 
-const fieldSchema=z.enum(['observations','interpretations','unknowns']);
-const gaps=z.array(z.object({field:fieldSchema,reason:z.enum(['citation_rejected','content_rejected']),count:z.number().int().min(1).max(50),rule:z.enum(REPORT_VALIDATION_RULES).optional(),detailField:z.enum(REPORT_DETAIL_FIELDS).optional()}).strict()).min(1).max(42);
-const diagnostics=z.array(z.object({field:fieldSchema,itemIndex:z.number().int().min(0).max(49),rule:z.enum(REPORT_VALIDATION_RULES),detailField:z.enum(REPORT_DETAIL_FIELDS),rejectedText:z.string().max(32000),truncated:z.boolean(),validatorVersion:z.enum(['business-validator-v2','business-validator-v3','business-validator-v4'])}).strict()).min(1).max(82);
+const fieldSchema=z.enum(['observations','interpretations','unknowns','structure']);
+const gaps=z.array(z.object({field:fieldSchema,reason:z.enum(['citation_rejected','content_rejected']),count:z.number().int().min(1).max(50),rule:z.enum(REPORT_VALIDATION_RULES).optional(),detailField:z.enum(REPORT_DETAIL_FIELDS).optional()}).strict()).min(1).max(43);
+const diagnostics=z.array(z.object({field:fieldSchema,itemIndex:z.number().int().min(0).max(49),rule:z.enum(REPORT_VALIDATION_RULES),detailField:z.enum(REPORT_DETAIL_FIELDS),rejectedText:z.string().max(32000),truncated:z.boolean(),validatorVersion:z.enum(['business-validator-v2','business-validator-v3','business-validator-v4','business-validator-v5'])}).strict()).min(1).max(83);
 const fields=['observations','interpretations','unknowns'] as const;
 const placeholder='本节尚无通过校验的内容';
 function emptySections():CaseSection[]{return SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:[placeholder]}));}
 
 /** Exclude rejected items from prose; retain them only in the separate owner diagnostic field. */
 export function filterBusinessReport(value:unknown,sources:ReportSource[]):CaseSection[]{
- const sections=parseBusinessReportStructure(value,sources);
+ const {sections,rejected:structural}=parseBusinessModelStructure(value,sources);
  return sections.map(section=>{
-  if(!fields.some(field=>section[field].length))throw new Error('报告校验失败：空章节须明确未知');
+  const extra=structural.get(section.key);
+  if(!fields.some(field=>section[field].length)&&!extra)throw new Error('报告校验失败：空章节须明确未知');
   const clean:CaseSection={key:section.key,observations:[],interpretations:[],unknowns:[]};
   const rejected:ReportValidationGap[]=[];
   const retainedDiagnostics:ReportValidationDiagnostic[]=[];
+  if(extra){
+   const original=JSON.stringify(extra);
+   const rejectedText=original.slice(0,32000).replace(/[\uD800-\uDBFF]$/,'');
+   rejected.push({field:'structure',reason:'content_rejected',rule:'unexpected_field',detailField:'section',count:1});
+   retainedDiagnostics.push({field:'structure',itemIndex:0,rule:'unexpected_field',detailField:'section',rejectedText,truncated:original.length>rejectedText.length,validatorVersion:REPORT_VALIDATOR_VERSION});
+  }
   for(const field of fields)for(const [itemIndex,item] of section[field].entries()){
    const trial=emptySections();Object.assign(trial.find(candidate=>candidate.key===section.key)!,{[field]:[item]});
    try{

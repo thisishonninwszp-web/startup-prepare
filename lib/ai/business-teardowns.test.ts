@@ -8,6 +8,14 @@ import {validateBusinessReport} from '@/lib/domains/business-teardowns/report-va
 const sections=()=>SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:['材料不足，待核对']}));
 describe('business report model gateway',()=>{
  beforeEach(()=>vi.clearAllMocks());
+ it('returns a diagnostic draft from a misplaced model field using only one provider call',async()=>{
+  const input=sections();Object.assign(input[11],{distinguishingObservation:'访谈实际购买者'});
+  vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:input}));
+  const result=await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[]});
+  expect(result[11].validationGaps?.[0]).toMatchObject({rule:'unexpected_field'});
+  expect(result[11].unknowns).toEqual(input[11].unknowns);
+  expect(executeAiText).toHaveBeenCalledTimes(1);
+ });
  it('forbids quotes when selected material has only API fields and no captured text',async()=>{
   vi.mocked(executeAiText).mockResolvedValue(JSON.stringify({sections:sections()}));
   await generateBusinessTeardownReport({ownerId:'o',caseId:'c',requestId:'r',sources:[{id:'api',capturedText:null,quantities:[],structured:{itemName:'公开商品'}} as unknown as ReportSource]});
