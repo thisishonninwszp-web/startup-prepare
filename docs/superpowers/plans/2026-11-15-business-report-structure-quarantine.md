@@ -4,6 +4,7 @@
 
 - 2026-11-15 Actions [43665835635](https://github.com/thisishonninwszp-web/startup-prepare/actions/runs/43665835635)，main `b2a7708`。每日生意步骤在 AI 响应后的结构校验失败：`unrecognized_keys`，位置 `sections[11]`，多余字段 `distinguishingObservation`。
 - 昨日材料身份修复已让任务进入 AI 处理。此次不修改材料身份、SQL 约束、来源选择、日预算或仅主账号限制。
+- 生产只读核对：run `67d69596-ea72-4d32-a24f-223b3edcf421`，cococimo:10001693，material ready，1 次 inspect completed、1 次 AI unknown，与 Actions 错误一致；无重置或额外请求。
 - 原文日志策略是 `metadata_only`，原响应未归档；不声称能追回今天未保存的完整报告，不重置未知回执或重复付费请求。历史失败仍保留；新版本应用于后续正常执行。
 
 ## 修复行为
@@ -15,7 +16,7 @@
 - [x] 校验版本 v5；兼容旧版 v2/v3/v4 诊断。结构缺口自动存草稿，不自动发布，不增加 AI 重试。
 - [x] 实际 119/120/121/123 PostgreSQL 迁移的集成测试验证结构诊断草稿保存、已发布版本不被替换、幂等回执、原资料删除时诊断同步清除。不增加迁移。
 - [x] 全量 314 文件 2067 项测试、TypeScript、ESLint 均通过；独立只读审查无须修改项。
-- [ ] 提交 main 并确认 Vercel 本番部署。
+- [x] 实现 `1d35b34` 已反映 main；[Vercel 生产部署](https://vercel.com/forcus-wu-s-projects/startup-prepare/AajFSAVXh9Rci5wL8X7xDk7mTiZr) 返回 success。无认证 cron GET 返回 401，在执行前被拒绝。
 
 ## 验收边界
 
