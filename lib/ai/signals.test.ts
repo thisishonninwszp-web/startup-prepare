@@ -1163,6 +1163,20 @@ describe("判断前的拆解卡：给地图，不给方向", () => {
     expect(() => parseBreakdownPlan({ factors: [factor()] })).toThrow("太少");
   });
 
+  it("parseBreakdownPlan：mechanism 两个方向的条件句里讲因果可以；只写一边、factor 写方向的不收", () => {
+    // 2026-11 上半月被拦下的 11 次全是这种：条件句里的"有利于""倾向于"讲的是原理，不是替他定方向
+    const causal = [
+      "如果日元兑美元走弱，通常有利于日本出口企业盈利；如果日元走强，则不利于出口企业。",
+      "如果董事会已有明确的继任计划，并倾向于迅速任命，宣布会来得早；如果还在物色外部人选，宣布就会拖后。",
+      "通胀持续高于目标时，美联储因此更可能加息；回落到目标附近时，压力就小。",
+    ];
+    for (const mechanism of causal) expect(parseBreakdownPlan({ factors: [factor(), factor({ mechanism })] })).toHaveLength(2);
+    expect(() => parseBreakdownPlan({ factors: [factor(), factor({ mechanism: "如果通胀高于目标，就会加息。" })] })).toThrow("两个方向");
+    expect(() => parseBreakdownPlan({ factors: [factor(), factor({ mechanism: "通胀很高，同时就业也强，所以会加息。" })] })).toThrow("两个方向");
+    expect(() => parseBreakdownPlan({ factors: [factor(), factor({ factor: "利好出口的汇率走势" })] })).toThrow("写了方向");
+    expect(() => parseBreakdownPlan({ factors: [factor(), factor({ indicator: "看日银表态，意味着政策要变" })] })).toThrow("写了方向");
+  });
+
   it("parseBreakdownNow：原文对得上才写现在怎样；写了方向的当没查到", () => {
     const sources = [{ title: "BEA", url: "https://example.gov/pce", content: "The PCE price index increased 2.9 percent from one year ago in August 2026." }];
     const inputs = [

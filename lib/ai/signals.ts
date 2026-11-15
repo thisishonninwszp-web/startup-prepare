@@ -2957,6 +2957,13 @@ const BREAKDOWN_PLAN_PROMPT = `他要回答一个"会不会"的问题，但不�
 
 /** 写了方向的不收（"所以会""倾向于加息"）：方向要他自己点。 */
 const BREAKDOWN_DIRECTION = /所以|因此|倾向于|意味着|大概率|利好|利空|有利于|不利于/;
+/**
+ * mechanism 本来就要讲因果（"日元走弱时有利于出口企业"），拿上面那串词拦它等于拦掉原理本身 ——
+ * 2026-11 上半月三成多的拆解卡因此出不来（11 次失败全是"写了方向"，被拦的都是条件句）。
+ * 它守的是另一条：两个方向都写成条件句，往这边动会怎样、往那边动会怎样，不说现在在哪一边。
+ * 同时、及时、时间这类"时"不算条件。
+ */
+const BREAKDOWN_CONDITION = /如果|若|假如|假设|要是|一旦|只要|的话|(?<![同及暂当有临准按届随])时(?![间期代刻段点机效])/g;
 
 export function parseBreakdownPlan(value: unknown): BreakdownPlanItem[] {
   const raw = (value as { factors?: unknown } | null)?.factors;
@@ -2973,8 +2980,10 @@ export function parseBreakdownPlan(value: unknown): BreakdownPlanItem[] {
     .slice(0, MAX_BREAKDOWN_FACTORS);
   if (out.length < 2) throw new Error("因素太少");
   const texts = out.flatMap((f) => [f.factor, f.mechanism, f.indicator]);
-  const directional = texts.find((t) => BREAKDOWN_DIRECTION.test(t));
+  const directional = out.flatMap((f) => [f.factor, f.indicator]).find((t) => BREAKDOWN_DIRECTION.test(t));
   if (directional) throw new Error(`写了方向：${directional.slice(0, 20)}`);
+  const oneSided = out.find((f) => (f.mechanism.match(BREAKDOWN_CONDITION) ?? []).length < 2);
+  if (oneSided) throw new Error(`mechanism 没写成两个方向的条件句：${oneSided.mechanism.slice(0, 20)}`);
   if (texts.some(mentionsNumericLikelihood)) throw new Error("写了可能性的数字");
   assertNoBanned(texts);
   assertChineseAllowingNames(texts);
@@ -2991,7 +3000,11 @@ export async function planBreakdown(input: { material: string[]; question: strin
     { operation: "practice_breakdown_plan", module: "unknown", outputMode: "json", timeoutMs: 30_000 },
     (attempt) => ({
       model: MODEL,
-      contents: contents + (attempt === 1 ? "\n\n上一次输出没通过校验：不许写方向（所以、倾向于、意味着……），每个因素四样都要有，用中文。" : ""),
+      contents:
+        contents +
+        (attempt === 1
+          ? "\n\n上一次输出没通过校验：factor 和 indicator 不许写方向（所以、倾向于、意味着……）；mechanism 两个方向都要写成条件句（如果……；如果……），只讲原理、不说现在在哪一边；每个因素四样都要有，用中文。"
+          : ""),
       config: {
         systemInstruction: BREAKDOWN_PLAN_PROMPT,
         responseMimeType: "application/json",
