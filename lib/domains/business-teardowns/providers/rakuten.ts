@@ -63,11 +63,15 @@ export async function searchBusinessCandidates(input: BusinessSearchInput): Prom
   const pageCount = count(data.pageCount);
   return { items, coverage, nextCursor: page < (pageCount ?? (mode === "ranking" && items.length === 30 ? 34 : page)) ? String(page + 1) : null };
 }
+/** Search answered, but the item is not in it (sold out, sale period over, or removed). Asking again gets the same answer. */
+export class RakutenItemNotFoundError extends Error {
+  constructor() { super("楽天来源不可用：未找到指定商品"); this.name = "RakutenItemNotFoundError"; }
+}
 export async function inspectRakutenItem(itemCode: string, options: RakutenRequestOptions & { shopCode?: string } = {}): Promise<{ merchant: MerchantInput; snapshot: SnapshotInput }> {
   if (!/^[a-zA-Z0-9_-]+:[^\s:]{1,180}$/.test(itemCode)) throw new Error("商品ID无效");
   const data = await request("search", { itemCode, hits: "1", page: "1" }, options);
   const row = (data.Items as unknown[]).find((entry) => record(entry).itemCode === itemCode);
-  if (!row) throw new Error("楽天来源不可用：未找到指定商品");
+  if (!row) throw new RakutenItemNotFoundError();
   const coverage = `官方商品字段快照，itemCode=${itemCode}；page=1；returned=${(data.Items as unknown[]).length}。价格范围保留原字段。评价数不是销量；包装/下单件数、买家身份与评价正文未采集。未保存候选榜单排名或筛选范围；候选查询仅用于选择店铺。`;
   const found = candidate(row, coverage);
   if (options.shopCode && found.merchant.platformShopId !== options.shopCode) throw new Error("所选商品不属于指定店铺");

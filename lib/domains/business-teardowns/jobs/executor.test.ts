@@ -2,9 +2,9 @@ import {describe,it,expect,vi} from 'vitest';
 vi.mock('@/lib/supabase',()=>{const client={rpc:vi.fn()};return {supabaseAdmin:client,supabaseAdminUncached:client};});
 vi.mock('@/lib/ai',()=>({generateBusinessTeardownReport:vi.fn(),MODEL:'mock',BUSINESS_REPORT_PROMPT_VERSION:'v1'}));
 import {executeBusinessJob,type JobDependencies} from './executor';
-import {AUTO_POLICY_VERSION} from '../rules';
+import {AUTO_POLICY_VERSION,type QueuedCandidate} from '../rules';
 import type {JobLease} from './types';
-import type {searchBusinessCandidates} from '../providers/rakuten';
+import {RakutenItemNotFoundError,type searchBusinessCandidates} from '../providers/rakuten';
 import {SECTION_KEYS} from '../report-domain';
 import {filterBusinessReport} from '../report-partial';
 function fixture(){
@@ -17,6 +17,8 @@ function fixture(){
  const deps={command,search,inspect,generate:vi.fn(),enabled:()=>true,aiEnabled:()=>false,draftsAvailable:async()=>true,allowedOwner:async()=>true,sleep:vi.fn(),now:()=>new Date('2026-10-29T00:00:00Z')} as unknown as JobDependencies;
  return {deps,command,search,inspect,events,run};
 }
+function queued(shop:string,capturedAt:string):QueuedCandidate{return {merchant:{platform:'rakuten',platformShopId:shop,name:shop,sourceUrl:`https://www.rakuten.co.jp/${shop}/`,identityScope:'platform_shop_id'},itemCode:`${shop}:item`,itemName:'Tool',itemUrl:`https://item.rakuten.co.jp/${shop}/item/`,price:{itemPrice:100},reviewCount:null,rank:null,coverage:'page=1',category:'tools',priceBand:'mixed',businessModel:'retail',sourcePage:1,capturedAt};}
+function withQueue(f:ReturnType<typeof fixture>,candidates:QueuedCandidate[]){const original=f.command.getMockImplementation()!;f.command.mockImplementation(async(op,input)=>op==='state'?{candidates,history:{excluded:[],priorMain:[],recent:[]}}:original(op,input));}
 describe('controlled business job executor',()=>{
  it('settles once and saves structural quarantine as a draft without publishing or resending',async()=>{
   const f=fixture();f.run.settings.autoAI=true;f.deps.aiEnabled=()=>true;const original=f.command.getMockImplementation()!;
@@ -47,6 +49,28 @@ describe('controlled business job executor',()=>{
    expect((await executeBusinessJob('owner','cron',f.deps)).status).toBe('failed');
    expect(f.command.mock.calls.some(([op])=>op==='material')).toBe(false);expect(f.deps.generate).not.toHaveBeenCalled();
   }
+ });
+ it('does not reserve a candidate from an earlier ranking day; fetches today first',async()=>{
+  // 2026-10-28T14:30Z is 23:30 the day before in Tokyo. It would win the ordering (aaa < tools) if it counted.
+  const f=fixture();withQueue(f,[queued('aaa','2026-10-28T14:30:00Z')]);
+  expect((await executeBusinessJob('owner','cron',f.deps)).status).toBe('materials_ready');
+  expect(f.search).toHaveBeenCalledTimes(1);
+  expect(f.command.mock.calls.find(([op])=>op==='reserve')![1]).toMatchObject({candidate:{itemCode:'tools:item'}});
+ });
+ it('uses a candidate seen earlier the same Tokyo day without fetching again',async()=>{
+  // 2026-10-28T15:30Z is 00:30 on 10-29 in Tokyo, the run's day.
+  const f=fixture();withQueue(f,[queued('aaa','2026-10-28T14:30:00Z'),queued('tools','2026-10-28T15:30:00Z')]);
+  expect((await executeBusinessJob('owner','cron',f.deps)).status).toBe('materials_ready');
+  expect(f.search).not.toHaveBeenCalled();
+  expect(f.command.mock.calls.find(([op])=>op==='reserve')![1]).toMatchObject({candidate:{itemCode:'tools:item',capturedAt:'2026-10-28T15:30:00Z'}});
+ });
+ it('does not retry an item search no longer returns, and says why',async()=>{
+  const f=fixture();f.inspect.mockImplementation(async(_code,options={})=>{await options.beforeRequest?.();throw new RakutenItemNotFoundError();});
+  const result=await executeBusinessJob('owner','cron',f.deps);
+  expect(result).toMatchObject({status:'failed'});expect(result.message).toContain('今天不换店');
+  expect(f.inspect).toHaveBeenCalledTimes(1);expect(f.deps.sleep).not.toHaveBeenCalled();
+  expect(f.command.mock.calls.filter(([op,input])=>op==='ticket'&&input?.stage==='inspect')).toHaveLength(1);
+  expect(f.command.mock.calls.some(([op])=>op==='material')).toBe(false);expect(f.deps.generate).not.toHaveBeenCalled();
  });
  it('distinguishes a disabled account from a disabled deployment',async()=>{const f=fixture();f.command.mockImplementationOnce(async()=>({status:'disabled'}));expect(await executeBusinessJob('owner','cron',f.deps)).toMatchObject({status:'disabled',message:'账号任务设置未允许本次执行'});expect(f.search).not.toHaveBeenCalled();});
  it('blocks non-owner daily preparation before any work',async()=>{const f=fixture();f.deps.allowedOwner=async()=>false;expect((await executeBusinessJob('stranger','manual',f.deps)).status).toBe('owner_only');expect(f.command).not.toHaveBeenCalled();expect(f.search).not.toHaveBeenCalled();expect(f.deps.generate).not.toHaveBeenCalled();});

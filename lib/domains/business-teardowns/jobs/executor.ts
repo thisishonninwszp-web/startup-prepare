@@ -1,8 +1,9 @@
 import {businessJobOwner} from './owner';
 import {randomUUID} from 'node:crypto';
 import {generateBusinessTeardownReport,MODEL,BUSINESS_REPORT_PROMPT_VERSION} from '@/lib/ai';
-import {searchBusinessCandidates,inspectRakutenItem} from '../providers/rakuten';
+import {searchBusinessCandidates,inspectRakutenItem,RakutenItemNotFoundError} from '../providers/rakuten';
 import {publicSourceUrl} from '../providers/shared';
+import {tokyoDate} from '../daily';
 import {selectCandidate} from '../selection';
 import {admissible,type QueuedCandidate} from '../rules';
 import {validateSavedBusinessReport,hasBusinessReportGaps} from '../report-partial';
@@ -25,6 +26,11 @@ function materialForPinnedCandidate(candidate:QueuedCandidate,item:Awaited<Retur
  if(shopUrl.hostname!=='www.rakuten.co.jp'||shopUrl.pathname.split('/')[1]!==pinned.platformShopId||itemUrl.hostname!=='item.rakuten.co.jp'||itemUrl.pathname.split('/')[1]!==pinned.platformShopId)throw new Error('官方材料链接不属于今日固定店铺');
  return {merchant:pinned,snapshot:officialScalarSnapshot(item.snapshot)};
 }
+// A queued candidate is only as current as the ranking page it came from. Limited-time items drop out of
+// search once their sale ends (11-13: a set taken from the 11-09 ranking had stopped selling on 11-11), and
+// the day's shop cannot be swapped after reserve. So only candidates seen today (Tokyo) may take today's slot.
+function seenOn(localDate:string,candidates:QueuedCandidate[]):QueuedCandidate[]{return candidates.filter(candidate=>Number.isFinite(Date.parse(candidate.capturedAt))&&tokyoDate(new Date(candidate.capturedAt))===localDate);}
+const ITEM_GONE='楽天来源不可用：今天选中的商品已查不到（可能卖完了、限时销售结束了或下架了）。今天不换店，明天会从当天的榜单重新挑。';
 export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'open',injected?:JobDependencies):Promise<JobResult>{
  const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',draftsAvailable:()=>businessJobDraftsAvailable(owner),allowedOwner:async()=>await businessJobOwner()===owner,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
  if(!d.enabled())return {status:'disabled',message:'部署任务开关尚未开启'};
@@ -47,6 +53,7 @@ export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'o
     // A rejected late result cannot be retried under the withdrawn settings.
     if(returned||!ticket)throw error;
     await check();await d.command('settle',{...run,ticketId:ticket.id,status:'failed',usage:null});
+    if(error instanceof RakutenItemNotFoundError)throw new Error(ITEM_GONE);
     if(attempt===2)throw error;await d.sleep(250*2**attempt);
    }
   }
@@ -55,7 +62,7 @@ export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'o
  try {
   await check();
   if(!run.caseId){
-   let state=await d.command<JobState>('state');httpReservations=state.attempts?.filter(attempt=>attempt.kind==='http').length??0;let selected=selectCandidate(state.candidates,state.history);
+   let state=await d.command<JobState>('state');httpReservations=state.attempts?.filter(attempt=>attempt.kind==='http').length??0;let selected=selectCandidate(seenOn(run.localDate,state.candidates),state.history);
    if(!selected){
     if(!run.settings.sources.length)throw new Error('未配置官方关键词或榜单来源');
     const sources=run.settings.sources.map((source,index)=>({source,index}));
@@ -67,7 +74,7 @@ export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'o
       const result=await http('discovery',beforeRequest=>d.search({mode:source.mode,keyword:source.mode==='search'?source.keyword:undefined,genreId:source.genreId,page,beforeRequest}));
       const candidates:QueuedCandidate[]=result.items.map(item=>({...item,category:source.category,priceBand:source.priceBand,businessModel:source.businessModel,sourcePage:page,capturedAt:d.now().toISOString()})).filter(admissible);
       await check();await d.command('enqueue',{...run,candidates,sourceCursor:{sourceKey:String(index),nextPage:result.nextCursor?Number(result.nextCursor):1,coverage:result.coverage,capturedAt:d.now().toISOString()}});
-      state={...state,candidates:[...state.candidates,...candidates]};selected=selectCandidate(state.candidates,state.history);
+      state={...state,candidates:[...state.candidates,...candidates]};selected=selectCandidate(seenOn(run.localDate,state.candidates),state.history);
       if(selected)break;
       if(!result.nextCursor)break;page=Number(result.nextCursor);if(!Number.isSafeInteger(page)||page<1)throw new Error('官方分页游标无效');
      }
