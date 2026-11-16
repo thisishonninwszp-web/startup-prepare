@@ -40,7 +40,7 @@ Files: counterexamples/{domain,transport}.ts/tests; app/(app)/business-lab/count
 - [x] Independent spec then quality review of each domain. Check response races and unsaved input retention, following fixes in existing practice editor.
 - [x] Add one existing business-lab secondary tool group and case-specific entries; reuse case id links to existing making practice. Add appropriate method-library entry. No first-level nav.
 - [x] Append final130/131/132 SQL verbatim to schema.sql; verify TypeScript, ESLint, full Vitest and each real PostgreSQL integration. No local Next build while dev server runs.
-- [ ] Test actual components with isolated synthetic browser actions and mobile width; provider stubs only, no invented production personal records.
+- [x] Test actual components with isolated synthetic browser actions and mobile width; provider stubs only, no invented production personal records.
 - [ ] Apply migrations and inspect RLS/RPC/owner contracts in production. Deploy scoped commits and verify final Vercel status and logged-in UI. Record real vs synthetic boundaries and leave no required work unchecked.
 
 ## Release checkpoint (2026-11-16)
@@ -49,5 +49,7 @@ Files: counterexamples/{domain,transport}.ts/tests; app/(app)/business-lab/count
 - AI selects only a controlled question key plus exact own-answer quote; wording comes from code and an identical SQL whitelist. No real provider call was made.
 - Final migrations are130/131/132;127 was allocated by a separate main commit. No migration in this release has been applied to production yet.
 - Fresh pre-integration verification:339 Vitest files /2159 tests, TypeScript, ESLint and actual130/131/132 PostgreSQL integration pass.
-- Browser verification remains unperformed: Chrome extension calls time out; native fallback was stopped because the current URL could not be established. Manual production SQL execution has been requested. Local synthetic harness exists only under untracked .tmp and is not part of the release.
+- Chrome extension calls still time out and cannot operate the signed-in production pages. Local browser verification succeeded through the in-app browser using the actual final components and synthetic action boundaries (no production DB/provider): all three lost-response retries, pressure consent preview and code-selected question display/old-version labels, explicit counterexample source selection and complete adoption preview/two-step confirmation, source-loss draft retention, deletion confirmations and notices, and391px viewport with no document-level horizontal overflow. All three browser consoles had no errors. Screenshot retained locally under untracked .tmp/operator-browser/cash-verified.jpg. Manual production SQL execution has been requested. Local synthetic harness is not part of the release.
 - Do not claim production rollout complete until DB probes, Vercel build/deployment and logged-in page checks are verified.
+
+- After rebase onto main d3c8e7d:341 Vitest files /2166 tests, TypeScript and ESLint pass. All three migration integration scripts pass with final130/131/132 filenames. Feature commit c938efa is pushed to origin/codex/operator-lab; Vercel preview status success (deployment9Zsj4sazy5LpxrAttenVLHPffiNQ). Main remains unchanged by this release.
