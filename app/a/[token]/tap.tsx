@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { RECALL_LABELS, type RecallResult } from "@/lib/domains/signals/recall-shared";
 import type { RecallReveal } from "@/lib/domains/signals/recall";
@@ -8,12 +9,19 @@ import { confirmTapAction, rateByTokenAction, revealByTokenAction } from "./acti
 
 const OFFLINE = "没连上服务器（网络断了一下），过一会儿再试。";
 
-/** 标新闻、给预测题点一档：按了才记（邮箱的安全扫描会先打开链接，所以打开不算）。 */
+/** 标新闻、给预测题点一档、周末那一件变成想法：按了才记（邮箱的安全扫描会先打开链接，所以打开不算）。 */
 export function ConfirmTap({ token, label }: { token: string; label: string }) {
-  const [done, setDone] = useState<{ ok: boolean; message: string } | null>(null);
+  const [done, setDone] = useState<{ ok: boolean; message: string; href?: string } | null>(null);
   const [pending, startTransition] = useTransition();
   return done ? (
-    <p className={done.ok ? "text-sm leading-7 text-primary" : "text-sm leading-7 text-destructive"}>{done.message}</p>
+    <div className="space-y-2">
+      <p className={done.ok ? "text-sm leading-7 text-primary" : "text-sm leading-7 text-destructive"}>{done.message}</p>
+      {done.ok && done.href && (
+        <Link href={done.href} className="text-sm text-primary underline-offset-4 hover:underline">
+          去网站上看（要登录）→
+        </Link>
+      )}
+    </div>
   ) : (
     <Button
       disabled={pending}

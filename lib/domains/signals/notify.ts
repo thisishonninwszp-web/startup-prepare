@@ -23,6 +23,8 @@ import { findEarlierMentions } from "./followups";
 import { REPORT_SECTION_KINDS } from "./feeds";
 import { DB_LIMIT_BYTES, storageReport } from "./storage";
 import { getWeekly, isSunday, weekMonday } from "./weekly";
+import { loadWeekPick } from "./week-pick";
+import type { WeekPick } from "./week-pick-shared";
 import { buildListenScript, listenMinutes } from "./listen-script";
 import { isBlindPracticeDate } from "./practice-shared";
 
@@ -97,6 +99,8 @@ export type DailyEmailInput = {
   list?: { url: string; seconds: number; more: number; lines: { label: string; title: string; note: string }[]; paused?: string | null } | null;
   /** 周日的周末版：这一周的周报（共用，朋友那封也放）。每条线带它在几天里出现过。 */
   weekend?: { weekStart: string; summary: string; threads: { title: string; note: string; days: number }[] } | null;
+  /** 周日：这周的一件（差距清单里根据最多的一条），url 点开是「变成想法」的确认页。只给主账号，每人一份口令。 */
+  weekPick?: { pick: WeekPick; url: string | null } | null;
   /** 听今天的报告：念完约几分钟（按报告算，共用）和那一页的链接（每人一份口令）。 */
   listenMinutes?: number;
   listenUrl?: string | null;
@@ -141,6 +145,9 @@ const SECTION_TITLES: Record<string, string> = {
 /** 停了的那几样后面接的一句（恢复在清单页上点）。 */
 const PAUSED_HINT = "想要哪样回来，打开清单点「恢复」。";
 
+/** 周末版最上面那一件的小标题。 */
+const WEEK_PICK_KICKER = "这周的一件 · 可以变成想法";
+
 /** 有一分钟清单、而且今天有要点的。 */
 function hasList(input: DailyEmailInput): input is DailyEmailInput & { list: NonNullable<DailyEmailInput["list"]> } {
   return !!input.list && input.list.lines.length > 0;
@@ -169,6 +176,17 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     lines.push(`一分钟点完：${list.url}`, "");
   }
   if (input.listenUrl) lines.push(`听今天的报告（约 ${input.listenMinutes ?? 1} 分钟）：${input.listenUrl}`, "");
+  if (input.weekPick) {
+    const w = input.weekPick.pick;
+    lines.push(WEEK_PICK_KICKER, w.headline);
+    if (w.why) lines.push(w.why);
+    lines.push(`最关键的假设（错了就做不成）：${w.riskiest}`);
+    for (const x of w.who) lines.push(`先去问：${x.who} —— ${x.how}`);
+    if (w.who.length === 0) lines.push(w.test);
+    lines.push(w.evidence);
+    if (input.weekPick.url) lines.push(`变成想法（状态：观察）：${input.weekPick.url}`);
+    lines.push("");
+  }
   const weekend = input.weekend && input.weekend.summary ? input.weekend : null;
   if (weekend) {
     lines.push(`周末版 · 这一周（${weekRangeLabel(weekend.weekStart)}）`, weekend.summary);
@@ -388,7 +406,7 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
   // 报头
   parts.push(
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:2px solid ${C.ink};"><tr>` +
-      `<td style="padding:0 0 6px;font-size:22px;font-weight:700;color:${C.ink};">IdeaOS 早报${weekend ? `<span style="font-size:15px;color:${C.accent};margin-left:8px;">周末版</span>` : ""}</td>` +
+      `<td style="padding:0 0 6px;font-size:22px;font-weight:700;color:${C.ink};">IdeaOS 早报${weekend || input.weekPick ? `<span style="font-size:15px;color:${C.accent};margin-left:8px;">周末版</span>` : ""}</td>` +
       `<td align="right" style="padding:0 0 6px;font-size:13px;color:${C.muted};">${esc(formatReportDate(input.date))}</td>` +
       `</tr></table>`,
     `<p style="margin:6px 0 22px;font-size:12px;color:${C.muted};">约 ${readingMinutes(text)} 分钟读完${(input.top?.length ?? 0) > 0 ? ` · 头版 ${input.top?.length} 条` : ""}${mine.length > 0 ? ` · 给你的 ${mine.length} 件` : ""}${sectionCount > 0 ? ` · ${sections.length} 个版面 ${sectionCount} 条` : ""}${
@@ -410,6 +428,33 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
         (list.more > 0 ? para(`还有 ${list.more} 件留到明天。`, `font-size:12px;color:${C.muted};margin:6px 0 0;`) : "") +
         (list.paused ? para(`${list.paused}${PAUSED_HINT}`, `font-size:12px;color:${C.muted};margin:6px 0 0;`) : "") +
         `<p style="margin:12px 0 0;"><a href="${esc(list.url)}" style="display:inline-block;background:${C.accent};color:${C.card};text-decoration:none;font-size:15px;font-weight:700;padding:8px 18px;border-radius:6px;">一分钟点完 →</a></p>` +
+        `</div>`
+    );
+  }
+
+  // 周末版最上面：这周的一件，点一下变成想法（只给主账号）
+  if (input.weekPick) {
+    const w = input.weekPick.pick;
+    parts.push(
+      `<div style="margin:0 0 24px;padding:16px 18px;border:1px solid ${C.accent};border-radius:6px;background:${C.card};">` +
+        kicker(WEEK_PICK_KICKER) +
+        para(w.headline, "font-size:16px;font-weight:700;margin-bottom:4px;") +
+        (w.why ? para(w.why, `font-size:12px;color:${C.muted};`) : "") +
+        para(`最关键的假设（错了就做不成）：${w.riskiest}`, "font-size:14px;margin-bottom:8px;") +
+        w.who
+          .map(
+            (x) =>
+              `<p style="margin:0 0 8px;font-size:14px;line-height:1.7;color:${C.ink};"><b>先去问：${esc(x.who)}</b><br/><span style="color:${C.muted};">${esc(x.how)}</span>${
+                x.quote ? `<br/><a href="${esc(x.quote.url)}" style="color:${C.muted};font-size:13px;">「${esc(x.quote.excerpt)}」</a>` : ""
+              }</p>`
+          )
+          .join("") +
+        (w.who.length === 0 ? para(w.test, "font-size:14px;") : "") +
+        para(w.evidence, `font-size:12px;color:${C.muted};`) +
+        (input.weekPick.url
+          ? `<p style="margin:12px 0 0;"><a href="${esc(input.weekPick.url)}" style="display:inline-block;background:${C.accent};color:${C.card};text-decoration:none;font-size:15px;font-weight:700;padding:8px 18px;border-radius:6px;">变成想法（状态：观察）→</a></p>`
+          : "") +
+        (input.url ? link(`${input.url}/signals/gaps/deep?side=${w.side}&id=${w.signal_id}`, "先看这一条的全部材料 →") : "") +
         `</div>`
     );
   }
@@ -651,7 +696,9 @@ async function personalParts(
   userId: string,
   date: string,
   signalIds: string[]
-): Promise<Pick<DailyEmailInput, "stories" | "recall" | "forecastTodo" | "markLinks" | "forecastQuick" | "list" | "sectionOrder" | "foldedSections" | "followedIds" | "listenUrl">> {
+): Promise<
+  Pick<DailyEmailInput, "stories" | "recall" | "forecastTodo" | "markLinks" | "forecastQuick" | "list" | "sectionOrder" | "foldedSections" | "followedIds" | "listenUrl" | "weekPick">
+> {
   try {
     const [t, layout] = await Promise.all([loadTodayPersonal(userId, date), sectionLayout(userId, ["news", "calendar", "voices", "money", "tools"])]);
     const f = t.forecast;
@@ -683,7 +730,15 @@ async function personalParts(
     const list = today && listUrl ? { url: listUrl, seconds: listSeconds(today.items), more: today.more, lines: today.items.map(previewLine), paused: pausedSentence(today.paused) } : null;
     // 听：和清单一样三天有效，点开那一页一个大按钮
     const listenUrl = base && secret ? actionUrl(base, signAction({ u: userId, k: "listen", t: date, v: "" }, secret, Date.now(), LIST_TTL_DAYS)) : null;
+    // 周日：这周的一件（朋友的账号、清单是空的、这周已经变成过想法的不放）
+    const week = isSunday(date)
+      ? await loadWeekPick(userId, date, weekMonday(date)).catch((e) => {
+          console.error("email: week pick", e);
+          return null;
+        })
+      : null;
     return {
+      weekPick: week?.kind === "pick" ? { pick: week.pick, url: tap("idea", week.pick.signal_id, week.pick.side) } : null,
       listenUrl,
       sectionOrder: layout.order,
       foldedSections: layout.folded,

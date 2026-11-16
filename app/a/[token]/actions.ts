@@ -6,6 +6,8 @@ import { loadForecastBoard, MODE_LABELS, pct, setMyForecast } from "@/lib/domain
 import { marksFor, setMark, type MarkKind } from "@/lib/domains/signals/memory";
 import { rateRecall, recallReveal, type RecallReveal } from "@/lib/domains/signals/recall";
 import type { RecallResult } from "@/lib/domains/signals/recall-shared";
+import { createWeekPickIdea } from "@/lib/domains/signals/week-pick";
+import type { GapSide } from "@/lib/domains/signals/gaps-shared";
 
 /** 邮件里点一下就完成的那几件事：口令验过才做，做的是口令里那个人的事（不看浏览器登没登录）。 */
 
@@ -20,8 +22,8 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-/** 标新闻、给预测题点「行」或点一档。 */
-export async function confirmTapAction(token: string): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+/** 标新闻、给预测题点「行」或点一档、周末那一件变成想法。href：做完以后可以去看的那一页。 */
+export async function confirmTapAction(token: string): Promise<{ ok: true; message: string; href?: string } | { ok: false; message: string }> {
   try {
     const secret = actionSecret();
     const p = secret ? verifyAction(token, secret) : null;
@@ -50,6 +52,17 @@ export async function confirmTapAction(token: string): Promise<{ ok: true; messa
         ]
           .filter(Boolean)
           .join(" · "),
+      };
+    }
+    if (p.k === "idea") {
+      if (!["japan", "us", "china"].includes(p.v)) throw new Error("链接不对");
+      const r = await createWeekPickIdea(p.u, tokyoToday(), p.v as GapSide, p.t);
+      return {
+        ok: true,
+        message: r.existed
+          ? `它已经是想法了：「${r.title}」。没再建一条。`
+          : `变成想法了（状态：观察）：「${r.title}」。最关键的假设和这周先去问谁已经填好${r.who ? `，先去问${r.who}` : ""}。`,
+        href: `/ideas/${r.id}`,
       };
     }
     throw new Error("链接不对");

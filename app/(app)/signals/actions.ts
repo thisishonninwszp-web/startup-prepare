@@ -13,7 +13,8 @@ import { ensureSignalAnalysis, getSignalDetail, type StoredHistory } from "@/lib
 import { ensureSignalHistory } from "@/lib/domains/signals/history";
 import { draftNodeBayes, expandInference, flagNode, rejudgeLayer, saveNodeBayes } from "@/lib/domains/signals/inference";
 import type { BayesState, InferenceNode } from "@/lib/domains/signals/inference-shared";
-import { generateBrief } from "@/lib/domains/signals/brief";
+import { generateBrief, tokyoToday } from "@/lib/domains/signals/brief";
+import { createWeekPickIdea } from "@/lib/domains/signals/week-pick";
 import { newsSourceLabel, type SignalKind } from "@/lib/domains/signals/feeds";
 import { contactPerson } from "@/lib/domains/signals/format";
 import { fetchGithubTools } from "@/lib/domains/signals/github";
@@ -1116,5 +1117,19 @@ export async function resumeGenerationAction(kind: PauseKind): Promise<{ ok: tru
     return { ok: true, message: `${PAUSE_LABELS[kind] ?? kind}：${RESUMED_MESSAGE}` };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "没恢复上") };
+  }
+}
+
+/** 周末那一件变成想法（状态「观察」，预填最关键的假设和先去问谁）。朋友的账号建不了（清单是主账号那份）。 */
+export async function weekPickToIdeaAction(side: GapSide, signalId: string): Promise<{ ok: true; id: string; message: string } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    if (!["japan", "us", "china"].includes(side)) throw new Error("链接不对");
+    const r = await createWeekPickIdea(userId, tokyoToday(), side, signalId);
+    revalidatePath("/ideas");
+    revalidatePath("/signals");
+    return { ok: true, id: r.id, message: r.existed ? "它已经是想法了，没再建一条。" : "变成想法了（状态：观察）。" };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没变成想法") };
   }
 }

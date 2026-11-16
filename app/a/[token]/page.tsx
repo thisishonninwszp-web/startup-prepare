@@ -20,6 +20,9 @@ import { loadReadingPreferences } from "@/lib/domains/signals/reading-preference
 import { partitionReadingItems } from "@/lib/domains/signals/reading-preferences-shared";
 import { sharedViewFor } from "@/lib/domains/signals/users";
 import { TodayListView } from "./list-view";
+import { tokyoToday } from "@/lib/domains/signals/brief";
+import { weekPickFor } from "@/lib/domains/signals/week-pick";
+import type { GapSide } from "@/lib/domains/signals/gaps-shared";
 
 export const dynamic = "force-dynamic";
 // 这一页不读登录态（不碰 cookies），只写 dynamic 时 Supabase 的读取还会被 Next 缓存住：
@@ -106,6 +109,40 @@ export default async function TapPage({ params }: { params: { token: string } })
         <Link href="/signals" className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline">
           去网站上看
         </Link>
+      </>
+    );
+  }
+
+  // 周末那一件：说清变成想法时会预填什么，按了才建
+  if (p.k === "idea") {
+    const pick = ["japan", "us", "china"].includes(p.v) ? await weekPickFor(p.u, tokyoToday(), p.v as GapSide, p.t).catch(() => null) : null;
+    if (!pick) {
+      return shell(
+        <p className="text-sm leading-7 text-muted-foreground">
+          差距清单里找不到这一条了（可能这边已经有了，挪出了清单）。
+          <Link href="/signals/gaps" className="ml-1 text-primary underline-offset-4 hover:underline">
+            去看差距清单
+          </Link>
+        </p>
+      );
+    }
+    return shell(
+      <>
+        <p className="text-xs text-muted-foreground">这周的一件 · 变成想法</p>
+        <h1 className="mt-1 text-lg font-semibold leading-8">{pick.title}</h1>
+        <dl className="mb-4 mt-4 space-y-3 text-sm leading-7">
+          <div>
+            <dt className="text-xs text-muted-foreground">最关键的假设（错了就做不成）</dt>
+            <dd>{pick.riskiest}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">最小实验（这周先去问谁）</dt>
+            <dd>{pick.test}</dd>
+          </div>
+        </dl>
+        <p className="mb-2 text-xs leading-6 text-muted-foreground">{pick.evidence}</p>
+        <p className="mb-4 text-sm leading-7 text-muted-foreground">状态是「观察」。目标用户、痛点、愿意付多少留空 —— 那几格要你问过人再填。</p>
+        <ConfirmTap token={params.token} label="变成想法" />
       </>
     );
   }

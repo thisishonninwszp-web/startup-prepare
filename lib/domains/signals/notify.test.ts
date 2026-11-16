@@ -256,6 +256,41 @@ describe("周末版、听", () => {
     const { text } = buildDailyEmail({ ...base, weekend });
     expect(text).toContain("· 日银加息（3 天都有）：周二传出、周四定了。");
   });
+  const weekPick = {
+    url: "https://app.example/a/idea-tok",
+    pick: {
+      side: "japan" as const,
+      signal_id: "g1",
+      headline: "“养基宝”把几家平台的基金放在一起看",
+      title: "日本版：“养基宝”把几家平台的基金放在一起看",
+      why: "这周进差距清单（中国有、日本还没有）的 3 条里，根据最多的一条。",
+      riskiest: "日本这边还没有它，不是因为没人要 —— 得有人觉得现在的办法不够用，愿意为它换、为它付钱。",
+      who: [{ who: "已经在花钱、花力气绕路的人", how: "网上有 2 句这样的原话。", quote: { excerpt: "每周手动抄一遍", title: "t", url: "https://q.example/1" } }],
+      test: "这周找 3 个已经在花钱、花力气绕路的人聊一次：现在花多少钱或时间、为什么还没换。",
+      evidence: "根据：网上原话 8 句（2 句已经在花钱、花力气绕路）。",
+      url: null,
+    },
+  };
+  it("周日最上面放这周的一件：假设、先去问谁、根据，一个按钮变成想法；排在周报前面", () => {
+    const html = buildDailyEmailHtml({ ...base, weekend, weekPick }, {});
+    expect(html).toContain("这周的一件 · 可以变成想法");
+    expect(html).toContain("最关键的假设（错了就做不成）：日本这边还没有它");
+    expect(html).toContain("<b>先去问：已经在花钱、花力气绕路的人</b>");
+    expect(html).toContain('href="https://q.example/1"');
+    expect(html).toContain('href="https://app.example/a/idea-tok"');
+    expect(html).toContain("/signals/gaps/deep?side=japan&amp;id=g1");
+    expect(html.indexOf("这周的一件")).toBeLessThan(html.indexOf("周末版 · 这一周"));
+    const { text } = buildDailyEmail({ ...base, weekend, weekPick });
+    expect(text).toContain("先去问：已经在花钱、花力气绕路的人 —— 网上有 2 句这样的原话。");
+    expect(text).toContain("变成想法（状态：观察）：https://app.example/a/idea-tok");
+    expect(text.indexOf("这周的一件")).toBeLessThan(text.indexOf("周末版 · 这一周"));
+  });
+  it("这周的一件没有周报也放，报头照样写周末版；没有就不出这一块", () => {
+    const html = buildDailyEmailHtml({ ...base, weekPick }, {});
+    expect(html).toContain("周末版</span>");
+    expect(html).toContain("这周的一件");
+    expect(buildDailyEmailHtml(base, {})).not.toContain("这周的一件");
+  });
   it("没有周报（不是周日、或者没写成）就没有周末版", () => {
     expect(buildDailyEmailHtml(base, {})).not.toContain("周末版");
     expect(buildDailyEmailHtml({ ...base, weekend: { ...weekend, summary: "" } }, {})).not.toContain("周末版");

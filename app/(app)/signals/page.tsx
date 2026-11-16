@@ -41,6 +41,8 @@ import { formatDueDate, JudgmentView } from "./judgment-view";
 import { ListenButton } from "./listen-button";
 import { ReaderPanel } from "./reader-panel";
 import { ListEntry } from "./list-entry";
+import { WeekPickBox } from "./week-pick-box";
+import { isSunday, weekMonday } from "@/lib/domains/signals/weekly";
 import { buildListenScript } from "@/lib/domains/signals/listen-script";
 import { sectionLayout } from "@/lib/domains/signals/section-habits";
 import { followedSignals } from "@/lib/domains/signals/memory";
@@ -1087,6 +1089,12 @@ export default async function SignalsReportPage({
       {isToday && (
         <Suspense fallback={null}>
           <ListEntry userId={user.id} today={today} />
+        </Suspense>
+      )}
+      {/* 周日：这周的一件（和周末版邮件最上面同一份），点一下变成想法 */}
+      {isToday && isSunday(today) && (
+        <Suspense fallback={null}>
+          <WeekPickBox userId={user.id} today={today} monday={weekMonday(today)} />
         </Suspense>
       )}
       {/* 去别的页面的入口在顶上的导航里；这里只留全部新闻、工具各攒了多少和往期 */}
