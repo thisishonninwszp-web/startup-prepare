@@ -41,7 +41,9 @@ Files: counterexamples/{domain,transport}.ts/tests; app/(app)/business-lab/count
 - [x] Add one existing business-lab secondary tool group and case-specific entries; reuse case id links to existing making practice. Add appropriate method-library entry. No first-level nav.
 - [x] Append final130/131/132 SQL verbatim to schema.sql; verify TypeScript, ESLint, full Vitest and each real PostgreSQL integration. No local Next build while dev server runs.
 - [x] Test actual components with isolated synthetic browser actions and mobile width; provider stubs only, no invented production personal records.
-- [ ] Apply migrations and inspect RLS/RPC/owner contracts in production. Deploy scoped commits and verify final Vercel status and logged-in UI. Record real vs synthetic boundaries and leave no required work unchecked.
+- [x] Verify user-applied130/131/132 in production through owner list/options RPCs, null-owner denial, anonymous RPC denial and direct-table ACL checks matching the reviewed migration. RLS is enabled in the reviewed/tested migration SQL; catalog flags were not separately queried in production.
+- [x] Deploy scoped commits to main and verify Vercel production deployment success.
+- [ ] Verify the logged-in production pages after the user signs into the in-app browser. Record real vs synthetic boundaries and leave no required work unchecked.
 
 ## Release checkpoint (2026-11-16)
 
@@ -53,3 +55,11 @@ Files: counterexamples/{domain,transport}.ts/tests; app/(app)/business-lab/count
 - Do not claim production rollout complete until DB probes, Vercel build/deployment and logged-in page checks are verified.
 
 - After rebase onto main d3c8e7d:341 Vitest files /2166 tests, TypeScript and ESLint pass. All three migration integration scripts pass with final130/131/132 filenames. Feature commit c938efa is pushed to origin/codex/operator-lab; Vercel preview status success (deployment9Zsj4sazy5LpxrAttenVLHPffiNQ). Main remains unchanged by this release.
+
+## Production checkpoint (2026-11-17; supersedes pending rollout above)
+
+- User reported execution. Production read probes confirm all three RPC domains are present; the active configured job owner's lists are empty and owned case options load (pressure9, cash9, counterexamples1). No personal practice records or provider requests were created.
+- All three null-owner and anonymous reads are rejected; all four anonymous command/AI entrypoints are denied. Anonymous direct access to all ten new tables is denied. Pressure/cash service-role direct access is denied; counterexample tables intentionally retain the service-role grant defined in132. Production permission probes match these respective contracts.
+- Fresh release checks:341 files /2166 tests pass, full TypeScript and ESLint clean.
+- Pushed main from d3c8e7d to a15e616fc64271057bd085693aeb28568b5996d4. Vercel production deployment8AVMA6F9rvg1BTQKssq2LgcJn9sq reports success.
+- Canonical site opened in the in-app browser; unauthenticated access correctly redirects to login. User login has been requested and the tab is marked for handoff. Logged-in production UI verification remains pending; prior synthetic UI verification is not a substitute for this last check. No real Gemini send was performed.
