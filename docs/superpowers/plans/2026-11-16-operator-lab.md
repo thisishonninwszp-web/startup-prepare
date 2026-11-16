@@ -43,7 +43,7 @@ Files: counterexamples/{domain,transport}.ts/tests; app/(app)/business-lab/count
 - [x] Test actual components with isolated synthetic browser actions and mobile width; provider stubs only, no invented production personal records.
 - [x] Verify user-applied130/131/132 in production through owner list/options RPCs, null-owner denial, anonymous RPC denial and direct-table ACL checks matching the reviewed migration. RLS is enabled in the reviewed/tested migration SQL; catalog flags were not separately queried in production.
 - [x] Deploy scoped commits to main and verify Vercel production deployment success.
-- [ ] Verify the logged-in production pages after the user signs into the in-app browser. Record real vs synthetic boundaries and leave no required work unchecked.
+- [x] Verify the logged-in production pages after the user signs into the in-app browser. Record real vs synthetic boundaries and leave no required work unchecked.
 
 ## Release checkpoint (2026-11-16)
 
@@ -62,4 +62,12 @@ Files: counterexamples/{domain,transport}.ts/tests; app/(app)/business-lab/count
 - All three null-owner and anonymous reads are rejected; all four anonymous command/AI entrypoints are denied. Anonymous direct access to all ten new tables is denied. Pressure/cash service-role direct access is denied; counterexample tables intentionally retain the service-role grant defined in132. Production permission probes match these respective contracts.
 - Fresh release checks:341 files /2166 tests pass, full TypeScript and ESLint clean.
 - Pushed main from d3c8e7d to a15e616fc64271057bd085693aeb28568b5996d4. Vercel production deployment8AVMA6F9rvg1BTQKssq2LgcJn9sq reports success.
-- Canonical site opened in the in-app browser; unauthenticated access correctly redirects to login. User login has been requested and the tab is marked for handoff. Logged-in production UI verification remains pending; prior synthetic UI verification is not a substitute for this last check. No real Gemini send was performed.
+- Canonical site opened in the in-app browser; unauthenticated access correctly redirected to login. The initial deployment checkpoint required a user login; authenticated acceptance is now complete as recorded below. No real Gemini send was performed.
+
+## Final authenticated acceptance (2026-11-17)
+
+- After the user logged in, reloaded the pre-deployment browser tab and confirmed the new operator tool group on the canonical `/business-lab` page. Opened all three production routes successfully with their live owner-scoped source options and correct empty states.
+- Exercised real authenticated read actions: pressure/cash list refresh, counterexample list refresh and method search. No read errors or nonempty alerts occurred. The method library is currently empty; source adoption and saving correctly remain disabled until a confirmed method is selected. No fake method was added to bypass this boundary.
+- Verified a readable existing case exposes all four case-specific tool links. Pressure, cash and counterexample routes each preserve the selected case ID and live title. The confirmed-method deep-link write workflow was tested with synthetic UI and actual PostgreSQL integration, not by inventing personal methods in production.
+- On the active test tab at a391px viewport, all three new production routes had clientWidth376 /scrollWidth376. Reset the viewport afterward. All four inspected production tab consoles had zero error entries.
+- Saved the actual production screenshot locally at `.tmp/operator-browser/operator-lab-production.jpg`; kept the canonical business-lab tab as the user-facing result and closed temporary verification tabs. Production checks made no practice/assumption/study writes and no provider calls. All planned implementation and rollout work is complete.
