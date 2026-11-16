@@ -10278,3 +10278,340 @@ commit;
 -- 「停了」不存，每次现算；这里只存他点「恢复」的时候：{"business": "2026-11-16T…Z", …}，从那时起再看两周。
 
 alter table signal_prefs add column if not exists resumed jsonb not null default '{}'::jsonb;
+
+-- Migration 130_business_pressure.sql
+begin;
+create table public.business_pressure_records(id uuid primary key,user_id uuid not null references auth.users(id) on delete cascade,case_id uuid not null,plan jsonb not null,revision integer not null check(revision>0),created_at timestamptz not null default clock_timestamp(),updated_at timestamptz not null default clock_timestamp(),unique(user_id,id));
+create index business_pressure_order on public.business_pressure_records(user_id,created_at desc,id desc);
+-- Mutation receipts retain identifiers and hashes only, including after an owner erases an answer.
+create table public.business_pressure_receipts(user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,input_hash text not null,pressure_id uuid not null,revision integer not null,primary key(user_id,request_id));
+create table public.business_pressure_ai_receipts(user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,input_hash text not null check(input_hash~'^[0-9a-f]{64}$'),pressure_id uuid not null,revision integer not null check(revision>0),primary key(user_id,request_id));
+create table public.business_pressure_ai_revocations(user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,pressure_id uuid not null,primary key(user_id,request_id));
+create table public.business_pressure_ai_requests(user_id uuid not null,request_id uuid not null,pressure_id uuid not null,revision integer not null,input_hash text not null,source_hash text not null,consent boolean not null default true,status text not null check(status in ('pending','unknown','ready','invalid','stale','revoked')),questions jsonb,created_at timestamptz not null default clock_timestamp(),primary key(user_id,request_id),foreign key(user_id,pressure_id) references business_pressure_records(user_id,id) on delete cascade);
+create index business_pressure_ai_order on public.business_pressure_ai_requests(user_id,pressure_id,created_at desc,request_id desc);
+create table public.business_pressure_diagnostics(user_id uuid not null,request_id uuid not null,raw text not null,primary key(user_id,request_id),foreign key(user_id,request_id) references business_pressure_ai_requests(user_id,request_id) on delete cascade);
+create function public.business_pressure_service(p_owner uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$begin if coalesce(auth.role(),'')<>'service_role' or p_owner is null or not exists(select 1 from auth.users where id=p_owner) then raise exception 'pressure service owner required' using errcode='42501';end if;end$$;
+create function public.business_pressure_keys(p jsonb,required text[],optional text[] default '{}') returns void language plpgsql immutable set search_path=public,pg_temp as $$begin if p is null or jsonb_typeof(p) is distinct from 'object' or octet_length(p::text)>500000 or not(p?&required) or exists(select 1 from jsonb_object_keys(p) k where not(k=any(required||optional))) then raise exception 'invalid pressure fields';end if;end$$;
+create function public.business_pressure_uuid(p jsonb) returns uuid language plpgsql immutable set search_path=public,pg_temp as $$begin if jsonb_typeof(p) is distinct from 'string' or (p#>>'{}')!~*'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then raise exception 'invalid pressure identifier';end if;return (p#>>'{}')::uuid;end$$;
+create function public.business_pressure_text(p jsonb,n integer default 3000) returns text language plpgsql immutable set search_path=public,pg_temp as $$declare t text;units integer;begin
+ if jsonb_typeof(p) is distinct from 'string' then raise exception 'invalid pressure text';end if;
+ t:=btrim(p#>>'{}',chr(9)||chr(10)||chr(11)||chr(12)||chr(13)||chr(32)||chr(160)||chr(5760)||chr(8192)||chr(8193)||chr(8194)||chr(8195)||chr(8196)||chr(8197)||chr(8198)||chr(8199)||chr(8200)||chr(8201)||chr(8202)||chr(8232)||chr(8233)||chr(8239)||chr(8287)||chr(12288)||chr(65279));
+ if t='' then raise exception 'invalid pressure text';end if;
+ select coalesce(sum(case when ascii(ch)>65535 then 2 else 1 end),0) into units from regexp_split_to_table(t,'') ch;
+ if units not between 1 and n then raise exception 'invalid pressure text';end if;return t;end$$;
+create function public.business_pressure_integer(p jsonb,minimum integer,maximum integer) returns integer language plpgsql immutable set search_path=public,pg_temp as $$begin if jsonb_typeof(p) is distinct from 'number' or (p#>>'{}')!~'^[0-9]+$' or (p#>>'{}')::numeric not between minimum and maximum then raise exception 'invalid pressure revision';end if;return (p#>>'{}')::integer;end$$;
+create function public.business_pressure_context(p_owner uuid,p_case uuid) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$select jsonb_build_object('caseId',c.id,'caseTitle',m.name) from business_daily_cases c join business_merchants m on m.id=c.merchant_id and m.user_id=c.user_id where c.id=p_case and c.user_id=p_owner$$;
+create function public.business_pressure_payload(p business_pressure_records) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$select case when business_pressure_context(p.user_id,p.case_id) is null then null else jsonb_build_object('casePublicName',business_pressure_context(p.user_id,p.case_id)->'caseTitle','hypotheticalScenario',p.plan->'changedCondition','ownAction',p.plan->'action','explanation',jsonb_build_object('tradeoff',p.plan->'tradeoff','checkNext',p.plan->'checkNext')) end$$;
+create function public.business_pressure_ai_dto(p business_pressure_ai_requests) returns jsonb language sql immutable set search_path=public,pg_temp as $$select jsonb_build_object('requestId',p.request_id,'revision',p.revision,'status',p.status,'questions',p.questions)$$;
+create function public.business_pressure_dto(p business_pressure_records) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$declare c jsonb;a business_pressure_ai_requests;begin c:=business_pressure_context(p.user_id,p.case_id);select * into a from business_pressure_ai_requests where user_id=p.user_id and pressure_id=p.id order by created_at desc,request_id desc limit 1;return jsonb_build_object('id',p.id,'plan',p.plan||jsonb_build_object('caseId',p.case_id),'revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at,'sources',jsonb_build_object('caseAvailable',c is not null,'caseTitle',c->'caseTitle'),'ai',case when a.request_id is null then null else business_pressure_ai_dto(a) end);end$$;
+create function public.business_pressure_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare v_id uuid;v_request uuid;v_hash text;v_expected integer;v_revision integer;v_case uuid;v_plan jsonb;k text;r business_pressure_records;receipt business_pressure_receipts;begin
+ perform business_pressure_service(p_user_id);
+ if p_operation='save' then perform business_pressure_keys(p_input,array['operation','id','requestId','expectedRevision','plan']);elsif p_operation='erase' then perform business_pressure_keys(p_input,array['operation','id','requestId','expectedRevision']);else raise exception 'invalid pressure operation';end if;
+ if p_input->>'operation' is distinct from p_operation then raise exception 'invalid pressure operation';end if;
+ v_id:=business_pressure_uuid(p_input->'id');v_request:=business_pressure_uuid(p_input->'requestId');v_expected:=business_pressure_integer(p_input->'expectedRevision',case when p_operation='erase' then 1 else 0 end,2147483646);v_hash:=encode(sha256(convert_to(p_operation||':'||p_input::text,'UTF8')),'hex');
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,127));select * into receipt from business_pressure_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if receipt.input_hash<>v_hash then raise exception 'pressure request conflict';end if;return jsonb_build_object('id',receipt.pressure_id,'revision',receipt.revision);end if;
+ select * into r from business_pressure_records where user_id=p_user_id and id=v_id for update;
+ if not found then if p_operation<>'save' or v_expected<>0 or exists(select 1 from business_pressure_records where id=v_id) or exists(select 1 from business_pressure_receipts where user_id=p_user_id and pressure_id=v_id) then raise exception 'pressure unavailable' using errcode='42501';end if;elsif r.revision<>v_expected then raise exception 'pressure revision conflict; 请重新读取并比较';end if;
+ v_revision:=coalesce(r.revision,0)+1;
+ if p_operation='save' then v_plan:=p_input->'plan';perform business_pressure_keys(v_plan,array['caseId','scenarioKey','changedCondition','action','tradeoff','checkNext']);v_case:=business_pressure_uuid(v_plan->'caseId');if jsonb_typeof(v_plan->'scenarioKey') is distinct from 'string' or (v_plan->>'scenarioKey') not in ('prepay','channel_lost','returns_surge','delivery_delay','custom') then raise exception 'invalid pressure scenario';end if;
+ foreach k in array array['changedCondition','action','tradeoff','checkNext'] loop v_plan:=jsonb_set(v_plan,array[k],to_jsonb(business_pressure_text(v_plan->k)));end loop;v_plan:=v_plan-'caseId';
+ if r.id is null then perform 1 from business_daily_cases where user_id=p_user_id and id=v_case for share;if business_pressure_context(p_user_id,v_case) is null then raise exception 'pressure source unavailable';end if;insert into business_pressure_records(id,user_id,case_id,plan,revision) values(v_id,p_user_id,v_case,v_plan,1);
+ else if r.case_id is distinct from v_case then raise exception 'pressure case is frozen';end if;update business_pressure_records set plan=v_plan,revision=v_revision,updated_at=clock_timestamp() where user_id=p_user_id and id=v_id;update business_pressure_ai_requests set consent=false,status=case when status in ('pending','unknown') then 'stale' else status end where user_id=p_user_id and pressure_id=v_id;end if;
+ else delete from business_pressure_records where user_id=p_user_id and id=v_id;end if;
+ insert into business_pressure_receipts values(p_user_id,v_request,v_hash,v_id,v_revision);return jsonb_build_object('id',v_id,'revision',v_revision);
+end$$;
+create function public.business_pressure_questions(p jsonb,plan jsonb) returns void language plpgsql immutable set search_path=public,pg_temp as $$declare q jsonb;t text;quote text;begin
+ perform business_pressure_keys(p,array['questions']);if jsonb_typeof(p->'questions') is distinct from 'array' or jsonb_array_length(p->'questions') not between 1 and 3 then raise exception 'invalid pressure questions';end if;
+ for q in select value from jsonb_array_elements(p->'questions') loop
+ perform business_pressure_keys(q,array['question','answerQuote']);t:=business_pressure_text(q->'question',600);perform business_pressure_text(q->'answerQuote',500);quote:=q->>'answerQuote';perform business_pressure_text(to_jsonb('x'||quote||'x'),502);
+ if (q->>'question') is distinct from t or t not in ('你写下的这个选择依赖哪项还没有核对的前提？','如果这个选择不成立，你准备先停下哪一步？','这段回答里，谁可能承担你尚未写明的代价？','你准备怎样核对这段回答，才不会把假设当成事实？') or not(position(quote in plan->>'action')>0 or position(quote in plan->>'tradeoff')>0 or position(quote in plan->>'checkNext')>0) then raise exception 'invalid pressure grounded question';end if;
+ end loop;
+end$$;
+create function public.business_pressure_ai(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare v_id uuid;v_request uuid;v_expected integer;v_hash text;payload jsonb;source_hash text;r business_pressure_records;a business_pressure_ai_requests;receipt business_pressure_ai_receipts;begin
+ perform business_pressure_service(p_user_id);
+ if p_operation='start' then perform business_pressure_keys(p_input,array['id','requestId','expectedRevision','payloadPreview','publicDeidentified','allowGoogleGemini']);elsif p_operation='finish' then perform business_pressure_keys(p_input,array['id','requestId','status'],array['questions','raw']);elsif p_operation='revoke' then perform business_pressure_keys(p_input,array['id','requestId']);else raise exception 'invalid pressure AI operation';end if;
+ v_id:=business_pressure_uuid(p_input->'id');v_request:=business_pressure_uuid(p_input->'requestId');perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,127));select * into r from business_pressure_records where user_id=p_user_id and id=v_id for update;select * into a from business_pressure_ai_requests where user_id=p_user_id and request_id=v_request for update;
+ if p_operation='revoke' then
+ if r.id is null then return jsonb_build_object('state',null);end if;
+ if exists(select 1 from business_pressure_ai_revocations where user_id=p_user_id and request_id=v_request and pressure_id<>v_id) then raise exception 'pressure revoke request conflict';end if;
+ insert into business_pressure_ai_revocations values(p_user_id,v_request,v_id) on conflict(user_id,request_id) do nothing;
+ update business_pressure_ai_requests set consent=false,status='revoked',questions=null where user_id=p_user_id and request_id=v_request and pressure_id=v_id returning * into a;delete from business_pressure_diagnostics where user_id=p_user_id and request_id=v_request;
+ return jsonb_build_object('state',case when a.request_id is null then jsonb_build_object('requestId',v_request,'revision',r.revision,'status','revoked','questions',null) else business_pressure_ai_dto(a) end);
+ end if;
+ if p_operation='start' then
+ v_expected:=business_pressure_integer(p_input->'expectedRevision',1,2147483647);v_hash:=encode(sha256(convert_to(p_input::text,'UTF8')),'hex');
+ if exists(select 1 from business_pressure_ai_revocations where user_id=p_user_id and request_id=v_request) then return jsonb_build_object('send',false,'state',jsonb_build_object('requestId',v_request,'revision',coalesce(r.revision,v_expected),'status','revoked','questions',null));end if;
+ select * into receipt from business_pressure_ai_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if receipt.pressure_id<>v_id or receipt.input_hash<>v_hash then raise exception 'pressure AI request conflict';end if;return jsonb_build_object('send',false,'state',case when a.request_id is null then null else business_pressure_ai_dto(a) end);end if;
+ if r.id is null then return jsonb_build_object('send',false,'state',null);end if;if r.revision<>v_expected then raise exception 'pressure AI revision changed';end if;
+ if p_input->'publicDeidentified' is distinct from 'true'::jsonb or p_input->'allowGoogleGemini' is distinct from 'true'::jsonb then raise exception 'pressure AI consent required';end if;
+ if jsonb_typeof(p_input->'payloadPreview') is distinct from 'string' or length(p_input->>'payloadPreview')>16000 then raise exception 'invalid pressure payload preview';end if;perform business_pressure_text(to_jsonb('x'||(p_input->>'payloadPreview')||'x'),16002);
+ perform 1 from business_daily_cases where user_id=p_user_id and id=r.case_id for share;perform 1 from business_merchants m join business_daily_cases c on c.merchant_id=m.id and c.user_id=m.user_id where c.user_id=p_user_id and c.id=r.case_id for share of m;
+ payload:=business_pressure_payload(r);if payload is null or (p_input->>'payloadPreview')::jsonb is distinct from payload then raise exception 'pressure source or preview changed';end if;source_hash:=encode(sha256(convert_to((payload->'casePublicName')::text,'UTF8')),'hex');
+ insert into business_pressure_ai_receipts values(p_user_id,v_request,v_hash,v_id,v_expected);
+ insert into business_pressure_ai_requests(user_id,request_id,pressure_id,revision,input_hash,source_hash,status) values(p_user_id,v_request,v_id,v_expected,v_hash,source_hash,'pending') returning * into a;return jsonb_build_object('send',true,'state',business_pressure_ai_dto(a),'payload',payload);
+ end if;
+ if a.request_id is null or a.pressure_id<>v_id then return jsonb_build_object('state',null);end if;
+ if exists(select 1 from business_pressure_ai_revocations where user_id=p_user_id and request_id=v_request) then update business_pressure_ai_requests set consent=false,status='revoked',questions=null where user_id=p_user_id and request_id=v_request returning * into a;delete from business_pressure_diagnostics where user_id=p_user_id and request_id=v_request;return jsonb_build_object('state',business_pressure_ai_dto(a));end if;
+ if a.status<>'pending' then return jsonb_build_object('state',business_pressure_ai_dto(a));end if;
+ perform 1 from business_daily_cases where user_id=p_user_id and id=r.case_id for share;perform 1 from business_merchants m join business_daily_cases c on c.merchant_id=m.id and c.user_id=m.user_id where c.user_id=p_user_id and c.id=r.case_id for share of m;
+ payload:=business_pressure_payload(r);source_hash:=encode(sha256(convert_to((payload->'casePublicName')::text,'UTF8')),'hex');
+ if r.id is null or r.revision<>a.revision or not a.consent or payload is null or source_hash is distinct from a.source_hash then update business_pressure_ai_requests set status='stale',consent=false,questions=null where user_id=p_user_id and request_id=v_request returning * into a;
+ else
+ if p_input->>'status'='ready' then if p_input?'raw' or not(p_input?'questions') then raise exception 'invalid pressure AI ready fields';end if;perform business_pressure_questions(p_input->'questions',r.plan);update business_pressure_ai_requests set status='ready',questions=p_input->'questions' where user_id=p_user_id and request_id=v_request returning * into a;
+ elsif p_input->>'status'='invalid' then if p_input?'questions' then raise exception 'invalid pressure AI diagnostic fields';end if;if jsonb_typeof(p_input->'raw') is distinct from 'string' then raise exception 'invalid pressure diagnostic';end if;if (p_input->>'raw')<>'' then perform business_pressure_text(to_jsonb('x'||(p_input->>'raw')||'x'),60002);end if;insert into business_pressure_diagnostics values(p_user_id,v_request,p_input->>'raw');update business_pressure_ai_requests set status='invalid' where user_id=p_user_id and request_id=v_request returning * into a;
+ elsif p_input->>'status'='unknown' then if p_input?'questions' or p_input?'raw' then raise exception 'invalid pressure AI unknown fields';end if;update business_pressure_ai_requests set status='unknown' where user_id=p_user_id and request_id=v_request returning * into a;
+ else raise exception 'invalid pressure AI status';end if;end if;
+ return jsonb_build_object('state',business_pressure_ai_dto(a));
+end$$;
+create function public.business_pressure_read(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare r business_pressure_records;v_id uuid;v_date timestamptz;v_before uuid;v_items jsonb:='[]';v_count integer:=0;v_next jsonb;x record;v_raw text;begin
+ perform business_pressure_service(p_user_id);
+ if p_operation='get' then perform business_pressure_keys(p_input,array['id']);v_id:=business_pressure_uuid(p_input->'id');select * into r from business_pressure_records where user_id=p_user_id and id=v_id;if not found then return null;end if;return business_pressure_dto(r);
+ elsif p_operation='context' then perform business_pressure_keys(p_input,array['caseId']);return business_pressure_context(p_user_id,business_pressure_uuid(p_input->'caseId'));
+ elsif p_operation='diagnostic' then perform business_pressure_keys(p_input,array['id','requestId']);select d.raw into v_raw from business_pressure_diagnostics d join business_pressure_ai_requests a using(user_id,request_id) where d.user_id=p_user_id and d.request_id=business_pressure_uuid(p_input->'requestId') and a.pressure_id=business_pressure_uuid(p_input->'id');return case when v_raw is null then null else jsonb_build_object('raw',v_raw) end;
+ elsif p_operation in ('list','cases') then perform business_pressure_keys(p_input,'{}',array['before']);else raise exception 'invalid pressure read';end if;
+ if p_input?'before' then perform business_pressure_keys(p_input->'before',array['date','id']);v_before:=business_pressure_uuid(p_input->'before'->'id');if jsonb_typeof(p_input->'before'->'date') is distinct from 'string' or length(p_input->'before'->>'date')>80 or (p_input->'before'->>'date')!~'^\d{4}-\d\d-\d\dT[0-9:.]+(Z|[+-][0-9]{2}:[0-9]{2})$' then raise exception 'invalid pressure cursor';end if;v_date:=(p_input->'before'->>'date')::timestamptz;end if;
+ if p_operation='list' then for r in select * from business_pressure_records where user_id=p_user_id and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21 loop v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(business_pressure_dto(r));v_next:=jsonb_build_object('date',r.created_at,'id',r.id);end if;end loop;
+ else for x in select c.id,c.created_at,c.local_date,m.name from business_daily_cases c join business_merchants m on m.id=c.merchant_id and m.user_id=c.user_id where c.user_id=p_user_id and (v_before is null or (c.created_at,c.id)<(v_date,v_before)) order by c.created_at desc,c.id desc limit 21 loop v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(jsonb_build_object('id',x.id,'title',x.name,'date',x.local_date));v_next:=jsonb_build_object('date',x.created_at,'id',x.id);end if;end loop;end if;
+ return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+alter table public.business_pressure_ai_revocations enable row level security;alter table public.business_pressure_ai_receipts enable row level security;alter table public.business_pressure_records enable row level security;alter table public.business_pressure_receipts enable row level security;alter table public.business_pressure_ai_requests enable row level security;alter table public.business_pressure_diagnostics enable row level security;
+revoke all on public.business_pressure_ai_revocations,public.business_pressure_ai_receipts,public.business_pressure_records,public.business_pressure_receipts,public.business_pressure_ai_requests,public.business_pressure_diagnostics from public,anon,authenticated,service_role;
+revoke all on function public.business_pressure_service(uuid),public.business_pressure_keys(jsonb,text[],text[]),public.business_pressure_uuid(jsonb),public.business_pressure_text(jsonb,integer),public.business_pressure_integer(jsonb,integer,integer),public.business_pressure_context(uuid,uuid),public.business_pressure_payload(public.business_pressure_records),public.business_pressure_ai_dto(public.business_pressure_ai_requests),public.business_pressure_dto(public.business_pressure_records),public.business_pressure_questions(jsonb,jsonb),public.business_pressure_command(uuid,text,jsonb),public.business_pressure_ai(uuid,text,jsonb),public.business_pressure_read(uuid,text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.business_pressure_command(uuid,text,jsonb),public.business_pressure_ai(uuid,text,jsonb),public.business_pressure_read(uuid,text,jsonb) to service_role;
+commit;
+
+-- Migration 131_business_cash_timing.sql
+begin;
+create table public.business_cash_scenarios(
+ id uuid primary key,user_id uuid not null references auth.users(id) on delete cascade,case_id uuid not null,
+ assumptions jsonb not null,revision integer not null check(revision>0),created_at timestamptz not null default clock_timestamp(),updated_at timestamptz not null default clock_timestamp()
+);
+create index business_cash_order on public.business_cash_scenarios(user_id,created_at desc,id desc);
+-- Keep identifier-only receipts after erasure so retries cannot resurrect an erased scenario.
+create table public.business_cash_receipts(user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,input_hash text not null check(input_hash~'^[0-9a-f]{64}$'),scenario_id uuid not null,revision integer not null,primary key(user_id,request_id));
+create index business_cash_receipt_record on public.business_cash_receipts(user_id,scenario_id);
+create function public.business_cash_service(p_owner uuid) returns void language plpgsql security definer set search_path=public,pg_temp as $$begin
+ if coalesce(auth.role(),'')<>'service_role' or p_owner is null or not exists(select 1 from auth.users where id=p_owner) then raise exception 'cash service owner required' using errcode='42501';end if;
+end$$;
+create function public.business_cash_keys(p jsonb,required text[],optional text[] default '{}') returns void language plpgsql immutable set search_path=public,pg_temp as $$begin
+ if p is null or jsonb_typeof(p) is distinct from 'object' or not(p?&required) or exists(select 1 from jsonb_object_keys(p) k where not(k=any(required||optional))) then raise exception 'invalid cash fields';end if;
+end$$;
+create function public.business_cash_uuid(p jsonb) returns uuid language plpgsql immutable set search_path=public,pg_temp as $$begin
+ if jsonb_typeof(p) is distinct from 'string' or (p#>>'{}')!~*'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then raise exception 'invalid cash identifier';end if;return (p#>>'{}')::uuid;
+end$$;
+create function public.business_cash_text(p jsonb,maximum integer) returns text language plpgsql immutable set search_path=public,pg_temp as $$declare v text;begin
+ if jsonb_typeof(p) is distinct from 'string' then raise exception 'invalid cash text';end if;
+ -- Match JavaScript trim and UTF-16 string limits, including supplementary-plane characters.
+ v:=btrim(p#>>'{}',U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF');
+ if length(v)+length(regexp_replace(v,U&'[\0001-\FFFF]','','g')) not between 1 and maximum then raise exception 'invalid cash text';end if;return v;
+end$$;
+create function public.business_cash_integer(p jsonb,maximum numeric) returns numeric language plpgsql immutable set search_path=public,pg_temp as $$declare n numeric;begin
+ if jsonb_typeof(p) is distinct from 'number' then raise exception 'invalid cash integer';end if;n:=(p#>>'{}')::numeric;if n<>trunc(n) or n<0 or n>maximum then raise exception 'invalid cash integer';end if;return n;
+end$$;
+create function public.business_cash_date(p jsonb) returns date language plpgsql immutable set search_path=public,pg_temp as $$declare d date;begin
+ if jsonb_typeof(p) is distinct from 'string' or (p#>>'{}')!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then raise exception 'invalid cash date';end if;d:=(p#>>'{}')::date;if d<date '1900-01-01' or d>date '2200-12-31' or to_char(d,'YYYY-MM-DD')<>p#>>'{}' then raise exception 'invalid cash date';end if;return d;
+end$$;
+create function public.business_cash_validate(p jsonb) returns jsonb language plpgsql immutable set search_path=public,pg_temp as $$
+declare v jsonb:=p;f jsonb;flows jsonb;k text;ids uuid[];fid uuid;total numeric;opening numeric;start_day date;text_bytes integer;begin
+ perform business_cash_keys(v,array['caseId','title','currency','startDate','openingMinor','baseline','alternative']);
+ v:=jsonb_set(v,'{caseId}',to_jsonb(business_cash_uuid(v->'caseId')));v:=jsonb_set(v,'{title}',to_jsonb(business_cash_text(v->'title',300)));
+ if jsonb_typeof(v->'currency') is distinct from 'string' or v->>'currency' not in ('JPY','CNY','USD','EUR') then raise exception 'invalid cash currency';end if;
+ start_day:=business_cash_date(v->'startDate');opening:=business_cash_integer(v->'openingMinor',1000000000000);text_bytes:=octet_length((v->'title')::text);
+ foreach k in array array['baseline','alternative'] loop
+  if jsonb_typeof(v->k) is distinct from 'array' then raise exception 'invalid cash flows';end if;if jsonb_array_length(v->k)>200 then raise exception 'too many cash flows';end if;
+  ids:='{}';total:=opening;flows:='[]';
+  for f in select value from jsonb_array_elements(v->k) loop
+   perform business_cash_keys(f,array['id','date','label','direction','amountMinor','assumption']);fid:=business_cash_uuid(f->'id');if fid=any(ids) then raise exception 'duplicate cash flow';end if;ids:=array_append(ids,fid);f:=jsonb_set(f,'{id}',to_jsonb(fid));
+   if business_cash_date(f->'date')<start_day then raise exception 'cash flow precedes start';end if;
+   if jsonb_typeof(f->'direction') is distinct from 'string' or f->>'direction' not in ('in','out') then raise exception 'invalid cash direction';end if;
+   total:=total+business_cash_integer(f->'amountMinor',1000000000000);f:=jsonb_set(f,'{label}',to_jsonb(business_cash_text(f->'label',300)));f:=jsonb_set(f,'{assumption}',to_jsonb(business_cash_text(f->'assumption',3000)));text_bytes:=text_bytes+octet_length((f->'label')::text)+octet_length((f->'assumption')::text);flows:=flows||jsonb_build_array(f);
+  end loop;
+  if total>9007199254740991 then raise exception 'unsafe cash total';end if;v:=jsonb_set(v,array[k],flows);
+ end loop;if text_bytes>700000 then raise exception 'cash text too large: 文字太长，请精简假设说明后再保存';end if;return v;
+end$$;
+create function public.business_cash_context(p_owner uuid,p_case uuid) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$
+ select jsonb_build_object('caseId',c.id,'caseTitle',m.name) from business_daily_cases c join business_merchants m on m.id=c.merchant_id and m.user_id=c.user_id where c.user_id=p_owner and c.id=p_case
+$$;
+create function public.business_cash_dto(p business_cash_scenarios) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$declare c jsonb;begin
+ c:=business_cash_context(p.user_id,p.case_id);return jsonb_build_object('id',p.id,'scenario',p.assumptions||jsonb_build_object('caseId',p.case_id),'revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at,'sources',jsonb_build_object('caseAvailable',c is not null,'caseTitle',c->'caseTitle'));
+end$$;
+create function public.business_cash_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_id uuid;v_request uuid;v_expected integer;v_revision integer;v_hash text;v jsonb;v_case uuid;r business_cash_scenarios;receipt business_cash_receipts;begin
+ perform business_cash_service(p_user_id);
+ if p_operation='save' then perform business_cash_keys(p_input,array['operation','id','requestId','expectedRevision','scenario']);elsif p_operation='erase' then perform business_cash_keys(p_input,array['operation','id','requestId','expectedRevision']);else raise exception 'invalid cash operation';end if;
+ if p_input->>'operation' is distinct from p_operation then raise exception 'invalid cash operation';end if;
+ v_id:=business_cash_uuid(p_input->'id');v_request:=business_cash_uuid(p_input->'requestId');v_expected:=business_cash_integer(p_input->'expectedRevision',2147483646)::integer;if p_operation='erase' and v_expected=0 then raise exception 'invalid cash revision';end if;
+ v_hash:=encode(sha256(convert_to(p_operation||':'||p_input::text,'UTF8')),'hex');perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,128));
+ select * into receipt from business_cash_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if receipt.input_hash<>v_hash then raise exception 'cash request conflict';end if;return jsonb_build_object('id',receipt.scenario_id,'revision',receipt.revision);end if;
+ select * into r from business_cash_scenarios where user_id=p_user_id and id=v_id for update;
+ if not found then
+  if p_operation<>'save' or v_expected<>0 or exists(select 1 from business_cash_scenarios where id=v_id) or exists(select 1 from business_cash_receipts where user_id=p_user_id and scenario_id=v_id) then raise exception 'cash unavailable' using errcode='42501';end if;
+ elsif r.revision<>v_expected then raise exception 'cash revision conflict: 另一页面已修改，请比较最新内容';end if;
+ v_revision:=coalesce(r.revision,0)+1;
+ if p_operation='save' then
+  v:=business_cash_validate(p_input->'scenario');v_case:=business_cash_uuid(v->'caseId');
+  if r.id is null then perform 1 from business_daily_cases where user_id=p_user_id and id=v_case for share;if business_cash_context(p_user_id,v_case) is null then raise exception 'cash source unavailable' using errcode='42501';end if;
+   insert into business_cash_scenarios(id,user_id,case_id,assumptions,revision) values(v_id,p_user_id,v_case,v-'caseId',1);
+  else if r.case_id<>v_case then raise exception 'cash source reference is frozen';end if;update business_cash_scenarios set assumptions=v-'caseId',revision=v_revision,updated_at=clock_timestamp() where id=v_id and user_id=p_user_id;end if;
+ else delete from business_cash_scenarios where id=v_id and user_id=p_user_id;end if;
+ insert into business_cash_receipts values(p_user_id,v_request,v_hash,v_id,v_revision);return jsonb_build_object('id',v_id,'revision',v_revision);
+end$$;
+create function public.business_cash_read(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare r business_cash_scenarios;v_id uuid;v_date timestamptz;v_before uuid;v_items jsonb:='[]';v_count integer:=0;v_next jsonb;row_data record;begin
+ perform business_cash_service(p_user_id);
+ if p_operation='get' then perform business_cash_keys(p_input,array['id']);v_id:=business_cash_uuid(p_input->'id');select * into r from business_cash_scenarios where user_id=p_user_id and id=v_id;if not found then return null;end if;return business_cash_dto(r);
+ elsif p_operation='context' then perform business_cash_keys(p_input,array['caseId']);return business_cash_context(p_user_id,business_cash_uuid(p_input->'caseId'));
+ elsif p_operation in ('list','cases') then perform business_cash_keys(p_input,'{}',array['before']);else raise exception 'invalid cash read';end if;
+ if p_input?'before' then perform business_cash_keys(p_input->'before',array['date','id']);v_before:=business_cash_uuid(p_input->'before'->'id');if jsonb_typeof(p_input->'before'->'date') is distinct from 'string' or (p_input->'before'->>'date')!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9]{2}:[0-9]{2})$' then raise exception 'invalid cash cursor';end if;v_date:=(p_input->'before'->>'date')::timestamptz;end if;
+ if p_operation='list' then
+  for r in select * from business_cash_scenarios where user_id=p_user_id and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21 loop v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(business_cash_dto(r));v_next:=jsonb_build_object('date',r.created_at,'id',r.id);end if;end loop;
+ else
+  for row_data in select c.id,c.created_at,c.local_date,m.name from business_daily_cases c join business_merchants m on m.id=c.merchant_id and m.user_id=c.user_id where c.user_id=p_user_id and (v_before is null or (c.created_at,c.id)<(v_date,v_before)) order by c.created_at desc,c.id desc limit 21 loop v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(jsonb_build_object('id',row_data.id,'title',row_data.name,'date',row_data.local_date));v_next:=jsonb_build_object('date',row_data.created_at,'id',row_data.id);end if;end loop;
+ end if;return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+alter table public.business_cash_scenarios enable row level security;
+alter table public.business_cash_receipts enable row level security;
+revoke all on public.business_cash_scenarios,public.business_cash_receipts from public,anon,authenticated,service_role;
+revoke all on function public.business_cash_service(uuid),public.business_cash_keys(jsonb,text[],text[]),public.business_cash_uuid(jsonb),public.business_cash_text(jsonb,integer),public.business_cash_integer(jsonb,numeric),public.business_cash_date(jsonb),public.business_cash_validate(jsonb),public.business_cash_context(uuid,uuid),public.business_cash_dto(public.business_cash_scenarios),public.business_cash_command(uuid,text,jsonb),public.business_cash_read(uuid,text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.business_cash_command(uuid,text,jsonb),public.business_cash_read(uuid,text,jsonb) to service_role;
+commit;
+
+-- Migration 132_business_method_counterexamples.sql
+begin;
+-- Studies keep identifiers and a digest of the selected method, never its original prose.
+create table public.business_method_counterexamples(
+ id uuid primary key,user_id uuid not null references auth.users(id),revision integer not null check(revision>0),
+ study jsonb not null,adopted_method_id uuid,created_at timestamptz not null default clock_timestamp(),updated_at timestamptz not null default clock_timestamp(),
+ unique(user_id,id),foreign key(user_id,adopted_method_id) references business_learning_entries(user_id,id)
+);
+create index business_counterexample_history on business_method_counterexamples(user_id,created_at desc,id desc);
+create table public.business_counterexample_receipts(
+ user_id uuid not null references auth.users(id),request_id uuid not null,input_hash text not null,operation text not null,
+ study_id uuid not null,revision integer not null,method_id uuid,primary key(user_id,request_id)
+);
+create trigger counterexample_receipt_immutable before update or delete on business_counterexample_receipts for each row execute function business_immutable();
+alter table business_method_counterexamples enable row level security;
+alter table business_counterexample_receipts enable row level security;
+revoke all on business_method_counterexamples,business_counterexample_receipts from public,anon,authenticated;
+grant all on business_method_counterexamples,business_counterexample_receipts to service_role;
+
+create function public.business_counterexample_report_readable(p_owner uuid,p_report uuid,p_case uuid) returns boolean language sql stable security definer set search_path=public,pg_temp as $$
+ select exists(select 1 from business_case_revisions r join business_daily_cases c on c.user_id=r.user_id and c.id=r.case_id
+ where r.user_id=p_owner and r.id=p_report and r.case_id=p_case and r.erased_at is null
+ and not exists(select 1 from jsonb_array_elements(r.manifest) src left join business_material_snapshots s on s.user_id=p_owner and s.id::text=src->>'id' where s.id is null or s.erased_at is not null))
+$$;
+create function public.business_counterexample_case(p_owner uuid,p_id uuid) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$
+ select jsonb_build_object('id',c.id,'title',m.name,'date',c.local_date) from business_daily_cases c join business_merchants m on m.user_id=c.user_id and m.id=c.merchant_id
+ where c.user_id=p_owner and c.id=p_id and business_counterexample_report_readable(p_owner,c.published_revision_id,c.id)
+$$;
+create function public.business_counterexample_methods(p_owner uuid) returns table(id uuid,kind text,created_at timestamptz,item jsonb) language sql stable security definer set search_path=public,pg_temp as $$
+ with source as (
+ select rows.id,rows.created_at,rows.item,e.report_id,'learning'::text kind from business_method_rows(p_owner) rows join business_learning_entries e on e.user_id=p_owner and e.id=rows.id and e.operation='method' where e.payload->'confirmed'='true'::jsonb and rows.item->'payload'->>'source' is distinct from 'confirmed_lesson'
+ union all
+ select rows.id,rows.created_at,rows.item,l.report_id,'lesson'::text kind from business_method_rows(p_owner) rows join business_case_lessons l on l.user_id=p_owner and l.id=rows.id where rows.item->'payload'->>'source'='confirmed_lesson'
+ )
+ select source.id,source.kind,source.created_at,jsonb_build_object('id',source.id,'kind',source.kind,'caseId',source.item->>'caseId','reportId',source.report_id,
+ 'baselineHash',md5(jsonb_build_object('kind',source.kind,'payload',source.item->'payload','reportId',source.report_id)::text),
+ 'draft',jsonb_build_object('method',source.item->'payload'->>'method','scenario',coalesce(nullif(source.item->'payload'->>'scenario',''),'未记录'),'conditions',source.item->'payload'->>'conditions','failureConditions',coalesce(nullif(source.item->'payload'->>'failureConditions',''),'未记录'),'unknowns',source.item->'payload'->>'unknowns'))
+ from source where source.item->'sourceInvalidated'='false'::jsonb and business_counterexample_report_readable(p_owner,source.report_id,(source.item->>'caseId')::uuid)
+$$;
+create function public.business_counterexample_dto(s business_method_counterexamples) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$
+ select jsonb_build_object('id',s.id,'revision',s.revision,'study',s.study,'createdAt',s.created_at,'updatedAt',s.updated_at,'adoptedMethodId',s.adopted_method_id,
+ 'sources',jsonb_build_object('method',m.item,'candidate',business_counterexample_case(s.user_id,(s.study->>'candidateCaseId')::uuid),'stale',m.item is null))
+ from (select 1) seed left join lateral(select item from business_counterexample_methods(s.user_id) where id=(s.study->>'methodId')::uuid and kind=s.study->>'methodKind' and item->>'baselineHash'=s.study->>'baselineHash') m on true
+$$;
+create function public.business_counterexample_uuid(p jsonb,k text) returns uuid language plpgsql immutable set search_path=public,pg_temp as $$begin
+ if jsonb_typeof(p->k) is distinct from 'string' or (p->>k)!~*'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then raise exception 'invalid counterexample identifier';end if;return (p->>k)::uuid;
+end$$;
+create function public.business_counterexample_text(p jsonb,k text) returns void language plpgsql immutable set search_path=public,pg_temp as $$declare v text;begin
+ if jsonb_typeof(p->k) is distinct from 'string' then raise exception 'invalid counterexample text';end if;v:=p->>k;
+ if length(v)+length(regexp_replace(v,U&'[\0001-\FFFF]','','g'))>6000 or length(btrim(v,U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'))=0 then raise exception 'invalid counterexample text';end if;
+end$$;
+create function public.business_counterexample_draft(p jsonb) returns void language plpgsql set search_path=public,pg_temp as $$declare k text;v_bytes integer:=0;begin
+ if jsonb_typeof(p) is distinct from 'object' or (select count(*) from jsonb_object_keys(p))<>5 or exists(select 1 from jsonb_object_keys(p) key where key<>all(array['method','scenario','conditions','failureConditions','unknowns'])) then raise exception 'invalid method draft fields';end if;
+ foreach k in array array['method','scenario','conditions','failureConditions','unknowns'] loop perform business_counterexample_text(p,k);v_bytes:=v_bytes+octet_length(to_jsonb(p->>k)::text);end loop;
+ if v_bytes>38000 then raise exception 'method draft total text too long';end if;
+end$$;
+create function public.business_counterexample_read(p_user_id uuid,p_operation text,p_input jsonb default '{}') returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare v_id uuid;v_kind text;v_query text;v_items jsonb;v_next jsonb;v_date timestamptz;v_before uuid;v_keys text[];v_count integer;begin
+ perform business_service(p_user_id);
+ if jsonb_typeof(p_input) is distinct from 'object' or octet_length(p_input::text)>2000 or p_operation is null or p_operation not in('get','list','method','method_start','methods','case','cases') then raise exception 'invalid counterexample read';end if;
+ v_keys:=case p_operation when 'get' then array['id'] when 'case' then array['id'] when 'method_start' then array['id'] when 'method' then array['id','kind'] when 'methods' then array['query','before'] else array['before'] end;
+ if exists(select 1 from jsonb_object_keys(p_input) key where key<>all(v_keys)) then raise exception 'unsupported counterexample read field';end if;
+ if p_operation in('get','case','method','method_start') then v_id:=business_counterexample_uuid(p_input,'id');end if;
+ if p_operation='get' then return (select business_counterexample_dto(s) from business_method_counterexamples s where user_id=p_user_id and id=v_id);
+ elsif p_operation='case' then return business_counterexample_case(p_user_id,v_id);
+ elsif p_operation in('method','method_start') then
+  if p_operation='method' then if coalesce(p_input->>'kind','') not in('learning','lesson') then raise exception 'invalid method kind';end if;v_kind:=p_input->>'kind';end if;
+  select count(*) into v_count from business_counterexample_methods(p_user_id) where id=v_id and (v_kind is null or kind=v_kind);if v_count>1 then raise exception 'ambiguous owned method identifier';end if;
+  return (select item from business_counterexample_methods(p_user_id) where id=v_id and (v_kind is null or kind=v_kind));
+ end if;
+ if p_input ? 'before' then
+  if jsonb_typeof(p_input->'before') is distinct from 'object' or (select count(*) from jsonb_object_keys(p_input->'before'))<>2 or exists(select 1 from jsonb_object_keys(p_input->'before') key where key<>all(array['date','id'])) or jsonb_typeof(p_input->'before'->'date') is distinct from 'string' then raise exception 'invalid counterexample cursor';end if;
+  v_date:=(p_input->'before'->>'date')::timestamptz;v_before:=business_counterexample_uuid(p_input->'before','id');if not isfinite(v_date) then raise exception 'invalid cursor date';end if;
+ end if;
+ if p_operation='list' then
+  select coalesce(jsonb_agg(business_counterexample_dto(s) order by s.created_at desc,s.id desc),'[]') into v_items from(select * from business_method_counterexamples where user_id=p_user_id and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21) s;
+ elsif p_operation='cases' then
+  select coalesce(jsonb_agg(business_counterexample_case(p_user_id,c.id)||jsonb_build_object('_date',c.created_at) order by c.created_at desc,c.id desc),'[]') into v_items from(select * from business_daily_cases where user_id=p_user_id and business_counterexample_case(p_user_id,id) is not null and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21) c;
+ else
+  if p_input ? 'query' and (jsonb_typeof(p_input->'query') is distinct from 'string' or length(p_input->>'query')>500) then raise exception 'invalid method query';end if;v_query:=trim(coalesce(p_input->>'query',''));
+  select coalesce(jsonb_agg(m.item||jsonb_build_object('_date',m.created_at) order by m.created_at desc,m.id desc),'[]') into v_items from(select * from business_counterexample_methods(p_user_id) where (v_before is null or (created_at,id)<(v_date,v_before)) and (v_query='' or position(lower(v_query) in lower(concat_ws(' ',item->'draft'->>'method',item->'draft'->>'scenario',item->'draft'->>'conditions',item->'draft'->>'failureConditions',item->'draft'->>'unknowns')))>0) order by created_at desc,id desc limit 21) m;
+ end if;
+ if jsonb_array_length(v_items)>20 then v_items:=v_items-20;v_next:=jsonb_build_object('date',coalesce(v_items->19->'createdAt',v_items->19->'_date'),'id',v_items->19->'id');end if;
+ select coalesce(jsonb_agg(value-'_date' order by ord),'[]') into v_items from jsonb_array_elements(v_items) with ordinality items(value,ord);
+ return jsonb_build_object('items',v_items,'nextCursor',v_next);
+end$$;
+
+create function public.business_counterexample_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_id uuid;v_request uuid;v_revision integer;v_hash text;v_keys text[];v_study jsonb;k text;s business_method_counterexamples;r business_counterexample_receipts;v_method jsonb;v_result jsonb;v_method_id uuid;begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input) is distinct from 'object' or octet_length(p_input::text)>200000 or p_operation is null or p_operation not in('save','delete','adopt') or p_input->>'operation' is distinct from p_operation then raise exception 'invalid counterexample operation';end if;
+ v_id:=business_counterexample_uuid(p_input,'id');v_request:=business_counterexample_uuid(p_input,'requestId');v_hash:=md5(p_input::text);
+ if jsonb_typeof(p_input->'expectedRevision') is distinct from 'number' or (p_input->>'expectedRevision') !~ '^[0-9]+$' or (p_input->>'expectedRevision')::numeric>2147483646 then raise exception 'invalid counterexample revision';end if;v_revision:=(p_input->>'expectedRevision')::integer;
+ v_keys:=array['operation','id','requestId','expectedRevision']||case p_operation when 'save' then array['study'] when 'adopt' then array['confirmed','preview'] else array[]::text[] end;
+ if exists(select 1 from jsonb_object_keys(p_input) key where key<>all(v_keys)) then raise exception 'unsupported counterexample command field';end if;
+ -- Same lock ordering as the existing learning/erase commands, followed by this module's owner lock.
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,721));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,722));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,729));
+ select * into r from business_counterexample_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if r.input_hash is distinct from v_hash then raise exception 'counterexample request conflict';end if;return jsonb_build_object('id',r.study_id,'revision',r.revision,'methodId',r.method_id);end if;
+ select * into s from business_method_counterexamples where user_id=p_user_id and id=v_id for update;
+ if coalesce(s.revision,0)<>v_revision then raise exception 'counterexample revision conflict';end if;
+ if p_operation='save' then
+  v_study:=p_input->'study';
+  if jsonb_typeof(v_study) is distinct from 'object' or (select count(*) from jsonb_object_keys(v_study))<>8 or exists(select 1 from jsonb_object_keys(v_study) key where key<>all(array['methodId','methodKind','baselineHash','candidateCaseId','explanation','conditionDifferences','checkNext','revisedMethodDraft'])) then raise exception 'invalid study fields';end if;
+  perform business_counterexample_uuid(v_study,'methodId');perform business_counterexample_uuid(v_study,'candidateCaseId');
+  if coalesce(v_study->>'methodKind','') not in('learning','lesson') or jsonb_typeof(v_study->'baselineHash') is distinct from 'string' or (v_study->>'baselineHash') !~ '^[a-f0-9]{32}$' then raise exception 'invalid method reference';end if;
+  foreach k in array array['explanation','conditionDifferences','checkNext'] loop perform business_counterexample_text(v_study,k);end loop;perform business_counterexample_draft(v_study->'revisedMethodDraft');
+  if s.id is not null and (s.study->'methodId' is distinct from v_study->'methodId' or s.study->'methodKind' is distinct from v_study->'methodKind' or s.study->'baselineHash' is distinct from v_study->'baselineHash' or s.study->'candidateCaseId' is distinct from v_study->'candidateCaseId') then raise exception 'historical source selection cannot rebase; create a new study';end if;
+  if s.id is null then
+   if exists(select 1 from business_counterexample_receipts where user_id=p_user_id and study_id=v_id) then raise exception 'counterexample identifier already deleted; create a new identifier';end if;
+   select item into v_method from business_counterexample_methods(p_user_id) where id=(v_study->>'methodId')::uuid and kind=v_study->>'methodKind' and item->>'baselineHash'=v_study->>'baselineHash';
+   if v_method is null or business_counterexample_case(p_user_id,(v_study->>'candidateCaseId')::uuid) is null then raise exception 'source unavailable or changed';end if;
+   insert into business_method_counterexamples(id,user_id,revision,study) values(v_id,p_user_id,1,v_study);
+  else update business_method_counterexamples set study=v_study,revision=revision+1,updated_at=clock_timestamp() where user_id=p_user_id and id=v_id;end if;
+  v_method_id:=s.adopted_method_id;
+ elsif p_operation='delete' then
+  if s.id is null then raise exception 'counterexample unavailable';end if;
+  v_method_id:=s.adopted_method_id;delete from business_method_counterexamples where user_id=p_user_id and id=v_id;
+ else
+  if s.id is null then raise exception 'counterexample unavailable';end if;
+  if s.adopted_method_id is not null then raise exception 'study already adopted';end if;
+  perform business_counterexample_draft(p_input->'preview');
+  if p_input->'confirmed' is distinct from 'true'::jsonb or p_input->'preview' is distinct from s.study->'revisedMethodDraft' then raise exception 'explicit confirmation of full current preview required';end if;
+  select item into v_method from business_counterexample_methods(p_user_id) where id=(s.study->>'methodId')::uuid and kind=s.study->>'methodKind' and item->>'baselineHash'=s.study->>'baselineHash';
+  if v_method is null or business_counterexample_case(p_user_id,(s.study->>'candidateCaseId')::uuid) is null then raise exception 'source unavailable or changed';end if;
+  v_result:=business_learning_command(p_user_id,'method',s.study->'revisedMethodDraft'||jsonb_build_object('operation','method','requestId',v_request,'caseId',v_method->>'caseId','reportId',v_method->>'reportId','confirmed',true));
+  v_method_id:=(v_result->>'id')::uuid;
+  update business_method_counterexamples set adopted_method_id=v_method_id,revision=revision+1,updated_at=clock_timestamp() where user_id=p_user_id and id=v_id;
+ end if;
+ insert into business_counterexample_receipts(user_id,request_id,input_hash,operation,study_id,revision,method_id) values(p_user_id,v_request,v_hash,p_operation,v_id,v_revision+1,v_method_id);
+ return jsonb_build_object('id',v_id,'revision',v_revision+1,'methodId',v_method_id);
+end$$;
+revoke all on function business_counterexample_report_readable(uuid,uuid,uuid),business_counterexample_case(uuid,uuid),business_counterexample_methods(uuid),business_counterexample_dto(business_method_counterexamples),business_counterexample_draft(jsonb),business_counterexample_uuid(jsonb,text),business_counterexample_text(jsonb,text) from public,anon,authenticated,service_role;
+revoke all on function business_counterexample_read(uuid,text,jsonb),business_counterexample_command(uuid,text,jsonb) from public,anon,authenticated;
+grant execute on function business_counterexample_read(uuid,text,jsonb),business_counterexample_command(uuid,text,jsonb) to service_role;
+commit;

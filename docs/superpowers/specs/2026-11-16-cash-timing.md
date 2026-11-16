@@ -10,4 +10,4 @@
 
 只做代码计算，无AI、抓取、定时和费用。存原始假设，加载后重新计算不信任客户端提交的结果。来源案例仅存id并按owner实时解析标题；不可用时保留本人情景并标记。版本冲突不可静默覆盖，保存失败保留输入，响应丢失可幂等重试。
 
-文件：lib/domains/business-teardowns/cash/**、app/(app)/business-lab/cash/**、128_business_cash_timing.sql；公共入口和schema.sql由root整合。SQL安全/权限/金额/日期/数组限制与TS一致；测试真128迁移、同日收付/零/负余额边界、货币单位、日期、溢出、baseline一致性、owner、分页、冲突、重试及无核心验证表副作用。
+文件：lib/domains/business-teardowns/cash/**、app/(app)/business-lab/cash/**、131_business_cash_timing.sql；公共入口和schema.sql由root整合。SQL安全/权限/金额/日期/数组限制与TS一致；测试真128迁移、同日收付/零/负余额边界、货币单位、日期、溢出、baseline一致性、owner、分页、冲突、重试及无核心验证表副作用。

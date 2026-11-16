@@ -1,0 +1,11 @@
+import {describe,it,expect,vi} from 'vitest';
+import {renderToStaticMarkup} from 'react-dom/server';
+vi.mock('./actions',()=>({loadPressuresAction:vi.fn(),loadPressureRecordAction:vi.fn(),loadPressureCasesAction:vi.fn(),loadPressureContextAction:vi.fn(),savePressureAction:vi.fn(),requestPressureQuestionsAction:vi.fn(),loadPressureDiagnosticAction:vi.fn(),revokePressureConsentAction:vi.fn()}));
+import {BusinessPressurePanel,PressureFields,PressureRecordView} from './pressure-panel';
+import type {PressureRecord} from '@/lib/domains/business-teardowns/pressure/domain';
+const plan={caseId:'case',scenarioKey:'prepay' as const,changedCondition:'假设供货改预付',action:'本人先暂停采购',tradeoff:'本人承担少接单代价',checkNext:'本人先问分批付款'};
+describe('pressure UI boundaries',()=>{
+ it('has no mutation controls before migration127',()=>{const html=renderToStaticMarkup(<BusinessPressurePanel initialState={{available:false,items:[],nextCursor:null}} initialCases={{items:[],nextCursor:null}}/>);expect(html).toContain('127');expect(html).not.toContain('保存练习');});
+ it('labels all templates hypothetical and fixed questions nonAI, keeps all authored fields editable',()=>{const html=renderToStaticMarkup(<BusinessPressurePanel initialState={{available:true,items:[],nextCursor:null}} initialCases={{items:[],nextCursor:'more'}}/>);for(const text of ['供货改预付','主要集客渠道不可用','退货增加','交付延迟','自定条件','不使用 AI','假设','更多案例'])expect(html).toContain(text);const fields=renderToStaticMarkup(<PressureFields plan={plan} onChange={()=>{}}/>);for(const key of ['changedCondition','action','tradeoff','checkNext'])expect(fields).toContain(`name="${key}"`);expect(html).not.toContain('type="checkbox" checked');});
+ it('preserves independent answers and marks old questions without stale source title',()=>{const record:PressureRecord={id:'record',plan,revision:2,createdAt:'2026-11-16',updatedAt:'2026-11-16',sources:{caseAvailable:false,caseTitle:'旧来源不可展示'},ai:{requestId:'request',revision:1,status:'ready',questions:{questions:[{question:'你会怎样核对？',answerQuote:'本人先暂停采购'}]}}};const html=renderToStaticMarkup(<PressureRecordView record={record}/>);for(const text of ['本人先暂停采购','本人承担少接单代价','来源不可用后的本人回答','修改前回答的追问'])expect(html).toContain(text);expect(html).not.toContain('旧来源不可展示');});
+});

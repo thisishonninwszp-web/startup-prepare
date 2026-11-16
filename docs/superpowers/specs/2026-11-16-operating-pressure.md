@@ -8,10 +8,10 @@
 
 可选择额外的 Gemini 追问：先保存当前回答，展示实际发送的 JSON（仅案例公开名称、假设情境、自己的选择和独立说明，不读私人笔记、报告正文或其他模块）。本人逐次确认公开/去身份信息并允许发送至 Google Gemini，点击后才发送。默认不开启，不加定时任务。用户修改回答后，旧许可和旧追问不能冒充当前版本。
 
-AI只提出针对回答中具体原话的反问，不给评分、鼓励或经营事实；结构是 `questions:[{question,answerQuote}]`，原话逐字核对，问题不得引入已获实证的顾客、利润或经营数量。经 lib/ai/ +统一gateway，metadata_only日志，单次provider尝试。SQL租约/请求回执保证同请求重试不再次付费；已发出但无法确认的请求保持unknown，不自动补发。成功问题绑定原回答版本；编辑后旧问题仍标旧版本。无效响应原文隔离为本人诊断，普通列表不带原文，删除练习同步删除诊断。
+AI只选择针对回答中具体原话的质疑角度，不给评分、鼓励或经营事实；provider结构是 `questions:[{questionKey,answerQuote}]`，questionKey只允许前提、停止条件、代价和核对四种，原话逐字核对。代码把角度映射为固定的假设性反问，SQL也只接受这四句；任意自由文不得作为有效追问显示，界面明确说明这一限制。经 lib/ai/ +统一gateway，metadata_only日志，单次provider尝试。SQL租约/请求回执保证同请求重试不再次付费；已发出但无法确认的请求保持unknown，不自动补发。送信开始前到达的许可撤回也记录，阻止后续请求。成功问题绑定原回答版本；编辑后旧问题仍标旧版本。无效响应原文隔离为本人诊断，普通列表不带原文，删除练习同步删除诊断。
 
 ## 契约与安全
 
 `PressurePlan={caseId,scenarioKey,changedCondition,action,tradeoff,checkNext}`；文字均本人独立填写，候选模板只是练习假设。owner由server action会话决定；新表/事务RPC严格SQL及Zod检查、service role guard、乐观版本、幂等回执（仅hash/id）、分页与清除。无任何ideas/validations/career写入。与制作练习、资金表通过同一案例的明确链接相连，不暗中复制内容。
 
-文件边界：lib/domains/business-teardowns/pressure/**、lib/ai/business-pressure.ts、app/(app)/business-lab/pressure/**、127_business_pressure.sql。schema.sql/公共入口由root统一整合。测试含真实127迁移、权限、版本、source失效、AI请求/响应丢失与撤回后不可提交、无效输出隔离、输入保护。
+文件边界：lib/domains/business-teardowns/pressure/**、lib/ai/business-pressure.ts、app/(app)/business-lab/pressure/**、130_business_pressure.sql。schema.sql/公共入口由root统一整合。测试含真实130迁移、权限、版本、source失效、AI请求/响应丢失与撤回后不可提交、无效输出隔离、输入保护。

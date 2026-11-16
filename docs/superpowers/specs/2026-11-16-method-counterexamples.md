@@ -8,4 +8,4 @@
 
 UI并排原方法/成立条件与本人反例解释，代码给出核对提示：是否相同任务、付款者/买家、资源条件，是否只是原条件不成立。未知保持未知；不加成功率/质量分或证据等级。用户采用前展示全部草稿与将写入的已有方法库位置。
 
-文件：lib/domains/business-teardowns/counterexamples/**、app/(app)/business-lab/counterexamples/**、129_business_method_counterexamples.sql；公共入口和schema.sql由root整合。独立owner/RPC、严格SQL+Zod、版本/幂等/分页、来源失效及方法追加回滚/重试测试，使用真实119/120/122/129迁移验证。记录删除不删除已由本人另行确认保存的方法；清楚告知。
+文件：lib/domains/business-teardowns/counterexamples/**、app/(app)/business-lab/counterexamples/**、132_business_method_counterexamples.sql；公共入口和schema.sql由root整合。独立owner/RPC、严格SQL+Zod、版本/幂等/分页、来源失效及方法追加回滚/重试测试，使用真实119/120/122/129迁移验证。记录删除不删除已由本人另行确认保存的方法；清楚告知。
