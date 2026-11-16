@@ -44,16 +44,30 @@ const MARKET_PROMPT = `下面是预测市场上的一道题（英文）和它的
 - title：一句「……会不会……？」，说清是谁、什么事、截止到什么时候（照原题的日子写，写成「2026 年 12 月底前」这种）。不要加原题没有的条件。
 - criteria：怎么才算「会」，一到两句，只照结算说明写，不加不减；结算说明里没写的就照题目本身写。
 - category：从这几个里挑一个：${FORECAST_CATEGORIES.join("、")}。
-用简体中文；人名、公司名、机构名可以保留原文。不要写市场现在的概率，不要写你的看法。
+用简体中文；人名、公司名、机构名可以保留原文。原题里的数字门槛（比如「1.9% 以下」「3.0% 以上」）照写，写成阿拉伯数字加 %。不要写市场现在的概率，不要写你的看法。
 
 只输出 JSON：{"title":"…","criteria":"…","category":"…"}`;
 
-export function parseMarketTranslation(value: unknown): MarketTranslation {
+/** 文字里写成「1.9%」「3％」「百分之 5」的那些数。 */
+function percentNumbers(text: string): number[] {
+  return Array.from(text.matchAll(/(\d+(?:\.\d+)?)\s*[%％]|百分之\s*(\d+(?:\.\d+)?)/g), (m) => Number(m[1] ?? m[2]));
+}
+
+/**
+ * original 是英文原题加结算说明。原题里的百分数是门槛（「CPI 1.9% 以下」「国债利率 3.0% 以上」），照写；
+ * 原题里没有的百分数多半是 AI 写进去的市场概率，不收。2026-11 以前一律不许写 %，
+ * 门槛写着百分数的题（日本 CPI、国债利率）天天被拦，账本里进的反倒是握手几秒这种题。
+ */
+export function parseMarketTranslation(value: unknown, original = ""): MarketTranslation {
   const v = (value ?? {}) as Record<string, unknown>;
   const title = typeof v.title === "string" ? v.title.trim() : "";
   const criteria = typeof v.criteria === "string" ? v.criteria.trim() : "";
   if (!title || title.length > 120 || !criteria || criteria.length > 400) throw new Error("题目或标准缺了、太长");
-  if (/\d{1,3}\s*%|百分之/.test(`${title}${criteria}`)) throw new Error("题目里写了概率");
+  const text = `${title}${criteria}`;
+  const inOriginal = new Set(percentNumbers(original));
+  const stray = percentNumbers(text).find((n) => !inOriginal.has(n));
+  if (stray !== undefined) throw new Error(`题目里写了原题没有的百分数：${stray}%`);
+  if (/百分之(?!\s*\d)/.test(text)) throw new Error("题目里用汉字写了百分数（多半是概率）");
   assertChineseAllowingNames([title, criteria]);
   assertNoBanned([title, criteria]);
   return { title, criteria, category: category(v.category) };
@@ -61,6 +75,7 @@ export function parseMarketTranslation(value: unknown): MarketTranslation {
 
 export async function translateMarketQuestion(input: { question: string; description: string; closes: string }): Promise<MarketTranslation> {
   const contents = `题目：${input.question}\n到期：${input.closes}\n结算说明：${input.description || "（没写）"}`;
+  const original = `${input.question}\n${input.description}`;
   return executeAiJson(
     { operation: "forecast_market_translate", module: "unknown", outputMode: "json", timeoutMs: 20_000 },
     () => ({
@@ -68,7 +83,7 @@ export async function translateMarketQuestion(input: { question: string; descrip
       contents,
       config: { systemInstruction: MARKET_PROMPT, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 600 },
     }),
-    parseMarketTranslation
+    (value) => parseMarketTranslation(value, original)
   );
 }
 

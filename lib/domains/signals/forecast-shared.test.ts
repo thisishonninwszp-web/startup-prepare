@@ -8,6 +8,7 @@ import {
   medianProbability,
   parseManifoldMarket,
   parsePolymarketMarket,
+  marketEventKey,
   pickMarkets,
   scoreBySource,
   shownAi,
@@ -114,6 +115,16 @@ describe("market picking details", () => {
     const c = (id: string, url: string, q = id) => ({ platform: "polymarket" as const, id, question: q, url, closes: "2026-12-01", probability: 0.5, depth: 9000, description: "" });
     const out = pickMarkets([c("a", "u1"), c("b", "u1"), c("c", "u2", "Will X be between 1 and 2?"), c("d", "u3")], "2026-10-22", new Set(), 3);
     expect(out.map((x) => x.id).sort()).toEqual(["a", "d"]);
+  });
+
+  it("skips events that already went into the ledger on an earlier day, but not every slugless market", () => {
+    const handshake = "https://polymarket.com/event/xi-takaichi-handshake";
+    expect(marketEventKey(handshake)).toBe(handshake);
+    expect(marketEventKey("https://polymarket.com")).toBeNull();
+    expect(marketEventKey("")).toBeNull();
+    const c = (id: string, url: string) => ({ platform: "polymarket" as const, id, question: id, url, closes: "2026-12-01", probability: 0.5, depth: 9000, description: "" });
+    const out = pickMarkets([c("h2", handshake), c("bare", "https://polymarket.com"), c("cpi", "https://polymarket.com/event/japan-cpi")], "2026-10-22", new Set(["polymarket:h1", handshake, "https://polymarket.com"]), 3);
+    expect(out.map((x) => x.id).sort()).toEqual(["bare", "cpi"]);
   });
 });
 

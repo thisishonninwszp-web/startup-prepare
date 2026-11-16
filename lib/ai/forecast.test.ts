@@ -23,6 +23,18 @@ describe("forecast AI parsers", () => {
     expect(() => parseMarketTranslation({ title: "市场认为 70% 会加息？", criteria: "x", category: "世界" })).toThrow();
   });
 
+  it("market translation: thresholds from the original question pass, other percentages don't", () => {
+    const original = "Will Japan's core CPI increase by less than or equal to 1.9% in 2026?\nResolves per the Statistics Bureau (e.g. 1.8%).";
+    const ok = parseMarketTranslation({ title: "日本 2026 年的核心 CPI 涨幅会不会在 1.9% 以下？", criteria: "以总务省统计局公布的 2026 年数字为准。", category: "日本经济" }, original);
+    expect(ok.title).toContain("1.9%");
+    // 3.0% 写成 3%、全角 ％ 都算同一个门槛
+    const jgb = "Will the 10-year Japanese government bond yield on the last reported day of 2026 be at least 3.0%?";
+    expect(parseMarketTranslation({ title: "2026 年最后一个交易日，日本 10 年期国债利率会不会在 3％ 以上？", criteria: "以财务省公布的数字为准。", category: "日本经济" }, jgb).title).toContain("3％");
+    // 原题没有的百分数（多半是市场概率）照旧不收
+    expect(() => parseMarketTranslation({ title: "市场认为 71% 会，日本 CPI 会不会在 1.9% 以下？", criteria: "以统计局为准。", category: "世界" }, original)).toThrow("71%");
+    expect(() => parseMarketTranslation({ title: "日本 CPI 会不会在 1.9% 以下？", criteria: "市场认为百分之七十会。", category: "世界" }, original)).toThrow("汉字");
+  });
+
   it("business questions: id/headline echo, date window, no 'you'", () => {
     const items = new Map([["s1", "PayPay、訪日客向けプリペイドカードを検討"]]);
     const out = parseBusinessQuestions(

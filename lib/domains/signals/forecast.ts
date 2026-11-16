@@ -24,6 +24,7 @@ import {
   needsConfirm,
   daysBetween,
   isJapanQuestion,
+  marketEventKey,
   medianProbability,
   pickMarkets,
   anchorOf,
@@ -145,16 +146,20 @@ async function insertForecasts(
 export async function importMarkets(userId: string, today: string, n = 2): Promise<number> {
   const { data, error } = await supabaseAdmin.from("forecast_questions").select("source").eq("user_id", userId).eq("kind", "market");
   if (error) throw new Error(missing(error) ? FORECAST_MISSING : error.message);
-  const already = new Set(((data ?? []) as { source: Partial<MarketRef> }[]).map((r) => `${r.source.platform}:${r.source.id}`));
-  // 先从跟日本有关的里挑，不够再从别的（中国）里补
+  const keys = (m: Partial<MarketRef>) => [`${m.platform}:${m.id}`, ...[marketEventKey(m.url)].filter((k): k is string => k !== null)];
+  const already = new Set(((data ?? []) as { source: Partial<MarketRef> }[]).flatMap((r) => keys(r.source)));
+  // 先从跟日本有关的里挑，不够再从别的（中国）里补。多挑两道备着：一道译不出来（校验没过）就换下一道，
+  // 不然挑的顺序天天一样，同一道题天天卡住名额（2026-11 两周里 58 次翻译失败 53 次，账本几乎没进新题）。
+  const spare = n + 2;
   const all = await searchMarkets();
-  const japan = pickMarkets(all.filter((m) => isJapanQuestion(m.question)), today, already, n);
+  const japan = pickMarkets(all.filter((m) => isJapanQuestion(m.question)), today, already, spare);
   const picked = [
     ...japan,
-    ...pickMarkets(all.filter((m) => !isJapanQuestion(m.question)), today, new Set([...Array.from(already), ...japan.map((m) => `${m.platform}:${m.id}`)]), n - japan.length),
-  ];
+    ...pickMarkets(all.filter((m) => !isJapanQuestion(m.question)), today, new Set([...Array.from(already), ...japan.flatMap(keys)]), spare),
+  ].slice(0, spare);
   let added = 0;
   for (const m of picked) {
+    if (added >= n) break;
     const t = await translateMarketQuestion({ question: m.question, description: m.description, closes: m.closes }).catch(() => null);
     if (!t) continue;
     const { data: row, error: insertError } = await supabaseAdmin

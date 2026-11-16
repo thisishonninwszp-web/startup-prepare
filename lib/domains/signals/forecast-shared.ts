@@ -290,12 +290,28 @@ export function isBracketQuestion(q: string): boolean {
 }
 
 /**
+ * 一道市场题属于哪个事件：网址就是事件（Polymarket 一个事件页下面挂好几道题）。
+ * 没有 slug 时网址只剩 https://polymarket.com，那不算任何一个事件。
+ */
+export function marketEventKey(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).pathname.replace(/\/+$/, "") ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 从搜到的市场里挑可以进账本的：二选一、还开着、到期在两周到一年多之间、市场没几乎定、有足够多人在押、还没进过账本、
  * 不是分段题。一次最多挑 n 道，同一个事件（同一个网址）只挑一道：一半挑最快到期的（反馈快），一半挑押的人最多的。
+ * already 里放进过账本的「平台:id」和事件网址（marketEventKey）：同一个事件以前出过题，别的日子也不再出
+ * （2026-11-12〜14 一连三天进的都是习近平和高市握手那一件）。
  */
 export function pickMarkets(candidates: MarketCandidate[], today: string, already: Set<string>, n: number): MarketCandidate[] {
   const ok = candidates.filter((c) => {
-    if (already.has(`${c.platform}:${c.id}`) || !c.closes || !Number.isFinite(c.probability)) return false;
+    const event = marketEventKey(c.url);
+    if (already.has(`${c.platform}:${c.id}`) || (event && already.has(event)) || !c.closes || !Number.isFinite(c.probability)) return false;
     const days = daysBetween(today, c.closes);
     if (days < MARKET_RULES.minDays || days > MARKET_RULES.maxDays) return false;
     if (c.probability < MARKET_RULES.minP || c.probability > MARKET_RULES.maxP) return false;
