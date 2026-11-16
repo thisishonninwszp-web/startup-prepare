@@ -1,6 +1,7 @@
 "use server";
 
 import { sharedViewFor } from "@/lib/domains/signals/users";
+import { PAUSE_LABELS, RESUMED_MESSAGE, resumeGeneration, type PauseKind } from "@/lib/domains/signals/pauses";
 import { setUserSignalState, userSignalState } from "@/lib/domains/signals/user-states";
 import { generateMonthly, isMonth } from "@/lib/domains/signals/monthly";
 import { revalidatePath } from "next/cache";
@@ -1102,5 +1103,18 @@ export async function generateDigestDetailAction(date: string): Promise<{ ok: tr
     return { ok: true };
   } catch (error) {
     return { ok: false, message: errorMessage(error, "详细报告没写出来") };
+  }
+}
+
+/** 停了的那几样（两周没人点）：点「恢复」，从现在起再看两周。只有那一池的主账号能点（做不做是主账号那边花钱）。 */
+export async function resumeGenerationAction(kind: PauseKind): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+  const userId = await requireUserId();
+  try {
+    if ((await sharedViewFor(userId)).shared) return { ok: false, message: "这几样是主账号那边做的，在这里恢复不了" };
+    await resumeGeneration(userId, kind);
+    revalidatePath("/signals");
+    return { ok: true, message: `${PAUSE_LABELS[kind] ?? kind}：${RESUMED_MESSAGE}` };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error, "没恢复上") };
   }
 }

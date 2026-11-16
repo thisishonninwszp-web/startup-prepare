@@ -16,6 +16,7 @@ import { followReasonText } from "./memory-shared";
 import { ANCHOR_LABELS, MY_TIERS, pct, tiersBeside } from "./forecast-shared";
 import { actionSecret, actionUrl, LIST_TTL_DAYS, signAction, type ActionKind } from "@/lib/action-links";
 import { listSeconds, loadTodayList, previewLine } from "./today-list";
+import { pausedSentence } from "./pause-shared";
 import { loadTodayPersonal } from "./today";
 import { sectionLayout } from "./section-habits";
 import { findEarlierMentions } from "./followups";
@@ -93,7 +94,7 @@ export type DailyEmailInput = {
    * 一分钟清单：今天要他点的几件（邮件里只给一眼）和那一页的链接。每人一份。
    * 拿不到口令（没配密钥或网址）或者取清单出错为 null，邮件照旧（回想、预测、练习各自单列）。
    */
-  list?: { url: string; seconds: number; more: number; lines: { label: string; title: string; note: string }[] } | null;
+  list?: { url: string; seconds: number; more: number; lines: { label: string; title: string; note: string }[]; paused?: string | null } | null;
   /** 周日的周末版：这一周的周报（共用，朋友那封也放）。每条线带它在几天里出现过。 */
   weekend?: { weekStart: string; summary: string; threads: { title: string; note: string; days: number }[] } | null;
   /** 听今天的报告：念完约几分钟（按报告算，共用）和那一页的链接（每人一份口令）。 */
@@ -137,6 +138,9 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 /** 一段话的第一句（邮件里各条只放一句）。 */
+/** 停了的那几样后面接的一句（恢复在清单页上点）。 */
+const PAUSED_HINT = "想要哪样回来，打开清单点「恢复」。";
+
 /** 有一分钟清单、而且今天有要点的。 */
 function hasList(input: DailyEmailInput): input is DailyEmailInput & { list: NonNullable<DailyEmailInput["list"]> } {
   return !!input.list && input.list.lines.length > 0;
@@ -161,6 +165,7 @@ export function buildDailyEmail(input: DailyEmailInput): { subject: string; text
     lines.push(`今天要你点的 ${list.lines.length} 件 · 大约 ${list.seconds} 秒`);
     for (const l of list.lines) lines.push(`· ${l.label}：${l.title}　${l.note}`);
     if (list.more > 0) lines.push(`还有 ${list.more} 件留到明天。`);
+    if (list.paused) lines.push(`${list.paused}${PAUSED_HINT}`);
     lines.push(`一分钟点完：${list.url}`, "");
   }
   if (input.listenUrl) lines.push(`听今天的报告（约 ${input.listenMinutes ?? 1} 分钟）：${input.listenUrl}`, "");
@@ -403,6 +408,7 @@ export function buildDailyEmailHtml(input: DailyEmailInput, images: Record<strin
           )
           .join("") +
         (list.more > 0 ? para(`还有 ${list.more} 件留到明天。`, `font-size:12px;color:${C.muted};margin:6px 0 0;`) : "") +
+        (list.paused ? para(`${list.paused}${PAUSED_HINT}`, `font-size:12px;color:${C.muted};margin:6px 0 0;`) : "") +
         `<p style="margin:12px 0 0;"><a href="${esc(list.url)}" style="display:inline-block;background:${C.accent};color:${C.card};text-decoration:none;font-size:15px;font-weight:700;padding:8px 18px;border-radius:6px;">一分钟点完 →</a></p>` +
         `</div>`
     );
@@ -674,7 +680,7 @@ async function personalParts(
       return null;
     });
     const listUrl = base && secret ? actionUrl(base, signAction({ u: userId, k: "list", t: date, v: "" }, secret, Date.now(), LIST_TTL_DAYS)) : null;
-    const list = today && listUrl ? { url: listUrl, seconds: listSeconds(today.items), more: today.more, lines: today.items.map(previewLine) } : null;
+    const list = today && listUrl ? { url: listUrl, seconds: listSeconds(today.items), more: today.more, lines: today.items.map(previewLine), paused: pausedSentence(today.paused) } : null;
     // 听：和清单一样三天有效，点开那一页一个大按钮
     const listenUrl = base && secret ? actionUrl(base, signAction({ u: userId, k: "listen", t: date, v: "" }, secret, Date.now(), LIST_TTL_DAYS)) : null;
     return {

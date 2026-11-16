@@ -18,6 +18,7 @@ import { emailConfig } from "@/lib/domains/signals/notify";
 import { dueJudgments, knownTags, listJudgments, type JudgmentRow } from "@/lib/domains/signals/practice";
 import { deadlineLabel, HORIZONS, isBlindPracticeDate, JUDGMENT_MODE_LABELS, type HorizonKey, type PracticeDraft } from "@/lib/domains/signals/practice-shared";
 import { preparePractice } from "@/lib/domains/signals/practice-draft";
+import { pausedKinds, PRACTICE_PAUSED_NOTE } from "@/lib/domains/signals/pauses";
 import { ensurePracticeBreakdown } from "@/lib/domains/signals/breakdown";
 import { BreakdownFactors } from "@/components/breakdown-factors";
 import type { SignalDetail } from "@/lib/domains/signals/analysis";
@@ -800,7 +801,7 @@ function DraftPractice({ draft, ...props }: PracticeProps & { draft: PracticeDra
 async function PracticeDraftLoader({ poolUserId, ...props }: PracticeProps & { poolUserId: string }) {
   const ready = await preparePractice(poolUserId, props.date).catch((e) => {
     console.error("practice draft", e);
-    return { draft: null, breakdown: null, errors: [] };
+    return { draft: null, breakdown: null, errors: [] as string[], paused: false };
   });
   const withBreakdown = { ...props, practice: { ...props.practice, breakdown: props.practice.breakdown ?? ready.breakdown ?? undefined } };
   const factors = !props.practice.breakdown && ready.breakdown ? <BreakdownFactors breakdown={ready.breakdown} /> : null;
@@ -814,7 +815,9 @@ async function PracticeDraftLoader({ poolUserId, ...props }: PracticeProps & { p
   return (
     <>
       {factors}
-      <p className="mt-4 text-xs text-muted-foreground">AI 这次没判出来，这道你自己判。</p>
+      <p className="mt-4 text-xs text-muted-foreground">
+        {ready.paused ? PRACTICE_PAUSED_NOTE : "AI 这次没判出来，这道你自己判。"}
+      </p>
       <BlindPractice {...withBreakdown} />
     </>
   );
@@ -861,11 +864,19 @@ async function PracticeCard({
   const deadline = deadlineDate ? deadlineDate.toISOString().slice(0, 10) : undefined;
   // 经用户明确裁决（2026-10-23）：AI 先判、他点行不行；每周一的练习照旧先自己判
   const blindDay = isBlindPracticeDate(date);
+  // 两周多没人写判断，AI 先判先停了（见 pause-shared.ts）：直接自己判，不等 AI
+  const practicePaused = !judgment && !blindDay && !practice.ai_draft && isToday && (await pausedKinds(poolUserId)).has("practice");
   const props: PracticeProps = { date, practice, title, summary: usable?.summary ?? "", history: usable?.history ?? null, knownTags, horizon, deadline };
   return (
     <section className="mb-8 rounded-lg border bg-card p-5">
       <h2 className="text-lg font-semibold">
-        {judgment ? "今天的练习" : blindDay ? "今天的练习（周一）：先自己判，再看 AI 的" : "今天的练习：AI 先判了，你看行不行"}
+        {judgment
+          ? "今天的练习"
+          : blindDay
+            ? "今天的练习（周一）：先自己判，再看 AI 的"
+            : practicePaused
+              ? "今天的练习：先自己判"
+              : "今天的练习：AI 先判了，你看行不行"}
       </h2>
       <p className="mt-3 border-l-2 border-primary pl-3 text-base font-medium leading-8">{practice.question}</p>
       <p className="mt-2 text-xs leading-6 text-muted-foreground">
@@ -917,6 +928,11 @@ async function PracticeCard({
         </>
       ) : blindDay ? (
         <BlindPractice {...props} />
+      ) : practicePaused ? (
+        <>
+          <p className="mt-4 text-xs text-muted-foreground">{PRACTICE_PAUSED_NOTE}</p>
+          <BlindPractice {...props} />
+        </>
       ) : practice.ai_draft ? (
         <DraftPractice draft={practice.ai_draft} {...props} />
       ) : isToday ? (

@@ -5,6 +5,7 @@ import { getSignalDetail } from "./analysis";
 import { fetchArticleBody } from "./article";
 import type { BriefPracticeRow } from "./brief";
 import { anchorOf, boardSections, loadForecastBoard } from "./forecast";
+import { pausedKinds, type PauseKind } from "./pauses";
 import { breakdownQueue, LEANS, questionMaterial, type Breakdown, type Lean } from "./breakdown-shared";
 
 export * from "./breakdown-shared";
@@ -114,7 +115,9 @@ export async function breakdownWaitingQuestions(userId: string, today: string, s
   const board = await loadForecastBoard(userId);
   if (board === "missing-schema") return { did: 0, remaining: 0 };
   const s = boardSections(board, today);
-  const waiting = s.toForecast;
+  // 停着的那几种（生意题、到日本题两周没人点）不进清单，也不先拆
+  const paused = await pausedKinds(userId);
+  const waiting = s.toForecast.filter((q) => !paused.has(q.kind as PauseKind));
   const done = new Set((await loadQuestionBreakdowns(waiting.map((q) => q.id))).keys());
   const queue = breakdownQueue(waiting, s.blind, (q) => anchorOf(q, board.forecasts) !== null, done, QUESTION_BREAKDOWN_AHEAD);
   let did = 0;

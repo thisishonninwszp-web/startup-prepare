@@ -4,6 +4,7 @@ import type { BriefPracticeRow } from "./brief";
 import { ensurePracticeBreakdown, loadBriefPractice, patchBriefPractice, type Breakdown } from "./breakdown";
 import { forecastViews, medianProbability } from "./forecast";
 import { HORIZONS, isBlindPracticeDate, type HorizonKey, type PracticeDraft } from "./practice-shared";
+import { pausedKinds } from "./pauses";
 
 /**
  * 每天练习题的 AI 先判（经用户明确裁决，2026-10-23）：和预测题同一套 —— 三种思路各搜各的、各说几成，
@@ -43,7 +44,12 @@ export async function ensurePracticeDraft(userId: string, date: string): Promise
  * 今天的练习两样一起备好（2026-10-24）：AI 先判、拆解卡（「从这几样想起」，周一的先判题也拆 —— 拆解卡不带方向）。
  * 两样并排出，写的是同一格 practice：前后脚写偶尔会冲掉一样，所以都好了以后再看一眼，缺的补写回去。
  */
-export async function preparePractice(userId: string, date: string): Promise<{ draft: PracticeDraft | null; breakdown: Breakdown | null; errors: string[] }> {
+export async function preparePractice(
+  userId: string,
+  date: string
+): Promise<{ draft: PracticeDraft | null; breakdown: Breakdown | null; errors: string[]; paused?: boolean }> {
+  // 两周里没人写过一条判断：两样都先不出（见 pause-shared.ts），页面退回自己判；判一次就恢复
+  if ((await pausedKinds(userId)).has("practice")) return { draft: null, breakdown: null, errors: [], paused: true };
   const [draft, breakdown] = await Promise.allSettled([ensurePracticeDraft(userId, date), ensurePracticeBreakdown(userId, date)]);
   const errors = [draft, breakdown].flatMap((r) => (r.status === "rejected" ? [r.reason instanceof Error ? r.reason.message : String(r.reason)] : []));
   const fresh = await loadBriefPractice(userId, date).catch(() => null);

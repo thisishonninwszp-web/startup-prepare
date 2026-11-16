@@ -207,6 +207,12 @@ describe("一分钟清单", () => {
     expect(text).toContain("一分钟点完：https://app.example/a/list");
     expect(text).not.toContain("先写下你的判断");
   });
+  it("停了的那几样：清单框里一句，纯文字版也有；没停的不写", () => {
+    const paused = "这几样两周多没人点，先停了、不出新的：生意题（一次也没点过）。";
+    expect(buildDailyEmailHtml({ ...base, list: { ...list, paused } }, {})).toContain(`${paused}想要哪样回来，打开清单点「恢复」。`);
+    expect(buildDailyEmail({ ...base, list: { ...list, paused } }).text).toContain(`${paused}想要哪样回来`);
+    expect(buildDailyEmailHtml({ ...base, list }, {})).not.toContain("先停了");
+  });
   it("没有清单（拿不到口令）或今天没有要点的：照旧", () => {
     expect(buildDailyEmailHtml(base, {})).toContain("先写下你的判断，再看 AI 怎么拆");
     expect(buildDailyEmailHtml({ ...base, list: { ...list, lines: [] } }, {})).toContain("先写下你的判断，再看 AI 怎么拆");

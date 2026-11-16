@@ -10271,3 +10271,10 @@ revoke all on public.business_making_practices,public.business_practice_receipts
 revoke all on function public.business_practice_service(uuid),public.business_practice_keys(jsonb,text[],text[]),public.business_practice_uuid(jsonb),public.business_practice_text(jsonb,integer),public.business_practice_integer(jsonb,integer,integer),public.business_practice_apprenticeship(uuid,uuid,uuid),public.business_practice_context(uuid,uuid),public.business_practice_dto(public.business_making_practices),public.business_practice_command(uuid,text,jsonb),public.business_practice_read(uuid,text,jsonb) from public,anon,authenticated,service_role;
 grant execute on function public.business_practice_command(uuid,text,jsonb),public.business_practice_read(uuid,text,jsonb) to service_role;
 commit;
+
+-- 127：停掉没人点的那几样（经用户同意，2026-11-16）
+--
+-- 练习的 AI 先判、生意题、到日本题、假门先做好，两周里谁都没点过，就先不做新的（lib/domains/signals/pause-shared.ts）。
+-- 「停了」不存，每次现算；这里只存他点「恢复」的时候：{"business": "2026-11-16T…Z", …}，从那时起再看两周。
+
+alter table signal_prefs add column if not exists resumed jsonb not null default '{}'::jsonb;

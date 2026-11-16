@@ -16,6 +16,7 @@ import { loadGapVoices } from "./voices";
 import { loadFakeDoorStats } from "./fake-door";
 import { doorLang } from "./fake-door-shared";
 import type { GapSide } from "./gaps-shared";
+import { loadPauseStates, type PauseKind, type PauseState } from "./pauses";
 
 export * from "./today-list-shared";
 
@@ -26,8 +27,11 @@ const THREE_VIEWS = ["ai_outside", "ai_inside", "ai_devil"];
  * 到期确认（只给出题的主账号）、到期的判断、回想、实验先猜；挑法在 today-list-shared.ts。邮件和清单页每次都现取。
  * 只读、不调 AI。哪一块取不到就当那一块是空的，不拦着别的。
  */
-export async function loadTodayList(userId: string, today: string): Promise<{ items: ListItem[]; more: number }> {
+export async function loadTodayList(userId: string, today: string): Promise<{ items: ListItem[]; more: number; paused: PauseState[] }> {
   const view = await sharedViewFor(userId);
+  // 两周没人点、先停了的那几种不放进来（按那一池算：题库和练习是主账号的）；停了哪几样只告诉主账号（朋友管不了要不要做）
+  const pauseStates = await loadPauseStates(view.sourceUserId).catch(quietPause);
+  const paused = new Set((pauseStates ?? []).filter((s) => s.paused).map((s) => s.kind));
   const quiet =
     <T,>(what: string, fallback: T) =>
     (e: unknown): T => {
@@ -49,7 +53,7 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
   const c: ListCandidates = { practice: null, forecasts: [], confirms: [], dues: [], recalls: [], experiments: [], doors: [] };
 
   // 后台先做好的假门：他没说不要、还没发布（这一条还没有假门）的
-  for (const [key, v] of Array.from(voices)) {
+  for (const [key, v] of paused.has("door") ? [] : Array.from(voices)) {
     const prep = v.door_draft;
     if (!prep || prep.dismissed_at || doorStats.has(key)) continue;
     const [side, signalId] = [key.slice(0, key.indexOf(":")) as GapSide, key.slice(key.indexOf(":") + 1)];
@@ -57,7 +61,7 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
   }
 
   // 练习：他还没对这道题下过判断才放
-  if (practice && !judgments.some((j) => j.signal_id === practice.signal_id && j.question === practice.question)) {
+  if (practice && !paused.has("practice") && !judgments.some((j) => j.signal_id === practice.signal_id && j.question === practice.question)) {
     const deadlineDate = questionDeadline(practice.question, today);
     const horizon: HorizonKey =
       practice.horizon && practice.horizon in HORIZONS ? (practice.horizon as HorizonKey) : practiceHorizon(practice.question, undefined, today);
@@ -76,9 +80,10 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
 
   if (board && board !== "missing-schema") {
     const s = boardSections(board, today);
-    const breakdowns = await loadQuestionBreakdowns(s.toForecast.map((q) => q.id));
+    const waiting = s.toForecast.filter((q) => !paused.has(q.kind as PauseKind));
+    const breakdowns = await loadQuestionBreakdowns(waiting.map((q) => q.id));
     // board 里 AI、市场、基准都是出题那一池的（loadForecastBoard 已经分好了），先摆的数直接从这里算
-    c.forecasts = s.toForecast.map((q) => ({
+    c.forecasts = waiting.map((q) => ({
       id: q.id,
       title: q.title,
       kind: q.kind,
@@ -141,7 +146,12 @@ export async function loadTodayList(userId: string, today: string): Promise<{ it
         };
       });
   }
-  return pickListItems(c);
+  return { ...pickListItems(c), paused: view.shared ? [] : (pauseStates ?? []).filter((s) => s.paused) };
+}
+
+function quietPause(e: unknown): null {
+  console.error("today-list: pauses", e);
+  return null;
 }
 
 /**

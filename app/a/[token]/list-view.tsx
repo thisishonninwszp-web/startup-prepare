@@ -25,8 +25,10 @@ import {
   listRecallRateAction,
   listRecallRevealAction,
   listResolveAction,
+  listResumeAction,
   listSkipForecastAction,
 } from "./list-actions";
+import { lastTouchNote, PAUSE_LABELS, type PauseState } from "@/lib/domains/signals/pause-shared";
 
 const OFFLINE = "没连上服务器（网络断了一下），过一会儿再试。";
 
@@ -530,6 +532,7 @@ export function TodayListView({
   more,
   seconds,
   taps,
+  paused = [],
 }: {
   token: string;
   day: string;
@@ -538,6 +541,8 @@ export function TodayListView({
   seconds: number;
   /** 这周点了几件；没取到为 null。 */
   taps: number | null;
+  /** 两周没人点、先停了的那几样（只给主账号）。 */
+  paused?: PauseState[];
 }) {
   const [done, setDone] = useState<Record<number, string>>({});
   const left = items.length - Object.keys(done).length;
@@ -578,6 +583,7 @@ export function TodayListView({
           </li>
         ))}
       </ul>
+      {paused.length > 0 && <PausedBox token={token} paused={paused} />}
       <p className="text-xs leading-6 text-muted-foreground">
         {taps !== null ? `这周你点了 ${taps} 件（打开这一页之前的）。` : ""}这一页是给你一个人的，别转发。
       </p>
@@ -587,5 +593,40 @@ export function TodayListView({
         </Link>
       </p>
     </div>
+  );
+}
+
+/** 停了的那几样：每样一行，点「恢复」再看两周（两周里点过一次也就自己恢复了）。 */
+function PausedBox({ token, paused }: { token: string; paused: PauseState[] }) {
+  return (
+    <section className="rounded-lg border border-border p-4">
+      <p className="text-sm leading-7">这几样两周多没人点，先停了：不再出新的，也不往这里放。</p>
+      <ul className="mt-2 space-y-2">
+        {paused.map((p) => (
+          <PausedRow key={p.kind} token={token} state={p} />
+        ))}
+      </ul>
+      <p className="mt-2 text-xs leading-6 text-muted-foreground">在网站上点过一次也算，第二天就照旧做。</p>
+    </section>
+  );
+}
+
+function PausedRow({ token, state }: { token: string; state: PauseState }) {
+  const [done, setDone] = useState<string | null>(null);
+  const { pending, error, act } = useAct(setDone);
+  if (done) return <li className="text-sm leading-7 text-primary">{done}</li>;
+  return (
+    <li>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm">
+          {PAUSE_LABELS[state.kind]}
+          <span className="ml-2 text-xs text-muted-foreground">{lastTouchNote(state.lastTouch)}</span>
+        </p>
+        <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => listResumeAction(token, state.kind))}>
+          恢复
+        </Button>
+      </div>
+      <ErrorLine error={error} />
+    </li>
   );
 }

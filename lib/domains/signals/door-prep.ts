@@ -4,6 +4,7 @@ import { doorLang } from "./fake-door-shared";
 import { transferKey } from "./gaps-shared";
 import { analyzeGapVoices, loadGapVoices, saveDoorDraft } from "./voices";
 import { LISTEN_EVERY_HOURS, pickDoorGap, pickListenGap, suggestedPrice } from "./door-prep-shared";
+import { pausedKinds } from "./pauses";
 
 export * from "./door-prep-shared";
 
@@ -15,6 +16,8 @@ export * from "./door-prep-shared";
  * 做好的出现在一分钟清单里，他看过点「发布」才有公开页；点「不要」就不再为这一条做。
  */
 export async function prepStep(userId: string): Promise<{ did: number; note: string }> {
+  // 两周没人点过假门（不要、发布都没有）就先不做，连自动听一听一起停（见 pause-shared.ts）
+  if ((await pausedKinds(userId)).has("door")) return { did: 0, note: "假门先做好停着" };
   const [state, voices] = await Promise.all([loadActState(userId), loadGapVoices(userId)]);
   const notes: string[] = [];
   let did = 0;

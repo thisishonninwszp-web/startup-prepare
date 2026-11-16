@@ -18,6 +18,7 @@ import { loadGapVoices, saveDoorDraft } from "@/lib/domains/signals/voices";
 import { transferKey, type GapSide } from "@/lib/domains/signals/gaps-shared";
 import { appUrl } from "@/lib/domains/signals/notify";
 import { dropCandidate, getPosting, pickPosting } from "@/lib/domains/jobs/postings";
+import { PAUSE_LABELS, RESUMED_MESSAGE, resumeGeneration, type PauseKind } from "@/lib/domains/signals/pauses";
 
 /**
  * 一分钟清单那一页的按钮（不用登录，口令认人）：每个都先验口令（种类 list），做的是口令里那个账号的事。
@@ -215,5 +216,17 @@ export async function listJobDropAction(token: string, postingId: string): Promi
     return { ok: true, message: "不要了。" };
   } catch (error) {
     return fail(error, "没删掉");
+  }
+}
+
+/** 停了的那几样（两周没人点）：点「恢复」，从现在起再看两周。只给那一池的主账号 —— 做不做是主账号那边花钱。 */
+export async function listResumeAction(token: string, kind: PauseKind): Promise<Result> {
+  try {
+    const { u } = who(token);
+    if ((await sharedViewFor(u)).shared) throw new Error("这几样是主账号那边做的，在这里恢复不了");
+    await resumeGeneration(u, kind);
+    return { ok: true, message: `${PAUSE_LABELS[kind] ?? kind}：${RESUMED_MESSAGE}` };
+  } catch (error) {
+    return fail(error, "没恢复上");
   }
 }

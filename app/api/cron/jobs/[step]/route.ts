@@ -20,6 +20,7 @@ import { preparePractice } from "@/lib/domains/signals/practice-draft";
 import { breakdownWaitingQuestions } from "@/lib/domains/signals/breakdown";
 import { prefetchDueEvidence } from "@/lib/domains/signals/practice";
 import { prepStep } from "@/lib/domains/signals/door-prep";
+import { pausedKinds } from "@/lib/domains/signals/pauses";
 
 /**
  * 外部信号的后台步骤，由 GitHub Actions（.github/workflows/signals-jobs.yml）定时一步一步调：
@@ -59,15 +60,20 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
     for (const u of users) did += await importMarkets(u, today, 2);
     return { done: true, did };
   },
-  // 从今天的报告出生意题、从差距清单出到日本题（各一天一次）
+  // 从今天的报告出生意题、从差距清单出到日本题（各一天一次；两周没人点的先不出，见 pause-shared.ts）
   business: async (users, today) => {
     let did = 0;
+    const notes: string[] = [];
     for (const u of users) {
-      did += await createBusinessQuestions(u, today);
-      did += await createArrivalQuestions(u, today).catch((e) => {
-        console.error("arrival question", e);
-        return 0;
-      });
+      const paused = await pausedKinds(u);
+      if (paused.has("business")) notes.push("生意题停着");
+      else did += await createBusinessQuestions(u, today);
+      if (paused.has("arrival")) notes.push("到日本题停着");
+      else
+        did += await createArrivalQuestions(u, today).catch((e) => {
+          console.error("arrival question", e);
+          return 0;
+        });
       did += await createPolicyQuestions(u, today).catch((e) => {
         console.error("policy question", e);
         return 0;
@@ -77,7 +83,7 @@ const STEPS: Record<string, (users: string[], today: string) => Promise<Result>>
         return 0;
       });
     }
-    return { done: true, did };
+    return { done: true, did, note: notes.join("；") || undefined };
   },
   // 领先指标：上过中国 App 榜的 App 在日本上架了没有、加了日语没有（全站共用，不调 AI）
   // 和政策流水线：e-Gov 意见征集的订阅、补结果、法律修改历史（一个月刷新一次）

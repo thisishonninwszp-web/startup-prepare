@@ -53,7 +53,7 @@ export default async function TapPage({ params }: { params: { token: string } })
   // 一分钟清单：每次打开都现取（在网站上点过的不再出现）；只读，按钮各自再验口令
   if (p.k === "list") {
     const [list, taps] = await Promise.all([loadTodayList(p.u, p.t), tapsThisWeek(p.u, p.t).catch(() => null)]);
-    return shell(<TodayListView token={params.token} day={p.t} items={list.items} more={list.more} seconds={listSeconds(list.items)} taps={taps} />);
+    return shell(<TodayListView token={params.token} day={p.t} items={list.items} more={list.more} seconds={listSeconds(list.items)} taps={taps} paused={list.paused} />);
   }
 
   // 听：邮件里点进来，一个大按钮（浏览器不许一打开就出声）；念的和「今天」页的听按钮同一份
