@@ -41,4 +41,12 @@ Task2 verification (2026-11-16): working-tree full run324 files/2107 tests, tsc/
 - [x] Run `npm test`, `npx tsc --noEmit`, `npm run lint`, actual migrations SQL integrations. No local build while dev server is running.
 - [x] Review auth, stale references, errors, comments, mobile flow and accidental provider/decision writes. Commit only scoped files.
 - [x] Apply125/126 production migrations through authenticated Supabase SQL Editor and verify actual RPC/role contracts. No provider calls or invented personal records.
-- [ ] Deploy after checks when migrations permit production use; verify actual deployment result. Record completed and outstanding scope truthfully, including remaining②③④.
+- [x] Deploy after checks when migrations permit production use; verify actual deployment result. Record completed and outstanding scope truthfully, including remaining②③④.
+
+## Final production verification — 2026-11-16
+
+Public implementation `0a22350` contains only this feature atop origin/main; unrelated local commit `5f3c938` was kept out of publication. A managed release worktree cherry-picked source implementation `13c54e7`, then passed324 files/2105 tests, TypeScript and ESLint. [Vercel production deployment](https://vercel.com/forcus-wu-s-projects/startup-prepare/9yzELFPYiqy9DAVGF2v4VeF7buRK) returned success.
+
+Signed-in `/business-lab/practice` displayed the nine owned cases and all four templates. Selecting an owned case resolved current context and explicitly showed the lack of a published report; applying a task-only template populated editable fields. Nothing was saved as personal work. The wording was narrowed from “no readable report” to “no published report”, because drafts may still exist; focused UI tests passed.
+
+Delivered①shared premises and⑤making practice. Next independent stages remain unimplemented:②operating under changed conditions,③cash timing simulation,④counterexamples for personally confirmed methods. No new AI/provider requests, automatic outreach, validation signals or personal work experiences were created by rollout.
