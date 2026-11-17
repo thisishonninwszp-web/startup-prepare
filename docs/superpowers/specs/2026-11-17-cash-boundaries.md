@@ -1,0 +1,12 @@
+# 判断が変わる境目（提案③）
+
+User approved this after continuity and before continuous simulation. Extend existing hypothetical cash timing, never estimate real merchant costs or score ideas.
+
+- Select an owned saved cash scenario and one explicitly chosen variable: opening cash, one flow amount, or one flow date, and baseline/alternative. User supplies the range. Currency and the rest of the assumptions remain those of the selected saved revision. Display the exact varied input and assumptions; money uses existing integer minor units/parser, no float/FX.
+- For money ranges (0..1e12 minor units), find the exact transition of minimum daily closing balance below zero using monotonic binary search; direction derives from opening/inflow/outflow, not guessed from samples. Return endpoints and adjacent integer values at each transition, including all-negative/no-negative cases. Reuse calculateCash for same-day aggregation and starting-day semantics. Do not claim an intraday shortfall or business viability.
+- Dates are exhaustive valid Gregorian dates from startDate through a user range of at most366 inclusive days. Negative-balance dates can form multiple disjoint intervals: preserve every interval; do not assume a single monotonic date threshold. No money range stepping or coarse sample described as exact.
+- Save owner-authored range definitions with source scenario id and exact revision only, not copied source prose/scenario. On source edit/delete or loss of ownership the old analysis is stale; retain independent range input but hide old calculated output and require explicit new analysis against the new revision. Full create/read/edit/delete/retry/pagination with optimistic revision and idempotent tombstones.
+- New /business-lab/cash/boundaries?scenarioId=UUID; an existing saved cash view links to it. CaseId may prefilter source options. Input/response strictness in TS+SQL; authenticated owner comes from the session, uncached service RPC only. New tables RLS and revoke direct grants from anon/authenticated/service_role; helpers not callable directly.
+- No provider, timer, real contact, idea-state/activity, career or automatic method writes. Missing134 migration degrades only this feature. Workspace summaries expose bounded labels/ref ids/current source validity, not calculated facts from stale scenarios.
+
+Files: lib/domains/business-teardowns/boundaries/**; app/(app)/business-lab/cash/boundaries/**;134_business_cash_boundaries.sql. Root alone changes existing cash panel link/workspace integration/schema.sql.
