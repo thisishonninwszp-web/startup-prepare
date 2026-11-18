@@ -11,7 +11,7 @@
 - [x] Integrate136 read-only wrapper over133 base items plus134 boundaries/135 simulations with a single keyset ordering and only authored next-check text. Actual combined PGlite covers stale source versions, owner isolation, tied pagination and no source copies.
 - [x] Actual component synthetic browser verification incl lost responses/source changes and mobile widths; never invent personal production records or call providers.
 - [x] Apply final migrations with connected Supabase SQL capabilities after source review; verify real read/anonymous/owner contracts. Supabase SQL tools became available and133–136 were applied directly.
-- [ ] Publish scoped commits, follow Vercel production build through completion, verify authenticated canonical UI and save proof. Preserve concurrent main work and record real-vs-synthetic verification limits.
+- [x] Publish scoped commits, follow Vercel production build through completion, verify authenticated canonical UI and save proof. Preserve concurrent main work and record real-vs-synthetic verification limits.
 
 ## Verified before production
 
@@ -26,4 +26,11 @@
 - Committed implementation dca4d54. Applied reviewed migrations through Supabase: business_case_workspace_133 /20261118055614; business_cash_boundaries_134 /20261118055619; business_operating_simulation_135 /20261118055623; business_workspace_operating_links_136 /20261118055629.
 - Verified all four new tables have RLS enabled and no SELECT grant for anon, authenticated or service_role. Five public RPC entrypoints permit only service_role; both private workspace helpers deny all three roles. Real PostgREST owner lists succeed (currently empty); null-owner/anonymous reads and anonymous commands reject42501. No personal records or provider calls were created.
 - Security advisor categories remain the five baseline categories. New scope appears only in [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), INFO: these tables intentionally deny direct clients and are accessed only through guarded server RPCs. No new scoped WARN/ERROR was reported.
-- Production code deployment and authenticated canonical-page verification are the remaining release steps.
+- Production code deployment and authenticated canonical-page verification completed; details below.
+
+## Production release acceptance (2026-11-18)
+
+- Main and codex/operator-continuity include implementation dca4d54 and final source-return fix336fed5. Fresh359-file/2266-test suite, TypeScript and ESLint pass. The final two regressions prove that returning from a boundary opens its exact saved cash source, and preserves case context before source selection.
+- Vercel reported success for [the final code deployment](https://vercel.com/forcus-wu-s-projects/startup-prepare/J2d4tTqWtVZvCw9X8mzgQdhbpvth). Reloaded authenticated canonical pages show all six operating-practice entries, accessible boundaries and simulation forms, the current owned case carried into both tools, and a clear missing-record notice rather than silently opening another simulation. The corrected boundary return link preserves the case on the deployed version. No browser console errors were captured.
+- Actual production simulation and boundary forms fit the active391px viewport with clientWidth376/scrollWidth376; the override was reset. The business-lab home was left as the browser deliverable. Screenshot: .tmp/operator-continuity/production-complete.jpg (local evidence, not committed).
+- Production checks were read-only: existing owned cases and empty saved-work lists were used. Resume cards intentionally remain hidden until the user has saved work; boundaries require a saved cash scenario. Save/retry/stale-source/deletion/full-six-round acceptance used synthetic component fixtures and real PostgreSQL/PGlite contracts, not invented production records. No external AI/provider requests were made by this release verification.
