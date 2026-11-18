@@ -1,0 +1,23 @@
+import {z} from 'zod';
+import {supabaseAdminUncached} from '@/lib/supabase';
+import {cashUuid,cashScenarioSchema,type CashRecord} from '../cash/domain';
+import {boundaryDefinitionSchema,parseBoundaryCommand,type BoundaryCommand,type BoundaryRecord,type BoundaryPage,type BoundarySourcePage,type BoundarySummaryPage} from './domain';
+const revision=z.number().int().positive().max(2147483647);
+const stamp=z.string().max(80).regex(/^\d{4}-\d\d-\d\dT[0-9:.]+(Z|[+-]\d\d:\d\d)$/).refine(v=>Number.isFinite(Date.parse(v)));
+const cursor=z.object({date:stamp,id:cashUuid}).strict();
+const encoded=z.string().max(400).regex(/^[A-Za-z0-9_-]+$/).refine(v=>{try{return cursor.safeParse(JSON.parse(Buffer.from(v,'base64url').toString())).success;}catch{return false;}},'分页位置不正确');
+const pageInput=z.object({before:encoded.optional(),caseId:cashUuid.optional()}).strict();
+const recordSchema=z.object({id:cashUuid,caseId:cashUuid,definition:boundaryDefinitionSchema,revision,createdAt:stamp,updatedAt:stamp,source:z.object({available:z.boolean(),currentRevision:revision.nullable(),caseId:cashUuid.nullable()}).strict()}).strict().refine(v=>v.source.available===(v.source.currentRevision===v.definition.cashRevision)&&((v.source.currentRevision===null)===(v.source.caseId===null))&&(v.source.caseId===null||v.source.caseId===v.caseId));
+const sourceSchema=z.object({id:cashUuid,scenario:cashScenarioSchema,revision,createdAt:stamp,updatedAt:stamp,sources:z.object({caseAvailable:z.boolean(),caseTitle:z.string().max(10000).nullable()}).strict().refine(v=>v.caseAvailable===(v.caseTitle!==null))}).strict();
+const summarySchema=z.object({id:cashUuid,label:z.string().trim().min(1).max(300).refine(v=>v.length<=300),refId:cashUuid,revision,updatedAt:stamp,nextCheck:z.null(),sourceAvailable:z.boolean()}).strict();
+function pageSchema<T extends z.ZodType>(s:T){return z.object({items:z.array(s).max(20),nextCursor:cursor.nullable()}).strict();}
+function decode(input:{before?:string;caseId?:string}){const {before,...p}=pageInput.parse(input);return {...p,...(before?{before:cursor.parse(JSON.parse(Buffer.from(before,'base64url').toString()))}:{})};}
+function encode<T>(v:{items:T[];nextCursor:{date:string;id:string}|null}){return {...v,nextCursor:v.nextCursor?Buffer.from(JSON.stringify(v.nextCursor)).toString('base64url'):null};}
+async function read<T>(owner:string,operation:string,input:unknown,schema:z.ZodType<T>):Promise<T>{cashUuid.parse(owner);const {data,error}=await supabaseAdminUncached.rpc('business_cash_boundary_read',{p_user_id:owner,p_operation:operation,p_input:input});if(error)throw Object.assign(new Error(error.message),{code:error.code});return schema.parse(data);}
+function missing(error:unknown){return ['42P01','42883','PGRST202','PGRST205'].includes((error as {code?:string})?.code??'');}
+export async function boundaryCommand(owner:string,input:BoundaryCommand):Promise<{id:string;revision:number}>{cashUuid.parse(owner);const p=parseBoundaryCommand(input);const {data,error}=await supabaseAdminUncached.rpc('business_cash_boundary_command',{p_user_id:owner,p_operation:p.operation,p_input:p});if(error)throw new Error(error.message);const receipt=z.object({id:cashUuid,revision}).strict().parse(data);if(receipt.id!==p.id||receipt.revision!==p.expectedRevision+1)throw new Error('保存回执与请求不一致，请核对');return receipt;}
+export async function listBoundaries(owner:string,input:{before?:string;caseId?:string}={}):Promise<BoundaryPage>{try{return {available:true,...encode(await read(owner,'list',decode(input),pageSchema(recordSchema)))};}catch(e){if(missing(e))return {available:false,items:[],nextCursor:null};throw e;}}
+export async function getBoundary(owner:string,id:string):Promise<BoundaryRecord|null>{const parsed=cashUuid.parse(id),record=await read(owner,'get',{id:parsed},recordSchema.nullable());if(record&&record.id!==parsed)throw new Error('读取记录与请求不一致');return record;}
+export async function getBoundarySource(owner:string,id:string):Promise<CashRecord|null>{const parsed=cashUuid.parse(id),record=await read(owner,'source',{id:parsed},sourceSchema.nullable());if(record&&record.id!==parsed)throw new Error('读取来源与请求不一致');return record;}
+export async function listBoundarySources(owner:string,input:{before?:string;caseId?:string}={}):Promise<BoundarySourcePage>{return encode(await read(owner,'sources',decode(input),pageSchema(sourceSchema)));}
+export async function listBoundarySummaries(owner:string,input:{caseId:string;before?:string}):Promise<BoundarySummaryPage>{cashUuid.parse(input.caseId);try{return {available:true,...encode(await read(owner,'summaries',decode(input),pageSchema(summarySchema)))};}catch(e){if(missing(e))return {available:false,items:[],nextCursor:null};throw e;}}

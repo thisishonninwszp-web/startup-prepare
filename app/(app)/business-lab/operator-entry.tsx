@@ -4,8 +4,10 @@ import {Button} from '@/components/ui/button';
 const tools=[
  ['pressure','条件变了，你怎么做'],
  ['cash','先付后收，现金够不够'],
+ ['cash/boundaries','哪项现金假设会改变结果'],
  ['counterexamples','给自己的方法找反例'],
  ['practice','亲手做一件东西'],
+ ['simulation','连续做六回合经营取舍'],
 ] as const;
 
 export function BusinessOperatorEntry({caseId}:{caseId?:string}){
