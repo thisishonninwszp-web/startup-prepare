@@ -1,6 +1,6 @@
 export const REPORT_VALIDATION_RULES=['numeric_claim','fractional_claim','flattery_or_score','population_or_profit','missing_hypothesis','metric_source','quote_source','unexpected_field'] as const;
 export type ReportValidationRule=typeof REPORT_VALIDATION_RULES[number];
-export const REPORT_VALIDATOR_VERSION='business-validator-v5';
+export const REPORT_VALIDATOR_VERSION='business-validator-v6';
 export const REPORT_DETAIL_FIELDS=['text','competingExplanation','distinguishingObservation','unknowns','observations','refs','section'] as const;
 export type ReportDetailField=typeof REPORT_DETAIL_FIELDS[number];
 export class BusinessReportValidationError extends Error{
@@ -9,6 +9,7 @@ export class BusinessReportValidationError extends Error{
 const prohibited=/很有潜力|不错的想法|前景广阔|照做能成功|值得投资|想法评分|机会评分|评分|星级|score|rating/i;
 const quantitative=/[\p{N}%％]|[零〇壹贰叁肆伍陆柒捌玖拾佰仟二三四五六七八九十百千万亿两]|一(?=[个件枚袋盒包人单成倍万元千百十])|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|percent|dozen)\b/iu;
 const fractional=/过半|一半|半(?:数|成(?!品)|价|折|个|件|枚|袋|盒|包|人|单|倍|美?元|日元|欧元|英镑|年|月|天|日|小时|分钟|公斤|斤|份)|\b(?:half|halves|quarter|quarters)\b/iu;
+const descriptionComparison=/^(?:针对“[^”]{1,80}”宣称，)?(?:可以|计划)进行A\/B测试，比较突出“[^”]{1,80}”和突出“[^”]{1,80}”两种描述对转化率的影响$/u;
 const actionPrefix='(?:(?:建议|计划|准备|尝试|需要|先|请|可以|拟)\\s*)*';
 const interview=new RegExp(`^${actionPrefix}(?:访谈|访问|联系|询问|采访)\\s*[0-9一二三四五六七八九十百两]{1,3}\\s*(?:位|名|个)?(?:受访者|用户|顾客|买家|人)`,'u');
 const smallTest=new RegExp(`^${actionPrefix}(?:做|安排|开展|进行)(?:一|1)(?:次|个)(?:访谈|小实验|实验|测试)`,'u');
@@ -20,6 +21,7 @@ const interviewQuestion=new RegExp(`^${actionPrefix}(?:访谈|询问|采访|访�
 function withoutPlannedCounts(text:string):string{
  if(/已经|已完成|曾经|结果|发现|显示|证明|成交|占比|支付了|付了/.test(text))return text;
  return text.split(/([。；;！？!?])/u).map(clause=>{
+  if(descriptionComparison.test(clause.trim()))return clause.replace(/两(?=种描述对转化率的影响\s*$)/u,'');
   if(compoundCompare.test(clause.trim()))return '比较解释并访谈顾客来区分';
   if(interviewQuestion.test(clause.trimStart()))clause=clause.replace(/最看重的[0-9一二三四五六七八九十两]{1,2}项因素/gu,'最看重的因素');
   const researchPrefix=clause.trimStart().match(/^(?:(?:建议|计划|准备|尝试|需要|先|请|可以|拟)\s*)*对[^，,。；;]{1,40}(?:进行|开展)(?:市场调研|调研|核对|验证)[，,]\s*/u)?.[0]??'';
@@ -34,7 +36,7 @@ function withoutPlannedCounts(text:string):string{
 }
 export function checkReportProse(text:string,field:ReportDetailField,allowPlannedActions:boolean):void{
  if(prohibited.test(text))throw new BusinessReportValidationError('flattery_or_score',field,'报告校验失败：自由文字含数值、迎合或评分');
- const qualitative=text.replace(/(?<![A-Za-z0-9])B2[BC](?![A-Za-z0-9])/giu,'经营模式').replace(/第三方|三方物流/g,'外部').replace(/零部件/g,'部件').replace(/一个(?:普遍的)?特征/g,'定性特征');
+ const qualitative=text.replace(/(?<![A-Za-z0-9])B2[BC](?![A-Za-z0-9])/giu,'经营模式').replace(/第三方|三方物流/g,'外部').replace(/零部件/g,'部件').replace(/一个(?:普遍的)?特征/g,'定性特征').replace(/(?<=是)一个(?:(?:普遍|可能|可选)的|吸引顾客的)?(?:运营策略|营销策略|解释)/gu,'定性表述');
  const checked=allowPlannedActions?withoutPlannedCounts(qualitative):qualitative;
  if(quantitative.test(checked))throw new BusinessReportValidationError('numeric_claim',field,'报告校验失败：自由文字含数值、迎合或评分');
  if(fractional.test(checked))throw new BusinessReportValidationError('fractional_claim',field,'报告校验失败：自由文字含数值、迎合或评分');

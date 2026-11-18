@@ -6,7 +6,7 @@ import {parseBusinessModelStructure} from './report-model-structure';
 
 const fieldSchema=z.enum(['observations','interpretations','unknowns','structure']);
 const gaps=z.array(z.object({field:fieldSchema,reason:z.enum(['citation_rejected','content_rejected']),count:z.number().int().min(1).max(50),rule:z.enum(REPORT_VALIDATION_RULES).optional(),detailField:z.enum(REPORT_DETAIL_FIELDS).optional()}).strict()).min(1).max(43);
-const diagnostics=z.array(z.object({field:fieldSchema,itemIndex:z.number().int().min(0).max(49),rule:z.enum(REPORT_VALIDATION_RULES),detailField:z.enum(REPORT_DETAIL_FIELDS),rejectedText:z.string().max(32000),truncated:z.boolean(),validatorVersion:z.enum(['business-validator-v2','business-validator-v3','business-validator-v4','business-validator-v5'])}).strict()).min(1).max(83);
+const diagnostics=z.array(z.object({field:fieldSchema,itemIndex:z.number().int().min(0).max(49),rule:z.enum(REPORT_VALIDATION_RULES),detailField:z.enum(REPORT_DETAIL_FIELDS),rejectedText:z.string().max(32000),truncated:z.boolean(),validatorVersion:z.enum(['business-validator-v2','business-validator-v3','business-validator-v4','business-validator-v5','business-validator-v6'])}).strict()).min(1).max(83);
 const fields=['observations','interpretations','unknowns'] as const;
 const placeholder='本节尚无通过校验的内容';
 function emptySections():CaseSection[]{return SECTION_KEYS.map(key=>({key,observations:[],interpretations:[],unknowns:[placeholder]}));}

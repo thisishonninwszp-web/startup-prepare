@@ -5,6 +5,11 @@ const report=()=>({sections:SECTION_KEYS.map(key=>({key,observations:[],interpre
 const source={id:'selected',capturedText:'买3盒送朋友。',quantities:[{id:'pack'}]} as ReportSource;
 const valid={text:'假设：赠礼可能是购买情境',refs:[{snapshotId:'selected',quote:'买3盒送朋友。'}],competingExplanation:'假设：也可能是自用囤货',distinguishingObservation:'访谈实际购买者'};
 describe('partial business report',()=>{
+ it('retains the archived qualitative strategy but still quarantines scalar flags and packaging counts',()=>{
+  const input=report(),strategy={...valid,refs:[],text:'假设：商品名称中的“【送料無料】”表明此商品提供免费送货服务，这可能是一个吸引顾客的运营策略。',competingExplanation:'假设：免费送货只是市场常态，并非此商品的独特卖点，不提供免费送货反而会降低竞争力。',distinguishingObservation:'比较其他同类商品，观察免费送货是否是普遍服务或特定优势。'};
+  Object.assign(input.sections[7],{interpretations:[strategy,{...valid,refs:[],text:'假设：postageFlag: 0可能说明免费配送'},{...valid,refs:[],text:'假设：包含两盒每盒90片装的商品'}]});
+  const result=filterBusinessReport(input,[]),section=result[7];expect(section.interpretations).toEqual([strategy]);expect(section.validationDiagnostics).toHaveLength(2);expect(section.validationDiagnostics?.map(d=>d.itemIndex)).toEqual([1,2]);expect(validateSavedBusinessReport({sections:result},[])).toEqual(result);
+ });
  it('quarantines misplaced section fields instead of losing the valid report',()=>{
   const input=report();Object.assign(input.sections[11],{distinguishingObservation:'访谈实际购买者'});
   const original=structuredClone(input);
@@ -13,7 +18,7 @@ describe('partial business report',()=>{
   expect(result[11].unknowns).toEqual(['材料不足，待核对']);
   expect(result[11]).not.toHaveProperty('distinguishingObservation');
   expect(result[11].validationGaps).toEqual([{field:'structure',reason:'content_rejected',count:1,rule:'unexpected_field',detailField:'section'}]);
-  expect(result[11].validationDiagnostics?.[0]).toMatchObject({field:'structure',itemIndex:0,rule:'unexpected_field',detailField:'section',validatorVersion:'business-validator-v5',truncated:false});
+  expect(result[11].validationDiagnostics?.[0]).toMatchObject({field:'structure',itemIndex:0,rule:'unexpected_field',detailField:'section',validatorVersion:'business-validator-v6',truncated:false});
   expect(JSON.parse(result[11].validationDiagnostics![0].rejectedText)).toEqual([{path:[],fields:{distinguishingObservation:'访谈实际购买者'}}]);
   expect(JSON.stringify(publicBusinessReport({sections:result} as CaseRevision))).not.toContain('访谈实际购买者');
   expect(validateSavedBusinessReport({sections:result},[])).toEqual(result);
@@ -55,7 +60,7 @@ describe('partial business report',()=>{
   expect(diagnostic.rejectedText.length).toBeLessThanOrEqual(32000);expect(diagnostic.truncated).toBe(true);
   expect(validateSavedBusinessReport({sections:result},[])).toEqual(result);
  });
- it.each(['business-validator-v2','business-validator-v3','business-validator-v4'])('keeps archived diagnostics unchanged under %s',version=>{
+ it.each(['business-validator-v2','business-validator-v3','business-validator-v4','business-validator-v5','business-validator-v6'])('keeps archived diagnostics unchanged under %s',version=>{
   const input=report();input.sections[0].unknowns=['销量300单'];const saved=filterBusinessReport(input,[]);
   saved[0].validationDiagnostics![0].validatorVersion=version;
   expect(validateSavedBusinessReport({sections:saved},[])).toEqual(saved);
