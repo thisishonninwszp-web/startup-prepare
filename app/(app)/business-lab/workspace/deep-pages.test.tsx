@@ -1,5 +1,6 @@
 import {beforeEach,it,expect,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
+import {isValidElement,type ReactNode,type ReactElement} from 'react';
 const h=vi.hoisted(()=>({get:vi.fn(),list:vi.fn(),context:vi.fn()}));
 vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:async()=>({data:{user:{id:'10000000-0000-4000-8000-000000000001'}}})}})}));
 vi.mock('@/lib/domains/business-teardowns/daily',()=>({businessTeardownsEnabled:()=>true}));
@@ -13,6 +14,7 @@ vi.mock('../practice/practice-panel',()=>({BusinessPracticePanel:({initialRecord
 vi.mock('../counterexamples/counterexamples-panel',()=>({BusinessCounterexamplesPanel:({initialRecord}:{initialRecord?:{study:{explanation:string}}})=><div>{initialRecord?.study.explanation??'EMPTY FORM'}</div>}));
 import PressurePage from '../pressure/page';import CashPage from '../cash/page';import PracticePage from '../practice/page';import CounterexamplesPage from '../counterexamples/page';
 const recordId='10000000-0000-4000-8000-000000000002',caseId='10000000-0000-4000-8000-000000000003';
+function editor(node:ReactNode):ReactElement{if(!isValidElement<{children?:ReactNode}>(node))throw new Error('editor missing');if(typeof node.type==='function'&&'initialState'in node.props)return node;for(const child of Array.isArray(node.props.children)?node.props.children:[node.props.children]){try{return editor(child);}catch{}}throw new Error('editor missing');}
 beforeEach(()=>{vi.clearAllMocks();h.list.mockResolvedValue({available:true,items:[],nextCursor:null});h.context.mockResolvedValue(null);});
 it('owner resolves exact record beyond first page and mounts it',async()=>{h.get.mockResolvedValue({id:recordId,plan:{caseId,action:'EXACT SAVED ANSWER'}});const html=renderToStaticMarkup(await PressurePage({searchParams:{recordId,caseId}} as never));expect(h.get).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001',recordId);expect(html).toContain('EXACT SAVED ANSWER');});
 it.each([null,{id:recordId,plan:{caseId:'other',action:'WRONG CASE'}}])('never silently falls back for missing/foreign or mismatched record',async value=>{h.get.mockResolvedValue(value);const html=renderToStaticMarkup(await PressurePage({searchParams:{recordId,caseId}} as never));expect(html).toContain('链接中的记录');expect(html).not.toContain('EMPTY FORM');expect(html).not.toContain('WRONG CASE');});
@@ -21,3 +23,16 @@ it('rejects array record IDs without making an owner reader request',async()=>{c
 it.each([['cash',CashPage],['practice',PracticePage],['counterexamples',CounterexamplesPage]] as const)('resolves and protects exact %s records',async(_name,Page)=>{h.get.mockResolvedValue({id:recordId,plan:{caseId,title:'EXACT SAVED RECORD'},scenario:{caseId,title:'EXACT SAVED RECORD'},study:{candidateCaseId:caseId,explanation:'EXACT SAVED RECORD'}});let html=renderToStaticMarkup(await Page({searchParams:{recordId,caseId}}));expect(html).toContain('EXACT SAVED RECORD');expect(h.get).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001',recordId);h.get.mockResolvedValue(null);html=renderToStaticMarkup(await Page({searchParams:{recordId,caseId}}));expect(html).toContain('链接中的记录');expect(html).not.toContain('EMPTY FORM');h.get.mockResolvedValue({id:recordId,plan:{caseId:'other'},scenario:{caseId:'other'},study:{candidateCaseId:'other'}});html=renderToStaticMarkup(await Page({searchParams:{recordId,caseId}}));expect(html).toContain('链接中的记录');});
 
 it('keys a requested record by identity so same-route navigation remounts a different record',async()=>{h.get.mockResolvedValue({id:recordId,plan:{caseId,action:'EXACT'}});const page=await PressurePage({searchParams:{recordId,caseId}});const children=page.props.children as import('react').ReactElement[];expect(children[1].key).toBe(recordId);});
+
+it.each([['pressure',PressurePage],['cash',CashPage],['practice',PracticePage],['counterexamples',CounterexamplesPage]] as const)('opens a fresh %s editor when a new-case link changes case',async(_name,Page)=>{
+ const first=editor(await Page({searchParams:{caseId}})),other=editor(await Page({searchParams:{caseId:recordId}})),same=editor(await Page({searchParams:{caseId}}));expect(first.key).not.toBe(other.key);expect(first.key).toBe(same.key);
+});
+it.each([['pressure',PressurePage],['cash',CashPage],['practice',PracticePage],['counterexamples',CounterexamplesPage]] as const)('preserves the same saved %s editor when only its revision changes',async(_name,Page)=>{
+ const saved={id:recordId,revision:1,plan:{caseId},scenario:{caseId},study:{candidateCaseId:caseId}};h.get.mockResolvedValue(saved);const first=editor(await Page({searchParams:{caseId,recordId}}));h.get.mockResolvedValue({...saved,revision:2});const updated=editor(await Page({searchParams:{caseId,recordId}}));expect(first.key).toBe(updated.key);
+});
+it('opens a fresh making editor when an apprenticeship link changes within the same case',async()=>{
+ const first=editor(await PracticePage({searchParams:{caseId,apprenticeshipId:recordId}})),other=editor(await PracticePage({searchParams:{caseId,apprenticeshipId:caseId}}));expect(first.key).not.toBe(other.key);
+});
+it('opens a fresh counterexample editor when the chosen method or method kind changes',async()=>{
+ const first=editor(await CounterexamplesPage({searchParams:{caseId,methodId:recordId,methodKind:'learning'}})),other=editor(await CounterexamplesPage({searchParams:{caseId,methodId:caseId,methodKind:'learning'}})),kind=editor(await CounterexamplesPage({searchParams:{caseId,methodId:recordId,methodKind:'lesson'}}));expect(first.key).not.toBe(other.key);expect(first.key).not.toBe(kind.key);
+});
