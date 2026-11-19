@@ -39,7 +39,7 @@ Files: new `app/(app)/business-lab/simulation/checks/next/**` only. Do not edit 
 - [x] Full `npm test`, `npx tsc --noEmit --incremental false --pretty false`, `npm run lint` and final actual SQL. No local Next build while fixture/dev service running.
 - [x] Real React synthetic browser: source→blank plan→preview→edit resets→lost response retry exactly one plan→record result→next plan; source erase hides body but own plan editable, own erase, fixed scopes and mobile/console. Production remains read-only.
 - [x] Supabase preflight/advisor baseline, apply141 then142 (use logged-in SQL Editor if connector confirmation expiry recurs); verify migration history/ACL/RLS/private helpers and owner/null/anonymous SDK reads. No artificial personal rows.
-- [ ] Commit/push while preserving concurrent main; follow exact Production deployment receipt; logged-in canonical page and entry read, screenshot, cleanup own fixture, update actual acceptance evidence.
+- [x] Commit/push while preserving concurrent main; follow exact Production deployment receipt; logged-in canonical page and entry read, screenshot, cleanup own fixture, update actual acceptance evidence.
 
 ## Implementation acceptance
 
@@ -54,3 +54,10 @@ Files: new `app/(app)/business-lab/simulation/checks/next/**` only. Do not edit 
 - Security advisor counts unchanged from baseline (INFO123; WARN19/5/12/1), zero new scoped findings.
 - Production read-only SDK: owner followup list empty, missing get/source null; nullowner/anon read42501, anoncommand denied before dispatch, all4directtable reads denied foranon/service. Existing137/139/workspace reads succeed. No real plan/result rows inserted for health checks.
 - Source SQL141/142 appended byte-for-byte to schema.sql; latest remote has no migration-number collision. Own fixture server stopped.
+
+## Released acceptance
+
+- Application commit `873dfb931e163664c6ea8a044d90f2c900e852be` pushed to main without overwriting concurrent work. Production deployment7913079960 succeeded2026-11-19T12:28:20Z (`startup-prepare-psi67zk90-forcus-wu-s-projects.vercel.app`); Preview was not used as production evidence.
+- Logged-in canonical `/business-lab/simulation/checks/next` displays live-result selector beside four blank independent plan fields. Owner has no saved results/plans, so preview correctly remains disabled until an owned result is selected. Read-only refresh completes and re-enables controls, console has zero warning/error entries, desktop has no overflow. Full save/retry/conflict/erase/loop acceptance used actual React synthetic fixtures and real PostgreSQL contracts, not personal production writes.
+- Production screenshot `.tmp/followup-checks/production-complete.jpg`; actual product tab retained as deliverable. Own fixture server stopped and mobile viewport reset. All tracked changes committed; temporary test artifacts kept outside commits.
+- This final evidence-only commit is retained on the release branch; main already contains the released application and migrations.
