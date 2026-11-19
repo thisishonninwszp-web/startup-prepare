@@ -42,7 +42,7 @@ Files: create `app/(app)/business-lab/simulation/checks/results/**` page/actions
 - [x] Full `npm test`, `npx tsc --noEmit --incremental false --pretty false`, `npm run lint`, final actual SQL. No local Next build while dev server runs.
 - [x] Actual-component synthetic browser: old-version compare; draft edit resets preview; append/lost-response recovery one result; later plan change old condition stable; source erase clears snapshots and keeps body/erase; mobile overflow/console. No invented personal production rows/providers.
 - [x] Production preflight/advisor baseline,139 then140 apply, catalog/private ACL and read-only owner/null-owner/anonymous contract checks. No application write as a health probe.
-- [ ] Commit/push preserving main changes, follow Production-specific Vercel receipt, verify logged-in parent/results empty state, screenshot, stop own fixture service and document real-vs-synthetic limits.
+- [x] Commit/push preserving main changes, follow Production-specific Vercel receipt, verify logged-in parent/results empty state, screenshot, stop own fixture service and document real-vs-synthetic limits.
 
 ## Verification evidence before release
 
@@ -58,3 +58,12 @@ Files: create `app/(app)/business-lab/simulation/checks/results/**` page/actions
 - Catalog: all3 tables RLS enabled, anon/authenticated/service directSELECT denied; only service_role can call the2 public RPCs, all helper/capture functions private with fixed search_path.
 - Read-only SDK probe: owner list/plans empty, missing get/version null, versions empty; nullowner and anonymous42501, anonymous command denied before dispatch, all directtable checks42501, existing workspace readable. No invented production result rows.
 - Security advisor baseline WARN counts unchanged19/5/12/1; only3 expected INFO additions for RPC-only tables without policies. Direct access stays revoked. [Supabase advisory reference](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+
+## Released acceptance
+
+- Application commit `62fc02e82882b7c2ef66a5421b4ebc761dd7fecf` pushed to main without overwriting remote changes. Production deployment7911984161 succeeded2026-11-19T11:37:26Z (`startup-prepare-e4dwadwh3-forcus-wu-s-projects.vercel.app`); separate Preview7911994477 was not used as production evidence.
+- Canonical logged-in `/business-lab/simulation/checks/results` displays original conditions beside independent findings, Tokyo date max2026-11-19, clean console, no desktop overflow, refresh completes and controls unlock. No saved plans/results for owner, so preview correctly remains unavailable until a saved owned plan is selected. Parent page also read successfully with its source-first empty-state guidance.
+- Production screenshot: `.tmp/reality-results/production-complete.jpg`; SQL Editor success screenshot: `.tmp/reality-results/migrations-complete.png`. Marked the canonical product tab as the deliverable; closed synthetic/extra acceptance tabs and stopped the owned fixture server.
+- Stored migration statement digests match local files after CRLF normalization:139 `af5bd375ce7343a4a6579726f5f08bad`;140 `cabbe44434753346d5c12d0197bf8c5a`. schema.sql byte suffix remains exactly the reviewed139+140 files.
+- Final full suite371 files /2387 tests, TypeScript and ESLint clean, both actual PostgreSQL integration scripts passed. Save/retry/change/deletion operations were synthetic only; production acceptance read-only, no AI/provider calls or artificial personal results.
+- This final evidence-only commit stays on the release branch; main already contains the published application and database migrations.
