@@ -6,6 +6,7 @@ export function PlanFields({plan,onChange}:{plan:RealityCheckPlan;onChange:(patc
 }
 export function PlanPreview({plan}:{plan:RealityCheckPlan}){return <dl className="space-y-4 text-sm leading-7">{[...fields.map(f=>({label:f.label,value:plan[f.name]})),{label:'截止日期（东京）',value:plan.dueDate}].map(item=><div key={item.label}><dt className="text-muted-foreground">{item.label}</dt><dd className="whitespace-pre-wrap break-words">{item.value}</dd></div>)}</dl>;}
 export function SourceNotes({source}:{source:RealityCheckSourceState|null}){
+ if(!source)return <p className="text-sm leading-7 text-muted-foreground">先在经营演练保存一回合，再选择来源。</p>;
  if(!source?.available)return <p className="text-sm leading-7 text-muted-foreground">来源目前不可读取。已经保存的独立计划仍可编辑和删除。</p>;
  return <aside className="space-y-3 border-l-2 border-border pl-4 text-sm leading-7"><p className="font-medium">假设演练中的本人记录 · 不是现实验证</p><p className="break-words">{source.title}{source.caseAvailable&&source.caseTitle?` · 案例标题：${source.caseTitle}`:''}</p><dl className="space-y-3"><div><dt className="text-muted-foreground">当时的理由（假设）</dt><dd className="whitespace-pre-wrap break-words">{source.reason}</dd></div><div><dt className="text-muted-foreground">当时写的下一步（假设）</dt><dd className="whitespace-pre-wrap break-words">{source.checkNext}</dd></div></dl></aside>;
 }

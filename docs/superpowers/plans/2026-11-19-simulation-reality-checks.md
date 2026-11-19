@@ -44,7 +44,7 @@ Files: modify simulation-panel.tsx and relevant tests; workspace domain/tests; c
 - [x] `npm test`, `npx tsc --noEmit --incremental false --pretty false`, `npm run lint`, final actual SQL suite. Do not run local Next build while a dev server is running.
 - [x] Synthetic actual-component browser checks: create/preview/cancel/edit/save/lost-response retry, source append/delete, same-record refresh and case/source changes, mobile overflow and console errors. All fixture mutations are local.
 - [x] Inspect actual production schema/security baseline, apply137 then138, verify table RLS/grants/helper ACL and owner/null-owner/anonymous read contracts without test writes.
-- [ ] Commit reviewed code/docs, preserve fetched main updates, deploy and follow Vercel completion. Read-only authenticated production UI check, save screenshot, stop temporary fixture services. Record exact real-vs-synthetic limits and any genuinely external blockers.
+- [x] Commit reviewed code/docs, preserve fetched main updates, deploy and follow Vercel completion. Read-only authenticated production UI check, save screenshot, stop temporary fixture services. Record exact real-vs-synthetic limits and any genuinely external blockers.
 
 ## Pre-release evidence (2026-11-19)
 
@@ -57,4 +57,10 @@ Files: modify simulation-panel.tsx and relevant tests; workspace domain/tests; c
 - Implementation committed as a09f57e. Applied137 `business_reality_checks_137` version20261119013534, then138 `business_workspace_reality_checks_138` version20261119013544 through connected Supabase migration API.
 - Actual catalog verifies both tables have RLS and deny SELECT for anon/authenticated/service_role. Read/command RPCs permit only service_role; three new helpers and private workspace helper deny all three roles. Real PostgREST owner plan/source lists and recent workspace succeed (currently empty); missing IDs return null; null-owner/anonymous reads, anonymous commands and direct table probes reject42501. No real plans were created.
 - Advisor categories unchanged from baseline. New scope only has intentional INFO [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), because direct clients are denied and the guarded server RPC is the access path; no new scoped warning/error.
-- Production code deployment and authenticated empty-state reading remain to verify.
+- Production implementation9e14783 deployed successfully; authenticated canonical empty-state reading succeeded. Final first-use copy refinement is recorded below.
+
+## Production UI acceptance (2026-11-19)
+
+- [Production deployment](https://vercel.com/forcus-wu-s-projects/startup-prepare/3yPR3KcYMdC3EiQsgCtoFUKuad16) for9e14783 is successful; GitHub Production deployment7901501533 is success, distinct from the earlier Preview receipt. A premature navigation saw the prior deployment404; reloading after the Production receipt loaded the new page correctly.
+- Existing IAB login remained valid; canonical `/business-lab/simulation/checks` renders the real plan/source empty state and disabled preview until a saved source is selected. The account currently has no committed simulation rounds, so no personal plan was created to manufacture a demonstration. All mutation acceptance used the isolated actual-component/SQL fixtures above.
+- Final acceptance distinguished no selected source from a deleted source: first use now guides saving a simulation round, while orphan plans retain their independent edit/delete notice. Added RED→GREEN regression; final365-file/2333-test suite, TypeScript and ESLint pass. No SQL/RPC change was needed. The final copy deployment receipt is confirmed in the conversation release result.
