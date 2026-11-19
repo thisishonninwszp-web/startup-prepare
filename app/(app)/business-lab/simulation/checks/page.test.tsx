@@ -1,0 +1,17 @@
+import {beforeEach,describe,it,expect,vi} from 'vitest';
+const h=vi.hoisted(()=>({enabled:vi.fn(),user:vi.fn(),list:vi.fn(),get:vi.fn(),sources:vi.fn(),source:vi.fn()}));
+vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');}}));
+vi.mock('@/lib/domains/business-teardowns/daily',()=>({businessTeardownsEnabled:h.enabled}));
+vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:h.user}})}));
+vi.mock('@/lib/domains/business-teardowns/reality-checks/transport',()=>({listRealityChecks:h.list,getRealityCheck:h.get,listRealityCheckSources:h.sources,getRealityCheckSource:h.source}));
+import Page,{dynamic} from './page';
+import {source,record,caseId,sourceId,recordId} from './test-fixtures';
+function panel(element:Awaited<ReturnType<typeof Page>>){return element.props.children.props.children[1];}
+describe('reality check exact page identity',()=>{
+ beforeEach(()=>{vi.clearAllMocks();h.enabled.mockReturnValue(true);h.user.mockResolvedValue({data:{user:{id:'owner'}}});h.list.mockResolvedValue({available:true,items:[],nextCursor:null});h.sources.mockResolvedValue({items:[],nextCursor:null});h.source.mockResolvedValue(source);h.get.mockResolvedValue(record);});
+ it('is dynamic and gates signed out or disabled requests',async()=>{expect(dynamic).toBe('force-dynamic');h.enabled.mockReturnValue(false);await expect(Page({searchParams:{}})).rejects.toThrow('NOT_FOUND');expect(h.list).not.toHaveBeenCalled();h.enabled.mockReturnValue(true);h.user.mockResolvedValue({data:{user:null}});await expect(Page({searchParams:{}})).rejects.toThrow('NOT_FOUND');});
+ it('rejects malformed or mismatched identities without opening another record',async()=>{for(const params of [{round:'0'},{caseId:['bad']},{recordId,caseId:sourceId},{recordId,simulationId:recordId},{recordId,round:'2'}])await expect(Page({searchParams:params})).rejects.toThrow('NOT_FOUND');h.get.mockResolvedValue(null);await expect(Page({searchParams:{recordId}})).rejects.toThrow('NOT_FOUND');});
+ it('retains the key across saved revisions but remounts new round identities',async()=>{const first=panel(await Page({searchParams:{recordId,caseId}}));h.get.mockResolvedValue({...record,revision:2});const updated=panel(await Page({searchParams:{recordId,caseId}}));expect(first.key).toBe(updated.key);const a=panel(await Page({searchParams:{simulationId:sourceId,round:'1'}}));const b=panel(await Page({searchParams:{simulationId:sourceId,round:'2'}}));expect(a.key).not.toBe(b.key);expect(a.props.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);expect(a.props.initialRecord).toBeNull();});
+ it('allows an existing independent plan after source disappears',async()=>{h.source.mockResolvedValue(null);const p=panel(await Page({searchParams:{recordId,simulationId:sourceId}}));expect(p.props.initialRecord.id).toBe(recordId);expect(p.props.initialSource).toBeNull();});
+ it('isolates missing137 without reading sources',async()=>{h.list.mockResolvedValue({available:false,items:[],nextCursor:null});expect(panel(await Page({searchParams:{}})).props.initialState.available).toBe(false);expect(h.sources).not.toHaveBeenCalled();});
+});

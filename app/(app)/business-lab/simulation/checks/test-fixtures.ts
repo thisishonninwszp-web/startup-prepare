@@ -1,0 +1,4 @@
+import type {RealityCheckSource,RealityCheckRecord} from '@/lib/domains/business-teardowns/reality-checks/domain';
+export const caseId='10000000-0000-4000-8000-000000000001',sourceId='20000000-0000-4000-8000-000000000001',recordId='30000000-0000-4000-8000-000000000001';
+export const source:RealityCheckSource={id:sourceId,caseId,title:'假设演练',revision:3,turns:[{reason:'自己的假设理由',checkNext:'自己写的下一步'},{reason:'第二轮理由',checkNext:'第二轮下一步'}],caseAvailable:true,caseTitle:'案例标题'};
+export const record:RealityCheckRecord={id:recordId,caseId,simulationId:sourceId,round:1,sourceRevision:2,revision:1,createdAt:'2026-11-19T00:00:00Z',updatedAt:'2026-11-19T00:00:00Z',plan:{question:'亲手写的问题',falsifier:'反例出现',method:'真实接触',dueDate:'2026-11-18'},source:{available:true,title:source.title,currentRevision:3,reason:source.turns[0].reason,checkNext:source.turns[0].checkNext,caseAvailable:true,caseTitle:source.caseTitle}};
