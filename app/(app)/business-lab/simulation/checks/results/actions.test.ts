@@ -1,0 +1,11 @@
+import {beforeEach,describe,it,expect,vi} from 'vitest';
+const h=vi.hoisted(()=>({enabled:vi.fn(),user:vi.fn(),list:vi.fn(),get:vi.fn(),plans:vi.fn(),versions:vi.fn(),version:vi.fn(),command:vi.fn()}));
+vi.mock('@/lib/domains/business-teardowns/daily',()=>({businessTeardownsEnabled:h.enabled}));
+vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:h.user}})}));
+vi.mock('@/lib/domains/business-teardowns/reality-results/transport',()=>({listRealityResults:h.list,getRealityResult:h.get,listRealityResultPlans:h.plans,listRealityResultVersions:h.versions,getRealityResultVersion:h.version,realityResultCommand:h.command}));
+import {realityResultsListAction,realityResultGetAction,realityResultPlansAction,realityResultVersionsAction,realityResultVersionAction,realityResultSaveAction} from './actions';
+describe('result authenticated actions',()=>{
+ beforeEach(()=>{vi.clearAllMocks();h.enabled.mockReturnValue(true);h.user.mockResolvedValue({data:{user:{id:'owner'}}});});
+ it('gates all transport calls with feature and authenticated session',async()=>{h.enabled.mockReturnValue(false);await expect(realityResultsListAction()).rejects.toThrow('尚未开启');expect(h.list).not.toHaveBeenCalled();h.enabled.mockReturnValue(true);h.user.mockResolvedValue({data:{user:null}});await expect(realityResultVersionAction({planId:'plan'})).rejects.toThrow('请先登录');expect(h.version).not.toHaveBeenCalled();});
+ it('uses server owner for all six operations',async()=>{await realityResultsListAction();await realityResultGetAction('record');await realityResultPlansAction();await realityResultVersionsAction({planId:'plan',before:'cursor'});await realityResultVersionAction({planId:'plan',revision:2});await realityResultSaveAction({operation:'erase',id:'record',requestId:'request',expectedRevision:1});expect(h.list).toHaveBeenCalledWith('owner',{});expect(h.get).toHaveBeenCalledWith('owner','record');expect(h.plans).toHaveBeenCalledWith('owner',{});expect(h.versions).toHaveBeenCalledWith('owner',{planId:'plan',before:'cursor'});expect(h.version).toHaveBeenCalledWith('owner',{planId:'plan',revision:2});expect(h.command).toHaveBeenCalledWith('owner',expect.objectContaining({operation:'erase'}));});
+});

@@ -119,7 +119,7 @@ export function RealityChecksPanel({initialState,initialSources,initialRecord=nu
    <label className="block space-y-2 text-sm"><span>本人保存的假设演练</span><select name="source" disabled={!!active||!!simulationId} className="min-h-11 w-full min-w-0 rounded-md border bg-background p-2" value={sourceId} onChange={e=>void chooseSource(e.target.value)}><option value="">请选择来源</option>{sourceId&&!sources.items.some(s=>s.id===sourceId)&&<option value={sourceId}>{sourceState?.title??'原来源（目前不可读取）'}</option>}{sources.items.filter(s=>!simulationId||s.id===simulationId).map(s=><option key={s.id} value={s.id} disabled={!s.caseAvailable}>{s.title}{s.caseAvailable?'':' · 案例目前不可读取'}</option>)}</select></label>
    {!active&&!simulationId&&sources.nextCursor&&<Button type="button" variant="outline" onClick={()=>void moreSources()}>更多来源</Button>}
    <label className="block space-y-2 text-sm"><span>选哪一轮</span><select name="round" disabled={!!active||!source} className="min-h-11 w-full min-w-0 rounded-md border bg-background p-2" value={round} onChange={e=>{++epoch.current;setRound(Number(e.target.value));setPreview(null);setDirty(true);}}>{active?<option value={active.round}>第 {active.round} 轮 · 来源第 {active.sourceRevision} 版</option>:(source?.turns??[null]).map((_,i)=><option key={i+1} value={i+1}>第 {i+1} 轮</option>)}</select></label>
-   {active&&<p className="text-sm leading-7 text-muted-foreground">这份计划的来源和轮次已固定。可以独立修改下面四项，也可以删除计划。</p>}
+   {active&&<p className="text-sm leading-7 text-muted-foreground">这份计划的来源和轮次已固定。可以独立修改下面四项，也可以删除计划。删除计划也会清除结果中保留的计划正文；你独立写下的核对记录仍会保留。</p>}
    <SourceNotes source={sourceState}/>
    {!active&&source&&!source.caseAvailable&&<p className="text-sm leading-7">案例目前不可读取，暂不能从此来源新建计划。</p>}
    <PlanFields plan={draft} onChange={change}/>
@@ -128,6 +128,7 @@ export function RealityChecksPanel({initialState,initialSources,initialRecord=nu
   </fieldset></form>
   {preview&&<section className="space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">保存前逐项核对</h2><p className="break-words text-sm leading-7">来源：{sourceState?.available?sourceState.title:'原来源目前不可读取'} · 第 {round} 轮。以下四项由你亲手填写，保存不代表已验证。</p><PlanPreview plan={preview}/><div className="flex flex-wrap gap-2"><Button disabled={blocked||!canSave} onClick={()=>submit('save')}>确认保存这份计划</Button><Button disabled={blocked} variant="outline" onClick={()=>setPreview(null)}>返回修改</Button></div></section>}
   {remote&&<section className="space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">最新保存内容 · 第 {remote.revision} 版</h2><PlanPreview plan={remote.plan}/><ConfirmButton disabled={busy} variant="outline" confirmLabel={pending?'确认结束本次重试并替换为最新保存内容':'确认替换当前输入并采用最新保存内容'} onClick={()=>{setPending(null);pendingRef.current=null;install(remote);setMessage('已采用最新保存内容，请重新预览。');}}>采用最新保存内容</ConfirmButton></section>}
+  {active&&!dirty&&!blocked&&!remote&&!conflict&&<Button asChild variant="outline"><Link href={`/business-lab/simulation/checks/results?caseId=${active.caseId}&planId=${active.id}&planRevision=${active.revision}`}>记录这版计划的核对结果</Link></Button>}
   <p className="text-sm text-muted-foreground"><Link href={sourceHref} className="underline">返回这份假设演练</Link></p>
  </div>;
 }
