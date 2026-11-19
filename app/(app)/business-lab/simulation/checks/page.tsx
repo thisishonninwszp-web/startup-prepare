@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import {notFound} from 'next/navigation';
+import {notFound,redirect} from 'next/navigation';
 import {PageContainer} from '@/components/ui/page-container';
 import {createClient} from '@/lib/supabase/server';
 import {businessTeardownsEnabled} from '@/lib/domains/business-teardowns/daily';
 import {realityCheckUuid} from '@/lib/domains/business-teardowns/reality-checks/domain';
 import {listRealityChecks,getRealityCheck,listRealityCheckSources,getRealityCheckSource} from '@/lib/domains/business-teardowns/reality-checks/transport';
 import {RealityChecksPanel} from './reality-checks-panel';
+import {getFollowupCheck} from '@/lib/domains/business-teardowns/followup-checks/transport';
 
 export const dynamic='force-dynamic';
 type Search={caseId?:string|string[];simulationId?:string|string[];recordId?:string|string[];round?:string|string[]};
@@ -23,6 +24,15 @@ export default async function RealityChecksPage({searchParams}:{searchParams:Sea
  let round:number|undefined;
  if(searchParams.round!==undefined){if(typeof searchParams.round!=='string'||!/^([1-6])$/.test(searchParams.round))notFound();round=Number(searchParams.round);}
  if(round&&!parsed.simulationId&&!parsed.recordId)notFound();
+ if(parsed.recordId){
+  let followup;
+  try{followup=await getFollowupCheck(user.id,parsed.recordId);}
+  catch(error){if(!['42P01','42883','PGRST202','PGRST205'].includes((error as {code?:string}).code??''))throw error;}
+  if(followup){
+   if(followup.id!==parsed.recordId||(parsed.caseId&&followup.caseId!==parsed.caseId)||parsed.simulationId||round)notFound();
+   redirect(`/business-lab/simulation/checks/next?caseId=${followup.caseId}&recordId=${followup.id}`);
+  }
+ }
  const dateParts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
  const part=(type:string)=>dateParts.find(p=>p.type===type)!.value;
  const today=`${part('year')}-${part('month')}-${part('day')}`;

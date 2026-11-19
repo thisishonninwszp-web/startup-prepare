@@ -1,0 +1,21 @@
+import {beforeEach,describe,expect,it,vi} from 'vitest';
+const h=vi.hoisted(()=>({enabled:vi.fn(),user:vi.fn(),list:vi.fn(),get:vi.fn(),source:vi.fn(),sources:vi.fn()}));
+vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');}}));
+vi.mock('@/lib/domains/business-teardowns/daily',()=>({businessTeardownsEnabled:h.enabled}));
+vi.mock('@/lib/supabase/server',()=>({createClient:()=>({auth:{getUser:h.user}})}));
+vi.mock('@/lib/domains/business-teardowns/followup-checks/transport',()=>({listFollowupChecks:h.list,getFollowupCheck:h.get,getFollowupCheckSource:h.source}));
+vi.mock('@/lib/domains/business-teardowns/reality-results/transport',()=>({listRealityResults:h.sources}));
+import Page,{dynamic} from './page';
+import {caseId,resultId,recordId,record,source,priorResult} from './test-fixtures';
+function panel(element:Awaited<ReturnType<typeof Page>>){return element.props.children.props.children[1];}
+describe('follow-up exact page scope',()=>{
+ beforeEach(()=>{vi.clearAllMocks();h.enabled.mockReturnValue(true);h.user.mockResolvedValue({data:{user:{id:'owner'}}});h.list.mockResolvedValue({available:true,items:[],nextCursor:null});h.get.mockResolvedValue(record);h.source.mockResolvedValue(source);h.sources.mockResolvedValue({available:true,items:[priorResult],nextCursor:null});});
+ it('gates disabled and signed-out reads and remains dynamic',async()=>{expect(dynamic).toBe('force-dynamic');h.enabled.mockReturnValue(false);await expect(Page({searchParams:{}})).rejects.toThrow('NOT_FOUND');h.enabled.mockReturnValue(true);h.user.mockResolvedValue({data:{user:null}});await expect(Page({searchParams:{}})).rejects.toThrow('NOT_FOUND');expect(h.list).not.toHaveBeenCalled();});
+ it('rejects arrays and malformed UUIDs before reads',async()=>{for(const searchParams of [{caseId:['bad']},{resultId:['bad']},{recordId:'invalid'}])await expect(Page({searchParams})).rejects.toThrow('NOT_FOUND');expect(h.list).not.toHaveBeenCalled();});
+ it('rejects unsupported query keys before any reads',async()=>{for(const searchParams of [{simulationId:resultId},{round:'1'},{owner:caseId}])await expect(Page({searchParams})).rejects.toThrow('NOT_FOUND');expect(h.list).not.toHaveBeenCalled();});
+ it('loads exact result and keeps fixed case/result filter on new drafts',async()=>{const p=panel(await Page({searchParams:{caseId,resultId}}));expect(h.list).toHaveBeenCalledWith('owner',{caseId,resultId});expect(h.source).toHaveBeenCalledWith('owner',resultId);expect(p.props.initialSource).toEqual(source);expect(p.props.resultId).toBe(resultId);expect(p.props.caseId).toBe(caseId);expect(p.props.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);});
+ it('rejects wrong record, case, result and exact source identities',async()=>{for(const searchParams of [{recordId,caseId:resultId},{recordId,resultId:recordId}])await expect(Page({searchParams})).rejects.toThrow('NOT_FOUND');h.get.mockResolvedValue({...record,id:resultId});await expect(Page({searchParams:{recordId}})).rejects.toThrow('NOT_FOUND');h.get.mockResolvedValue(record);h.source.mockResolvedValue({...source,id:recordId});await expect(Page({searchParams:{recordId}})).rejects.toThrow('NOT_FOUND');});
+ it('preserves saved own plan after source disappears with stable key',async()=>{const first=panel(await Page({searchParams:{recordId}}));h.source.mockResolvedValue(null);const next=panel(await Page({searchParams:{recordId}}));expect(next.key).toBe(first.key);expect(next.props.initialRecord.plan).toEqual(record.plan);expect(next.props.initialSource).toBeNull();h.get.mockResolvedValue(null);await expect(Page({searchParams:{recordId}})).rejects.toThrow('NOT_FOUND');});
+ it('allows exact vanished source empty state without silently choosing another result',async()=>{h.source.mockResolvedValue(null);const p=panel(await Page({searchParams:{resultId}}));expect(p.props.resultId).toBe(resultId);expect(p.props.initialSource).toBeNull();expect(p.props.initialRecord).toBeNull();});
+ it('isolates missing141 before source and result reads',async()=>{h.list.mockResolvedValue({available:false,items:[],nextCursor:null});const p=panel(await Page({searchParams:{resultId}}));expect(p.props.initialState.available).toBe(false);expect(h.sources).not.toHaveBeenCalled();expect(h.source).not.toHaveBeenCalled();expect(h.get).not.toHaveBeenCalled();});
+});

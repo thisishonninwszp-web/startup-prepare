@@ -1,0 +1,10 @@
+import {describe,it,expect} from 'vitest';
+import {followupCheckCommandSchema,followupCheckUuid} from './domain';
+const id='20000000-0000-4000-8000-000000000001';
+const plan={question:'次に確認すること',falsifier:'何が覆すか',method:'本人に聞く',dueDate:'2026-11-30'};
+const save={operation:'save',id,requestId:id,expectedRevision:0,resultId:id,plan,confirmed:true};
+describe('independently authored result follow-up',()=>{
+ it('requires explicit confirmation and only a result anchor',()=>{expect(followupCheckCommandSchema.parse(save)).toEqual(save);expect(followupCheckUuid.parse(id)).toBe(id);for(const patch of [{confirmed:false},{confirmed:undefined},{resultId:undefined},{resultId:'bad'},{caseId:id},{simulationId:id},{round:1},{sourceRevision:2},{userId:id},{body:{}},{expectedRevision:-1},{expectedRevision:2147483647}])expect(followupCheckCommandSchema.safeParse({...save,...patch}).success).toBe(false);});
+ it('requires four independently written fields and existing plan bounds',()=>{for(const field of Object.keys(plan))expect(followupCheckCommandSchema.safeParse({...save,plan:{...plan,[field]:''}}).success).toBe(false);for(const patch of [{question:'😀'.repeat(501)},{falsifier:'x'.repeat(3001)},{method:'x'.repeat(3001)},{dueDate:'2026-02-30'},{score:1}])expect(followupCheckCommandSchema.safeParse({...save,plan:{...plan,...patch}}).success).toBe(false);expect(followupCheckCommandSchema.parse({...save,plan:{...plan,question:'  独立した確認　'}})).toEqual({...save,plan:{...plan,question:'独立した確認'}});});
+ it('bounds save and erase revisions and forbids anchor changes on erase',()=>{expect(followupCheckCommandSchema.safeParse({...save,expectedRevision:2147483646}).success).toBe(true);const erase={operation:'erase',id,requestId:id,expectedRevision:1};expect(followupCheckCommandSchema.parse(erase)).toEqual(erase);for(const patch of [{expectedRevision:0},{expectedRevision:2147483647},{resultId:id},{plan},{confirmed:true}])expect(followupCheckCommandSchema.safeParse({...erase,...patch}).success).toBe(false);});
+});

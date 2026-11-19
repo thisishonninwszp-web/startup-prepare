@@ -19,6 +19,7 @@ export function useRealityResults(props:RealityResultsPanelProps){
  const [pending,setPending]=useState<RealityResultCommand|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [releasable,setReleasable]=useState(false);
  const working=useRef(false),epoch=useRef(0),activeRef=useRef(active),pendingRef=useRef(pending);
+ const erasedIds=useRef(new Set<string>());
  activeRef.current=active;pendingRef.current=pending;
  const blocked=busy||pending!==null;
  const scoped={...(caseId?{caseId}:{}),...(planId?{planId}:{})};
@@ -29,6 +30,10 @@ export function useRealityResults(props:RealityResultsPanelProps){
   return next;
  }
  function hideSource(){setVerified(false);setSource(null);}
+ function forget(id:string){
+  erasedIds.current.add(id);setState(old=>({...old,items:old.items.filter(item=>item.id!==id)}));
+  if(activeRef.current?.id===id){setActive(null);activeRef.current=null;setPreview(null);hideSource();}
+ }
  function install(record:RealityResultRecord){
   ++epoch.current;setActive(record);activeRef.current=record;setSelectedPlan(record.planId);setSelectedRevision(record.planRevision);hideSource();setDraft(blank());setPreview(null);setDirty(false);
  }
@@ -41,7 +46,7 @@ export function useRealityResults(props:RealityResultsPanelProps){
    if(current){
     const next=await realityResultGetAction(current.id);
     if(ticket!==epoch.current||working.current||pendingRef.current)return;
-    if(!next){setActive(null);activeRef.current=null;setState(old=>({...old,items:old.items.filter(item=>item.id!==current.id)}));setPreview(null);setMessage('这条调查结果已不可读取，已从当前画面清除。');return;}
+    if(!next){forget(current.id);setMessage('这条调查结果已不可读取，已从当前画面清除。');return;}
     if(!inScope(next,current.id)||next.planId!==current.planId||next.planRevision!==current.planRevision||next.revision!==1||!sameBody(next.body,current.body)){setPreview(null);setMessage('这条调查结果目前不可读取，已经显示的独立正文仍保留。');return;}
     setActive(old=>old?.id===next.id?{...old,planSnapshot:next.planSnapshot,snapshotErasedAt:next.snapshotErasedAt,planCurrentRevision:next.planCurrentRevision}:old);
     if(!next.planSnapshot||next.snapshotErasedAt){setPreview(null);return;}
@@ -79,7 +84,8 @@ export function useRealityResults(props:RealityResultsPanelProps){
   try{
    const next=await realityResultGetAction(id);
    if(ticket!==epoch.current)return;
-   if(!next||!inScope(next,id))throw Error('这条调查结果目前不可读取，当前输入仍保留。');
+   if(!next){forget(id);setMessage('这条调查结果已不可读取，已从列表清除，其他独立输入仍保留。');return;}
+   if(!inScope(next,id)||erasedIds.current.has(id))throw Error('这条调查结果目前不可读取，当前输入仍保留。');
    install(next);const installed=epoch.current;
    if(next.planSnapshot&&!next.snapshotErasedAt){
     const version=assertSource(await realityResultVersionAction({planId:next.planId,revision:next.planRevision}),next.planId,next.planRevision,next.caseId);
@@ -96,8 +102,9 @@ export function useRealityResults(props:RealityResultsPanelProps){
   if(id&&!insideWrite){await choosePlan(id,revision||undefined);setDirty(false);}
  }
  async function refreshList(more=false){
-  const next=await realityResultsListAction({...scoped,...(more&&state.nextCursor?{before:state.nextCursor}:{})});
-  setState(old=>more?{...next,items:[...old.items,...next.items.filter(item=>!old.items.some(loaded=>loaded.id===item.id))]}:next);
+  const page=await realityResultsListAction({...scoped,...(more&&state.nextCursor?{before:state.nextCursor}:{})});
+  const next={...page,items:page.items.filter(item=>!erasedIds.current.has(item.id))};
+  setState(old=>more?{...next,items:[...old.items.filter(item=>!erasedIds.current.has(item.id)),...next.items.filter(item=>!old.items.some(loaded=>loaded.id===item.id))]}:next);
  }
  async function refresh(){
   if(blocked)return;setBusy(true);setMessage('');
@@ -109,7 +116,7 @@ export function useRealityResults(props:RealityResultsPanelProps){
   try{
    const receipt=await realityResultSaveAction(command);acknowledged=true;
    if(receipt.id!==command.id||receipt.revision!==(command.operation==='append'?1:2))throw Error('保存回执与本次请求不一致');
-   if(command.operation==='erase'){setState(old=>({...old,items:old.items.filter(item=>item.id!==command.id)}));await newDraft(true);setMessage('调查结果已擦除。');}
+   if(command.operation==='erase'){forget(command.id);await newDraft(true);setMessage('调查结果已擦除。');}
    else{
     const saved=await realityResultGetAction(command.id);
     if(!saved||!inScope(saved,command.id)||saved.revision!==1||saved.planId!==command.planId||saved.planRevision!==command.planRevision||!sameBody(saved.body,command.body))throw Error('尚未读到与本次请求一致的调查结果');
