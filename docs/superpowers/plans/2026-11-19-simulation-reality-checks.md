@@ -43,7 +43,7 @@ Files: modify simulation-panel.tsx and relevant tests; workspace domain/tests; c
 - [x] Independent spec and code quality review; fix material findings with regressions.
 - [x] `npm test`, `npx tsc --noEmit --incremental false --pretty false`, `npm run lint`, final actual SQL suite. Do not run local Next build while a dev server is running.
 - [x] Synthetic actual-component browser checks: create/preview/cancel/edit/save/lost-response retry, source append/delete, same-record refresh and case/source changes, mobile overflow and console errors. All fixture mutations are local.
-- [ ] Inspect actual production schema/security baseline, apply137 then138, verify table RLS/grants/helper ACL and owner/null-owner/anonymous read contracts without test writes.
+- [x] Inspect actual production schema/security baseline, apply137 then138, verify table RLS/grants/helper ACL and owner/null-owner/anonymous read contracts without test writes.
 - [ ] Commit reviewed code/docs, preserve fetched main updates, deploy and follow Vercel completion. Read-only authenticated production UI check, save screenshot, stop temporary fixture services. Record exact real-vs-synthetic limits and any genuinely external blockers.
 
 ## Pre-release evidence (2026-11-19)
@@ -51,3 +51,10 @@ Files: modify simulation-panel.tsx and relevant tests; workspace domain/tests; c
 - Final365-file/2332-test suite, full TypeScript and ESLint pass. Actual137 SQL and133–138 combined SQL pass, including50 tied mixed records, cursor cuts inside the new kind, Unicode summaries, owner/RLS/ACL checks, rollback, source appends and erasure, and an unchanged seeded idea/validation. Independent spec and correctness/security reviews report no unresolved findings.
 - Actual-component synthetic browser acceptance: selected round2, independent four-field input and explicit preview; editing invalidates preview; lost-save-response retry produces one plan; source append retains earlier notes; remote revision requires comparison/adoption while dirty input remains; source deletion hides old prose and allows own-plan update/erase.391px active viewport has clientWidth376/scrollWidth376, no console errors; reset and close afterward. Evidence `.tmp/reality-checks/verified-mobile.jpg` is local, not committed.
 - Exact final137/138 migration bytes appended to schema.sql. No synthetic production plans, AI requests, provider requests, visitor events or idea-state/validation writes. Production schema preflight confirms135/136 and no new tables yet; security baseline saved for scoped comparison.
+
+## Production migration checkpoint (2026-11-19)
+
+- Implementation committed as a09f57e. Applied137 `business_reality_checks_137` version20261119013534, then138 `business_workspace_reality_checks_138` version20261119013544 through connected Supabase migration API.
+- Actual catalog verifies both tables have RLS and deny SELECT for anon/authenticated/service_role. Read/command RPCs permit only service_role; three new helpers and private workspace helper deny all three roles. Real PostgREST owner plan/source lists and recent workspace succeed (currently empty); missing IDs return null; null-owner/anonymous reads, anonymous commands and direct table probes reject42501. No real plans were created.
+- Advisor categories unchanged from baseline. New scope only has intentional INFO [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), because direct clients are denied and the guarded server RPC is the access path; no new scoped warning/error.
+- Production code deployment and authenticated empty-state reading remain to verify.
