@@ -21,6 +21,7 @@ import {
   createCustomerProxyVersion,
   createCustomerTopic,
   previewCustomerUrl,
+  retryCustomerMaterialEvidence,
   reviewCustomerMaterial,
   runCustomerIdeaReaction,
   runCustomerResearch,
@@ -108,6 +109,13 @@ export function CustomerWorkspace({
   const candidates = initialCase.materials.filter(
     (item) => item.status === "candidate"
   );
+  const evidenceCountByMaterial = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const atom of initialCase.atoms) {
+      counts.set(atom.material_id, (counts.get(atom.material_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [initialCase.atoms]);
   const atomsForSelected = useMemo(() => {
     if (!selectedVersion) return initialCase.atoms;
     const allowed = new Set(selectedVersion.selected_segment.evidence_ids);
@@ -177,7 +185,7 @@ export function CustomerWorkspace({
     setBusy("material");
     clearStatus();
     try {
-      await addCustomerMaterial(initialCase.id, {
+      const result = await addCustomerMaterial(initialCase.id, {
         origin: materialOrigin,
         title: materialTitle,
         text: redactedText,
@@ -185,12 +193,28 @@ export function CustomerWorkspace({
         market: initialCase.markets[0],
         confirmed: true,
       });
+      // 走到这里材料已经存下、已保留；提取失败也不再留着表单让人重填。
       setMaterialOpen(false);
       setMaterialTitle("");
       setMaterialText("");
       setMaterialUrl("");
       setRedactedText("");
-      setNotice("材料已保存并保留，证据将在研究时使用");
+      if (result.evidenceError) {
+        setError(
+          `材料存下了，但证据没提取出来（${result.evidenceError.replace(
+            /[。.]$/,
+            ""
+          )}）。在下面「已保留材料」里点这一份的「再提取一次」。`
+        );
+      } else if (result.evidenceCount) {
+        setNotice(
+          `材料存下了，提取出 ${result.evidenceCount} 条证据，区分顾客声音时会用到。`
+        );
+      } else {
+        setNotice(
+          "材料存下了，但没从里面找到能用的证据，区分顾客声音时用不上它。"
+        );
+      }
       router.refresh();
     } catch (caught) {
       console.error("保存顾客材料失败", caught);
@@ -213,6 +237,28 @@ export function CustomerWorkspace({
     } catch (caught) {
       console.error("审核顾客材料失败", caught);
       setError(caught instanceof Error ? caught.message : "审核失败");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function retryEvidence(materialId: string) {
+    setBusy(materialId);
+    clearStatus();
+    try {
+      const count = await retryCustomerMaterialEvidence(
+        initialCase.id,
+        materialId
+      );
+      setNotice(
+        count
+          ? `提取出 ${count} 条证据，区分顾客声音时会用到。`
+          : "又提取了一次，还是没找到能用的证据。这份材料里可能没有顾客自己的话。"
+      );
+      router.refresh();
+    } catch (caught) {
+      console.error("重新提取顾客材料证据失败", caught);
+      setError(caught instanceof Error ? caught.message : "提取失败");
     } finally {
       setBusy(null);
     }
@@ -555,7 +601,13 @@ export function CustomerWorkspace({
               <h2 className="text-sm font-medium">已保留材料</h2>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {kept.map((material) => (
-                  <MaterialCard key={material.id} material={material} />
+                  <MaterialCard
+                    key={material.id}
+                    material={material}
+                    busy={busy === material.id}
+                    evidenceCount={evidenceCountByMaterial.get(material.id) ?? 0}
+                    onRetryEvidence={retryEvidence}
+                  />
                 ))}
               </div>
             </section>
@@ -830,10 +882,15 @@ function MaterialCard({
   material,
   busy,
   onReview,
+  evidenceCount,
+  onRetryEvidence,
 }: {
   material: CustomerCaseDetail["materials"][number];
   busy?: boolean;
   onReview?: (id: string, keep: boolean) => void;
+  /** 只给已保留的材料：从它提取出几条证据。 */
+  evidenceCount?: number;
+  onRetryEvidence?: (id: string) => void;
 }) {
   return (
     <article className="rounded-lg border bg-card p-4">
@@ -860,6 +917,29 @@ function MaterialCard({
       <p className="mt-3 line-clamp-5 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
         {material.sanitized_text}
       </p>
+      {evidenceCount !== undefined &&
+        (evidenceCount > 0 ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            提取出 <span className="font-mono">{evidenceCount}</span> 条证据
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <p className="text-xs text-foreground">
+              还没从这份材料提取出证据，区分顾客声音时用不上它。
+            </p>
+            {onRetryEvidence && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onRetryEvidence(material.id)}
+                disabled={busy}
+              >
+                {busy ? "提取中…" : "再提取一次"}
+              </Button>
+            )}
+          </div>
+        ))}
       {onReview && (
         <div className="mt-4 flex gap-2">
           <Button
