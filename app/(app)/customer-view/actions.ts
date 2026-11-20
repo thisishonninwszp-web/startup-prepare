@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { tavilyExtract } from "@/lib/external";
 import { webSearch } from "@/lib/web-search";
+import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import {
   answerAsCustomerProxy,
   buildCustomerProxy,
@@ -156,7 +157,7 @@ async function upsertMaterial(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-  return data.id as string;
+  return { id: data.id as string, sanitizedText: sanitized };
 }
 
 async function attachMaterial(
@@ -233,7 +234,7 @@ export async function searchCustomerMaterials(
       let inserted = 0;
       for (const result of results) {
         if (!result.url || !result.content.trim()) continue;
-        const materialId = await upsertMaterial(userId, {
+        const { id: materialId } = await upsertMaterial(userId, {
           origin: "web",
           source: hostname(result.url),
           sourceId: result.url,
@@ -285,6 +286,20 @@ export async function previewCustomerUrl(url: string) {
   };
 }
 
+export type CustomerMaterialAddResult = {
+  materialId: string;
+  /** 这份材料现在有几条证据；提取失败时为 null。 */
+  evidenceCount: number | null;
+  /** 提取失败的原因。材料本身已经存下、已保留，可以再提取一次。 */
+  evidenceError: string | null;
+};
+
+function evidenceErrorMessage(caught: unknown): string {
+  if (caught instanceof AiGatewayError) return humanAiErrorMessage(caught.code);
+  if (caught instanceof Error && caught.message.trim()) return caught.message;
+  return "提取失败";
+}
+
 export async function addCustomerMaterial(
   caseId: string,
   input: {
@@ -295,7 +310,7 @@ export async function addCustomerMaterial(
     market?: CustomerMarket;
     confirmed: boolean;
   }
-): Promise<string> {
+): Promise<CustomerMaterialAddResult> {
   if (!input.confirmed) throw new Error("请先确认遮蔽后的材料");
   if (!CUSTOMER_MATERIAL_ORIGINS.includes(input.origin)) {
     throw new Error("材料类型无效");
@@ -303,19 +318,41 @@ export async function addCustomerMaterial(
   const userId = await requireUserId();
   await requireCustomerCase(caseId, userId);
   const sanitized = redactCustomerPii(cleanText(input.text, "材料", 20_000));
-  const materialId = await upsertMaterial(userId, {
+  const title = cleanText(input.title, "材料标题", 160);
+  const source = input.sourceUrl ? hostname(input.sourceUrl) : "user";
+  const { id: materialId, sanitizedText } = await upsertMaterial(userId, {
     origin: input.origin,
-    source: input.sourceUrl ? hostname(input.sourceUrl) : "user",
+    source,
     sourceId: input.sourceUrl || null,
     sourceUrl: input.sourceUrl || null,
-    title: cleanText(input.title, "材料标题", 160),
+    title,
     text: sanitized.text,
     market: input.market ?? null,
   });
   await attachMaterial(caseId, materialId, "kept");
+
+  // 材料先存下、先保留，再提取证据：AI 出错时用户贴进来的东西不能丢。
+  // 只有提取出证据的材料才会进「区分顾客声音」和模式报告。
+  let evidenceCount: number | null = null;
+  let evidenceError: string | null = null;
+  try {
+    evidenceCount = await extractAndSaveMaterialEvidence(
+      {
+        id: materialId,
+        title,
+        source,
+        sanitized_text: sanitizedText,
+      },
+      userId
+    );
+  } catch (caught) {
+    console.error("用户材料提取证据失败", { materialId, error: caught });
+    evidenceError = evidenceErrorMessage(caught);
+  }
+
   revalidatePath(`/customer-view/${caseId}`);
   revalidatePath("/customer-view/library");
-  return materialId;
+  return { materialId, evidenceCount, evidenceError };
 }
 
 async function loadMaterialForCase(
@@ -349,14 +386,13 @@ async function extractAndSaveMaterialEvidence(
     sanitized_text: string;
   },
   userId: string
-) {
+): Promise<number> {
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("customer_evidence_atoms")
     .select("id")
-    .eq("material_id", material.id)
-    .limit(1);
+    .eq("material_id", material.id);
   if (existingError) throw new Error(existingError.message);
-  if ((existing ?? []).length > 0) return;
+  if ((existing ?? []).length > 0) return (existing ?? []).length;
 
   const atoms = await extractCustomerEvidence([
     {
@@ -366,7 +402,7 @@ async function extractAndSaveMaterialEvidence(
       text: material.sanitized_text,
     },
   ]);
-  if (atoms.length === 0) return;
+  if (atoms.length === 0) return 0;
   const { error } = await supabaseAdmin.from("customer_evidence_atoms").insert(
     atoms.map((atom) => ({
       user_id: userId,
@@ -382,6 +418,25 @@ async function extractAndSaveMaterialEvidence(
     }))
   );
   if (error) throw new Error(error.message);
+  return atoms.length;
+}
+
+/** 已保留但还没有证据的材料（提取失败过、或修好以前贴进来的），再提取一次。 */
+export async function retryCustomerMaterialEvidence(
+  caseId: string,
+  materialId: string
+): Promise<number> {
+  const userId = await requireUserId();
+  const { link, material } = await loadMaterialForCase(
+    caseId,
+    materialId,
+    userId
+  );
+  if (link.status !== "kept") throw new Error("只有已保留的材料才会提取证据");
+  const count = await extractAndSaveMaterialEvidence(material, userId);
+  revalidatePath(`/customer-view/${caseId}`);
+  revalidatePath("/customer-view/library");
+  return count;
 }
 
 export async function reviewCustomerMaterial(
