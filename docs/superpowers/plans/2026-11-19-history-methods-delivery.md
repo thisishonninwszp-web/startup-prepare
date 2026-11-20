@@ -45,7 +45,7 @@ Files: new `app/(app)/business-lab/methods/**` only. Exact API/props in method s
 
 - [x] Full npmtest, TypeScript, lint, final actual SQL; no local Next build while fixtures run. Actual React synthetic history and method save/erase/retry/source loss/counterexample links/mobile/console.
 - [x] Production advisor baseline;143→144→145 apply, catalog/RLS/privatehelper/owner/null/anon SDK read-only probes; no fabricated personal rows/provider calls.
-- [ ] Commit/push preserving main; verify exact Production Vercel success, logged-in canonical pages, screenshot, stop fixture/reset viewport and save accurate release evidence.
+- [x] Commit/push preserving main; verify exact Production Vercel success, logged-in canonical pages, screenshot, stop fixture/reset viewport and save accurate release evidence.
 
 ## Verification evidence (2026-11-20 JST)
 
@@ -60,3 +60,5 @@ Files: new `app/(app)/business-lab/methods/**` only. Exact API/props in method s
 - Production143 version20261119163939 via connector;144 version20261120012610 and145 version20261120012634 via authenticated SQL Editor after connector confirmation expiry. Manual history SQL hashes match LF-normalized source. Private origins RLS enabled, anon/auth/service direct access denied; only the3new public RPCs service-executable, helpers private with fixed search_path.
 - Production read-only SDK probes pass: owner list/exact missing gets/source, nullowner/anon42501, origins direct42501, existing137/139/141/workspace/counterexample methods reads. Owner currently has zero saved records in these lists, so no fabricated production writes.
 - Advisor existing WARN counts unchanged19/5/12/1; one expected new INFO for private no-policy origins table (RLS plus denied table grants, server-only RPC).
+
+- Released app commit16d78589c856a3a5716d4b929846574e2d676320 to main. Exact GitHub Production deployment7930679741 succeeded; canonical authenticated history/methods pages opened, both fresh-read buttons returned enabled, five authored fields blank, no console error/warn or horizontal overflow. Screenshots `.tmp/history-methods/production-history.jpg` and `production-methods.jpg`. Production was read-only; synthetic full workflows remain separate. Fixture server62853 stopped; viewport override had already been reset.
