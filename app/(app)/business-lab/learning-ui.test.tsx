@@ -1,7 +1,7 @@
 import {it,expect,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
 vi.mock('./learning-actions',()=>({}));vi.mock('./report-actions',()=>({}));vi.mock('./actions',()=>({}));
-import {BusinessLearningPanel} from './learning-panel';
+import {BusinessLearningPanel,LearningEntryView} from './learning-panel';
 import {LessonLibrary} from './lesson-library';
 import {ManualSourcePanel} from './manual-source-panel';
 import {MaterialView} from './material-view';
@@ -9,6 +9,7 @@ import type {CaseDetail} from '@/lib/domains/business-teardowns/domain';
 import type {LearningEntry} from '@/lib/domains/business-teardowns/learning-domain';
 const detail:CaseDetail={dailyCase:{id:'case',merchantId:'merchant',localDate:'2026-10-29',timezone:'Asia/Tokyo',state:'ready',publishedRevisionId:null,failureReason:null,revision:1,selectionReason:'人工选择'},merchant:{id:'merchant',platform:'xiaohongshu',platformShopId:'shop',name:'来源店',sourceUrl:'https://www.xiaohongshu.com/explore/a',identityScope:'user_supplied_unverified'},members:[]};
 const entry:LearningEntry={id:'follow',operation:'followup',caseId:'case',createdAt:'2026-10-29',payload:{outcome:'unknown',quote:'不可恢复的旧引文',note:'暂时无法核对'},sourceInvalidated:true,reviewNeeded:true};
+it('renders erased result methods as metadata only with no source or method resurrection',()=>{const html=renderToStaticMarkup(<LearningEntryView entry={{...entry,operation:'method',payload:{source:'reality_result',erased:true,method:'ERASED METHOD PROSE',conditions:'ERASED CONDITION'}}}/>);expect(html).toContain('已擦除本人方法正文');expect(html).not.toContain('ERASED');expect(html).not.toContain('用新案例检验这条方法');});
 it('renders module missing as readable fallback without mutation forms',()=>{const html=renderToStaticMarkup(<BusinessLearningPanel detail={detail} initialState={{available:false,version:0,items:[],nextCursor:null,merchants:[],duplicateCaseIds:[]}} initialReports={[]}/>);expect(html).toContain('后续学习模块尚未就绪');expect(html).not.toContain('保存主体关系事件');});
 it('keeps correction and invalidated-source badges outside original frozen reports',()=>{const html=renderToStaticMarkup(<BusinessLearningPanel detail={detail} initialState={{available:true,version:3,items:[entry],nextCursor:'more',merchants:[],duplicateCaseIds:['old-case']}} initialReports={[]}/>);expect(html).toContain('待复查');expect(html).toContain('出处已失效');expect(html).not.toContain('不可恢复的旧引文');expect(html).toContain('继续读取学习历史');expect(html).toContain('历史重复');});
 it('method library leaves old lesson failure conditions explicitly unfilled',()=>{const html=renderToStaticMarkup(<LessonLibrary initialPage={{available:true,items:[{...entry,operation:'method',sourceInvalidated:false,reviewNeeded:false,payload:{method:'用户方法',conditions:'有渠道',unknowns:'真实成本'}}],nextCursor:'more'}}/>);expect(html).toContain('用户方法');expect(html).toContain('失效条件：尚未补充');expect(html).toContain('继续读取方法');expect(html).not.toContain('不可恢复的旧引文');});

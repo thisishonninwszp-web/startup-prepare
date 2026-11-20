@@ -6,7 +6,7 @@ const revision=z.number().int().positive().max(2147483647);
 const cursor=z.object({date:stamp,id:counterexampleUuid}).strict();
 export const counterexampleCursor=z.string().max(400).regex(/^[A-Za-z0-9_-]+$/).refine(v=>{try{return cursor.safeParse(JSON.parse(Buffer.from(v,'base64url').toString())).success;}catch{return false;}},'分页位置不正确');
 const pageInput=z.object({before:counterexampleCursor.optional()}).strict();
-const method=z.object({id:counterexampleUuid,kind:methodKindSchema,caseId:counterexampleUuid,reportId:counterexampleUuid,baselineHash:z.string().regex(/^[a-f0-9]{32}$/),draft:sourceMethodDraftSchema}).strict();
+const method=z.object({id:counterexampleUuid,kind:methodKindSchema,caseId:counterexampleUuid,reportId:counterexampleUuid.nullable(),baselineHash:z.string().regex(/^[a-f0-9]{32}$/),draft:sourceMethodDraftSchema}).strict();
 const candidate=z.object({id:counterexampleUuid,title:z.string(),date:z.string().regex(/^\d{4}-\d\d-\d\d$/)}).strict();
 const record=z.object({id:counterexampleUuid,revision,study:studySchema,createdAt:stamp,updatedAt:stamp,adoptedMethodId:counterexampleUuid.nullable(),sources:z.object({method:method.nullable(),candidate:candidate.nullable(),stale:z.boolean()}).strict()}).strict().refine(v=>v.sources.stale===(v.sources.method===null)&&(!v.sources.method||(v.sources.method.id===v.study.methodId&&v.sources.method.kind===v.study.methodKind&&v.sources.method.baselineHash===v.study.baselineHash))&&(!v.sources.candidate||v.sources.candidate.id===v.study.candidateCaseId));
 function page<T extends z.ZodType>(item:T){return z.object({items:z.array(item).max(20),nextCursor:cursor.nullable()}).strict();}

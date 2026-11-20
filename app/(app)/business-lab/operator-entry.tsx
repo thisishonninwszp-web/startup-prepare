@@ -8,6 +8,8 @@ const tools=[
  ['counterexamples','给自己的方法找反例'],
  ['practice','亲手做一件东西'],
  ['simulation','连续做六回合经营取舍'],
+ ['history','查看确认经过与当时条件'],
+ ['methods','把调查整理为本人方法'],
 ] as const;
 
 export function BusinessOperatorEntry({caseId}:{caseId?:string}){

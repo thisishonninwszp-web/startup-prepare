@@ -27,6 +27,7 @@ function ReviewDependency({dependency}:{dependency:unknown}){
 }
 export function LearningEntryView({entry}:{entry:LearningEntry}){
  const p=entry.payload;
+ if(entry.operation==='method'&&p.source==='reality_result'&&p.erased===true)return <article className="space-y-2 rounded border p-3 text-xs leading-6"><p>本人确认的方法 · <time>{entry.createdAt}</time></p><p>已擦除本人方法正文，保留保存记录。</p></article>;
  return <article className="space-y-2 rounded border p-3 text-xs leading-6"><p className="font-medium">{labels[entry.operation]} · <time>{entry.createdAt}</time>{entry.reviewNeeded&&<span className="ml-2 rounded border px-1">待复查</span>}{entry.sourceInvalidated&&<span className="ml-2 rounded border px-1">出处已失效</span>}</p>
  {entry.operation==='expectation'&&<><p>{String(p.question??'')}</p><p>口径：{String(p.scope??'')} · 截止：{String(p.deadline??'')}</p><p>支持判据：{String(p.supportCriteria??'')}</p><p>推翻判据：{String(p.refuteCriteria??'')}</p><p>冻结报告：{String(p.reportId??'')} · 基线：{String(p.baselineSnapshotId??'')}</p></>}
  {entry.operation==='followup'&&<><p>结果：{p.outcome==='support'?'支持预期':p.outcome==='refute'?'推翻预期':'仍未知'}</p><p>口径：{String(p.scope??'')}</p><p>{String(p.note??'')}</p>{!entry.sourceInvalidated&&typeof p.quote==='string'&&p.quote&&<blockquote className="whitespace-pre-wrap break-words border-l-2 pl-3">{p.quote}</blockquote>}</>}

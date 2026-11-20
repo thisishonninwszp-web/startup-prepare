@@ -17,7 +17,7 @@ export function assertCounterexampleReceiptRevision(receiptRevision:number,readR
 export type MethodDraft=z.infer<typeof methodDraftSchema>;
 export type CounterexampleStudy=z.infer<typeof studySchema>;
 export type CounterexampleCommand=z.infer<typeof commandSchema>;
-export type CounterexampleMethod={id:string;kind:'learning'|'lesson';caseId:string;reportId:string;baselineHash:string;draft:MethodDraft};
+export type CounterexampleMethod={id:string;kind:'learning'|'lesson';caseId:string;reportId:string|null;baselineHash:string;draft:MethodDraft};
 export type CounterexampleCandidate={id:string;title:string;date:string};
 export type CounterexampleRecord={id:string;revision:number;study:CounterexampleStudy;createdAt:string;updatedAt:string;adoptedMethodId:string|null;sources:{method:CounterexampleMethod|null;candidate:CounterexampleCandidate|null;stale:boolean}};
 export type CounterexamplePage<T>={items:T[];nextCursor:string|null};
