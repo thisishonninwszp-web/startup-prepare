@@ -4,12 +4,21 @@ export type CustomerMarket = (typeof CUSTOMER_MARKETS)[number];
 /**
  * 搜公开材料时先去人们讲自己经历的地方找。2026-11 小样本：直接搜，30 页里只有 3 页有顾客本人的话，
  * 其余是商家、中介的页面；日文只搜知恵袋、ガルちゃん，16 页里 11 页有；中文只搜豆瓣、V2EX，16 页里 3 页有（直接搜是 0）。
- * 只放 robots.txt 允许程序读帖子页的网站：知乎、小红书、Quora、Reddit 不许，不放。
+ * 只放 robots.txt 允许程序读帖子页的网站：知乎、小红书、Quora、Reddit、百度知道、微博、虎扑不许，不放。
+ * 中文后来加上百度贴吧（robots 只限了点名的几个爬虫）、什么值得买的帖子、黑猫投诉（没有 robots.txt）：
+ * 四个假设各 8 页，有顾客原话的页数差不多（贴吧 17/32、值得买 16/32、豆瓣+V2EX 16/32），黑猫投诉 27/32 但全是投诉。
  * 英文没有这样的网站，改成在搜索词后面加上「讲经历」的说法（7 页里 0 页 → 3 页）。
+ * 「有顾客原话」不等于对题：后来一页页读标题，大半讲的是别的事，所以另有 mentionsTopic 按核心词筛。
  */
 export const CUSTOMER_VOICE_SITES: Record<CustomerMarket, readonly string[]> = {
   jp: ["detail.chiebukuro.yahoo.co.jp", "girlschannel.net"],
-  cn: ["douban.com", "v2ex.com"],
+  cn: [
+    "douban.com",
+    "v2ex.com",
+    "tieba.baidu.com",
+    "post.smzdm.com",
+    "tousu.sina.com.cn",
+  ],
   en: [],
 };
 const CUSTOMER_VOICE_WORDS: Record<CustomerMarket, string> = {
@@ -30,6 +39,64 @@ export function customerVoiceSearch(
     query: words ? `${query} ${words}` : query,
     ...(domains.length ? { domains: [...domains] } : {}),
   };
+}
+
+/** 每个市场的搜索词用哪种语言写。 */
+export const CUSTOMER_MARKET_LANGS: Record<CustomerMarket, "ja" | "zh" | "en"> = {
+  jp: "ja",
+  cn: "zh",
+  en: "en",
+};
+
+/**
+ * 每个市场：这件事的核心词（普通人搜索一定会打的那个词）和几个普通人的搜索词。
+ * 以前是把顾客假设整句翻译过去搜，句子太书面，搜索引擎抓住别的词就跑偏（「通勤」「受け取り」）。
+ */
+export type CustomerSearchPlan = Partial<
+  Record<CustomerMarket, { topic: string; queries: string[] }>
+>;
+
+const normalizeForTopic = (text: string) =>
+  text.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+
+/** 标题或开头里有没有核心词（几个词的话每个都要有）。不打分，只是对不对得上。 */
+export function mentionsTopic(topic: string, ...texts: string[]): boolean {
+  const parts = topic.split(/\s+/).map(normalizeForTopic).filter(Boolean);
+  if (!parts.length) return false;
+  const haystack = normalizeForTopic(texts.join(" "));
+  return parts.every((part) => haystack.includes(part));
+}
+
+/** 读 AI 写的搜索计划：核心词 1–20 字；搜索词 2–3 个，没带核心词的由代码补上。哪个市场写坏了就当没写。 */
+export function parseCustomerSearchPlan(
+  value: unknown,
+  markets: readonly CustomerMarket[]
+): CustomerSearchPlan {
+  const input = (value && typeof value === "object" ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  const plan: CustomerSearchPlan = {};
+  for (const market of markets) {
+    const raw = input[CUSTOMER_MARKET_LANGS[market]];
+    if (!raw || typeof raw !== "object") continue;
+    const { topic: rawTopic, queries: rawQueries } = raw as Record<string, unknown>;
+    const topic =
+      typeof rawTopic === "string"
+        ? rawTopic.replace(/[「」『』"“”]/g, "").trim()
+        : "";
+    if (!topic || topic.length > 20) continue;
+    const queries = (Array.isArray(rawQueries) ? rawQueries : [])
+      .filter((query): query is string => typeof query === "string")
+      .map((query) => query.replace(/[「」『』"“”]/g, "").trim().slice(0, 80))
+      .filter(Boolean)
+      .map((query) => (mentionsTopic(topic, query) ? query : `${topic} ${query}`))
+      .slice(0, 3);
+    if (queries.length < 2) continue;
+    plan[market] = { topic, queries };
+  }
+  if (Object.keys(plan).length === 0) throw new Error("搜索计划没有一个市场写对");
+  return plan;
 }
 
 export const CUSTOMER_MATERIAL_ORIGINS = [
