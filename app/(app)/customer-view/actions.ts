@@ -41,6 +41,9 @@ import {
 } from "./types";
 
 const CUSTOMER_PROMPT_VERSION = "customer-v1";
+// v2（2026-11）：原话由程序逐字核对，商家的介绍和广告不算顾客的话。
+// 以前存下的证据是 customer-v1，没经过这两道，要清理时按这个认。
+const CUSTOMER_EVIDENCE_PROMPT_VERSION = "customer-evidence-v2";
 
 type CreateCustomerCaseInput = {
   title: string;
@@ -414,7 +417,7 @@ async function extractAndSaveMaterialEvidence(
       tradeoff: atom.tradeoff,
       emotion: atom.emotion,
       emotion_basis: atom.emotion_basis,
-      prompt_version: CUSTOMER_PROMPT_VERSION,
+      prompt_version: CUSTOMER_EVIDENCE_PROMPT_VERSION,
     }))
   );
   if (error) throw new Error(error.message);
