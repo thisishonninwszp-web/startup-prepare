@@ -461,7 +461,7 @@ export function CustomerWorkspace({
                 <Search className="size-4" />
                 <div className="mt-4 text-sm font-medium">搜索公开材料</div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  按所选市场搜索，结果进入候选收件箱。
+                  先去人们自己提问、吐槽的地方找（知恵袋、豆瓣这类），找得太少再普通搜一次。结果进候选收件箱。
                 </p>
               </Button>
               <Button

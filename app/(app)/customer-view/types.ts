@@ -1,6 +1,37 @@
 export const CUSTOMER_MARKETS = ["cn", "jp", "en"] as const;
 export type CustomerMarket = (typeof CUSTOMER_MARKETS)[number];
 
+/**
+ * 搜公开材料时先去人们讲自己经历的地方找。2026-11 小样本：直接搜，30 页里只有 3 页有顾客本人的话，
+ * 其余是商家、中介的页面；日文只搜知恵袋、ガルちゃん，16 页里 11 页有；中文只搜豆瓣、V2EX，16 页里 3 页有（直接搜是 0）。
+ * 只放 robots.txt 允许程序读帖子页的网站：知乎、小红书、Quora、Reddit 不许，不放。
+ * 英文没有这样的网站，改成在搜索词后面加上「讲经历」的说法（7 页里 0 页 → 3 页）。
+ */
+export const CUSTOMER_VOICE_SITES: Record<CustomerMarket, readonly string[]> = {
+  jp: ["detail.chiebukuro.yahoo.co.jp", "girlschannel.net"],
+  cn: ["douban.com", "v2ex.com"],
+  en: [],
+};
+const CUSTOMER_VOICE_WORDS: Record<CustomerMarket, string> = {
+  jp: "",
+  cn: "",
+  en: "my experience forum",
+};
+/** 讲经历的地方找到的不满这么多页，再按原来的搜索词补上。 */
+export const MIN_VOICE_RESULTS = 3;
+
+export function customerVoiceSearch(
+  market: CustomerMarket,
+  query: string
+): { query: string; domains?: string[] } {
+  const domains = CUSTOMER_VOICE_SITES[market];
+  const words = CUSTOMER_VOICE_WORDS[market];
+  return {
+    query: words ? `${query} ${words}` : query,
+    ...(domains.length ? { domains: [...domains] } : {}),
+  };
+}
+
 export const CUSTOMER_MATERIAL_ORIGINS = [
   "web",
   "interview",

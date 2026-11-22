@@ -10,6 +10,8 @@ const m = vi.hoisted(() => ({
   auth: vi.fn(),
   extract: vi.fn(),
   segment: vi.fn(),
+  search: vi.fn(),
+  translate: vi.fn(),
   db: {} as Record<string, Record<string, unknown>[]>,
   nextId: 0,
 }));
@@ -98,7 +100,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/supabase", () => ({ supabaseAdmin: { from: query } }));
 vi.mock("@/lib/external", () => ({ tavilyExtract: vi.fn() }));
-vi.mock("@/lib/web-search", () => ({ webSearch: vi.fn() }));
+vi.mock("@/lib/web-search", () => ({ webSearch: m.search }));
 vi.mock("@/lib/ai", () => ({
   answerAsCustomerProxy: vi.fn(),
   buildCustomerProxy: vi.fn(),
@@ -108,7 +110,7 @@ vi.mock("@/lib/ai", () => ({
   generateCustomerPatternReport: vi.fn(),
   reactToIdeaAsCustomer: vi.fn(),
   segmentCustomerVoices: m.segment,
-  translateQuery: vi.fn(),
+  translateQuery: m.translate,
 }));
 
 import { AiGatewayError } from "@/lib/ai-gateway";
@@ -116,6 +118,7 @@ import {
   addCustomerMaterial,
   retryCustomerMaterialEvidence,
   runCustomerResearch,
+  searchCustomerMaterials,
 } from "./actions";
 
 const interview = {
@@ -171,6 +174,60 @@ beforeEach(() => {
     ]
   );
   m.segment.mockResolvedValue({ segments: [] });
+  m.translate.mockResolvedValue({
+    zh: "小店 对账",
+    ja: "個人店 レジ締め",
+    en: "small shop bookkeeping",
+  });
+  m.search.mockResolvedValue([]);
+});
+
+function page(url: string, content = "毎日レジ締めに30分かかって、正直しんどいです。") {
+  return { url, title: url, content };
+}
+
+describe("searching public materials", () => {
+  it("looks where people talk about their own experience first", async () => {
+    m.search.mockResolvedValueOnce([
+      page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1"),
+      page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q2"),
+      page("https://girlschannel.net/topics/3/"),
+    ]);
+
+    const result = await searchCustomerMaterials("case");
+
+    expect(m.search).toHaveBeenCalledTimes(1);
+    expect(m.search).toHaveBeenCalledWith("個人店 レジ締め", 8, {
+      domains: ["detail.chiebukuro.yahoo.co.jp", "girlschannel.net"],
+    });
+    expect(result).toEqual({ inserted: 3, errors: [] });
+    expect(
+      table("customer_case_materials").map((link) => link.status)
+    ).toEqual(["candidate", "candidate", "candidate"]);
+  });
+
+  it("tops up with the plain search when those places have too little", async () => {
+    m.search
+      .mockResolvedValueOnce([
+        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1"),
+        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q2", " "),
+      ])
+      .mockResolvedValueOnce([
+        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1"),
+        page("https://example.com/regi"),
+        page("https://example.com/pos"),
+      ]);
+
+    const result = await searchCustomerMaterials("case");
+
+    expect(m.search).toHaveBeenNthCalledWith(2, "個人店 レジ締め", 8);
+    expect(result.inserted).toBe(3);
+    expect(table("customer_materials").map((row) => row.source_url)).toEqual([
+      "https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1",
+      "https://example.com/regi",
+      "https://example.com/pos",
+    ]);
+  });
 });
 
 describe("pasted customer materials", () => {

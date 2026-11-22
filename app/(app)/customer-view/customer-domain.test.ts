@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isProvisionalProxy,
+  customerVoiceSearch,
   filterEvidenceForSegment,
   keepCustomerWords,
   quoteInMaterial,
@@ -144,6 +145,22 @@ describe("only the customer's own words count as evidence", () => {
     );
     expect(kept).toHaveLength(1);
     expect(quoteInMaterial("一个月多花三万日元", text.get("interview")!)).toBe(true);
+  });
+});
+
+describe("where to search for customer materials", () => {
+  it("searches Q&A and forum sites for Japanese and Chinese, and adds experience words for English", () => {
+    expect(customerVoiceSearch("jp", "レジ締め")).toEqual({
+      query: "レジ締め",
+      domains: ["detail.chiebukuro.yahoo.co.jp", "girlschannel.net"],
+    });
+    expect(customerVoiceSearch("cn", "对账")).toEqual({
+      query: "对账",
+      domains: ["douban.com", "v2ex.com"],
+    });
+    expect(customerVoiceSearch("en", "bookkeeping")).toEqual({
+      query: "bookkeeping my experience forum",
+    });
   });
 });
 
