@@ -461,7 +461,7 @@ export function CustomerWorkspace({
                 <Search className="size-4" />
                 <div className="mt-4 text-sm font-medium">搜索公开材料</div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  先去人们自己提问、吐槽的地方找（知恵袋、豆瓣这类），找得太少再普通搜一次。结果进候选收件箱。
+                  AI 先按普通人的说法写几个搜索词，去知恵袋、豆瓣这类地方找，标题和开头没提到这件事的不放进来。结果进候选收件箱。
                 </p>
               </Button>
               <Button

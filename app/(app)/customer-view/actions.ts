@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { tavilyExtract } from "@/lib/external";
-import { webSearch } from "@/lib/web-search";
 import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import {
   answerAsCustomerProxy,
@@ -14,21 +13,22 @@ import {
   extractCustomerEvidence,
   generateCustomerOpportunities,
   generateCustomerPatternReport,
+  planCustomerSearch,
   reactToIdeaAsCustomer,
   segmentCustomerVoices,
   translateQuery,
   type CustomerProxyTurn,
 } from "@/lib/ai";
 import { redactCustomerPii } from "./privacy";
+import { findMarketCandidates } from "./search";
 import {
   CUSTOMER_CADENCES,
+  CUSTOMER_MARKET_LANGS,
   CUSTOMER_MARKETS,
   CUSTOMER_MATERIAL_ORIGINS,
   CUSTOMER_REVIEW_STATUSES,
-  customerVoiceSearch,
   filterEvidenceForSegment,
   isProvisionalProxy,
-  MIN_VOICE_RESULTS,
   nextCustomerRun,
   parseCustomerPatternReport,
   parseCustomerProxy,
@@ -39,6 +39,7 @@ import {
   type CustomerMarket,
   type CustomerMaterialOrigin,
   type CustomerReviewStatus,
+  type CustomerSearchPlan,
   type CustomerSegment,
 } from "./types";
 
@@ -221,40 +222,30 @@ export async function searchCustomerMaterials(
 ): Promise<CustomerSearchResult> {
   const userId = await requireUserId();
   const customerCase = await requireCustomerCase(caseId, userId);
-  const translations = await translateQuery(
-    `${customerCase.customer_hypothesis} ${customerCase.problem_context}`
-  );
-  const queryByMarket: Record<CustomerMarket, string> = {
-    cn: translations.zh,
-    jp: translations.ja,
-    en: translations.en,
-  };
-  const languageByMarket: Record<CustomerMarket, string> = {
-    cn: "zh",
-    jp: "ja",
-    en: "en",
-  };
+  const markets = customerCase.markets as CustomerMarket[];
+  const caseText = `${customerCase.customer_hypothesis} ${customerCase.problem_context}`;
+  // 先让 AI 按普通人的说法写搜索词；写不出来就照旧把整句翻译过去搜。
+  let plan: CustomerSearchPlan = {};
+  try {
+    plan = await planCustomerSearch({
+      hypothesis: customerCase.customer_hypothesis,
+      context: customerCase.problem_context,
+      markets,
+    });
+  } catch (caught) {
+    console.error("顾客搜索词没写出来，改用翻译", caught);
+  }
+  const needsTranslation = markets.some((market) => !plan[market]);
+  const translations = needsTranslation
+    ? await translateQuery(caseText)
+    : { zh: caseText, ja: caseText, en: caseText };
   const settled = await Promise.allSettled(
-    (customerCase.markets as CustomerMarket[]).map(async (market) => {
-      const usable = (rows: Awaited<ReturnType<typeof webSearch>>) =>
-        rows.filter((row) => row.url && row.content.trim());
-      // 先去人们讲自己经历的地方找；直接搜回来的多半是商家和中介的页面。
-      const voice = customerVoiceSearch(market, queryByMarket[market]);
-      let results = usable(
-        await webSearch(
-          voice.query,
-          8,
-          voice.domains ? { domains: voice.domains } : {}
-        )
+    markets.map(async (market) => {
+      const results = await findMarketCandidates(
+        market,
+        plan[market],
+        translations[CUSTOMER_MARKET_LANGS[market]]
       );
-      // 那边找到的太少，再按原来的搜索词补上，免得收件箱空着。
-      if (results.length < MIN_VOICE_RESULTS) {
-        const seen = new Set(results.map((row) => row.url));
-        const plain = usable(await webSearch(queryByMarket[market], 8)).filter(
-          (row) => !seen.has(row.url)
-        );
-        results = [...results, ...plain].slice(0, 8);
-      }
       let inserted = 0;
       for (const result of results) {
         const { id: materialId } = await upsertMaterial(userId, {
@@ -264,7 +255,7 @@ export async function searchCustomerMaterials(
           sourceUrl: result.url,
           title: result.title,
           text: result.content,
-          language: languageByMarket[market],
+          language: CUSTOMER_MARKET_LANGS[market],
           market,
         });
         await attachMaterial(caseId, materialId, "candidate");
@@ -277,7 +268,7 @@ export async function searchCustomerMaterials(
   let inserted = 0;
   const errors: CustomerSearchResult["errors"] = [];
   settled.forEach((result, index) => {
-    const market = (customerCase.markets as CustomerMarket[])[index];
+    const market = markets[index];
     if (result.status === "fulfilled") inserted += result.value.inserted;
     else {
       console.error("顾客市场搜索失败", { market, error: result.reason });

@@ -1,3 +1,4 @@
+import { CUSTOMER_MARKET_LANGS, parseCustomerSearchPlan, type CustomerMarket, type CustomerSearchPlan } from "@/app/(app)/customer-view/types";
 import { collectProxyCitationIds, keepCustomerWords, parseCustomerEvidenceBatch, parseCustomerIdeaReaction, parseCustomerOpportunities, parseCustomerPatternReport, parseCustomerProxy, parseCustomerProxyAnswer, parseCustomerProxyDelta, parseCustomerSegments, type CustomerEvidenceAtom, type CustomerIdeaReaction, type CustomerOpportunities, type CustomerPatternReport, type CustomerProxy, type CustomerProxyAnswer, type CustomerProxyDelta, type CustomerSegment, type CustomerSegments, validateCustomerCitations } from "@/app/(app)/customer-view/types";
 import { generateRealityJson } from "./reality";
 
@@ -117,6 +118,34 @@ export async function extractCustomerEvidence(
   }
   // 商家自己的页面整页不收；商家的介绍和广告不算顾客的话；原话在材料里逐字找不到的也丢掉。
   return keepCustomerWords(result, shown);
+}
+
+const LANG_NAMES = { ja: "日语", zh: "中文", en: "英语" } as const;
+
+const customerSearchPrompt = (langs: string[]) => `下面是一个顾客研究课题：顾客假设和他们的处境。要在问答网站、论坛、评论区里，找这些人自己说出这件事的帖子。
+按 ${langs.join("、")} 每种语言各写：
+- topic：这件事里最核心的东西，这里的普通人搜索时一定会打的词，1 到 2 个词，用空格隔开（例：「クリーニング」「干洗」）。程序只留标题或开头里每个词都有的页面。
+  这个词到处都用得上、离开地点就不是这件事时，把地点也写进去（例：在日本看病写「日本 看病」，不要只写「看病」；在日本找牙医写「dentist Japan」）。不要书面词、行政用语和产品名。
+  同一件事打工的、店员也天天在做时，topic 不写那件事，改写这个人自己的行业或身份（例：小饭馆店主收银结账，topic 写「飲食店」，不写「レジ締め」—— 不然搜到的全是打工的在问怎么结账）。
+- queries：3 个搜索词，每个都包含 topic，再加上这个人遇到这件事时自己会在网上打的话（提问或吐槽），一共 2 到 5 个词，用普通人的说法（例：「クリーニング 取りに行けない」「干洗 下班 来不及取」「飲食店 レジ締め 時間かかる」）。三个从不同角度：这件麻烦本身、他们现在怎么对付、对付时卡在哪。
+不是翻译那句假设，是想这个人自己会怎么搜。
+只输出 JSON，键用 ja / zh / en：{"ja":{"topic":"…","queries":["…","…","…"]}}`;
+
+/** 每个市场写核心词和几个普通人的搜索词，代替把顾客假设整句翻译过去搜。 */
+export async function planCustomerSearch(input: {
+  hypothesis: string;
+  context: string;
+  markets: readonly CustomerMarket[];
+}): Promise<CustomerSearchPlan> {
+  const langs = input.markets.map(
+    (market) =>
+      `${CUSTOMER_MARKET_LANGS[market]}（${LANG_NAMES[CUSTOMER_MARKET_LANGS[market]]}）`
+  );
+  return generateRealityJson(
+    customerSearchPrompt(langs),
+    `顾客假设：${input.hypothesis}\n处境：${input.context}`,
+    (value) => parseCustomerSearchPlan(value, input.markets)
+  );
 }
 
 export async function segmentCustomerVoices(

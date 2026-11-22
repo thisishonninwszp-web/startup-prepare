@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   segment: vi.fn(),
   search: vi.fn(),
   translate: vi.fn(),
+  plan: vi.fn(),
   db: {} as Record<string, Record<string, unknown>[]>,
   nextId: 0,
 }));
@@ -108,6 +109,7 @@ vi.mock("@/lib/ai", () => ({
   extractCustomerEvidence: m.extract,
   generateCustomerOpportunities: vi.fn(),
   generateCustomerPatternReport: vi.fn(),
+  planCustomerSearch: m.plan,
   reactToIdeaAsCustomer: vi.fn(),
   segmentCustomerVoices: m.segment,
   translateQuery: m.translate,
@@ -180,53 +182,57 @@ beforeEach(() => {
     en: "small shop bookkeeping",
   });
   m.search.mockResolvedValue([]);
+  m.plan.mockResolvedValue({
+    jp: { topic: "飲食店", queries: ["飲食店 レジ締め 時間", "飲食店 売上 集計"] },
+  });
 });
 
-function page(url: string, content = "毎日レジ締めに30分かかって、正直しんどいです。") {
-  return { url, title: url, content };
+function page(url: string, title = "飲食店のレジ締めが毎日つらい") {
+  return { url, title, content: "毎日レジ締めに30分かかって、正直しんどいです。" };
 }
 
+const VOICE_SITES = {
+  domains: ["detail.chiebukuro.yahoo.co.jp", "girlschannel.net"],
+};
+
 describe("searching public materials", () => {
-  it("looks where people talk about their own experience first", async () => {
-    m.search.mockResolvedValueOnce([
-      page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1"),
-      page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q2"),
-      page("https://girlschannel.net/topics/3/"),
-    ]);
+  it("searches with everyday queries where people talk about their own experience", async () => {
+    m.search
+      .mockResolvedValueOnce([
+        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1"),
+        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q2"),
+      ])
+      .mockResolvedValueOnce([page("https://girlschannel.net/topics/3/")]);
 
     const result = await searchCustomerMaterials("case");
 
-    expect(m.search).toHaveBeenCalledTimes(1);
-    expect(m.search).toHaveBeenCalledWith("個人店 レジ締め", 8, {
-      domains: ["detail.chiebukuro.yahoo.co.jp", "girlschannel.net"],
+    expect(m.plan).toHaveBeenCalledWith({
+      hypothesis: "个人经营的小店店长",
+      context: "每天关店后对账",
+      markets: ["jp"],
     });
+    expect(m.translate).not.toHaveBeenCalled();
+    expect(m.search).toHaveBeenCalledWith("飲食店 レジ締め 時間", 8, VOICE_SITES);
+    expect(m.search).toHaveBeenCalledWith("飲食店 売上 集計", 8, VOICE_SITES);
     expect(result).toEqual({ inserted: 3, errors: [] });
     expect(
       table("customer_case_materials").map((link) => link.status)
     ).toEqual(["candidate", "candidate", "candidate"]);
   });
 
-  it("tops up with the plain search when those places have too little", async () => {
-    m.search
-      .mockResolvedValueOnce([
-        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1"),
-        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q2", " "),
-      ])
-      .mockResolvedValueOnce([
-        page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1"),
-        page("https://example.com/regi"),
-        page("https://example.com/pos"),
-      ]);
+  it("falls back to translating the case when the AI can't write queries", async () => {
+    m.plan.mockRejectedValueOnce(new Error("搜索计划没有一个市场写对"));
+    m.search.mockResolvedValueOnce([
+      page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1", "q1"),
+      page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q2", "q2"),
+      page("https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q3", "q3"),
+    ]);
 
     const result = await searchCustomerMaterials("case");
 
-    expect(m.search).toHaveBeenNthCalledWith(2, "個人店 レジ締め", 8);
+    expect(m.translate).toHaveBeenCalledWith("个人经营的小店店长 每天关店后对账");
+    expect(m.search).toHaveBeenCalledWith("個人店 レジ締め", 8, VOICE_SITES);
     expect(result.inserted).toBe(3);
-    expect(table("customer_materials").map((row) => row.source_url)).toEqual([
-      "https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1",
-      "https://example.com/regi",
-      "https://example.com/pos",
-    ]);
   });
 });
 

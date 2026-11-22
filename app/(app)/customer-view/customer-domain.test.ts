@@ -4,8 +4,10 @@ import {
   customerVoiceSearch,
   filterEvidenceForSegment,
   keepCustomerWords,
+  mentionsTopic,
   quoteInMaterial,
   nextCustomerRun,
+  parseCustomerSearchPlan,
   parseCustomerEvidenceBatch,
   parseCustomerOpportunities,
   parseCustomerProxyAnswer,
@@ -210,11 +212,48 @@ describe("where to search for customer materials", () => {
     });
     expect(customerVoiceSearch("cn", "对账")).toEqual({
       query: "对账",
-      domains: ["douban.com", "v2ex.com"],
+      domains: [
+        "douban.com",
+        "v2ex.com",
+        "tieba.baidu.com",
+        "post.smzdm.com",
+        "tousu.sina.com.cn",
+      ],
     });
     expect(customerVoiceSearch("en", "bookkeeping")).toEqual({
       query: "bookkeeping my experience forum",
     });
+  });
+
+  it("checks the topic word by word, ignoring case, spacing and full-width forms", () => {
+    expect(mentionsTopic("日本 看病", "去日本看病一定要看的这些流程")).toBe(true);
+    expect(mentionsTopic("日本 看病", "华西医院看病攻略")).toBe(false);
+    expect(mentionsTopic("dentist Japan", "Need a DENTIST in Ｊａｐａｎ")).toBe(true);
+    expect(mentionsTopic("クリーニング", "受け取りが遅れたら", "クリーニング屋さんに預けたまま")).toBe(true);
+    expect(mentionsTopic("  ", "anything")).toBe(false);
+  });
+
+  it("reads the AI's search plan per market and puts the topic into every query", () => {
+    const plan = parseCustomerSearchPlan(
+      {
+        ja: {
+          topic: "「飲食店」",
+          queries: ["飲食店 レジ締め 時間", "売上 集計 毎日", 3, "", "四つ目"],
+        },
+        zh: { topic: "干洗", queries: ["只有一个"] },
+        en: { topic: "dentist Japan", queries: ["a", "b"] },
+      },
+      ["jp", "cn"]
+    );
+    expect(plan).toEqual({
+      jp: {
+        topic: "飲食店",
+        queries: ["飲食店 レジ締め 時間", "飲食店 売上 集計 毎日", "飲食店 四つ目"],
+      },
+    });
+    expect(() =>
+      parseCustomerSearchPlan({ ja: { topic: "", queries: ["a", "b"] } }, ["jp"])
+    ).toThrow("搜索计划");
   });
 });
 
