@@ -37,8 +37,15 @@ export type CustomerEvidenceAtom = {
   emotion_basis: EmotionBasis;
 };
 
+/**
+ * 这句话是谁说的。customer：用的人讲自己的经历；seller：商家、服务方的介绍和广告
+ * （包括商家页面上挑出来的「顾客评价」）；other：编辑、记者、专家的概括或转述。
+ */
+export const EVIDENCE_SPEAKERS = ["customer", "seller", "other"] as const;
+export type EvidenceSpeaker = (typeof EVIDENCE_SPEAKERS)[number];
+
 export type CustomerEvidenceBatch = {
-  atoms: CustomerEvidenceAtom[];
+  atoms: (CustomerEvidenceAtom & { speaker?: EvidenceSpeaker })[];
 };
 
 export type CustomerSegment = {
@@ -191,9 +198,37 @@ export function parseCustomerEvidenceBatch(
           row.emotion_basis,
           `atoms[${index}]`
         ),
+        speaker: (EVIDENCE_SPEAKERS as readonly unknown[]).includes(row.speaker)
+          ? (row.speaker as EvidenceSpeaker)
+          : undefined,
       };
     }),
   };
+}
+
+const squashQuote = (text: string) => text.normalize("NFKC").replace(/\s+/g, "");
+
+/** 原话是不是真在材料里：去掉空白、统一全半角后逐字比。4 个字以下的不算。 */
+export function quoteInMaterial(quote: string, text: string): boolean {
+  const squashed = squashQuote(quote);
+  return squashed.length >= 4 && squashQuote(text).includes(squashed);
+}
+
+/**
+ * 只留顾客自己说的、在材料里逐字找得到的原话。
+ * AI 标成商家或旁人说的丢掉；没标是谁说的照留（还没改提示词的语言版本不会全军覆没），
+ * 但原话照样要逐字核对。
+ */
+export function keepCustomerWords(
+  atoms: CustomerEvidenceBatch["atoms"],
+  textByMaterial: ReadonlyMap<string, string>
+): CustomerEvidenceAtom[] {
+  return atoms.flatMap(({ speaker, ...atom }) => {
+    if (speaker && speaker !== "customer") return [];
+    const text = textByMaterial.get(atom.material_id);
+    if (text === undefined || !quoteInMaterial(atom.quote, text)) return [];
+    return [atom];
+  });
 }
 
 export function parseCustomerSegments(value: unknown): CustomerSegments {

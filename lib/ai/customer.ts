@@ -1,4 +1,4 @@
-import { collectProxyCitationIds, parseCustomerEvidenceBatch, parseCustomerIdeaReaction, parseCustomerOpportunities, parseCustomerPatternReport, parseCustomerProxy, parseCustomerProxyAnswer, parseCustomerProxyDelta, parseCustomerSegments, type CustomerEvidenceAtom, type CustomerIdeaReaction, type CustomerOpportunities, type CustomerPatternReport, type CustomerProxy, type CustomerProxyAnswer, type CustomerProxyDelta, type CustomerSegment, type CustomerSegments, validateCustomerCitations } from "@/app/(app)/customer-view/types";
+import { collectProxyCitationIds, keepCustomerWords, parseCustomerEvidenceBatch, parseCustomerIdeaReaction, parseCustomerOpportunities, parseCustomerPatternReport, parseCustomerProxy, parseCustomerProxyAnswer, parseCustomerProxyDelta, parseCustomerSegments, type CustomerEvidenceAtom, type CustomerIdeaReaction, type CustomerOpportunities, type CustomerPatternReport, type CustomerProxy, type CustomerProxyAnswer, type CustomerProxyDelta, type CustomerSegment, type CustomerSegments, validateCustomerCitations } from "@/app/(app)/customer-view/types";
 import { generateRealityJson } from "./reality";
 
 // ---------------------------------------------------------------------------
@@ -28,9 +28,13 @@ const CUSTOMER_RESEARCH_RULES = `你服务于 IdeaOS 的顾客视点研究工作
 - 目标是理解顾客如何生活、行动、取舍和感受，不是替创业者证明产品。`;
 
 const CUSTOMER_EVIDENCE_PROMPT = `${CUSTOMER_RESEARCH_RULES}
-从每份材料提取最多4个证据原子。quote 应保留顾客自己的短原话；scene、behavior、alternative、tradeoff 没出现时可为空。
+从每份材料提取最多4个证据原子。证据只能是顾客（用这个东西、有这个麻烦的人）讲自己的经历和感受。
+quote 从材料里一字不改地连续照抄一段：用材料原来的语言，不翻译、不改写、不用省略号拼接。程序会逐字核对，对不上的会被丢掉。
+speaker 写这句话是谁说的：customer（顾客本人）、seller（商家、服务方自己的介绍、广告、宣传、常见问答，包括商家页面上挑出来的「顾客评价」）、other（编辑、记者、专家的概括或转述）。
+一份材料里没有顾客本人说的话（比如整页是商家的服务介绍），这份材料就一条都不要出，宁缺毋滥。
+scene、behavior、alternative、tradeoff 没出现时可为空。
 emotion_basis 只能是 stated（材料明确表达）、inferred（仅由行为谨慎推断）或 unknown。
-只输出 JSON：{"atoms":[{"material_id":"","quote":"","scene":"","behavior":"","alternative":"","tradeoff":"","emotion":"","emotion_basis":"stated"}]}`;
+只输出 JSON：{"atoms":[{"material_id":"","speaker":"customer","quote":"","scene":"","behavior":"","alternative":"","tradeoff":"","emotion":"","emotion_basis":"stated"}]}`;
 
 const CUSTOMER_SEGMENT_PROMPT = `${CUSTOMER_RESEARCH_RULES}
 把证据按真实处境与行为拆成2到3类不同顾客声音。禁止只按年龄、性别、职业等人口标签分类。每类必须有证据ID和未知。
@@ -87,26 +91,27 @@ function customerEvidenceIds(atoms: CustomerEvidenceAtom[]): string[] {
 export async function extractCustomerEvidence(
   materials: CustomerAiMaterial[]
 ): Promise<CustomerEvidenceAtom[]> {
+  // 只给 AI 看前 8000 字，原话也只在这一段里核对。
+  const shown = new Map(
+    materials.map((material) => [material.id, material.text.slice(0, 8000)])
+  );
   const result = await generateRealityJson(
     CUSTOMER_EVIDENCE_PROMPT,
     materials
       .map(
         (material) =>
-          `[材料 ${material.id}][${material.source}] ${material.title}\n${material.text.slice(
-            0,
-            8000
-          )}`
+          `[材料 ${material.id}][${material.source}] ${material.title}\n${shown.get(material.id)}`
       )
       .join("\n\n---\n\n"),
     parseCustomerEvidenceBatch
   );
-  const allowed = new Set(materials.map((material) => material.id));
   for (const atom of result.atoms) {
-    if (!allowed.has(atom.material_id)) {
+    if (!shown.has(atom.material_id)) {
       throw new Error(`AI引用了未被允许的材料：${atom.material_id}`);
     }
   }
-  return result.atoms;
+  // 商家的介绍和广告不算顾客的话；原话在材料里逐字找不到的也丢掉。
+  return keepCustomerWords(result.atoms, shown);
 }
 
 export async function segmentCustomerVoices(

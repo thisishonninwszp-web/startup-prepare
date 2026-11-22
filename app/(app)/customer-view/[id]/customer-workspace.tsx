@@ -212,7 +212,7 @@ export function CustomerWorkspace({
         );
       } else {
         setNotice(
-          "材料存下了，但没从里面找到能用的证据，区分顾客声音时用不上它。"
+          "材料存下了，但里面没找到顾客本人说的话（商家的介绍和广告不算），区分顾客声音时用不上它。"
         );
       }
       router.refresh();
@@ -253,7 +253,7 @@ export function CustomerWorkspace({
       setNotice(
         count
           ? `提取出 ${count} 条证据，区分顾客声音时会用到。`
-          : "又提取了一次，还是没找到能用的证据。这份材料里可能没有顾客自己的话。"
+          : "又提取了一次，还是没找到顾客本人说的话。商家的介绍、广告和别人的转述不算。"
       );
       router.refresh();
     } catch (caught) {
@@ -925,7 +925,7 @@ function MaterialCard({
         ) : (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <p className="text-xs text-foreground">
-              还没从这份材料提取出证据，区分顾客声音时用不上它。
+              这份材料里还没找到顾客本人说的话，区分顾客声音时用不上它。
             </p>
             {onRetryEvidence && (
               <Button

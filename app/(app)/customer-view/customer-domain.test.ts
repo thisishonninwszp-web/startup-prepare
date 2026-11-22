@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   isProvisionalProxy,
   filterEvidenceForSegment,
+  keepCustomerWords,
+  quoteInMaterial,
   nextCustomerRun,
   parseCustomerEvidenceBatch,
   parseCustomerOpportunities,
@@ -45,10 +47,103 @@ describe("customer evidence", () => {
     ).toThrow("emotion_basis");
   });
 
+  it("reads who said the line, ignoring values it does not know", () => {
+    const atom = {
+      material_id: "m1",
+      quote: "每天对账到凌晨，真的很烦。",
+      scene: "",
+      behavior: "",
+      alternative: "",
+      tradeoff: "",
+      emotion: "",
+      emotion_basis: "stated",
+    };
+    const batch = parseCustomerEvidenceBatch({
+      atoms: [
+        { ...atom, speaker: "seller" },
+        { ...atom, speaker: "顾客" },
+        atom,
+      ],
+    });
+    expect(batch.atoms.map((item) => item.speaker)).toEqual([
+      "seller",
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("marks fewer than three independent kept materials as provisional", () => {
     expect(isProvisionalProxy(["m1", "m2"])).toBe(true);
     expect(isProvisionalProxy(["m1", "m2", "m3"])).toBe(false);
     expect(isProvisionalProxy(["m1", "m1", "m2", "m3"])).toBe(false);
+  });
+});
+
+describe("only the customer's own words count as evidence", () => {
+  const text = new Map([
+    [
+      "interview",
+      "店长说：每天关店后还要对两个小时的账，Excel 一张张对，烦死了。\n后来请了兼职，一个月多花三万日元。",
+    ],
+    [
+      "vendor",
+      "「洗濯物の受け取り、もう悩まない」宅配クリーニングなら、24時間いつでも玄関先で受け取れます。お客様の声：本当に楽になりました！",
+    ],
+  ]);
+  const atom = (material_id: string, quote: string, speaker?: string) => ({
+    material_id,
+    quote,
+    scene: "",
+    behavior: "",
+    alternative: "",
+    tradeoff: "",
+    emotion: "",
+    emotion_basis: "stated" as const,
+    ...(speaker ? { speaker: speaker as "customer" | "seller" | "other" } : {}),
+  });
+
+  it("drops what the seller or a bystander said", () => {
+    const kept = keepCustomerWords(
+      [
+        atom("interview", "Excel 一张张对，烦死了", "customer"),
+        atom("vendor", "24時間いつでも玄関先で受け取れます", "seller"),
+        atom("vendor", "本当に楽になりました！", "seller"),
+        atom("interview", "后来请了兼职", "other"),
+      ],
+      text
+    );
+    expect(kept.map((item) => item.quote)).toEqual(["Excel 一张张对，烦死了"]);
+    expect(kept[0]).not.toHaveProperty("speaker");
+  });
+
+  it("drops quotes that are not word for word in the material", () => {
+    const kept = keepCustomerWords(
+      [
+        // 改写
+        atom("interview", "每天关店后要花两小时对账，很烦", "customer"),
+        // 用省略号拼起来
+        atom("interview", "每天关店后……烦死了", "customer"),
+        // 翻译成别的语言
+        atom("vendor", "真的轻松多了", "customer"),
+        // 不是这份材料的
+        atom("vendor", "Excel 一张张对，烦死了", "customer"),
+        // 太短，到处都能对上
+        atom("interview", "烦死了", "customer"),
+        // 没有这份材料
+        atom("missing", "Excel 一张张对，烦死了", "customer"),
+      ],
+      text
+    );
+    expect(kept).toEqual([]);
+  });
+
+  it("ignores spacing and full-width differences, and keeps lines with no speaker", () => {
+    const kept = keepCustomerWords(
+      [atom("interview", "Ｅｘｃｅｌ一张张对， 烦死了")],
+      text
+    );
+    expect(kept).toHaveLength(1);
+    expect(quoteInMaterial("一个月多花三万日元", text.get("interview")!)).toBe(true);
   });
 });
 
