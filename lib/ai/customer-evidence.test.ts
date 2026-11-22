@@ -62,6 +62,30 @@ describe("extractCustomerEvidence", () => {
     expect(system).toContain("一字不改");
   });
 
+  it("keeps nothing from a page the AI says is the seller's own", async () => {
+    const testimonials = {
+      ...vendor,
+      text: `${vendor.text}\n初めての利用でしたが、コートが蘇った感じで満足しています。`,
+    };
+    gateway.json.mockImplementation(async (_system, _content, parse) =>
+      parse({
+        pages: [
+          { material_id: "vendor", kind: "seller" },
+          { material_id: "interview", kind: "community" },
+        ],
+        atoms: [
+          atom("vendor", "初めての利用でしたが、コートが蘇った感じで満足しています。", "customer"),
+          atom("interview", "週末にまとめて持っていくしかない", "customer"),
+        ],
+      })
+    );
+
+    const atoms = await extractCustomerEvidence([interview, testimonials]);
+
+    expect(atoms.map((item) => item.material_id)).toEqual(["interview"]);
+    expect(gateway.json.mock.calls[0][0]).toContain("pages");
+  });
+
   it("only checks quotes against the part of the material the AI was shown", async () => {
     const long = {
       ...interview,

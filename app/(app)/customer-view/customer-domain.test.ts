@@ -73,6 +73,41 @@ describe("customer evidence", () => {
     ]);
   });
 
+  it("reads what each page is, and treats blank fields written as null as empty", () => {
+    const batch = parseCustomerEvidenceBatch({
+      pages: [
+        { material_id: "m1", kind: "seller" },
+        { material_id: "m2", kind: "店铺" },
+        "m3",
+      ],
+      atoms: [
+        {
+          material_id: "m1",
+          quote: "初めての利用でしたが満足しています。",
+          scene: null,
+          behavior: null,
+          tradeoff: null,
+          emotion: null,
+          emotion_basis: "stated",
+        },
+      ],
+    });
+    expect(batch.pages).toEqual([{ material_id: "m1", kind: "seller" }]);
+    expect(batch.atoms[0]).toMatchObject({
+      scene: "",
+      behavior: "",
+      alternative: "",
+      tradeoff: "",
+      emotion: "",
+    });
+    expect(parseCustomerEvidenceBatch({ atoms: [] })).not.toHaveProperty("pages");
+    expect(() =>
+      parseCustomerEvidenceBatch({
+        atoms: [{ material_id: "m1", quote: null, emotion_basis: "stated" }],
+      })
+    ).toThrow("quote");
+  });
+
   it("marks fewer than three independent kept materials as provisional", () => {
     expect(isProvisionalProxy(["m1", "m2"])).toBe(true);
     expect(isProvisionalProxy(["m1", "m2", "m3"])).toBe(false);
@@ -105,21 +140,40 @@ describe("only the customer's own words count as evidence", () => {
 
   it("drops what the seller or a bystander said", () => {
     const kept = keepCustomerWords(
-      [
-        atom("interview", "Excel 一张张对，烦死了", "customer"),
-        atom("vendor", "24時間いつでも玄関先で受け取れます", "seller"),
-        atom("vendor", "本当に楽になりました！", "seller"),
-        atom("interview", "后来请了兼职", "other"),
-      ],
+      {
+        atoms: [
+          atom("interview", "Excel 一张张对，烦死了", "customer"),
+          atom("vendor", "24時間いつでも玄関先で受け取れます", "seller"),
+          atom("vendor", "本当に楽になりました！", "seller"),
+          atom("interview", "后来请了兼职", "other"),
+        ],
+      },
       text
     );
     expect(kept.map((item) => item.quote)).toEqual(["Excel 一张张对，烦死了"]);
     expect(kept[0]).not.toHaveProperty("speaker");
   });
 
+  it("keeps nothing from the seller's own page, even testimonials that look like a customer talking", () => {
+    const kept = keepCustomerWords(
+      {
+        pages: [
+          { material_id: "vendor", kind: "seller" },
+          { material_id: "interview", kind: "community" },
+        ],
+        atoms: [
+          atom("vendor", "本当に楽になりました！", "customer"),
+          atom("interview", "Excel 一张张对，烦死了", "customer"),
+        ],
+      },
+      text
+    );
+    expect(kept.map((item) => item.material_id)).toEqual(["interview"]);
+  });
+
   it("drops quotes that are not word for word in the material", () => {
     const kept = keepCustomerWords(
-      [
+      { atoms: [
         // 改写
         atom("interview", "每天关店后要花两小时对账，很烦", "customer"),
         // 用省略号拼起来
@@ -132,7 +186,7 @@ describe("only the customer's own words count as evidence", () => {
         atom("interview", "烦死了", "customer"),
         // 没有这份材料
         atom("missing", "Excel 一张张对，烦死了", "customer"),
-      ],
+      ] },
       text
     );
     expect(kept).toEqual([]);
@@ -140,7 +194,7 @@ describe("only the customer's own words count as evidence", () => {
 
   it("ignores spacing and full-width differences, and keeps lines with no speaker", () => {
     const kept = keepCustomerWords(
-      [atom("interview", "Ｅｘｃｅｌ一张张对， 烦死了")],
+      { atoms: [atom("interview", "Ｅｘｃｅｌ一张张对， 烦死了")] },
       text
     );
     expect(kept).toHaveLength(1);

@@ -44,8 +44,9 @@ import {
 
 const CUSTOMER_PROMPT_VERSION = "customer-v1";
 // v2（2026-11）：原话由程序逐字核对，商家的介绍和广告不算顾客的话。
-// 以前存下的证据是 customer-v1，没经过这两道，要清理时按这个认。
-const CUSTOMER_EVIDENCE_PROMPT_VERSION = "customer-evidence-v2";
+// v3（2026-11）：整页是商家自己的页面的一条不收（那上面的「お客様の声」是商家挑的）。
+// 以前存下的证据是 customer-v1（两道都没过）、customer-evidence-v2（可能混着商家挑的评价），要清理时按这个认。
+const CUSTOMER_EVIDENCE_PROMPT_VERSION = "customer-evidence-v3";
 
 type CreateCustomerCaseInput = {
   title: string;
