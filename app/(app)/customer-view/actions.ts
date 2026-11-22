@@ -25,8 +25,10 @@ import {
   CUSTOMER_MARKETS,
   CUSTOMER_MATERIAL_ORIGINS,
   CUSTOMER_REVIEW_STATUSES,
+  customerVoiceSearch,
   filterEvidenceForSegment,
   isProvisionalProxy,
+  MIN_VOICE_RESULTS,
   nextCustomerRun,
   parseCustomerPatternReport,
   parseCustomerProxy,
@@ -233,10 +235,27 @@ export async function searchCustomerMaterials(
   };
   const settled = await Promise.allSettled(
     (customerCase.markets as CustomerMarket[]).map(async (market) => {
-      const results = await webSearch(queryByMarket[market], 8);
+      const usable = (rows: Awaited<ReturnType<typeof webSearch>>) =>
+        rows.filter((row) => row.url && row.content.trim());
+      // 先去人们讲自己经历的地方找；直接搜回来的多半是商家和中介的页面。
+      const voice = customerVoiceSearch(market, queryByMarket[market]);
+      let results = usable(
+        await webSearch(
+          voice.query,
+          8,
+          voice.domains ? { domains: voice.domains } : {}
+        )
+      );
+      // 那边找到的太少，再按原来的搜索词补上，免得收件箱空着。
+      if (results.length < MIN_VOICE_RESULTS) {
+        const seen = new Set(results.map((row) => row.url));
+        const plain = usable(await webSearch(queryByMarket[market], 8)).filter(
+          (row) => !seen.has(row.url)
+        );
+        results = [...results, ...plain].slice(0, 8);
+      }
       let inserted = 0;
       for (const result of results) {
-        if (!result.url || !result.content.trim()) continue;
         const { id: materialId } = await upsertMaterial(userId, {
           origin: "web",
           source: hostname(result.url),
