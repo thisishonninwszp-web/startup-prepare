@@ -75,7 +75,16 @@ export type CustomerEvidenceAtom = {
 export const EVIDENCE_SPEAKERS = ["customer", "seller", "other"] as const;
 export type EvidenceSpeaker = (typeof EVIDENCE_SPEAKERS)[number];
 
+/**
+ * 整页是什么。seller：商家、服务方自己的网站或宣传页 —— 页面上的「お客様の声」「顾客评价」
+ * 是商家挑出来的，读正文时小标题已经被去掉，单看一句分不出来，所以按整页判、整页不收。
+ * community：问答、论坛、评论区、个人讲自己经历的帖子或访谈记录；media：新闻、杂志、比较排行网站。
+ */
+export const EVIDENCE_PAGE_KINDS = ["seller", "community", "media", "other"] as const;
+export type EvidencePageKind = (typeof EVIDENCE_PAGE_KINDS)[number];
+
 export type CustomerEvidenceBatch = {
+  pages?: { material_id: string; kind: EvidencePageKind }[];
   atoms: (CustomerEvidenceAtom & { speaker?: EvidenceSpeaker })[];
 };
 
@@ -183,6 +192,8 @@ function asObject(value: unknown, label: string): Record<string, unknown> {
 }
 
 function asString(value: unknown, label: string, allowEmpty = false): string {
+  // 可以空着的格子，AI 有时写 null 或干脆不写，当空着处理，别让整份材料提取失败。
+  if (allowEmpty && (value === null || value === undefined)) return "";
   if (typeof value !== "string" || (!allowEmpty && !value.trim())) {
     throw new Error(`${label}必须是非空文本`);
   }
@@ -210,7 +221,19 @@ export function parseCustomerEvidenceBatch(
 ): CustomerEvidenceBatch {
   const input = asObject(value, "证据批次");
   if (!Array.isArray(input.atoms)) throw new Error("atoms必须是数组");
+  // pages 可以没有（还没改提示词的语言版本）；写得不对的那一条当没写。
+  const pages = Array.isArray(input.pages)
+    ? input.pages.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const { material_id, kind } = item as Record<string, unknown>;
+        return typeof material_id === "string" &&
+          (EVIDENCE_PAGE_KINDS as readonly unknown[]).includes(kind)
+          ? [{ material_id, kind: kind as EvidencePageKind }]
+          : [];
+      })
+    : undefined;
   return {
+    ...(pages ? { pages } : {}),
     atoms: input.atoms.map((item, index) => {
       const row = asObject(item, `atoms[${index}]`);
       return {
@@ -247,14 +270,21 @@ export function quoteInMaterial(quote: string, text: string): boolean {
 
 /**
  * 只留顾客自己说的、在材料里逐字找得到的原话。
- * AI 标成商家或旁人说的丢掉；没标是谁说的照留（还没改提示词的语言版本不会全军覆没），
+ * 整页是商家自己的页面的，一条都不留（那上面的顾客评价是商家挑的）；
+ * AI 标成商家或旁人说的丢掉；没标页面、没标是谁说的照留（还没改提示词的语言版本不会全军覆没），
  * 但原话照样要逐字核对。
  */
 export function keepCustomerWords(
-  atoms: CustomerEvidenceBatch["atoms"],
+  batch: CustomerEvidenceBatch,
   textByMaterial: ReadonlyMap<string, string>
 ): CustomerEvidenceAtom[] {
-  return atoms.flatMap(({ speaker, ...atom }) => {
+  const sellerPages = new Set(
+    (batch.pages ?? [])
+      .filter((page) => page.kind === "seller")
+      .map((page) => page.material_id)
+  );
+  return batch.atoms.flatMap(({ speaker, ...atom }) => {
+    if (sellerPages.has(atom.material_id)) return [];
     if (speaker && speaker !== "customer") return [];
     const text = textByMaterial.get(atom.material_id);
     if (text === undefined || !quoteInMaterial(atom.quote, text)) return [];

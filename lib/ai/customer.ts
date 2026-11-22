@@ -28,13 +28,18 @@ const CUSTOMER_RESEARCH_RULES = `你服务于 IdeaOS 的顾客视点研究工作
 - 目标是理解顾客如何生活、行动、取舍和感受，不是替创业者证明产品。`;
 
 const CUSTOMER_EVIDENCE_PROMPT = `${CUSTOMER_RESEARCH_RULES}
-从每份材料提取最多4个证据原子。证据只能是顾客（用这个东西、有这个麻烦的人）讲自己的经历和感受。
+先判断每份材料整页是什么，写进 pages：
+- seller：商家、服务方自己的网站或宣传页，整页在介绍、推销自己的东西（看标题、网站名、价格、优惠、下单引导）。这种页面上的「顾客评价」「お客様の声」「体验谈」也是商家挑出来放上去的。正文里的小标题可能已经被去掉，那些评价看起来会像普通人在说话，不要被骗。
+- community：问答、论坛、评论区、个人讲自己经历的帖子，或访谈、聊天记录。
+- media：新闻、杂志、比较排行网站。
+- other：都不是。
+再从每份材料提取最多4个证据原子。证据只能是顾客（用这个东西、有这个麻烦的人）讲自己的经历和感受；seller 页面一条都不要出。
 quote 从材料里一字不改地连续照抄一段：用材料原来的语言，不翻译、不改写、不用省略号拼接。程序会逐字核对，对不上的会被丢掉。
-speaker 写这句话是谁说的：customer（顾客本人）、seller（商家、服务方自己的介绍、广告、宣传、常见问答，包括商家页面上挑出来的「顾客评价」）、other（编辑、记者、专家的概括或转述）。
-一份材料里没有顾客本人说的话（比如整页是商家的服务介绍），这份材料就一条都不要出，宁缺毋滥。
+speaker 写这句话是谁说的：customer（顾客本人）、seller（商家、服务方自己的介绍、广告、宣传、常见问答）、other（编辑、记者、专家的概括或转述）。
+一份材料里没有顾客本人说的话，这份材料就一条都不要出，宁缺毋滥。
 scene、behavior、alternative、tradeoff 没出现时可为空。
 emotion_basis 只能是 stated（材料明确表达）、inferred（仅由行为谨慎推断）或 unknown。
-只输出 JSON：{"atoms":[{"material_id":"","speaker":"customer","quote":"","scene":"","behavior":"","alternative":"","tradeoff":"","emotion":"","emotion_basis":"stated"}]}`;
+只输出 JSON：{"pages":[{"material_id":"","kind":"community"}],"atoms":[{"material_id":"","speaker":"customer","quote":"","scene":"","behavior":"","alternative":"","tradeoff":"","emotion":"","emotion_basis":"stated"}]}`;
 
 const CUSTOMER_SEGMENT_PROMPT = `${CUSTOMER_RESEARCH_RULES}
 把证据按真实处境与行为拆成2到3类不同顾客声音。禁止只按年龄、性别、职业等人口标签分类。每类必须有证据ID和未知。
@@ -110,8 +115,8 @@ export async function extractCustomerEvidence(
       throw new Error(`AI引用了未被允许的材料：${atom.material_id}`);
     }
   }
-  // 商家的介绍和广告不算顾客的话；原话在材料里逐字找不到的也丢掉。
-  return keepCustomerWords(result.atoms, shown);
+  // 商家自己的页面整页不收；商家的介绍和广告不算顾客的话；原话在材料里逐字找不到的也丢掉。
+  return keepCustomerWords(result, shown);
 }
 
 export async function segmentCustomerVoices(
