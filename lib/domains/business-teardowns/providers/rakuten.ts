@@ -63,20 +63,23 @@ export async function searchBusinessCandidates(input: BusinessSearchInput): Prom
   const pageCount = count(data.pageCount);
   return { items, coverage, nextCursor: page < (pageCount ?? (mode === "ranking" && items.length === 30 ? 34 : page)) ? String(page + 1) : null };
 }
-/** Search answered, but the item is not in it (sold out, sale period over, or removed). Asking again gets the same answer. */
+/** Search answered, but the item is not in it (sale period over, or removed). Asking again gets the same answer. */
 export class RakutenItemNotFoundError extends Error {
   constructor() { super("楽天来源不可用：未找到指定商品"); this.name = "RakutenItemNotFoundError"; }
 }
 export async function inspectRakutenItem(itemCode: string, options: RakutenRequestOptions & { shopCode?: string } = {}): Promise<{ merchant: MerchantInput; snapshot: SnapshotInput }> {
   if (!/^[a-zA-Z0-9_-]+:[^\s:]{1,180}$/.test(itemCode)) throw new Error("商品ID无效");
-  const data = await request("search", { itemCode, hits: "1", page: "1" }, options);
+  // Item search returns only items on sale right now unless availability=0. The ranking keeps
+  // items that sold out an hour ago (11-22: picked from the ranking, gone from search 4 seconds later),
+  // so the day's pick is looked up regardless of stock; the availability field records whether it was buyable.
+  const data = await request("search", { itemCode, hits: "1", page: "1", availability: "0" }, options);
   const row = (data.Items as unknown[]).find((entry) => record(entry).itemCode === itemCode);
   if (!row) throw new RakutenItemNotFoundError();
-  const coverage = `官方商品字段快照，itemCode=${itemCode}；page=1；returned=${(data.Items as unknown[]).length}。价格范围保留原字段。评价数不是销量；包装/下单件数、买家身份与评价正文未采集。未保存候选榜单排名或筛选范围；候选查询仅用于选择店铺。`;
+  const coverage = `官方商品字段快照，itemCode=${itemCode}；page=1；returned=${(data.Items as unknown[]).length}；含暂时售罄的商品（availability=0），当时能不能买看 availability 字段。价格范围保留原字段。评价数不是销量；包装/下单件数、买家身份与评价正文未采集。未保存候选榜单排名或筛选范围；候选查询仅用于选择店铺。`;
   const found = candidate(row, coverage);
   if (options.shopCode && found.merchant.platformShopId !== options.shopCode) throw new Error("所选商品不属于指定店铺");
   const raw = record(row);
   const structured = Object.fromEntries(STRUCTURED_FIELDS.filter((key) => key in raw).map((key) => [key, raw[key]]));
-  return { merchant: found.merchant, snapshot: { platform: "rakuten", itemId: itemCode, origin: "official_api", sourceUrl: found.itemUrl, publishedAt: null, captureScope: "api_fields", capturedText: null, quantities: found.reviewCount === null ? [] : [{ id: "review_count", metric: "review_count", raw: String(found.reviewCount), value: found.reviewCount, relation: "eq", unit: "unknown", period: { from: null, to: null, label: null }, sampleScope: `商品 ${itemCode} 的累计评价数量，时段未提供`, attribution: "platform" }], structured: { ...structured, sourceEndpoint: "IchibaItem/Search/20260701", query: { itemCode, hits: 1, page: 1 }, returnedCount: (data.Items as unknown[]).length, currency: "JPY", displayedSales: null, unitsPerOrder: null, buyerDemographics: null }, coverage } };
+  return { merchant: found.merchant, snapshot: { platform: "rakuten", itemId: itemCode, origin: "official_api", sourceUrl: found.itemUrl, publishedAt: null, captureScope: "api_fields", capturedText: null, quantities: found.reviewCount === null ? [] : [{ id: "review_count", metric: "review_count", raw: String(found.reviewCount), value: found.reviewCount, relation: "eq", unit: "unknown", period: { from: null, to: null, label: null }, sampleScope: `商品 ${itemCode} 的累计评价数量，时段未提供`, attribution: "platform" }], structured: { ...structured, sourceEndpoint: "IchibaItem/Search/20260701", query: { itemCode, hits: 1, page: 1, availability: 0 }, returnedCount: (data.Items as unknown[]).length, currency: "JPY", displayedSales: null, unitsPerOrder: null, buyerDemographics: null }, coverage } };
 }
 
