@@ -30,7 +30,7 @@ function materialForPinnedCandidate(candidate:QueuedCandidate,item:Awaited<Retur
 // search once their sale ends (11-13: a set taken from the 11-09 ranking had stopped selling on 11-11), and
 // the day's shop cannot be swapped after reserve. So only candidates seen today (Tokyo) may take today's slot.
 function seenOn(localDate:string,candidates:QueuedCandidate[]):QueuedCandidate[]{return candidates.filter(candidate=>Number.isFinite(Date.parse(candidate.capturedAt))&&tokyoDate(new Date(candidate.capturedAt))===localDate);}
-const ITEM_GONE='楽天来源不可用：今天选中的商品已查不到（可能卖完了、限时销售结束了或下架了）。今天不换店，明天会从当天的榜单重新挑。';
+const ITEM_GONE='楽天来源不可用：今天选中的商品已查不到（可能限时销售结束了或下架了；卖完了的照样查得到）。今天不换店，明天会从当天的榜单重新挑。';
 export async function executeBusinessJob(owner:string,trigger:'manual'|'cron'|'open',injected?:JobDependencies):Promise<JobResult>{
  const d:JobDependencies=injected??{command:<T>(op:string,input:object={})=>jobCommand<T>(owner,op,input),search:searchBusinessCandidates,inspect:inspectRakutenItem,generate:generateBusinessTeardownReport,enabled:businessJobsEnabled,aiEnabled:()=>process.env.BUSINESS_TEARDOWNS_AI_ENABLED==='true',draftsAvailable:()=>businessJobDraftsAvailable(owner),allowedOwner:async()=>await businessJobOwner()===owner,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),now:()=>new Date()};
  if(!d.enabled())return {status:'disabled',message:'部署任务开关尚未开启'};
