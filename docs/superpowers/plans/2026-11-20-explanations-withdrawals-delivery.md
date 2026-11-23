@@ -23,53 +23,73 @@
 
 Files: new withdrawals domain/transport/tests/integration, migration146; existing shop queries/jobs/SQL today guards only where required. Do not edit app/schema/explanations.
 
-- [ ] Write RED domain tests: exact dates/URL/quote matching/subject normalization/null cause/phase/confirmation/UTF16/bytes; unknown fields rejected. Example: `expect(parseWithdrawal({...valid,eventQuote:'not in source'})).toThrow()`.
-- [ ] Run scoped Vitest and observe missing implementation; implement pure schemas and transport with strict owner/DTO/cursor identity.
-- [ ] Write actual SQL146 tests covering same-day shop+withdrawal, genuine owned case IDs, subject dedup across URLs, frozen sources, erase, receipts/rollback, two owners, private ACLs, invalid limits and no validations/idea writes. Observe RED, implement private tables/subjects/service RPCs and shared context.
-- [ ] Preserve existing119/121/123 today/reserve behavior with explicit shop selection; patch list/load shop queries. Run original shop/job suites against146 too. No new collection activation.
-- [ ] Scoped lint/TS and independent spec review, then quality review; fix findings before next task.
+- [x] Write RED domain tests: exact dates/URL/quote matching/subject normalization/null cause/phase/confirmation/UTF16/bytes; unknown fields rejected. Example: `expect(parseWithdrawal({...valid,eventQuote:'not in source'})).toThrow()`.
+- [x] Run scoped Vitest and observe missing implementation; implement pure schemas and transport with strict owner/DTO/cursor identity.
+- [x] Write actual SQL146 tests covering same-day shop+withdrawal, genuine owned case IDs, subject dedup across URLs, frozen sources, erase, receipts/rollback, two owners, private ACLs, invalid limits and no validations/idea writes. Observe RED, implement private tables/subjects/service RPCs and shared context.
+- [x] Preserve existing119/121/123 today/reserve behavior with explicit shop selection; patch list/load shop queries. Run original shop/job suites against146 too. No new collection activation.
+- [x] Scoped lint/TS and independent spec review, then quality review; fix findings before next task.
 
 ## Task2 — Explanation core and exact version integration
 
 Files: new explanations domain/transport/tests/integration; migration147. Existing reality-results/followup/history domain+transport DTO parsing where needed; no app/schema files.
 
-- [ ] RED schemas/transport tests for report anchor exact version/manifest/section/index, withdrawal exact revision, source identity, authored expectedA/B and strict receipts/cursors. Run `npx vitest run lib/domains/business-teardowns/explanations`.
-- [ ] Add exact origin branch to checks and private versioned expectations; shared137 receipts, source locks and immutable anchors. Examples: append result at revision1 after plan revision2 must show revision1 expectedA/B; plan erase must remove both source versions and result snapshot expectations.
-- [ ] Keep old137 simulation lists/commands strict; origin cases forbidden across command endpoints. Extend139 optional expectation projection and143 parent semantics; read-only helper source never copies removed report prose.
-- [ ] Actual SQL across119/120/122/124/132/135/137/139/141/143/144/146/147: report and withdrawal paths, old contracts, exact versions, source loss, owner/ACL, receipt conflict/rollback and20+ tied pages. Review spec then quality.
+- [x] RED schemas/transport tests for report anchor exact version/manifest/section/index, withdrawal exact revision, source identity, authored expectedA/B and strict receipts/cursors. Run `npx vitest run lib/domains/business-teardowns/explanations`.
+- [x] Add exact origin branch to checks and private versioned expectations; shared137 receipts, source locks and immutable anchors. Examples: append result at revision1 after plan revision2 must show revision1 expectedA/B; plan erase must remove both source versions and result snapshot expectations.
+- [x] Keep old137 simulation lists/commands strict; origin cases forbidden across command endpoints. Extend139 optional expectation projection and143 parent semantics; read-only helper source never copies removed report prose.
+- [x] Actual SQL across119/120/122/124/132/135/137/139/141/143/144/146/147: report and withdrawal paths, old contracts, exact versions, source loss, owner/ACL, receipt conflict/rollback and20+ tied pages. Review spec then quality.
 
 ## Task3 — Root explanation UI
 
 Files: new app/business-lab/explanations page/actions/hook/panel/views/tests; report-view.tsx link tests; shared result views + history UI for optional expectations/new parent.
 
-- [ ] RED route/auth/strict query and saved-report CTA tests. Anchor is encoded by canonical URLSearchParams; no owner from query.
-- [ ] RED workflow for initially blank authored fields, preview invalidation, source loss, pinned request/body after lost response, focus hiding cached source and stale response protection. Implement with shared Button/ConfirmButton and existing page layout.
-- [ ] Results display exact precommitted A/B and uncontrolled factors; no winner auto-selection. Links to existing followup/methods/history. Author erasure uses existing physical-clear paths.
-- [ ] Actual React fixture browser flow report→plan→result and deletion/source loss/mobile/console.
+- [x] RED route/auth/strict query and saved-report CTA tests. Anchor is encoded by canonical URLSearchParams; no owner from query.
+- [x] RED workflow for initially blank authored fields, preview invalidation, source loss, pinned request/body after lost response, focus hiding cached source and stale response protection. Implement with shared Button/ConfirmButton and existing page layout.
+- [x] Results display exact precommitted A/B and uncontrolled factors; no winner auto-selection. Links to existing followup/methods/history. Author erasure uses existing physical-clear paths.
+- [x] Actual React fixture browser flow report→plan→result and deletion/source loss/mobile/console.
 
 ## Task4 — Withdrawal UI and research integration
 
 Files: new app/business-lab/withdrawals page/actions/panel/tests; existing research domain/queries/starter/UI and migration148; operator/business-lab page entry; workspace subject label read.
 
-- [ ] RED auth/query/issuer/lesson input tests, publication vs event date, no cause vs company stated reason, unchanged original source.
-- [ ] Reuse failure research storage with generalized case identity and withdrawal source kind. Selected quote is exact/live/owner scoped; links never fake platform merchants. Preserve old snapshot/material/job source behavior and erasure invalidation.
-- [ ] Lesson explanations open same comparison workflow. Case/subject/context parsers and workspace render withdrawal names without allowing financial simulations on unsupported sources.
-- [ ] RED browser lifecycle tests for erasure/focus/stale pages + actual fixture lesson→failure research; disclose no verified candidate and daily history.
+- [x] RED auth/query/issuer/lesson input tests, publication vs event date, no cause vs company stated reason, unchanged original source.
+- [x] Reuse failure research storage with generalized case identity and withdrawal source kind. Selected quote is exact/live/owner scoped; links never fake platform merchants. Preserve old snapshot/material/job source behavior and erasure invalidation.
+- [x] Lesson explanations open same comparison workflow. Case/subject/context parsers and workspace render withdrawal names without allowing financial simulations on unsupported sources.
+- [x] RED browser lifecycle tests for erasure/focus/stale pages + actual fixture lesson→failure research; disclose no verified candidate and daily history.
 
 ## Task5 — Disabled bounded collection and daily trigger
 
 Files: withdrawals collection-domain/executor/provider adapters/settings/tests, `lib/ai/business-withdrawals.ts`, existing cron/business-teardowns route and GitHub workflow tests if needed; new migration149 for job leases/receipts/settings only.
 
-- [ ] RED default-disabled, owner-only, every actual search/fallback/fetch/analysis reservation, per-JSTday2/3/1 caps, noAI retry on unknown reply, race/replay/stop tests; dependency injection isolates providers.
-- [ ] Implement official issuer allowlist and SSRF-safe source fetch using existing safe public fetch primitives; record provenance and rejected model fields in diagnostics. AI via existing facade/gateway, no private notes. Exact source validation before candidate admission.
-- [ ] Settings show explicit separate budgets/public text/initial disabled state. Preparing code does not enable env/settings/provider calls. Daily select from verified queue can run with zero provider access.
-- [ ] Wire existing cron invocation without increasing Vercel cron count; returning disabled/missing migration must not break legacy job step.
+- [x] RED default-disabled, owner-only, every actual search/fallback/fetch/analysis reservation, per-JSTday2/3/1 caps, noAI retry on unknown reply, race/replay/stop tests; dependency injection isolates providers.
+- [x] Implement official issuer allowlist and SSRF-safe source fetch using existing safe public fetch primitives; record provenance and rejected model fields in diagnostics. AI via existing facade/gateway, no private notes. Exact source validation before candidate admission.
+- [x] Settings show explicit separate budgets/public text/initial disabled state. Preparing code does not enable env/settings/provider calls. Daily select from verified queue can run with zero provider access.
+- [x] Wire existing cron invocation without increasing Vercel cron count; returning disabled/missing migration must not break legacy job step.
 
 ## Task6 — Review, verification, release
 
-- [ ] Independent final spec and quality review; resolve findings with meaningful regression tests.
-- [ ] Full `npm test`, `npx tsc --noEmit --incremental false --pretty false`, `npm run lint`; actual SQL scripts and mixed lifecycle. Baseline388 files/2511 tests passed. No local Next build during fixture server use.
-- [ ] Fetch latest main, append146–149 SQL verbatim to schema.sql, inspect prod state/advisor baseline then apply in order; read-only owner/null/anon/private helper probes. Confirm new collection flags remain off.
+- [x] Independent final spec and quality review; resolve findings with meaningful regression tests.
+- [x] Full `npm test`, `npx tsc --noEmit --incremental false --pretty false`, `npm run lint`; actual SQL scripts and mixed lifecycle. Baseline388 files/2511 tests passed. No local Next build during fixture server use.
+- [x] Fetch latest main, append146–150 SQL verbatim to schema.sql, inspect prod state/advisor baseline then apply in order; read-only owner/null/anon/private helper probes. Confirm new collection flags remain off.
 - [ ] Commit/push authorized feature release preserving main; exact Production Vercel success, authenticated canonical UI read-only checks and screenshot; no invented production examples. Stop fixtures/reset viewport, accurate acceptance evidence.
 
 Plan self-review: approved spec A/B/source deletion/cost boundary and existing research reuse all map to tasks. Spec revision is approved by user; this is execution detail, not another approval gate. Foundation can adjust DTO spelling only before UI task with one recorded shared-contract update, never silently change behavior.
+
+
+## Continuation evidence (2026-11-24 JST)
+
+- Tasks1–4 implemented. Original main has advanced by12 commits (customer evidence/search + sold-out Rakuten lookup); fetched and merged without conflict as cd2ff1c. No migrations146–150 collision; production still through145.
+- Pending research-create bug reproduced: lost ack + focus cleared sources and produced another requestId. Complete structuredClone ResearchInput is now pinned; dedicated original-request replay, no changed create while pending. RED→GREEN actual hook regression; all65 scoped research tests pass. After write ack, saved form remounts only after fresh source validation, restoring scope/source selection while preserving unsaved edits on ordinary focus.
+- Combined146/147/148/150 initially failed because erased subject context removed independent workspace items.150 now uses generic metadata title only for an owned existing withdrawal case. Actual combined SQL passes; independent reviewer additionally checked20+ pagination, no old source/name/explanation prose and no foreign records.
+- Independent resume-fix spec and quality review clear:65 tests, scoped ESLint, actual combined SQL all pass.
+- Actual React synthetic withdrawal browser: distinguishes announced from completed and selection day from event/source days, null reason explicitly unknown; failed focus read hides all source text; official excerpt explicitly confirmed then adopted into existing failure research; write committed/lost ack→focus→same request retry retains exactly1record. Fresh form shows business scope + exact source key + confirmation. Source erasure hides quote/dependent editor, lesson today becomes empty.391px no horizontal overflow, console error/warn empty; screenshot .tmp/withdrawal-acceptance/research-mobile.jpg. No production or provider operations. Viewport reset and browser tab closed.
+-149 collection implementation and its independent review underway. Do not enable new global/account collection settings. Final full-suite/SQL/schema assembly/production release remain pending.
+
+
+## Final integration verification (2026-11-24 JST)
+
+- Final full suite:422 files /2641 tests passed; TypeScript incremental-disabled and ESLint passed. Actual146,148, original124, combined146/147/148/150,149 and149 erasure scripts passed. PGlite does not simulate real multi-connection contention.
+- Independent final spec +quality review found and closed two integration issues: erased lesson/source now clears related batch diagnostic raw and blocks late restoration; selected教材 are immutable in UI, including focus refresh while editing. Both have meaningful RED→GREEN regressions. Actual React browser verified selected lesson edit disabled with fixed-version explanation.
+- schema.sql includes146–150 verbatim. Applied all five production migrations in order; stored migration MD5 values exactly match local trimmed LF SQL. Ten new private tables all have RLS and no direct anon/auth/service_role SELECT; only five intended new RPCs allow service_role EXECUTE; private helper ACLs remain closed, search_path fixed.
+- Security advisor: no new WARN/ERROR; ten expected private RLS/no-policy INFO entries (124→134). Existing19 mutable-path,5 anon-definer,12 auth-definer and1 password-protection notices unchanged. Private-table rationale: service-only command boundary; https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+- Production SDK18 read-only probes passed: withdrawal/explanation lists+missing rows, original simulation/result/followup/history/method/research/workspace reads; anon/null-owner/private-helper denied42501. No provider or content-write operations. Collection state command deliberately not used as a read-only probe because it lazily inserts a disabled default. Production enabled collection accounts=0.
+- Production deployment and canonical authenticated UI verification still pending at this checkpoint. New paid collection must stay OFF.

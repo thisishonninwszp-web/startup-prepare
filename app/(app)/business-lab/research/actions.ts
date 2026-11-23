@@ -18,6 +18,6 @@ export async function loadResearchRecordAction(id:string){return getResearch(awa
 export async function saveResearchAction(input:ResearchInput){return saveResearch(await owner(),input);}
 export async function eraseResearchAction(input:{id:string;requestId:string}){return eraseResearch(await owner(),input);}
 export async function loadResearchCasesAction(input:{before?:string}={}){return listResearchCases(await owner(),input);}
-export async function loadResearchSourcesAction(input:{kind:SourceKind;search?:string;before?:string}){return listResearchSources(await owner(),input);}
+export async function loadResearchSourcesAction(input:{kind:SourceKind;search?:string;before?:string;caseIds?:string[]}){return listResearchSources(await owner(),input);}
 export async function loadResearchExperiencesAction(){return listResearchExperiences(await owner());}
 export async function loadResearchStarterAction(input:{caseIds:string[];kind:ResearchKind}){return loadResearchStarter(await owner(),input);}

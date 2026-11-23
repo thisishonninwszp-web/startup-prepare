@@ -1,3 +1,4 @@
+import type {ExplanationExpectations} from '../explanations/domain';
 import {z} from 'zod';
 import {cashDate,cashUuid} from '../cash/domain';
 import type {RealityCheckPlan} from '../reality-checks/domain';
@@ -15,9 +16,9 @@ export const realityResultCommandSchema=z.discriminatedUnion('operation',[
 ]);
 export type RealityResultBody=z.infer<typeof realityResultBodySchema>;
 export type RealityResultCommand=z.infer<typeof realityResultCommandSchema>;
-export type RealityResultPlan={id:string;caseId:string;question:string;revision:number;createdAt:string;updatedAt:string;caseAvailable:boolean;caseTitle:string|null};
-export type RealityResultVersion={planId:string;caseId:string;revision:number;plan:RealityCheckPlan;savedAt:string;currentRevision:number;caseAvailable:boolean;caseTitle:string|null};
-export type RealityResultRecord={id:string;caseId:string;planId:string;planRevision:number;planSavedAt:string;planSnapshot:RealityCheckPlan|null;snapshotErasedAt:string|null;body:RealityResultBody;createdAt:string;revision:1;planCurrentRevision:number|null};
+export type RealityResultPlan={id:string;caseId:string;question:string;revision:number;createdAt:string;updatedAt:string;caseAvailable:boolean;caseTitle:string|null;expectations?:ExplanationExpectations};
+export type RealityResultVersion={planId:string;caseId:string;revision:number;plan:RealityCheckPlan;savedAt:string;currentRevision:number;caseAvailable:boolean;caseTitle:string|null;expectations?:ExplanationExpectations};
+export type RealityResultRecord={id:string;caseId:string;planId:string;planRevision:number;planSavedAt:string;planSnapshot:RealityCheckPlan|null;snapshotErasedAt:string|null;body:RealityResultBody;createdAt:string;revision:1;planCurrentRevision:number|null;expectations?:ExplanationExpectations};
 export type RealityResultPage<T>={items:T[];nextCursor:string|null};
 export type RealityResultList=RealityResultPage<RealityResultRecord>&{available:boolean};
 export type RealityResultVersionPage=RealityResultPage<RealityResultVersion>;

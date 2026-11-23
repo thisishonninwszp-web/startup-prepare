@@ -30,25 +30,23 @@ export async function getResearch(owner:string,id:string):Promise<ResearchRecord
  if(error)throw new Error(error.message);
  return data as ResearchRecord|null;
 }
-export async function listResearchCases(owner:string,options:{before?:string}={}):Promise<{items:CaseOption[];nextCursor:string|null}>{
- researchUuid.parse(owner);
- const {before}=z.object({before:z.string().optional()}).strict().parse(options),cursor=decodeCursor(before);
- let query=supabaseAdminUncached.from('business_daily_cases').select('id,merchant_id,local_date,created_at').eq('user_id',owner).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(PAGE_SIZE+1);
- if(cursor)query=query.or(cursorFilter('created_at',cursor));
- const {data,error}=await query;
- if(error){if(missingTable(error.code))return {items:[],nextCursor:null};throw new Error(error.message);}
- const rows=(data??[]).slice(0,PAGE_SIZE);
- if(!rows.length)return {items:[],nextCursor:null};
- const {data:merchants,error:merchantError}=await supabaseAdminUncached.from('business_merchants').select('id,name').eq('user_id',owner).in('id',[...new Set(rows.map(row=>row.merchant_id))]);
- if(merchantError)throw new Error(merchantError.message);
- const names=new Map((merchants??[]).map(row=>[row.id,row.name]));
- const items=rows.map(row=>({id:row.id,name:names.get(row.merchant_id)??'店铺名称未知',date:row.local_date}));
- const last=rows[rows.length-1];
- return {items,nextCursor:(data?.length??0)>PAGE_SIZE?encodeCursor(last.created_at,last.id):null};
+async function contextRead<T>(owner:string,operation:string,input:unknown):Promise<T>{
+ researchUuid.parse(owner);const {data,error}=await supabaseAdminUncached.rpc('business_research_context',{p_user_id:owner,p_operation:operation,p_input:input});if(error)throw new Error(error.message);return data as T;
 }
-export async function listResearchSources(owner:string,options:{kind:SourceKind;search?:string;before?:string}):Promise<{items:SourceOption[];nextCursor:string|null}>{
+export function loadResearchSubject(owner:string,caseId:string):Promise<CaseOption|null>{return contextRead(owner,'case',{caseId:researchUuid.parse(caseId)});}
+export async function listResearchCases(owner:string,options:{before?:string}={}):Promise<{items:CaseOption[];nextCursor:string|null}>{
+ const {before}=z.object({before:z.string().optional()}).strict().parse(options);const cursor=decodeCursor(before);
+ const page=await contextRead<{items:CaseOption[];nextCursor:Cursor|null}>(owner,'cases',cursor?{before:cursor}:{});
+ return {items:page.items,nextCursor:page.nextCursor?encodeCursor(page.nextCursor.date,page.nextCursor.id):null};
+}
+export async function listResearchSources(owner:string,options:{kind:SourceKind;search?:string;before?:string;caseIds?:string[]}):Promise<{items:SourceOption[];nextCursor:string|null}>{
  researchUuid.parse(owner);
- const input=z.object({kind:z.enum(['snapshot','material','job']),search:z.string().trim().max(300).optional(),before:z.string().optional()}).strict().parse(options);
+ const input=z.object({kind:z.enum(['snapshot','material','job','official']),caseIds:z.array(researchUuid).min(1).max(2).optional(),search:z.string().trim().max(300).optional(),before:z.string().optional()}).strict().parse(options);
+ if(input.kind==='official'){
+  if(!input.caseIds?.length)throw new Error('请先选择官方教材所属案例');
+  const before=decodeCursor(input.before);const page=await contextRead<{items:SourceOption[];nextCursor:Cursor|null}>(owner,'sources',{caseIds:input.caseIds,...(input.search?{search:input.search}:{}),...(before?{before}:{})});
+  return {items:page.items,nextCursor:page.nextCursor?encodeCursor(page.nextCursor.date,page.nextCursor.id):null};
+ }
  const cursor=decodeCursor(input.before),snapshot=input.kind==='snapshot',material=input.kind==='material';
  const table=snapshot?'business_material_snapshots':material?'reality_materials':'job_postings';
  const textColumn=snapshot?'captured_text':material?'sanitized_text':'body';

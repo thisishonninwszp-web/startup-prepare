@@ -68,7 +68,8 @@ function titleOf(html: string): string {
 /** extract：从 HTML 里取正文的办法（默认只取 <p> 段落，读文章用；上网查证时要连列表、表格一起取）。 */
 export async function fetchPublicPage(
   url: string,
-  extract: (html: string) => string = (html) => extractArticleText(html, 12_000)
+  extract: (html: string) => string = (html) => extractArticleText(html, 12_000),
+  options: {beforeRequest?: (url: string) => Promise<void>} = {}
 ): Promise<PageResult> {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -80,6 +81,8 @@ export async function fetchPublicPage(
     }
     if (!["http:", "https:"].includes(parsed.protocol)) return { ok: false, reason: "只读 http / https 的网页" };
     if (!(await hostIsPublic(parsed.hostname))) return { ok: false, reason: "这个地址不在公网上，不去读" };
+
+    await options.beforeRequest?.(current);
 
     let res: Response;
     try {

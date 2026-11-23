@@ -1,0 +1,9 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const {rpc}=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('@/lib/supabase',()=>({supabaseAdminUncached:{rpc}}));
+import {getConfirmationNode} from '../history/transport';
+import {getRealityResultVersion,getRealityResult} from '../reality-results/transport';
+const owner='10000000-0000-4000-8000-000000000001',id='20000000-0000-4000-8000-000000000001',at='2026-11-20T00:00:00Z',plan={question:'問題',falsifier:'反証条件',method:'公開情報を調べる',dueDate:'2026-12-01'},expectations={expectedA:'Aなら起こること',expectedB:'Bなら起こること',uncontrolled:'未統制の違い'};
+beforeEach(()=>rpc.mockReset());
+it('reads explanation parents and exact precommitted expectations in existing history',async()=>{const node={kind:'plan',id,caseId:id,revision:1,at,parent:{kind:'explanation',id,revision:1,available:true},plan,body:null,planSnapshot:null,planSavedAt:null,snapshotErasedAt:null,expectations};rpc.mockResolvedValue({data:node,error:null});expect(await getConfirmationNode(owner,{kind:'plan',id,revision:1})).toEqual(node);});
+it('reads expectations in exact result plan version without changing legacy DTOs',async()=>{const version={planId:id,caseId:id,revision:1,plan,savedAt:at,currentRevision:2,caseAvailable:true,caseTitle:'店',expectations};rpc.mockResolvedValue({data:version,error:null});expect((await getRealityResultVersion(owner,{planId:id,revision:1}))?.expectations).toEqual(expectations);});
+it('rejects retained prediction text once the source plan snapshot was physically erased',async()=>{rpc.mockResolvedValue({data:{id,caseId:id,planId:id,planRevision:1,planSavedAt:at,planSnapshot:null,snapshotErasedAt:at,body:{checkedOn:'2026-11-20',examined:'対象',found:'結果',sourceNote:'出典',sourceUrl:null,learned:'学び'},createdAt:at,revision:1,planCurrentRevision:null,expectations},error:null});await expect(getRealityResult(owner,id)).rejects.toThrow();});

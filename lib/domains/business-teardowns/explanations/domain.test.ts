@@ -1,0 +1,10 @@
+import {describe,it,expect} from 'vitest';
+import {explanationAnchorSchema,explanationDraftSchema,explanationCommandSchema} from './domain';
+const id='10000000-0000-4000-8000-000000000001';
+export const draft={question:'なぜ選ばれたか',expectedA:'送料が同じでも選ぶ',expectedB:'送料が同じなら選ばない',uncontrolled:'露出の違いはまだ統制できない',falsifier:'送料以外では選ばれない',method:'同じ配送条件の公開資料を比較する',dueDate:'2026-12-01'};
+export const anchor={kind:'report',reportId:id,reportRevision:1,section:'value',index:0,manifestHash:'saved-manifest'};
+describe('precommitted explanation comparison',()=>{
+ it('requires two independently authored predictions and exact source identity',()=>{expect(explanationDraftSchema.parse(draft)).toEqual(draft);expect(explanationAnchorSchema.parse(anchor)).toEqual(anchor);for(const patch of [{expectedA:''},{expectedB:'　'},{uncontrolled:undefined},{question:'😀'.repeat(501)},{dueDate:'2026-02-30'},{winner:'A'}])expect(()=>explanationDraftSchema.parse({...draft,...patch})).toThrow();for(const patch of [{reportRevision:0},{index:-1},{section:'unsupported'},{manifestHash:''},{caseId:id}])expect(()=>explanationAnchorSchema.parse({...anchor,...patch})).toThrow();});
+ it('does not treat lesson identity as a platform merchant',()=>{expect(explanationAnchorSchema.parse({kind:'withdrawal',lessonId:id,lessonRevision:1})).toEqual({kind:'withdrawal',lessonId:id,lessonRevision:1});expect(()=>explanationAnchorSchema.parse({kind:'withdrawal',lessonId:id,lessonRevision:1,merchantId:id})).toThrow();});
+ it('requires explicit preview confirmation and bounded exact command body',()=>{const input={operation:'save',id,requestId:id,expectedRevision:0,anchor,draft,confirmed:true};expect(explanationCommandSchema.parse(input)).toEqual(input);for(const patch of [{confirmed:false},{confirmed:'true'},{userId:id},{expectedRevision:-1}])expect(()=>explanationCommandSchema.parse({...input,...patch})).toThrow();expect(()=>explanationCommandSchema.parse({operation:'erase',id,requestId:id,expectedRevision:0})).toThrow();});
+});

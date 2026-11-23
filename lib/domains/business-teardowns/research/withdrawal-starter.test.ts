@@ -1,0 +1,8 @@
+import {describe,it,expect} from 'vitest';
+import {researchStartOptions} from './start-parameters';
+import {buildResearchStarter,adoptResearchDraft} from './starter';
+const id='10000000-0000-4000-8000-000000000001';
+describe('withdrawal starter semantics',()=>{
+ it('reopens an exact research record without changing legacy case inputs',()=>{expect(researchStartOptions({caseId:id,kind:'failure',recordId:id})).toEqual({caseId:id,kind:'failure',recordId:id});expect(researchStartOptions({recordId:'bad'}).recordId).toBeUndefined();});
+ it('carries only the exact event and official quote after explicit adoption, leaving personal interpretation empty',()=>{const starter=buildResearchStarter('failure',[{id,name:'Service',date:'2026-11-20',merchantId:id,platform:'official',sources:[{id,kind:'official',title:'Official',text:'The service will stop.',url:'https://example.com/news',date:'2020-01-01'}],sourcesTruncated:false,report:null,withdrawal:{event:'stop',scope:'business',announcedOn:'2020-01-01',eventQuote:'The service will stop.',lessonId:id,lessonRevision:2}}],[]);expect(starter.draft.payload).toMatchObject({event:'stop',scope:'business',when:'2020-01-01',whatChanged:'The service will stop.',confirmedDisclosure:false,alternative:'',condition:'',checkNext:''});expect(adoptResearchDraft(starter,[]).sources).toEqual([]);const adopted=adoptResearchDraft(starter,[starter.hints[0].id]);expect(adopted.sources[0]).toMatchObject({kind:'official',id,quote:'The service will stop.'});expect(adopted.payload.confirmedDisclosure).toBe(false);expect(adopted.payload.disclosureKey).toBe('r1');});
+});

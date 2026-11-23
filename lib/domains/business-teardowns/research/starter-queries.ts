@@ -3,26 +3,27 @@ import {supabaseAdminUncached} from '@/lib/supabase';
 import type {CaseSection} from '../report-domain';
 import {RESEARCH_KINDS,researchUuid,type ResearchKind,type SourceOption} from './domain';
 import {buildResearchStarter} from './starter';
+import {withdrawalRead} from '../withdrawals/transport';
 import type {ResearchStarter,StarterCase} from './starter-types';
 
 const inputSchema=z.object({caseIds:z.array(researchUuid).min(1).max(2).refine(ids=>new Set(ids).size===ids.length,'请选择不同案例'),kind:z.enum(RESEARCH_KINDS)}).strict();
-type CaseRow={id:string;merchant_id:string;local_date:string;published_revision_id?:string|null};
+type CaseRow={id:string;merchant_id:string;local_date:string;published_revision_id?:string|null;case_kind?:'shop'|'withdrawal';withdrawal_lesson_id?:string|null};
 type MerchantRow={id:string;name:string;platform:string};
 
 export async function loadResearchStarter(owner:string,input:{caseIds:string[];kind:ResearchKind}):Promise<ResearchStarter>{
  owner=researchUuid.parse(owner);
  const {caseIds,kind}=inputSchema.parse(input);
- const {data:selectedRows,error:selectedError}=await supabaseAdminUncached.from('business_daily_cases').select('id,merchant_id,local_date,published_revision_id').eq('user_id',owner).in('id',caseIds).limit(2);
+ const {data:selectedRows,error:selectedError}=await supabaseAdminUncached.from('business_daily_cases').select('id,merchant_id,local_date,published_revision_id,case_kind,withdrawal_lesson_id').eq('user_id',owner).in('id',caseIds).limit(2);
  if(selectedError)throw new Error(selectedError.message);
  const selectedById=new Map(((selectedRows??[]) as CaseRow[]).map(row=>[row.id,row]));
  const selected=caseIds.map(caseId=>{const row=selectedById.get(caseId);if(!row)throw new Error('所选案例不存在或不属于当前账号，请重新选择');return row;});
 
- let recentQuery=supabaseAdminUncached.from('business_daily_cases').select('id,merchant_id,local_date').eq('user_id',owner).order('local_date',{ascending:false}).order('id',{ascending:false}).limit(20);
+ let recentQuery=supabaseAdminUncached.from('business_daily_cases').select('id,merchant_id,local_date,case_kind,withdrawal_lesson_id').eq('user_id',owner).order('local_date',{ascending:false}).order('id',{ascending:false}).limit(20);
  for(const caseId of caseIds)recentQuery=recentQuery.neq('id',caseId);
  const {data:recentRows,error:recentError}=await recentQuery;
  if(recentError)throw new Error(recentError.message);
  const recent=(recentRows??[]) as CaseRow[];
- const merchantIds=Array.from(new Set([...selected,...recent].map(row=>row.merchant_id)));
+ const merchantIds=Array.from(new Set([...selected,...recent].flatMap(row=>row.merchant_id?[row.merchant_id]:[])));
  const {data:merchantRows,error:merchantError}=await supabaseAdminUncached.from('business_merchants').select('id,name,platform').eq('user_id',owner).in('id',merchantIds);
  if(merchantError)throw new Error(merchantError.message);
  const merchants=new Map(((merchantRows??[]) as MerchantRow[]).map(row=>[row.id,row]));
@@ -34,6 +35,13 @@ export async function loadResearchStarter(owner:string,input:{caseIds:string[];k
 
  const cases:StarterCase[]=[];
  for(const row of selected){
+  if(row.case_kind==='withdrawal'){
+   if(!row.withdrawal_lesson_id)throw new Error('教材来源不可读取');
+   const lesson=await withdrawalRead(owner,'get',{id:row.withdrawal_lesson_id});
+   if(!lesson||lesson.erasedAt||!lesson.confirmed||lesson.caseId!==row.id)throw new Error('教材已清除或尚未确认，不能带入旧原文');
+   cases.push({id:row.id,name:lesson.subject.name,date:row.local_date,merchantId:null,withdrawalLessonId:lesson.id,platform:'official',sources:[{id:lesson.id,kind:'official',title:lesson.subject.name,text:lesson.source.text,url:lesson.source.url,date:lesson.source.publishedOn??lesson.source.capturedAt}],sourcesTruncated:false,report:null,withdrawal:{event:lesson.event,scope:lesson.subject.scope,announcedOn:lesson.announcedOn,eventQuote:lesson.eventQuote,lessonId:lesson.id,lessonRevision:lesson.revision}});
+   continue;
+  }
   const item=metadata(row);
   const {data:members,error:memberError}=await supabaseAdminUncached.from('business_case_members').select('snapshot_id').eq('user_id',owner).eq('case_id',row.id).order('added_at',{ascending:true}).order('snapshot_id',{ascending:true}).limit(21);
   if(memberError)throw new Error(memberError.message);

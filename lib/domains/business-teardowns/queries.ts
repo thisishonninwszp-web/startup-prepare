@@ -14,11 +14,11 @@ export async function loadDailyCase(owner:string):Promise<DailyCase|null> {
 }
 export async function listCaseHistory(owner:string,before?:string):Promise<{items:DailyCase[];nextCursor:string|null}> {
  uuid(owner);if(before&&!/^\d{4}-\d{2}-\d{2}$/.test(before))throw new Error('无效历史游标');
- let q=supabaseAdmin.from('business_daily_cases').select('*').eq('user_id',owner).order('local_date',{ascending:false}).limit(21);if(before)q=q.lt('local_date',before);
+ let q=supabaseAdmin.from('business_daily_cases').select('*').eq('user_id',owner).eq('case_kind','shop').order('local_date',{ascending:false}).limit(21);if(before)q=q.lt('local_date',before);
  const {data,error}=await q;if(error)throw new Error(error.message);const rows=data??[];const items=rows.slice(0,20).map(dailyCaseFromRow);return {items,nextCursor:rows.length>20?items[items.length-1].localDate:null};
 }
 export async function loadCaseDetail(owner:string,caseId:string):Promise<CaseDetail|null> {
- uuid(owner);uuid(caseId);const {data:raw,error}=await supabaseAdmin.from('business_daily_cases').select('*').eq('user_id',owner).eq('id',caseId).maybeSingle();if(error)throw new Error(error.message);if(!raw)return null;
+ uuid(owner);uuid(caseId);const {data:raw,error}=await supabaseAdmin.from('business_daily_cases').select('*').eq('user_id',owner).eq('case_kind','shop').eq('id',caseId).maybeSingle();if(error)throw new Error(error.message);if(!raw)return null;
  const {data:merchant,error:me}=await supabaseAdmin.from('business_merchants').select('*').eq('user_id',owner).eq('id',raw.merchant_id).single();if(me)throw new Error(me.message);
  const result:CaseMember[]=[];
  for(let offset=0;;offset+=100) {

@@ -4,13 +4,12 @@ import {createClient} from '@/lib/supabase/server';
 import {PageContainer} from '@/components/ui/page-container';
 import {Button} from '@/components/ui/button';
 import {businessTeardownsEnabled} from '@/lib/domains/business-teardowns/daily';
-import {listResearch,listResearchCases,listResearchExperiences} from '@/lib/domains/business-teardowns/research/queries';
-import {loadCaseDetail} from '@/lib/domains/business-teardowns/queries';
+import {getResearch,listResearch,listResearchCases,listResearchExperiences,loadResearchSubject} from '@/lib/domains/business-teardowns/research/queries';
 import {BusinessResearchPanel} from './research-panel';
 import {researchStartOptions} from '@/lib/domains/business-teardowns/research/start-parameters';
 
 export const dynamic='force-dynamic';
-export default async function BusinessResearchPage({searchParams}:{searchParams:{caseId?:string|string[];kind?:string|string[]}}){
+export default async function BusinessResearchPage({searchParams}:{searchParams:{caseId?:string|string[];kind?:string|string[];recordId?:string|string[]}}){
  if(!businessTeardownsEnabled())notFound();
  const {data:{user}}=await createClient().auth.getUser();if(!user)notFound();
  let content;
@@ -22,9 +21,12 @@ export default async function BusinessResearchPage({searchParams}:{searchParams:
    let initialCaseId:string|undefined;
    const start=researchStartOptions(searchParams);
    if(start.caseId){
-    const detail=await loadCaseDetail(user.id,start.caseId);
-    if(detail){initialCaseId=detail.dailyCase.id;if(!cases.items.some(c=>c.id===initialCaseId))cases.items.unshift({id:detail.dailyCase.id,name:detail.merchant.name,date:detail.dailyCase.localDate});}
+    const detail=await loadResearchSubject(user.id,start.caseId);
+    if(detail){initialCaseId=detail.id;if(!cases.items.some(c=>c.id===initialCaseId))cases.items.unshift(detail);}
    }
+   const record=start.recordId?await getResearch(user.id,start.recordId):null;
+   if(record&&!state.items.some(item=>item.id===record.id))state.items.unshift(record);
+   if(record)for(const caseId of record.caseIds){if(!cases.items.some(item=>item.id===caseId)){const subject=await loadResearchSubject(user.id,caseId);if(subject)cases.items.push(subject);}}
    content=<BusinessResearchPanel initialState={state} initialCases={cases} experiences={experiences} initialCaseId={initialCaseId} initialKind={start.kind}/>;
   }
  }catch{content=<p role="alert" className="rounded-lg border p-5 text-sm leading-7">研究暂时没有读取成功。请刷新后重试；保存过的内容不会因此被替换。</p>;}

@@ -40,11 +40,18 @@ export function buildResearchStarter(kind:ResearchKind,selected:StarterCase[],re
   }
 
   for(const item of selected){
-    if(!item.report)gaps.push(`${item.name}：暂无仍可读取的已发布报告，可先从冻结材料自行整理。`);
+    if(!item.report&&!item.withdrawal)gaps.push(`${item.name}：暂无仍可读取的已发布报告，可先从冻结材料自行整理。`);
     if(item.sourcesTruncated)gaps.push(`${item.name}：这里仅带入前 20 份冻结材料；其余请使用来源检索。`);
     if(!item.sources.length)gaps.push(`${item.name}：暂无可逐字核对的冻结正文，公开 API 字段可能没有正文。`);
   }
-  if(kind==='comparison'){
+  if(kind==='failure'&&selected[0]?.withdrawal){
+    const item=selected[0],event=item.withdrawal!;
+    payload.event=event.event;payload.scope=event.scope;payload.when=event.announcedOn??'';payload.whatChanged=event.eventQuote;
+    payload.confirmedDisclosure=false;payload.disclosureKey='';payload.alternative='';payload.condition='';payload.checkNext='';
+    const source=item.sources.find(s=>s.kind==='official'&&s.id===event.lessonId&&s.text.includes(event.eventQuote));
+    if(source&&event.eventQuote.trim().length>=4&&event.eventQuote.length<=1600){const hintId=`${item.id}:official`;hints.push({id:hintId,caseId:item.id,caseName:item.name,snapshotId:source.id,quote:event.eventQuote,sourceKind:'official',reportId:event.lessonId,reportRevision:event.lessonRevision,section:'withdrawal'});bindings.disclosureKey=[hintId];}
+    gaps.push('教材确认不等于你已核对这次研究。采用后仍需亲自确认披露含义；其他解释、成立条件与下一步由你填写。');
+  }else if(kind==='comparison'){
     payload.dimensions=DIMENSIONS.map(([key])=>{
       const section=dimensionSections[key as keyof typeof dimensionSections];
       return {key,left:section&&selected[0]?explanation(selected[0],section,`${key}.leftSourceKey`):'',right:section&&selected[1]?explanation(selected[1],section,`${key}.rightSourceKey`):'',leftSourceKey:null,rightSourceKey:null};
@@ -62,13 +69,13 @@ export function buildResearchStarter(kind:ResearchKind,selected:StarterCase[],re
   }
 
   const merchantIds=new Set(selected.map(c=>c.merchantId));
-  const seenMerchants=new Set<string>();
+  const seenMerchants=new Set<string|null>();
   const candidates=recent.filter(c=>{
     if(merchantIds.has(c.merchantId)||seenMerchants.has(c.merchantId))return false;
     seenMerchants.add(c.merchantId);return true;
   }).slice(0,6).map(c=>({id:c.id,name:c.name,date:c.date,reason:`${selected[0]?.platform===c.platform?'同一平台的不同商家':'不同平台的商家'}；不代表经营结构相同，需核对购买场景与交付条件。`}));
   const sources=[...new Map(selected.flatMap(c=>c.sources).map(s=>[`${s.kind}:${s.id}`,s])).values()];
-  return {kind,cases:selected.map(({id,name,date})=>({id,name,date})),sources,candidates,hints,draft:{title:`${RESEARCH_LABELS[kind]} · ${selected.map(c=>c.name).join(' ↔ ')}`.slice(0,3000),payload,bindings},gaps,truncated:selected.some(c=>c.sourcesTruncated)};
+  return {kind,cases:selected.map(({id,name,date,withdrawalLessonId})=>({id,name,date,...(withdrawalLessonId?{withdrawalLessonId}:{})})),sources,candidates,hints,draft:{title:`${RESEARCH_LABELS[kind]} · ${selected.map(c=>c.name).join(' ↔ ')}`.slice(0,3000),payload,bindings},gaps,truncated:selected.some(c=>c.sourcesTruncated)};
 }
 
 export function adoptResearchDraft(starter:ResearchStarter,confirmedIds:string[]):AdoptedResearchDraft {
@@ -78,9 +85,10 @@ export function adoptResearchDraft(starter:ResearchStarter,confirmedIds:string[]
   const sources=starter.hints.flatMap((hint,index)=>{
     if(!confirmed.has(hint.id))return [];
     const key=`r${index+1}`;keys.set(hint.id,key);
-    return [{key,kind:'snapshot' as const,id:hint.snapshotId,quote:hint.quote,publicConfirmed:true}];
+    return [{key,kind:hint.sourceKind??'snapshot' as const,id:hint.snapshotId,quote:hint.quote,publicConfirmed:true}];
   });
   const payload=structuredClone(starter.draft.payload);
+  if(starter.kind==='failure'){const ids=starter.draft.bindings.disclosureKey??[];payload.disclosureKey=ids.length&&ids.every(id=>keys.has(id))?keys.get(ids[0])!:'';}
   if(starter.kind==='comparison'){
     for(const row of payload.dimensions as Record<string,unknown>[]){
       for(const side of ['left','right']){

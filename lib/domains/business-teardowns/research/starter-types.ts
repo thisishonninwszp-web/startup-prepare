@@ -2,7 +2,8 @@ import type {CaseSection} from '../report-domain';
 import type {CaseOption,ResearchKind,SourceInput,SourceOption} from './domain';
 
 export type StarterCase = CaseOption & {
-  merchantId:string;
+  withdrawal?:{event:'exit'|'shrink'|'stop';scope:'company'|'business'|'store'|'product';announcedOn:string|null;eventQuote:string;lessonId:string;lessonRevision:number};
+  merchantId:string|null;
   platform:string;
   sources:SourceOption[];
   sourcesTruncated:boolean;
@@ -10,7 +11,7 @@ export type StarterCase = CaseOption & {
 };
 export type ComparisonCandidate = CaseOption & {reason:string};
 export type DraftHint = {
-  id:string;caseId:string;caseName:string;snapshotId:string;quote:string;
+  id:string;caseId:string;caseName:string;snapshotId:string;quote:string;sourceKind?:'snapshot'|'official';
   reportId:string;reportRevision:number;section:string;
 };
 export type ResearchDraft = {title:string;payload:Record<string,unknown>;bindings:Record<string,string[]>};

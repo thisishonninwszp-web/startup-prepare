@@ -1,0 +1,11 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const {rpc,main}=vi.hoisted(()=>({rpc:vi.fn(),main:vi.fn()}));
+vi.mock('@/lib/supabase',()=>({supabaseAdminUncached:{rpc}}));vi.mock('../../jobs/owner',()=>({businessJobOwner:main}));
+import {collectionCommand,loadCollectionState,saveCollectionSettings} from './transport';
+import {COLLECTION_POLICY,DEFAULT_COLLECTION_SETTINGS} from './domain';
+const owner='10000000-0000-4000-8000-000000000001',requestId='20000000-0000-4000-8000-000000000001';
+beforeEach(()=>{vi.clearAllMocks();main.mockResolvedValue(owner);});
+it('rejects nonmain owners before RPC',async()=>{main.mockResolvedValue(null);await expect(loadCollectionState(owner)).rejects.toThrow('主账号');expect(rpc).not.toHaveBeenCalled();});
+it('soft disables only missing149 state',async()=>{rpc.mockResolvedValue({error:{code:'PGRST202',message:'missing'}});expect((await loadCollectionState(owner)).available).toBe(false);rpc.mockResolvedValue({error:{code:'42501',message:'forbidden'}});await expect(loadCollectionState(owner)).rejects.toThrow('forbidden');});
+it('rejects extra raw diagnostic fields',async()=>{rpc.mockResolvedValue({data:{available:true,settings:DEFAULT_COLLECTION_SETTINGS,run:null,attempts:[],diagnostics:[],raw:'hidden'}});await expect(loadCollectionState(owner)).rejects.toThrow();});
+it('checks settings revision receipts and ticket identity',async()=>{rpc.mockResolvedValue({data:{...DEFAULT_COLLECTION_SETTINGS,revision:7}});await expect(saveCollectionSettings(owner,{enabled:false,issuerIds:[],publicTextConfirmed:false,policyVersion:COLLECTION_POLICY,expectedRevision:0,requestId})).rejects.toThrow('回执');rpc.mockResolvedValue({data:{id:requestId,kind:'ai',runId:requestId,status:'reserved'}});await expect(collectionCommand(owner,'ticket',{runId:owner,token:owner,revision:1,kind:'search',issuerId:null,url:null,requestId})).rejects.toThrow('回执');});

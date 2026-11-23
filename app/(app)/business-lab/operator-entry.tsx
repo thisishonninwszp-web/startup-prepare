@@ -2,6 +2,8 @@ import Link from 'next/link';
 import {Button} from '@/components/ui/button';
 
 const tools=[
+ ['explanations','这两种解释，怎样区分'],
+ ['withdrawals','退出与收缩：哪些条件没能持续'],
  ['pressure','条件变了，你怎么做'],
  ['cash','先付后收，现金够不够'],
  ['cash/boundaries','哪项现金假设会改变结果'],

@@ -1,0 +1,2 @@
+import {readFileSync} from 'node:fs';import {it,expect} from 'vitest';
+it('has an independent withdrawal step with same secret, no retries and cache-distinct invocation',()=>{const source=readFileSync('.github/workflows/signals-jobs.yml','utf8');const step=source.split('- name: Select withdrawal lesson for the owner')[1]?.split('- name:')[0]??'';expect(step).toContain('api/cron/business-withdrawals?invocation=');expect(step).toContain('secrets.CRON_SECRET');expect(step).toContain('always()');expect(step).not.toContain('--retry');expect(step).toContain('"$code" != "200"');});

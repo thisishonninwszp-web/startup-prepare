@@ -1,11 +1,12 @@
 import {z} from 'zod';
+import {explanationExpectationsSchema,type ExplanationExpectations} from '../explanations/domain';
 import {cashDate,cashUuid} from '../cash/domain';
 import {realityCheckPlanSchema,type RealityCheckPlan} from '../reality-checks/domain';
 import {realityResultBodySchema,type RealityResultBody} from '../reality-results/domain';
 
 export const confirmationUuid=cashUuid;
-export type ConfirmationParent={kind:'simulation'|'result'|'plan';id:string;revision:number;available:boolean};
-export type ConfirmationNode={kind:'plan'|'result';id:string;caseId:string;revision:number;at:string;parent:ConfirmationParent;plan:RealityCheckPlan|null;body:RealityResultBody|null;planSnapshot:RealityCheckPlan|null;planSavedAt:string|null;snapshotErasedAt:string|null};
+export type ConfirmationParent={kind:'simulation'|'result'|'plan'|'explanation';id:string;revision:number;available:boolean};
+export type ConfirmationNode={kind:'plan'|'result';id:string;caseId:string;revision:number;at:string;parent:ConfirmationParent;plan:RealityCheckPlan|null;body:RealityResultBody|null;planSnapshot:RealityCheckPlan|null;planSavedAt:string|null;snapshotErasedAt:string|null;expectations?:ExplanationExpectations};
 export type ConfirmationHistory={available:boolean;items:ConfirmationNode[];nextCursor:string|null};
 export type ConfirmationNodeKey={kind:'plan';id:string;revision:number}|{kind:'result';id:string};
 export const confirmationRevision=z.number().int().min(1).max(2147483647);
@@ -20,11 +21,11 @@ export const confirmationNodeKeySchema=z.discriminatedUnion('kind',[
 export const confirmationCursorSchema=z.object({at:confirmationStamp,kind:z.enum(['plan','result']),id:confirmationUuid,revision:confirmationRevision}).strict().refine(value=>value.kind==='plan'||value.revision===1,'结果版本不正确');
 export const confirmationNodeSchema=z.object({
  kind:z.enum(['plan','result']),id:confirmationUuid,caseId:confirmationUuid,revision:confirmationRevision,at:confirmationStamp,
- parent:z.object({kind:z.enum(['simulation','result','plan']),id:confirmationUuid,revision:confirmationRevision,available:z.boolean()}).strict(),
- plan:realityCheckPlanSchema.nullable(),body:realityResultBodySchema.nullable(),planSnapshot:realityCheckPlanSchema.nullable(),planSavedAt:confirmationStamp.nullable(),snapshotErasedAt:confirmationStamp.nullable(),
+ parent:z.object({kind:z.enum(['simulation','result','plan','explanation']),id:confirmationUuid,revision:confirmationRevision,available:z.boolean()}).strict(),
+ plan:realityCheckPlanSchema.nullable(),body:realityResultBodySchema.nullable(),planSnapshot:realityCheckPlanSchema.nullable(),planSavedAt:confirmationStamp.nullable(),snapshotErasedAt:confirmationStamp.nullable(),expectations:explanationExpectationsSchema.optional(),
 }).strict().refine(value=>value.kind==='plan'
- ?value.plan!==null&&value.body===null&&value.planSnapshot===null&&value.planSavedAt===null&&value.snapshotErasedAt===null&&((value.parent.kind==='simulation'&&value.parent.revision>=2)||(value.parent.kind==='result'&&value.parent.revision===1))
- :value.revision===1&&value.plan===null&&value.body!==null&&value.parent.kind==='plan'&&value.planSavedAt!==null&&(value.planSnapshot===null)===(value.snapshotErasedAt!==null)&&value.parent.available===(value.planSnapshot!==null),'记录来源或擦除状态不一致');
+ ?value.plan!==null&&value.body===null&&value.planSnapshot===null&&value.planSavedAt===null&&value.snapshotErasedAt===null&&((value.parent.kind==='simulation'&&value.parent.revision>=2)||(value.parent.kind==='result'&&value.parent.revision===1)||(value.parent.kind==='explanation'&&value.parent.id===value.id&&value.parent.revision===value.revision&&value.expectations!==undefined))
+ :value.revision===1&&value.plan===null&&value.body!==null&&value.parent.kind==='plan'&&value.planSavedAt!==null&&(value.planSnapshot===null)===(value.snapshotErasedAt!==null)&&value.parent.available===(value.planSnapshot!==null)&&(value.planSnapshot!==null||value.expectations===undefined),'记录来源或擦除状态不一致');
 
 export type ConfirmationCursor=z.infer<typeof confirmationCursorSchema>;
 export function confirmationMicros(at:string):bigint{return BigInt(Date.parse(at))*BigInt(1000)+BigInt((at.match(/\.(\d+)/)?.[1]??'').padEnd(6,'0').slice(3,6));}

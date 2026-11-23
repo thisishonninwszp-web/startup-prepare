@@ -11755,3 +11755,1168 @@ $$;
 
 revoke all on function public.business_workspace_base_items(uuid,uuid) from public,anon,authenticated,service_role;
 commit;
+
+
+-- 146_business_withdrawal_lessons.sql
+begin;
+
+create table public.business_withdrawal_issuers(
+ id uuid primary key,user_id uuid not null references auth.users(id) on delete cascade,
+ name text not null,domain text not null,subject_identity_key text not null,
+ created_at timestamptz not null default clock_timestamp(),confirmed_at timestamptz not null default clock_timestamp(),
+ unique(user_id,id),unique(user_id,domain,subject_identity_key)
+);
+create table public.business_withdrawal_lessons(
+ id uuid primary key,user_id uuid not null references auth.users(id) on delete cascade,
+ identity_key text not null,subject_scope text not null check(subject_scope in('company','business','store','product')),
+ event text not null check(event in('exit','shrink','stop')),phase text not null check(phase in('announced','completed')),
+ announced_on date,effective_on date,payload jsonb,confirmed boolean not null default false,
+ revision integer not null default 1 check(revision>0),created_at timestamptz not null default clock_timestamp(),erased_at timestamptz,
+ unique(user_id,id),unique(user_id,identity_key),check((erased_at is null)=(payload is not null)),check(erased_at is null or not confirmed)
+);
+create table public.business_withdrawal_sources(
+ id uuid primary key,user_id uuid not null,issuer_id uuid not null,source_url text not null,
+ captured_text text not null,captured_at timestamptz not null,published_on date,
+ content_hash text not null check(content_hash~'^[a-f0-9]{64}$'),erased_at timestamptz,
+ foreign key(user_id,id) references business_withdrawal_lessons(user_id,id),
+ foreign key(user_id,issuer_id) references business_withdrawal_issuers(user_id,id),
+ check(erased_at is null or captured_text='')
+);
+create table public.business_withdrawal_receipts(
+ user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,
+ input_hash text not null check(input_hash~'^[a-f0-9]{64}$'),result jsonb not null,primary key(user_id,request_id)
+);
+create index business_withdrawal_lesson_order on public.business_withdrawal_lessons(user_id,created_at desc,id desc);
+create index business_withdrawal_issuer_order on public.business_withdrawal_issuers(user_id,created_at desc,id desc);
+
+lock table public.business_daily_cases in share row exclusive mode;
+alter table public.business_daily_cases
+ add column case_kind text not null default 'shop' check(case_kind in('shop','withdrawal')),
+ add column withdrawal_lesson_id uuid,
+ alter column merchant_id drop not null,
+ drop constraint business_daily_cases_user_id_local_date_key,
+ add constraint business_case_exact_subject check(
+  (case_kind='shop' and merchant_id is not null and withdrawal_lesson_id is null)
+  or(case_kind='withdrawal' and merchant_id is null and withdrawal_lesson_id is not null and published_revision_id is null)
+ ),
+ add constraint business_case_owned_withdrawal foreign key(user_id,withdrawal_lesson_id) references public.business_withdrawal_lessons(user_id,id);
+create unique index business_case_daily_kind on public.business_daily_cases(user_id,local_date,case_kind);
+create unique index business_case_withdrawal_once on public.business_daily_cases(user_id,withdrawal_lesson_id) where case_kind='withdrawal';
+
+create or replace function public.business_case_identity_immutable() returns trigger language plpgsql set search_path=public,pg_temp as $$begin
+ if new.user_id is distinct from old.user_id or new.id is distinct from old.id or new.local_date is distinct from old.local_date or new.merchant_id is distinct from old.merchant_id or new.timezone is distinct from old.timezone or new.selection_reason is distinct from old.selection_reason or new.case_kind is distinct from old.case_kind or new.withdrawal_lesson_id is distinct from old.withdrawal_lesson_id then raise exception 'business daily identity is immutable';end if;return new;
+end$$;
+
+create function public.business_withdrawal_text(p jsonb,p_max integer) returns text language plpgsql immutable set search_path=public,pg_temp as $$declare v text;begin
+ if jsonb_typeof(p) is distinct from 'string' then raise exception 'invalid withdrawal text';end if;
+ v:=p#>>'{}';if length(v)+length(regexp_replace(v,U&'[\0001-\FFFF]','','g'))>p_max then raise exception 'invalid withdrawal text length';end if;
+ v:=regexp_replace(v,U&'^[[:space:]\3000\FEFF]+|[[:space:]\3000\FEFF]+$','','g');
+ if v='' then raise exception 'invalid withdrawal text length';end if;return v;
+end$$;
+create function public.business_withdrawal_identity(p jsonb) returns text language plpgsql immutable set search_path=public,pg_temp as $$declare v text;k text;r text[]:='{}';begin
+ perform business_simulation_keys(p,array['name','operator','market','scope','identityKey']);
+ if p->>'scope' not in('company','business','store','product') then raise exception 'invalid withdrawal scope';end if;
+ foreach k in array array['operator','market','scope','name'] loop
+  v:=business_withdrawal_text(p->k,300);if position('|' in v)>0 then raise exception 'invalid withdrawal identity separator';end if;
+  v:=lower(btrim(regexp_replace(normalize(v,NFKC),U&'[[:space:]\3000\FEFF]+',' ','g')));r:=array_append(r,v);
+ end loop;
+ v:=array_to_string(r,'|');if p->>'identityKey' is distinct from v then raise exception 'withdrawal identity key mismatch';end if;return v;
+end$$;
+create function public.business_withdrawal_domain(p jsonb) returns text language plpgsql immutable set search_path=public,pg_temp as $$declare v text;begin
+ v:=business_withdrawal_text(p,253);
+ if v!~'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$' or v~'\.(local|localhost)$' then raise exception 'invalid official domain';end if;return v;
+end$$;
+create function public.business_withdrawal_url(p jsonb,p_domain text) returns text language plpgsql immutable set search_path=public,pg_temp as $$declare v text;a text;begin
+ v:=business_withdrawal_text(p,2000);
+ if v is distinct from p#>>'{}' or v!~'^https://' or v~U&'[\0001-\0020\007F-\009F\00A0\1680\2000-\200A\2028\2029\202F\205F\3000\FEFF]' or position(chr(92) in v)>0 or v~*'%(0[0-9a-f]|1[0-9a-f]|7f)' then raise exception 'invalid official HTTPS URL';end if;
+ a:=split_part(split_part(split_part(substr(v,9),'/',1),'?',1),'#',1);
+ if a is distinct from p_domain then raise exception 'official URL must match registered domain exactly';end if;return v;
+end$$;
+create function public.business_withdrawal_stamp(p jsonb) returns timestamptz language plpgsql stable set search_path=public,pg_temp as $$declare v text;d timestamptz;begin
+ v:=business_withdrawal_text(p,80);
+ if v!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$' then raise exception 'invalid withdrawal timestamp';end if;
+ perform business_simulation_date(to_jsonb(left(v,10)));d:=v::timestamptz;return d;
+end$$;
+create function public.business_withdrawal_date_binding(p_date jsonb,p_quote jsonb,p_text text) returns void language plpgsql stable set search_path=public,pg_temp as $$declare d date;q text;y text;m text;n text;begin
+ if p_date='null'::jsonb then if p_quote is distinct from 'null'::jsonb then raise exception 'unknown date requires null quote';end if;return;end if;
+ d:=business_simulation_date(p_date);q:=business_withdrawal_text(p_quote,3000);y:=extract(year from d)::integer::text;m:=extract(month from d)::integer::text;n:=extract(day from d)::integer::text;
+ if position(q in p_text)=0 or (position(d::text in q)=0 and position(y||'/'||m||'/'||n in q)=0 and position(y||'年'||m||'月'||n||'日' in q)=0 and position(y||'年'||lpad(m,2,'0')||'月'||lpad(n,2,'0')||'日' in q)=0) then raise exception 'withdrawal date needs its own exact quote';end if;
+end$$;
+create function public.business_withdrawal_validate(p_owner uuid,p jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare i business_withdrawal_issuers;s jsonb;b jsonb;t text;k text;q text;v_key text;begin
+ perform business_simulation_keys(p,array['subject','event','phase','announcedOn','effectiveOn','source','eventQuote','reasonQuote','bindings','offering','buyers','explanationA','explanationB','distinguishingObservation','unknowns']);
+ v_key:=business_withdrawal_identity(p->'subject');
+ if jsonb_typeof(p->'event') is distinct from 'string' or p->>'event' not in('exit','shrink','stop') or jsonb_typeof(p->'phase') is distinct from 'string' or p->>'phase' not in('announced','completed') then raise exception 'invalid withdrawal event or phase';end if;
+ if p->'offering' is distinct from 'null'::jsonb or p->'buyers' is distinct from 'null'::jsonb then raise exception 'offering and buyers require separate literal evidence; leave unknown';end if;
+ s:=p->'source';perform business_simulation_keys(s,array['issuerId','url','text','capturedAt','publishedOn']);
+ select * into i from business_withdrawal_issuers where user_id=p_owner and id=business_simulation_uuid(s->'issuerId') for share;
+ if not found or i.subject_identity_key<>v_key then raise exception 'official issuer subject owner unavailable' using errcode='42501';end if;
+ perform business_withdrawal_url(s->'url',i.domain);t:=business_withdrawal_text(s->'text',60000);if business_withdrawal_stamp(s->'capturedAt')>clock_timestamp()+interval '5 minutes' then raise exception 'withdrawal capture cannot be in the future';end if;
+ b:=p->'bindings';perform business_simulation_keys(b,array['subject','phase','announcedOn','effectiveOn','publishedOn']);
+ foreach k in array array['subject','phase'] loop q:=business_withdrawal_text(b->k,3000);if position(q in t)=0 then raise exception 'withdrawal claim needs exact quote';end if;end loop;
+ if position(p->'subject'->>'name' in b->>'subject')=0 or position(p->'subject'->>'operator' in b->>'subject')=0 or position(p->'subject'->>'market' in b->>'subject')=0 then raise exception 'subject name, operator and market need exact quote';end if;
+ foreach k in array array['eventQuote','reasonQuote'] loop if p->k is distinct from 'null'::jsonb then q:=business_withdrawal_text(p->k,3000);if position(q in t)=0 then raise exception 'withdrawal claim needs exact quote';end if;elsif k='eventQuote' then raise exception 'withdrawal event quote required';end if;end loop;
+ foreach k in array array['announcedOn','effectiveOn'] loop perform business_withdrawal_date_binding(p->k,b->k,t);end loop;
+ perform business_withdrawal_date_binding(s->'publishedOn',b->'publishedOn',t);
+ foreach k in array array['explanationA','explanationB','distinguishingObservation'] loop if p->k is distinct from 'null'::jsonb then perform business_withdrawal_text(p->k,3000);end if;end loop;
+ if jsonb_typeof(p->'unknowns') is distinct from 'array' or jsonb_array_length(p->'unknowns')>20 then raise exception 'invalid withdrawal unknowns';end if;
+ for s in select value from jsonb_array_elements(p->'unknowns') loop perform business_withdrawal_text(s,3000);end loop;
+ return p;
+end$$;
+
+create function public.business_withdrawal_source_guard() returns trigger language plpgsql set search_path=public,pg_temp as $$begin
+ if tg_op='UPDATE' and new.captured_text='' and old.erased_at is null and new.erased_at is not null and (to_jsonb(new)-array['captured_text','erased_at'])=(to_jsonb(old)-array['captured_text','erased_at']) then return new;end if;
+ raise exception 'official source is immutable';
+end$$;
+create trigger business_withdrawal_source_immutable before update or delete on public.business_withdrawal_sources for each row execute function public.business_withdrawal_source_guard();
+
+create function public.business_withdrawal_issuer_dto(p business_withdrawal_issuers) returns jsonb language sql stable set search_path=public,pg_temp as $$select jsonb_build_object('id',p.id,'name',p.name,'domain',p.domain,'subjectIdentityKey',p.subject_identity_key,'createdAt',p.created_at,'confirmedAt',p.confirmed_at)$$;
+create function public.business_withdrawal_dto(p business_withdrawal_lessons) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$declare s business_withdrawal_sources;c uuid;v_selected date;v jsonb;begin
+ select * into s from business_withdrawal_sources where user_id=p.user_id and id=p.id;
+ select id,local_date into c,v_selected from business_daily_cases where user_id=p.user_id and withdrawal_lesson_id=p.id and case_kind='withdrawal';
+ if p.erased_at is null then v:=p.payload;
+ else v:=jsonb_build_object('subject',jsonb_build_object('name','','operator','','market','','scope',p.subject_scope,'identityKey',p.identity_key),'eventQuote','','reasonQuote',null,'bindings',jsonb_build_object('subject','','phase','','announcedOn',null,'effectiveOn',null,'publishedOn',null),'offering',null,'buyers',null,'explanationA',null,'explanationB',null,'distinguishingObservation',null,'unknowns','[]'::jsonb);end if;
+ return v||jsonb_build_object('id',p.id,'caseId',c,'selectedOn',v_selected,'event',p.event,'phase',p.phase,'announcedOn',p.announced_on,'effectiveOn',p.effective_on,'source',jsonb_build_object('issuerId',s.issuer_id,'url',s.source_url,'text',s.captured_text,'capturedAt',s.captured_at,'publishedOn',s.published_on,'contentHash',s.content_hash),'confirmed',p.confirmed,'revision',p.revision,'createdAt',p.created_at,'erasedAt',p.erased_at);
+end$$;
+create function public.business_subject_context(p_owner uuid,p_case uuid) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$
+ select jsonb_build_object('caseId',c.id,'caseTitle',case c.case_kind when 'shop' then m.name else l.payload->'subject'->>'name' end,'kind',c.case_kind)
+ from business_daily_cases c left join business_merchants m on m.user_id=c.user_id and m.id=c.merchant_id
+ left join business_withdrawal_lessons l on l.user_id=c.user_id and l.id=c.withdrawal_lesson_id and l.erased_at is null
+ where c.user_id=p_owner and c.id=p_case and ((c.case_kind='shop' and m.id is not null) or(c.case_kind='withdrawal' and l.id is not null))
+$$;
+create function public.business_withdrawal_explanation_source(p_owner uuid,p_lesson uuid,p_revision integer) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$
+ select jsonb_build_object('caseId',c.id,'title',l.payload->'subject'->>'name','explanationA',l.payload->'explanationA','explanationB',l.payload->'explanationB','distinguishingObservation',l.payload->'distinguishingObservation',
+ 'refs',jsonb_build_array(jsonb_build_object('quote',l.payload->'eventQuote','url',s.source_url)),
+ 'anchor',jsonb_build_object('kind','withdrawal','lessonId',l.id,'lessonRevision',l.revision))
+ from business_withdrawal_lessons l join business_daily_cases c on c.user_id=l.user_id and c.withdrawal_lesson_id=l.id and c.case_kind='withdrawal'
+ join business_withdrawal_sources s on s.user_id=l.user_id and s.id=l.id and s.erased_at is null and s.captured_text<>''
+ where l.user_id=p_owner and l.id=p_lesson and l.revision=p_revision and l.erased_at is null and l.confirmed and nullif(l.payload->>'explanationA','') is not null and nullif(l.payload->>'explanationB','') is not null
+ and encode(sha256(convert_to(s.captured_text,'UTF8')),'hex')=s.content_hash and position(l.payload->>'eventQuote' in s.captured_text)>0
+$$;
+
+create function public.business_withdrawal_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_id uuid;v_request uuid;v_hash text;v_key text;v_revision integer;v_result jsonb;v jsonb;s jsonb;i business_withdrawal_issuers;l business_withdrawal_lessons;src business_withdrawal_sources;r business_withdrawal_receipts;c business_daily_cases;begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input) is distinct from 'object' or octet_length(p_input::text)>250000 or p_input->>'operation' is distinct from p_operation then raise exception 'invalid withdrawal input';end if;
+ if p_operation='register_issuer' then perform business_simulation_keys(p_input,array['operation','id','requestId','issuer','confirmed']);
+ elsif p_operation='save' then perform business_simulation_keys(p_input,array['operation','id','requestId','expectedRevision','lesson','confirmed']);
+ elsif p_operation='erase' then perform business_simulation_keys(p_input,array['operation','id','requestId','expectedRevision']);
+ elsif p_operation='select_today' then perform business_simulation_keys(p_input,array['operation','requestId']);else raise exception 'invalid withdrawal operation';end if;
+ v_request:=business_simulation_uuid(p_input->'requestId');v_hash:=encode(sha256(convert_to('withdrawal146:'||p_operation||':'||p_input::text,'UTF8')),'hex');
+ -- Use the established shop/learning lock first, so selection and erasure serialize with legacy commands.
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ select * into r from business_withdrawal_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if r.input_hash<>v_hash then raise exception 'withdrawal request conflict';end if;return r.result;end if;
+ if p_operation<>'select_today' then v_id:=business_simulation_uuid(p_input->'id');end if;
+ if p_operation='register_issuer' then
+  if p_input->'confirmed' is distinct from 'true'::jsonb then raise exception 'official issuer requires explicit confirmation';end if;
+  v:=p_input->'issuer';perform business_simulation_keys(v,array['name','domain','subjectIdentityKey']);
+  if exists(select 1 from business_withdrawal_issuers where id=v_id) then raise exception 'issuer identifier unavailable' using errcode='42501';end if;
+  insert into business_withdrawal_issuers(id,user_id,name,domain,subject_identity_key) values(v_id,p_user_id,business_withdrawal_text(v->'name',300),business_withdrawal_domain(v->'domain'),business_withdrawal_text(v->'subjectIdentityKey',1000));
+  v_result:=jsonb_build_object('id',v_id,'revision',1);
+ elsif p_operation='save' then
+  if jsonb_typeof(p_input->'confirmed') is distinct from 'boolean' then raise exception 'manual disclosure confirmation boolean required';end if;
+  v_revision:=business_simulation_integer(p_input->'expectedRevision',2147483646)::integer;
+  v:=business_withdrawal_validate(p_user_id,p_input->'lesson');s:=v->'source';v_key:=business_withdrawal_identity(v->'subject');
+  select * into l from business_withdrawal_lessons where user_id=p_user_id and id=v_id for update;
+  if not found then
+   if v_revision<>0 or exists(select 1 from business_withdrawal_lessons where id=v_id) then raise exception 'withdrawal lesson unavailable' using errcode='42501';end if;
+   if exists(select 1 from business_withdrawal_lessons where user_id=p_user_id and identity_key=v_key) then raise exception 'withdrawal subject identity already recorded';end if;
+   insert into business_withdrawal_lessons(id,user_id,identity_key,subject_scope,event,phase,announced_on,effective_on,payload,confirmed)
+   values(v_id,p_user_id,v_key,v->'subject'->>'scope',v->>'event',v->>'phase',(v->>'announcedOn')::date,(v->>'effectiveOn')::date,v-'source',(p_input->>'confirmed')::boolean) returning * into l;
+   insert into business_withdrawal_sources(id,user_id,issuer_id,source_url,captured_text,captured_at,published_on,content_hash)
+   values(v_id,p_user_id,business_simulation_uuid(s->'issuerId'),s->>'url',s->>'text',business_withdrawal_stamp(s->'capturedAt'),(s->>'publishedOn')::date,encode(sha256(convert_to(s->>'text','UTF8')),'hex'));
+  else
+   if l.erased_at is not null then raise exception 'withdrawal lesson unavailable' using errcode='42501';end if;
+   if l.revision<>v_revision then raise exception 'withdrawal revision conflict';end if;
+   select * into src from business_withdrawal_sources where user_id=p_user_id and id=l.id for share;
+   if l.identity_key<>v_key or l.subject_scope<>v->'subject'->>'scope' or l.event<>v->>'event' or l.phase<>v->>'phase' or l.announced_on is distinct from (v->>'announcedOn')::date or l.effective_on is distinct from (v->>'effectiveOn')::date
+   or src.issuer_id is distinct from business_simulation_uuid(s->'issuerId') or src.source_url is distinct from s->>'url' or src.captured_text is distinct from s->>'text' or src.captured_at is distinct from business_withdrawal_stamp(s->'capturedAt') or src.published_on is distinct from (s->>'publishedOn')::date
+   or (l.payload-array['explanationA','explanationB','distinguishingObservation','unknowns']) is distinct from ((v-'source')-array['explanationA','explanationB','distinguishingObservation','unknowns']) then raise exception 'withdrawal source and factual anchor are immutable';end if;
+   if exists(select 1 from business_daily_cases where user_id=p_user_id and withdrawal_lesson_id=l.id) then raise exception 'published withdrawal lesson is immutable';end if;
+   update business_withdrawal_lessons set payload=v-'source',confirmed=(p_input->>'confirmed')::boolean,revision=revision+1 where user_id=p_user_id and id=v_id returning * into l;
+  end if;
+  v_result:=jsonb_build_object('id',l.id,'revision',l.revision);
+ elsif p_operation='erase' then
+  v_revision:=business_simulation_integer(p_input->'expectedRevision',2147483646)::integer;
+  select * into l from business_withdrawal_lessons where user_id=p_user_id and id=v_id for update;
+  if not found or l.erased_at is not null then raise exception 'withdrawal lesson unavailable' using errcode='42501';end if;
+  if l.revision<>v_revision then raise exception 'withdrawal revision conflict';end if;
+  update business_withdrawal_sources set captured_text='',erased_at=clock_timestamp() where user_id=p_user_id and id=v_id;
+  update business_withdrawal_lessons set payload=null,confirmed=false,erased_at=clock_timestamp(),revision=revision+1 where user_id=p_user_id and id=v_id returning * into l;
+  v_result:=jsonb_build_object('id',l.id,'revision',l.revision);
+ else
+  select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today() and case_kind='withdrawal' for update;
+  if not found then
+   select lessons.* into l from business_withdrawal_lessons lessons join business_withdrawal_sources sources on sources.user_id=lessons.user_id and sources.id=lessons.id and sources.erased_at is null and sources.captured_text<>''
+   where lessons.user_id=p_user_id and lessons.confirmed and lessons.erased_at is null and not exists(select 1 from business_daily_cases cases where cases.user_id=p_user_id and cases.withdrawal_lesson_id=lessons.id)
+   order by lessons.created_at,lessons.id limit 1 for update of lessons;
+   if found then insert into business_daily_cases(user_id,local_date,merchant_id,case_kind,withdrawal_lesson_id,state,selection_reason) values(p_user_id,business_today(),null,'withdrawal',l.id,'ready','Verified official disclosure selected from the owned queue') returning * into c;end if;
+  else select * into l from business_withdrawal_lessons where user_id=p_user_id and id=c.withdrawal_lesson_id;end if;
+  v_result:=jsonb_build_object('id',l.id,'caseId',c.id,'revision',l.revision);
+ end if;
+ insert into business_withdrawal_receipts(user_id,request_id,input_hash,result) values(p_user_id,v_request,v_hash,v_result);return v_result;
+end$$;
+
+create function public.business_withdrawal_read(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare v_id uuid;v_before uuid;v_date timestamptz;v_count integer:=0;v_items jsonb:='[]';v_next jsonb;l business_withdrawal_lessons;i business_withdrawal_issuers;begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input) is distinct from 'object' or octet_length(p_input::text)>2000 then raise exception 'invalid withdrawal read';end if;
+ if p_operation='get' then perform business_simulation_keys(p_input,array['id']);v_id:=business_simulation_uuid(p_input->'id');select * into l from business_withdrawal_lessons where user_id=p_user_id and id=v_id;if not found then return null;end if;return business_withdrawal_dto(l);
+ elsif p_operation='today' then perform business_simulation_keys(p_input,'{}');select lessons.* into l from business_daily_cases cases join business_withdrawal_lessons lessons on lessons.user_id=cases.user_id and lessons.id=cases.withdrawal_lesson_id where cases.user_id=p_user_id and cases.local_date=business_today() and cases.case_kind='withdrawal';if not found then return null;end if;return business_withdrawal_dto(l);
+ elsif p_operation not in('list','issuers') or p_operation is null then raise exception 'invalid withdrawal read operation';end if;
+ perform business_simulation_keys(p_input,'{}',array['before']);
+ if p_input?'before' then perform business_simulation_keys(p_input->'before',array['date','id']);v_before:=business_simulation_uuid(p_input->'before'->'id');v_date:=business_withdrawal_stamp(p_input->'before'->'date');end if;
+ if p_operation='list' then
+  for l in select * from business_withdrawal_lessons where user_id=p_user_id and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21 loop v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(business_withdrawal_dto(l));v_next:=jsonb_build_object('date',l.created_at,'id',l.id);end if;end loop;
+ else
+  for i in select * from business_withdrawal_issuers where user_id=p_user_id and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21 loop v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(business_withdrawal_issuer_dto(i));v_next:=jsonb_build_object('date',i.created_at,'id',i.id);end if;end loop;
+ end if;
+ return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+
+alter table public.business_withdrawal_issuers enable row level security;
+alter table public.business_withdrawal_lessons enable row level security;
+alter table public.business_withdrawal_sources enable row level security;
+alter table public.business_withdrawal_receipts enable row level security;
+revoke all on public.business_withdrawal_issuers,public.business_withdrawal_lessons,public.business_withdrawal_sources,public.business_withdrawal_receipts from public,anon,authenticated,service_role;
+revoke all on function public.business_withdrawal_text(jsonb,integer),public.business_withdrawal_identity(jsonb),public.business_withdrawal_domain(jsonb),public.business_withdrawal_url(jsonb,text),public.business_withdrawal_stamp(jsonb),public.business_withdrawal_date_binding(jsonb,jsonb,text),public.business_withdrawal_validate(uuid,jsonb),public.business_withdrawal_source_guard(),public.business_withdrawal_issuer_dto(public.business_withdrawal_issuers),public.business_withdrawal_dto(public.business_withdrawal_lessons),public.business_subject_context(uuid,uuid),public.business_withdrawal_explanation_source(uuid,uuid,integer),public.business_withdrawal_command(uuid,text,jsonb),public.business_withdrawal_read(uuid,text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.business_withdrawal_command(uuid,text,jsonb),public.business_withdrawal_read(uuid,text,jsonb) to service_role;
+
+-- Legacy shop function definitions follow. They deliberately keep their existing DTOs.
+create or replace function public.business_prepare_case(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c business_daily_cases;m business_merchants;prep business_case_preparations;r business_case_requests;mi jsonb;v_request uuid;v_hash text;v_needs boolean;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or octet_length(p_input::text)>10000 then raise exception 'invalid preparation input';end if;
+ v_request:=(p_input->>'requestId')::uuid;v_hash:=p_input->>'userInputHash';mi:=p_input->'merchant';
+ if v_request is null or coalesce(v_hash,'')='' or coalesce(mi->>'platform','') not in ('rakuten','xiaohongshu') or coalesce(mi->>'platformShopId','')='' or coalesce(p_input->>'selectionReason','')='' then raise exception 'invalid preparation identity';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ select * into r from business_case_requests where user_id=p_user_id and request_id=v_request;
+ if found then if r.operation<>'primary' or r.user_input_hash<>v_hash then raise exception 'business request payload conflict';end if;return jsonb_build_object('dailyCase',r.result,'needsMaterial',false);end if;
+ select * into prep from business_case_preparations where user_id=p_user_id and request_id=v_request;
+ if found then
+  if prep.operation<>'primary' or prep.user_input_hash<>v_hash then raise exception 'business request payload conflict';end if;
+  select * into c from business_daily_cases where user_id=p_user_id and id=prep.case_id and case_kind='shop' for update;
+ else
+  select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today() and case_kind='shop' for update;
+  if not found then
+   select * into m from business_merchants where user_id=p_user_id and platform=mi->>'platform' and platform_shop_id=mi->>'platformShopId';
+   if not found then insert into business_merchants(user_id,platform,platform_shop_id,name,source_url,identity_scope) values(p_user_id,mi->>'platform',mi->>'platformShopId',mi->>'name',mi->>'sourceUrl','user_supplied_unverified') returning * into m;end if;
+   insert into business_daily_cases(user_id,local_date,merchant_id,selection_reason) values(p_user_id,business_today(),m.id,p_input->>'selectionReason') returning * into c;
+  end if;
+  insert into business_case_preparations(user_id,request_id,operation,user_input_hash,case_id) values(p_user_id,v_request,'primary',v_hash,c.id);
+ end if;
+ select * into m from business_merchants where id=c.merchant_id and user_id=p_user_id;
+ v_needs:=m.platform=mi->>'platform' and m.platform_shop_id=mi->>'platformShopId' and not exists(select 1 from business_case_members where case_id=c.id and role='primary');
+ return jsonb_build_object('dailyCase',business_case_dto(c),'needsMaterial',v_needs);
+end $$;
+
+create or replace function public.business_load_today(p_user_id uuid) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$declare c business_daily_cases;begin
+ perform business_service(p_user_id);select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today() and case_kind='shop';if not found then return null;end if;return business_case_dto(c);
+end $$;
+
+create or replace function public.business_save_case_material(p_user_id uuid,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c business_daily_cases;m business_merchants;r business_case_requests;prep business_case_preparations;s jsonb;mi jsonb;v_snapshot uuid;v_result jsonb;v_request uuid;v_operation text;v_role text;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input)<>'object' or octet_length(p_input::text)>100000 then raise exception 'invalid business input';end if;
+ v_request:=(p_input->>'requestId')::uuid;v_operation:=p_input->>'operation';
+ if v_request is null or v_operation not in ('primary','attach') or coalesce(p_input->>'userInputHash','')='' then raise exception 'invalid business request';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ select * into r from business_case_requests where user_id=p_user_id and request_id=v_request;
+ if found then if r.input is distinct from p_input then raise exception 'business request payload conflict';end if;return r.result;end if;
+ select * into prep from business_case_preparations where user_id=p_user_id and request_id=v_request;
+ if found and (v_operation<>'primary' or prep.user_input_hash is distinct from p_input->>'userInputHash') then raise exception 'business request payload conflict';end if;
+ if v_operation='primary' then
+  if prep.case_id is not null then select * into c from business_daily_cases where user_id=p_user_id and id=prep.case_id and case_kind='shop' for update;
+  else select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today() and case_kind='shop' for update;end if;
+  if found and (exists(select 1 from business_case_members where case_id=c.id and role='primary') or not exists(select 1 from business_merchants where id=c.merchant_id and platform=p_input->'merchant'->>'platform' and platform_shop_id=p_input->'merchant'->>'platformShopId')) then v_result:=business_case_dto(c);insert into business_case_requests values(p_user_id,v_request,v_operation,p_input->>'userInputHash',p_input,v_result,clock_timestamp());return v_result;end if;
+  v_role:='primary';
+ else
+  select * into c from business_daily_cases where id=(p_input->>'caseId')::uuid and user_id=p_user_id and case_kind='shop' for update;
+  if not found then raise exception 'business case owner required' using errcode='42501';end if;
+  if c.revision is distinct from (p_input->>'expectedRevision')::integer then raise exception 'business case revision conflict';end if;
+  v_role:=p_input->>'role';if v_role not in ('product','comparison') then raise exception 'invalid member role';end if;
+ end if;
+ mi:=p_input->'merchant';s:=p_input->'snapshot';
+ if coalesce(mi->>'platform','') not in ('rakuten','xiaohongshu') or coalesce(mi->>'platformShopId','')='' or coalesce(mi->>'name','')='' or mi->>'platform' is distinct from s->>'platform' or coalesce(p_input->>'selectionReason','')='' then raise exception 'invalid merchant material';end if;
+ if coalesce(s->>'coverage','')='' or jsonb_typeof(s->'quantities') is distinct from 'array' or jsonb_typeof(s->'structured') is distinct from 'object' then raise exception 'invalid source coverage';end if;
+ perform business_validate_quantities(s->'quantities');
+ if s->>'origin'='official_api' and (mi->>'platform'<>'rakuten' or mi->>'identityScope'<>'platform_shop_id' or s->>'captureScope'<>'api_fields') then raise exception 'invalid official source';end if;
+ if s->>'origin'='official_api' and (coalesce(s->>'sourceUrl','') !~ '^https://item[.]rakuten[.]co[.]jp/' or coalesce(mi->>'sourceUrl','') !~ '^https://www[.]rakuten[.]co[.]jp/' or split_part(s->>'sourceUrl','/',4) is distinct from mi->>'platformShopId' or split_part(s->>'itemId',':',1) is distinct from mi->>'platformShopId') then raise exception 'official source identity mismatch';end if;
+ if s->>'origin'='manual_excerpt' and s->>'captureScope'<>'manual_transcription' then raise exception 'manual source scope mismatch';end if;
+ select * into m from business_merchants where user_id=p_user_id and platform=mi->>'platform' and platform_shop_id=mi->>'platformShopId';
+ if not found then insert into business_merchants(user_id,platform,platform_shop_id,name,source_url,identity_scope) values(p_user_id,mi->>'platform',mi->>'platformShopId',mi->>'name',mi->>'sourceUrl',mi->>'identityScope') returning * into m;
+ elsif not exists(select 1 from business_material_snapshots where merchant_id=m.id) then update business_merchants set name=mi->>'name',source_url=mi->>'sourceUrl',identity_scope=mi->>'identityScope' where id=m.id returning * into m;end if;
+ if v_operation='primary' then
+  if c.id is null then insert into business_daily_cases(user_id,local_date,merchant_id,selection_reason) values(p_user_id,business_today(),m.id,p_input->>'selectionReason') returning * into c;end if;
+ else
+  if (v_role='comparison' and m.id=c.merchant_id) or (v_role='product' and m.id<>c.merchant_id) then raise exception 'material merchant does not match role';end if;
+  update business_daily_cases set revision=revision+1 where id=c.id returning * into c;
+  if v_role='product' and not exists(select 1 from business_case_members where case_id=c.id and role='primary') then v_role:='primary';end if;
+ end if;
+ insert into business_material_snapshots(user_id,merchant_id,platform,item_id,origin,source_url,published_at,capture_scope,captured_text,quantities,structured,coverage,content_hash)
+ values(p_user_id,m.id,s->>'platform',s->>'itemId',s->>'origin',s->>'sourceUrl',(s->>'publishedAt')::timestamptz,s->>'captureScope',s->>'capturedText',s->'quantities',s->'structured',s->>'coverage',md5(s::text)) returning id into v_snapshot;
+ insert into business_case_members(user_id,case_id,snapshot_id,merchant_id,role,selection_reason) values(p_user_id,c.id,v_snapshot,m.id,v_role,p_input->>'selectionReason');
+ if v_role='primary' then update business_daily_cases set state='ready',failure_reason=null where id=c.id returning * into c;end if;
+ v_result:=business_case_dto(c);insert into business_case_requests values(p_user_id,v_request,v_operation,p_input->>'userInputHash',p_input,v_result,clock_timestamp());return v_result;
+end $$;
+
+create or replace function public.business_job_command_v121(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s business_job_settings;r business_job_runs;receipt business_job_setting_receipts;a business_job_attempts;c business_daily_cases;v jsonb;v_payload jsonb;v_candidate jsonb;item jsonb;v_identity text;v_case uuid;v_count integer;v_revision integer;v_consent jsonb;v_start jsonb;v_manifest jsonb;v_report jsonb;v_snapshots jsonb;v_comparisons jsonb;v_request uuid;v_budget integer;
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input)<>'object' or octet_length(p_input::text)>250000 then raise exception 'invalid job input';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,720));perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,721));
+ insert into business_job_settings(user_id) values(p_user_id) on conflict do nothing;select * into s from business_job_settings where user_id=p_user_id for update;
+ if p_operation='settings' then
+  select * into receipt from business_job_setting_receipts where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then if receipt.input<>p_input then raise exception 'settings request conflict';end if;return receipt.result;end if;
+  if s.revision is distinct from (p_input->>'expectedRevision')::integer then raise exception 'settings revision changed';end if;
+  if jsonb_typeof(p_input->'httpBudget') is distinct from 'number' or jsonb_typeof(p_input->'aiBudget') is distinct from 'number' then raise exception 'integer HTTP and AI budgets required';end if;
+  if (p_input->>'httpBudget')::numeric%1<>0 or (p_input->>'aiBudget')::numeric%1<>0 or (p_input->>'httpBudget')::numeric not between 1 and 1000 or (p_input->>'aiBudget')::numeric not between 0 and 10 then raise exception 'integer request budgets outside bounds';end if;
+  if coalesce(p_input->>'schedule','') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' or (p_input->>'httpBudget')::integer not between 1 and 1000 or (p_input->>'aiBudget')::integer not between 0 and 10 or jsonb_typeof(p_input->'sources') is distinct from 'array' or jsonb_typeof(p_input->'excluded') is distinct from 'array' or jsonb_typeof(p_input->'enabled') is distinct from 'boolean' or jsonb_typeof(p_input->'prepareOnOpen') is distinct from 'boolean' or jsonb_typeof(p_input->'autoAI') is distinct from 'boolean' then raise exception 'invalid job settings';end if;
+  for item in select value from jsonb_array_elements(p_input->'sources') loop
+   if coalesce(item->>'mode','') not in('search','ranking') or jsonb_typeof(item->'category') is distinct from 'string' or jsonb_typeof(item->'priceBand') is distinct from 'string' or jsonb_typeof(item->'businessModel') is distinct from 'string' or length(btrim(coalesce(item->>'category',''))) not between 1 and 120 or length(btrim(coalesce(item->>'priceBand',''))) not between 1 and 120 or length(btrim(coalesce(item->>'businessModel',''))) not between 1 and 120 or (item->>'mode'='search' and (jsonb_typeof(item->'keyword') is distinct from 'string' or length(btrim(coalesce(item->>'keyword',''))) not between 1 and 128)) or (item->>'mode'='ranking' and item ? 'keyword') or (item ? 'genreId' and (jsonb_typeof(item->'genreId') is distinct from 'string' or item->>'genreId' !~ '^[0-9]+$')) then raise exception 'invalid official source configuration';end if;
+   if item-array['mode','keyword','genreId','category','priceBand','businessModel']<>'{}'::jsonb then raise exception 'unsupported source configuration';end if;
+  end loop;
+  if exists(select 1 from jsonb_array_elements_text(p_input->'excluded') x where x.value !~ '^rakuten:[a-zA-Z0-9_-]+$') then raise exception 'invalid exclusion';end if;
+  if (p_input->>'autoAI')::boolean and (p_input->>'policyVersion' is distinct from 'official-rakuten-scalars-v1' or ((s.payload->>'autoAI')::boolean is distinct from true and p_input->'autoAIConfirmed' is distinct from 'true'::jsonb)) then raise exception 'explicit automatic AI policy confirmation required';end if;
+  v_payload=jsonb_build_object('enabled',(p_input->>'enabled')::boolean,'prepareOnOpen',(p_input->>'prepareOnOpen')::boolean,'schedule',p_input->>'schedule','httpBudget',(p_input->>'httpBudget')::integer,'aiBudget',(p_input->>'aiBudget')::integer,'sources',p_input->'sources','excluded',p_input->'excluded','autoAI',(p_input->>'autoAI')::boolean,'policyVersion','official-rakuten-scalars-v1');
+  if s.payload->'sources' is distinct from p_input->'sources' then delete from business_job_candidates where user_id=p_user_id;delete from business_job_source_cursors where user_id=p_user_id;end if;
+  update business_job_settings set revision=revision+1,payload=v_payload,consent_version=case when (p_input->>'autoAI')::boolean then case when (s.payload->>'autoAI')::boolean then s.consent_version else gen_random_uuid() end else s.consent_version end,consent_revoked_at=case when (p_input->>'autoAI')::boolean then null else coalesce(s.consent_revoked_at,clock_timestamp()) end,updated_at=clock_timestamp() where user_id=p_user_id returning * into s;
+  v=business_job_settings_dto(s);insert into business_job_setting_receipts values(p_user_id,(p_input->>'requestId')::uuid,p_input,v);return v;
+ elsif p_operation='state' then
+  select * into r from business_job_runs where user_id=p_user_id and local_date=business_today();
+  return jsonb_build_object('available',true,'settings',business_job_settings_dto(s),'run',case when r.id is null then null else business_job_run_dto(r) end,'attempts',coalesce((select jsonb_agg(to_jsonb(x) order by created_at,id) from business_job_attempts x where x.user_id=p_user_id and x.run_id=r.id),'[]'::jsonb),'sourceCursors',coalesce((select jsonb_object_agg(source_key,next_page) from business_job_source_cursors where user_id=p_user_id),'{}'::jsonb),'candidates',coalesce((select jsonb_agg(payload order by identity,item_code) from business_job_candidates where user_id=p_user_id),'[]'::jsonb),'history',jsonb_build_object('excluded',s.payload->'excluded','priorMain',to_jsonb(business_excluded_merchants(p_user_id)),'recent',coalesce((select jsonb_agg(candidate order by local_date desc) from business_job_runs where user_id=p_user_id and candidate is not null),'[]'::jsonb)));
+ elsif p_operation='history' then
+  select coalesce(jsonb_agg(business_job_run_dto(x)||jsonb_build_object('attemptSummary',jsonb_build_object('http',(select count(*) from business_job_attempts ba where ba.run_id=x.id and ba.kind='http'),'ai',(select count(*) from business_job_attempts ba where ba.run_id=x.id and ba.kind='ai'))) order by local_date desc),'[]'::jsonb) into v from (select * from business_job_runs where user_id=p_user_id and (p_input->>'before' is null or local_date<(p_input->>'before')::date) order by local_date desc limit 21) x;
+  return jsonb_build_object('items',case when jsonb_array_length(v)>20 then v-20 else v end,'nextCursor',case when jsonb_array_length(v)>20 then v->19->>'localDate' else null end);
+ elsif p_operation='claim' then
+  select * into r from business_job_runs where user_id=p_user_id and local_date=business_today() for update;
+  if found then
+   if r.status<>'running' then return coalesce(r.result,business_job_run_dto(r));end if;
+   if r.lease_until<=clock_timestamp() then update business_job_runs set status='unknown',message='Worker lease expired; usage or result may be unknown',finished_at=clock_timestamp() where id=r.id returning * into r;update business_job_attempts set status='unknown' where run_id=r.id and status='pending';return business_job_run_dto(r);end if;
+   return jsonb_build_object('status','busy','runId',r.id);
+  end if;
+  if (s.payload->>'enabled')::boolean is distinct from true then return jsonb_build_object('status','disabled');end if;
+  if p_input->>'trigger'='open' and (s.payload->>'prepareOnOpen')::boolean is distinct from true then return jsonb_build_object('status','disabled');end if;
+  if p_input->>'trigger'='cron' and to_char(clock_timestamp() at time zone 'Asia/Tokyo','HH24:MI')<s.payload->>'schedule' then return jsonb_build_object('status','not_due');end if;
+  select * into c from business_daily_cases where user_id=p_user_id and local_date=business_today() and case_kind='shop';
+  insert into business_job_runs(user_id,local_date,trigger,settings_revision,settings,parent_consent_version,case_id,material_status) values(p_user_id,business_today(),p_input->>'trigger',s.revision,s.payload,s.consent_version,c.id,case when c.state='ready' then 'ready' else 'pending' end) returning * into r;return business_job_run_dto(r);
+ end if;
+ -- Successful terminal receipts precede live lease/settings checks.
+ if p_operation in('finish','complete') then select * into r from business_job_runs where user_id=p_user_id and id=(p_input->>'runId')::uuid;if found and r.lease_token=(p_input->>'leaseToken')::uuid and r.result is not null then return r.result;end if;end if;
+ if p_operation='settle' then
+  select * into a from business_job_attempts where user_id=p_user_id and run_id=(p_input->>'runId')::uuid and id=(p_input->>'ticketId')::uuid;
+  if found and a.receipt is not null and exists(select 1 from business_job_runs where id=a.run_id and user_id=p_user_id and lease_token=(p_input->>'leaseToken')::uuid) then if a.receipt<>p_input-array['runId','leaseToken','settings','statusUnused'] then raise exception 'attempt receipt conflict';end if;return to_jsonb(a);end if;
+ end if;
+ if p_operation='fail' then
+  select * into r from business_job_runs where user_id=p_user_id and id=(p_input->>'runId')::uuid for update;
+  if not found or r.lease_token is distinct from (p_input->>'leaseToken')::uuid then raise exception 'run owner unavailable';end if;
+  if r.status<>'running' then return coalesce(r.result,business_job_run_dto(r));end if;
+  update business_job_attempts set status='unknown',settled_at=clock_timestamp() where run_id=r.id and status='pending';
+  update business_job_runs set status=case when exists(select 1 from business_job_attempts where run_id=r.id and kind='ai') then 'unknown' else 'failed' end,material_status=case when material_status='ready' then material_status else 'failed' end,report_status=case when exists(select 1 from business_job_attempts where run_id=r.id and kind='ai') then 'unknown' else 'not_started' end,message=left(coalesce(p_input->>'message','worker failed'),2000),finished_at=clock_timestamp() where id=r.id returning * into r;
+  if r.case_id is not null and r.material_status<>'ready' and exists(select 1 from business_case_preparations where user_id=p_user_id and request_id=r.material_request) then perform business_fail_preparation(p_user_id,r.material_request,r.material_hash);end if;return business_job_run_dto(r);
+ end if;
+ r=business_job_assert(p_user_id,p_input,p_operation in('verify_ai','finish'));
+ if p_operation='check' then return business_job_run_dto(r);
+ elsif p_operation='enqueue' then
+  for v_candidate in select value from jsonb_array_elements(p_input->'candidates') loop
+   if v_candidate->'merchant'->>'platform' is distinct from 'rakuten' or v_candidate->'merchant'->>'identityScope' is distinct from 'platform_shop_id' or split_part(v_candidate->>'itemCode',':',1) is distinct from v_candidate->'merchant'->>'platformShopId' or coalesce(v_candidate->>'coverage','')='' or (v_candidate->>'sourcePage')::integer<1 or v_candidate->>'capturedAt' is null then raise exception 'invalid official candidate';end if;
+   v_identity='rakuten:'||(v_candidate->'merchant'->>'platformShopId');insert into business_job_candidates(user_id,identity,item_code,payload) values(p_user_id,v_identity,v_candidate->>'itemCode',v_candidate) on conflict(user_id,identity,item_code) do update set payload=excluded.payload,discovered_at=clock_timestamp();
+  end loop;
+  if p_input ? 'sourceCursor' then insert into business_job_source_cursors values(p_user_id,p_input->'sourceCursor'->>'sourceKey',(p_input->'sourceCursor'->>'nextPage')::integer,p_input->'sourceCursor'->>'coverage',(p_input->'sourceCursor'->>'capturedAt')::timestamptz) on conflict(user_id,source_key) do update set next_page=excluded.next_page,coverage=excluded.coverage,captured_at=excluded.captured_at;end if;return '{}'::jsonb;
+ elsif p_operation='reserve' then
+  if r.case_id is not null then return business_job_run_dto(r);end if;
+  if r.local_date<>business_today() then raise exception 'run date changed before slot reservation';end if;
+  v_candidate=p_input->'candidate';v_identity='rakuten:'||(v_candidate->'merchant'->>'platformShopId');
+  if not exists(select 1 from business_job_candidates where user_id=p_user_id and identity=v_identity and item_code=v_candidate->>'itemCode' and payload=v_candidate) then raise exception 'candidate not queued';end if;
+  if v_identity=any(business_excluded_merchants(p_user_id)) or s.payload->'excluded' ? v_identity then raise exception 'main merchant already used or excluded';end if;
+  v=business_prepare_case(p_user_id,jsonb_build_object('requestId',r.material_request,'userInputHash',md5(v_candidate::text),'merchant',v_candidate->'merchant','selectionReason',p_input->>'reason'));
+  update business_job_runs set case_id=(v->'dailyCase'->>'id')::uuid,candidate=v_candidate,rule_version=p_input->>'ruleVersion',selection_reason=p_input->>'reason',material_hash=md5(v_candidate::text) where id=r.id returning * into r;return business_job_run_dto(r);
+ elsif p_operation='ticket' then
+  select * into a from business_job_attempts where user_id=p_user_id and request_id=(p_input->>'requestId')::uuid;
+  if found then raise exception 'request ticket already issued; outcome may be unknown';end if;
+  if p_input->>'kind'='ai' then perform business_job_assert(p_user_id,p_input,true);end if;
+  if p_input->>'stage'='inspect' and r.case_id is null then raise exception 'reserve daily slot before inspect HTTP';end if;
+  if jsonb_typeof(r.settings->(case when p_input->>'kind'='ai' then 'aiBudget' else 'httpBudget' end)) is distinct from 'number' then raise exception 'valid frozen numeric request budget required';end if;
+  if (r.settings->>(case when p_input->>'kind'='ai' then 'aiBudget' else 'httpBudget' end))::numeric%1<>0 then raise exception 'integer frozen request budget required';end if;
+  select count(*) into v_count from business_job_attempts where user_id=p_user_id and run_id=r.id and kind=p_input->>'kind';v_budget=(r.settings->>case when p_input->>'kind'='ai' then 'aiBudget' else 'httpBudget' end)::integer;
+  if v_budget is null or (p_input->>'kind'='http' and v_budget not between 1 and 1000) or (p_input->>'kind'='ai' and v_budget not between 0 and 10) then raise exception 'valid frozen request budget required';end if;
+  if v_count>=v_budget then raise exception 'daily request budget exhausted';end if;
+  if p_input->>'kind'='http' and p_input->>'stage'='discovery' and v_count>=v_budget-1 then raise exception 'HTTP discovery budget exhausted; one request reserved for shop inspection';end if;
+  if p_input->>'kind'='ai' and v_count>0 then raise exception 'AI result may be unknown; no automatic retry';end if;
+  insert into business_job_attempts(user_id,run_id,request_id,kind,stage,operation_reference) values(p_user_id,r.id,(p_input->>'requestId')::uuid,p_input->>'kind',p_input->>'stage',case when p_input->>'kind'='ai' then 'business_teardown_report:'||r.report_request::text else null end) returning * into a;return to_jsonb(a);
+ elsif p_operation='settle' then
+  select * into a from business_job_attempts where user_id=p_user_id and run_id=r.id and id=(p_input->>'ticketId')::uuid for update;
+  if not found then raise exception 'ticket unavailable';end if;
+  if a.receipt is not null then if a.receipt<>p_input-array['runId','leaseToken','settings','statusUnused'] then raise exception 'attempt receipt conflict';end if;return to_jsonb(a);end if;
+  if a.kind='ai' then perform business_job_assert(p_user_id,p_input,true);end if;
+  update business_job_attempts set status=p_input->>'status',usage=nullif(p_input->'usage','null'::jsonb),receipt=p_input-array['runId','leaseToken','settings','statusUnused'],settled_at=clock_timestamp() where id=a.id returning * into a;return to_jsonb(a);
+ elsif p_operation='material' then
+  if r.material_status='ready' then return business_job_run_dto(r);end if;
+  if r.case_id is null or r.candidate is null then raise exception 'reserved official candidate required';end if;
+  if p_input->'merchant' is distinct from r.candidate->'merchant' or p_input->'snapshot'->>'itemId' is distinct from r.candidate->>'itemCode' or p_input->'snapshot'->>'origin' is distinct from 'official_api' or p_input->'snapshot'->>'capturedText' is not null or exists(select 1 from jsonb_each(p_input->'snapshot'->'structured') e where jsonb_typeof(e.value) not in('string','number','boolean','null')) then raise exception 'automatic material must be official public scalar fields';end if;
+  perform business_save_case_material(p_user_id,jsonb_build_object('requestId',r.material_request,'operation','primary','userInputHash',r.material_hash,'merchant',p_input->'merchant','snapshot',p_input->'snapshot','selectionReason',r.selection_reason));
+  update business_job_runs set material_status='ready' where id=r.id returning * into r;return business_job_run_dto(r);
+ elsif p_operation='ai_start' then
+  if (s.payload->>'autoAI')::boolean is distinct from true then return jsonb_build_object('status','not_permitted');end if;
+  perform business_job_assert(p_user_id,p_input,true);
+  if r.material_status<>'ready' then raise exception 'material not ready';end if;
+  if exists(select 1 from business_report_requests where user_id=p_user_id and request_id=r.report_request) then raise exception 'AI request already started; result may be unknown';end if;
+  select * into c from business_daily_cases where user_id=p_user_id and id=r.case_id;
+  select coalesce(jsonb_agg(x.snapshot_id order by x.snapshot_id) filter(where x.role in('primary','product')),'[]'::jsonb),coalesce(jsonb_agg(x.snapshot_id order by x.snapshot_id) filter(where x.role='comparison'),'[]'::jsonb) into v_snapshots,v_comparisons from business_case_members x join business_material_snapshots t on t.id=x.snapshot_id and t.user_id=x.user_id where x.user_id=p_user_id and x.case_id=c.id and t.platform='rakuten' and t.origin='official_api' and t.capture_scope='api_fields' and t.captured_text is null and t.erased_at is null;
+  if jsonb_array_length(v_snapshots)=0 then raise exception 'no official scalar primary materials';end if;
+  select coalesce(max(revision),0) into v_revision from business_case_revisions where user_id=p_user_id and case_id=c.id;
+  v=jsonb_build_object('caseId',c.id,'materialRevision',c.revision,'snapshotIds',v_snapshots,'comparisonSnapshotIds',v_comparisons,'publicExcerptDeidentified',true,'requestId',r.report_request);
+  v_consent=business_report_command(p_user_id,'consent',v);insert into business_job_child_consents values((v_consent->>'id')::uuid,p_user_id,r.id,r.parent_consent_version,r.settings_revision);
+  update business_job_runs set child_consent_id=(v_consent->>'id')::uuid,report_status='started',publication_base=c.published_revision_id where id=r.id;
+  v_start=business_report_command(p_user_id,'start',(v-'publicExcerptDeidentified')||jsonb_build_object('consentId',v_consent->>'id','expectedReportRevision',v_revision));return v_start;
+ elsif p_operation='verify_ai' then
+  if p_input->'draftLease'->>'requestId' is distinct from r.report_request::text then raise exception 'report run mismatch';end if;return business_report_command(p_user_id,'verify',p_input->'draftLease');
+ elsif p_operation='finish' then
+  if p_input->'draftLease'->>'requestId' is distinct from r.report_request::text then raise exception 'report run mismatch';end if;
+  if not exists(select 1 from business_job_attempts where user_id=p_user_id and run_id=r.id and kind='ai' and status='completed') then raise exception 'completed AI ticket required before finalization';end if;
+  perform set_config('business.job_finish',r.id::text,true);
+  v_report=business_report_command(p_user_id,'finish',(p_input->'draftLease')||jsonb_build_object('report',p_input->'report'));
+  select * into c from business_daily_cases where user_id=p_user_id and id=r.case_id;
+  perform business_report_command(p_user_id,'publish',jsonb_build_object('caseId',c.id,'reportId',v_report->>'id','expectedPublishedReportId',r.publication_base,'requestId',r.report_request));
+  v=jsonb_build_object('status','completed','runId',r.id,'caseId',c.id,'reportId',v_report->>'id');
+  update business_job_runs set status='completed',report_status='published',result=v,finished_at=clock_timestamp() where id=r.id;return v;
+ elsif p_operation='complete' then
+  if r.material_status<>'ready' then raise exception 'materials not ready';end if;
+  v=jsonb_build_object('status','materials_ready','runId',r.id,'caseId',r.case_id,'message',p_input->>'message');update business_job_runs set status='materials_ready',report_status='not_permitted',message=p_input->>'message',result=v,finished_at=clock_timestamp() where id=r.id;return v;
+ end if;
+ raise exception 'unknown business job operation';
+end$$;
+commit;
+
+
+-- 147_business_explanation_plans.sql
+begin;
+lock table public.business_reality_checks in share row exclusive mode;
+alter table public.business_reality_checks add column origin_explanation jsonb;
+alter table public.business_reality_checks drop constraint business_reality_check_exact_origin;
+alter table public.business_reality_checks add constraint business_reality_check_exact_origin check(
+ (origin_explanation is null and origin_result_id is null and simulation_id is not null and round is not null and source_revision is not null)
+ or (origin_explanation is null and origin_result_id is not null and simulation_id is null and round is null and source_revision is null)
+ or (origin_explanation is not null and jsonb_typeof(origin_explanation)='object' and origin_result_id is null and simulation_id is null and round is null and source_revision is null));
+create table public.business_explanation_expectations(
+ user_id uuid not null,plan_id uuid not null,revision integer not null,
+ expectations jsonb not null check(jsonb_typeof(expectations)='object'),
+ primary key(user_id,plan_id,revision),
+ foreign key(user_id,plan_id,revision) references public.business_reality_check_versions(user_id,plan_id,revision) on delete cascade
+);
+alter table public.business_explanation_expectations enable row level security;
+revoke all on table public.business_explanation_expectations from public,anon,authenticated,service_role;
+create index business_explanation_order on public.business_reality_checks(user_id,created_at desc,id desc) where origin_explanation is not null;
+
+create function public.business_explanation_anchor(p jsonb) returns jsonb language plpgsql immutable set search_path=public,pg_temp as $$
+declare n integer;k text;begin
+ if p->>'kind'='report' then
+  perform business_simulation_keys(p,array['kind','reportId','reportRevision','section','index','manifestHash']);perform business_simulation_uuid(p->'reportId');n:=business_simulation_integer(p->'reportRevision',2147483647);if n<1 then raise exception 'invalid explanation revision';end if;
+  perform business_simulation_integer(p->'index',99);k:=p->>'section';if k not in('offering','trigger','buyers','volume','journey','value','operations','economics','comparison','failure_conditions','transfer','experiment') or k is null then raise exception 'invalid explanation chapter';end if;perform business_simulation_text(p->'manifestHash',200);
+ elsif p->>'kind'='withdrawal' then
+  perform business_simulation_keys(p,array['kind','lessonId','lessonRevision']);perform business_simulation_uuid(p->'lessonId');n:=business_simulation_integer(p->'lessonRevision',2147483647);if n<1 then raise exception 'invalid explanation revision';end if;
+ else raise exception 'invalid explanation origin';end if;return p;
+end$$;
+create function public.business_explanation_draft(p jsonb) returns jsonb language plpgsql immutable set search_path=public,pg_temp as $$
+declare v jsonb:=p;k text;begin
+ perform business_simulation_keys(v,array['question','expectedA','expectedB','uncontrolled','falsifier','method','dueDate']);
+ foreach k in array array['question','expectedA','expectedB','falsifier','method'] loop v:=jsonb_set(v,array[k],to_jsonb(business_simulation_text(v->k,case when k='question' then 1000 else 3000 end)));end loop;
+ if jsonb_typeof(v->'uncontrolled') is distinct from 'string' or length(v->>'uncontrolled')+length(regexp_replace(v->>'uncontrolled',U&'[\0001-\FFFF]','','g'))>3000 then raise exception 'invalid uncontrolled conditions';end if;
+ perform business_simulation_date(v->'dueDate');return v;
+end$$;
+create function public.business_explanation_expectations(p_owner uuid,p_plan uuid,p_revision integer) returns jsonb language sql stable security definer set search_path=public,pg_temp as $$
+ select expectations from business_explanation_expectations where user_id=p_owner and plan_id=p_plan and revision=p_revision
+$$;
+create function public.business_explanation_source(p_owner uuid,p_anchor jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare a jsonb;r business_case_revisions;c jsonb;s jsonb;i jsonb;ref jsonb;material business_material_snapshots;v_refs jsonb:='[]';n integer;begin
+ a:=business_explanation_anchor(p_anchor);
+ if a->>'kind'='withdrawal' then return business_withdrawal_explanation_source(p_owner,(a->>'lessonId')::uuid,(a->>'lessonRevision')::integer);end if;
+ select * into r from business_case_revisions where user_id=p_owner and id=(a->>'reportId')::uuid and revision=(a->>'reportRevision')::integer and input_manifest_hash=a->>'manifestHash' and erased_at is null for share;
+ if not found then return null;end if;c:=business_subject_context(p_owner,r.case_id);if c is null then return null;end if;
+ select count(*),jsonb_agg(value)->0 into n,s from jsonb_array_elements(r.payload->'sections') where value->>'key'=a->>'section';if n<>1 then return null;end if;
+ i:=s->'interpretations'->((a->>'index')::integer);if jsonb_typeof(i) is distinct from 'object' or coalesce(length(i->>'text'),0)=0 or coalesce(length(i->>'competingExplanation'),0)=0 then return null;end if;
+ if jsonb_typeof(i->'refs') is distinct from 'array' then return null;end if;
+ for ref in select value from jsonb_array_elements(i->'refs') loop
+  select * into material from business_material_snapshots where user_id=p_owner and id=(ref->>'snapshotId')::uuid and erased_at is null for share;
+  if not found or material.captured_text is null or length(coalesce(ref->>'quote',''))=0 or position(ref->>'quote' in material.captured_text)=0 or not exists(select 1 from business_case_members where user_id=p_owner and case_id=r.case_id and snapshot_id=material.id) then return null;end if;
+  v_refs:=v_refs||jsonb_build_array(jsonb_build_object('quote',ref->>'quote','url',material.source_url));
+ end loop;
+ return jsonb_build_object('caseId',r.case_id,'title',c->'caseTitle','explanationA',i->'text','explanationB',i->'competingExplanation','distinguishingObservation',coalesce(i->'distinguishingObservation','""'::jsonb),'refs',v_refs,'anchor',a);
+end$$;
+create function public.business_explanation_dto(p business_reality_checks,p_revision integer) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v business_reality_check_versions;e jsonb;begin
+ select * into v from business_reality_check_versions where user_id=p.user_id and plan_id=p.id and revision=p_revision;
+ e:=business_explanation_expectations(p.user_id,p.id,p_revision);if v.plan_id is null or e is null or p.origin_explanation is null then return null;end if;
+ return jsonb_build_object('id',p.id,'caseId',p.case_id,'anchor',p.origin_explanation,'draft',v.plan||e,'revision',v.revision,'createdAt',p.created_at,'updatedAt',v.saved_at,'source',business_explanation_source(p.user_id,p.origin_explanation));
+end$$;
+create function public.business_explanation_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_id uuid;v_request uuid;v_expected integer;v_revision integer;v_anchor jsonb;v_draft jsonb;v_source jsonb;v_hash text;r business_reality_checks;receipt business_reality_check_receipts;begin
+ perform business_simulation_service(p_user_id);
+ if p_input is null or octet_length(p_input::text)>90000 then raise exception 'invalid explanation input';end if;
+ if p_operation='save' then perform business_simulation_keys(p_input,array['operation','id','requestId','expectedRevision','anchor','draft','confirmed']);
+ elsif p_operation='erase' then perform business_simulation_keys(p_input,array['operation','id','requestId','expectedRevision']);else raise exception 'invalid explanation operation';end if;
+ if p_input->>'operation' is distinct from p_operation then raise exception 'invalid explanation operation';end if;
+ v_id:=business_simulation_uuid(p_input->'id');v_request:=business_simulation_uuid(p_input->'requestId');v_expected:=business_simulation_integer(p_input->'expectedRevision',2147483646);if p_operation='erase' and v_expected<1 then raise exception 'invalid explanation revision';end if;
+ if p_operation='save' then
+  if p_input->'confirmed' is distinct from 'true'::jsonb then raise exception 'explicit explanation preview confirmation required';end if;v_anchor:=business_explanation_anchor(p_input->'anchor');v_draft:=business_explanation_draft(p_input->'draft');
+ end if;
+ v_hash:=encode(sha256(convert_to('explanation:'||p_operation||':'||p_input::text,'UTF8')),'hex');perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,137));
+ select * into receipt from business_reality_check_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if receipt.input_hash<>v_hash then raise exception 'explanation request conflict';end if;return jsonb_build_object('id',receipt.reality_check_id,'revision',receipt.revision);end if;
+ select * into r from business_reality_checks where user_id=p_user_id and id=v_id for update;
+ if p_operation='save' and v_expected=0 then
+  if r.id is not null or exists(select 1 from business_reality_checks where id=v_id) or exists(select 1 from business_reality_check_receipts where reality_check_id=v_id) then raise exception 'explanation unavailable' using errcode='42501';end if;
+  v_source:=business_explanation_source(p_user_id,v_anchor);if v_source is null then raise exception 'explanation source unavailable' using errcode='42501';end if;
+  insert into business_reality_checks(id,user_id,case_id,origin_explanation,plan,revision) values(v_id,p_user_id,(v_source->>'caseId')::uuid,v_anchor,v_draft-'expectedA'-'expectedB'-'uncontrolled',1);v_revision:=1;
+ else
+  if r.id is null or r.origin_explanation is null then raise exception 'explanation unavailable' using errcode='42501';end if;
+  if r.revision<>v_expected then raise exception 'explanation revision conflict: 另一页面已经修改，请重新核对';end if;v_revision:=r.revision+1;
+  if p_operation='save' then
+   if r.origin_explanation<>v_anchor then raise exception 'explanation anchor is immutable';end if;
+   update business_reality_checks set plan=v_draft-'expectedA'-'expectedB'-'uncontrolled',revision=v_revision,updated_at=clock_timestamp() where user_id=p_user_id and id=v_id;
+  else delete from business_reality_checks where user_id=p_user_id and id=v_id;end if;
+ end if;
+ if p_operation='save' then insert into business_explanation_expectations(user_id,plan_id,revision,expectations) values(p_user_id,v_id,v_revision,v_draft-'question'-'falsifier'-'method'-'dueDate');end if;
+ insert into business_reality_check_receipts values(p_user_id,v_request,v_hash,v_id,v_revision);return jsonb_build_object('id',v_id,'revision',v_revision);
+end$$;
+create function public.business_explanation_read(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare r business_reality_checks;v_id uuid;v_case uuid;v_revision integer;v_date timestamptz;v_stamp text;v_count integer:=0;v_items jsonb:='[]';v_next jsonb;begin
+ perform business_simulation_service(p_user_id);
+ if p_operation='source' then perform business_simulation_keys(p_input,array['anchor']);return business_explanation_source(p_user_id,p_input->'anchor');end if;
+ if p_operation='get' then
+  perform business_simulation_keys(p_input,array['id'],array['revision']);v_id:=business_simulation_uuid(p_input->'id');select * into r from business_reality_checks where user_id=p_user_id and id=v_id and origin_explanation is not null;if not found then return null;end if;
+  v_revision:=r.revision;if p_input?'revision' then v_revision:=business_simulation_integer(p_input->'revision',2147483647);if v_revision<1 then raise exception 'invalid explanation version';end if;end if;return business_explanation_dto(r,v_revision);
+ elsif p_operation<>'list' or p_operation is null then raise exception 'invalid explanation read';end if;
+ perform business_simulation_keys(p_input,'{}',array['caseId','before']);if p_input?'caseId' then v_case:=business_simulation_uuid(p_input->'caseId');end if;
+ if p_input?'before' then
+  perform business_simulation_keys(p_input->'before',array['date','id']);v_id:=business_simulation_uuid(p_input->'before'->'id');v_stamp:=p_input->'before'->>'date';
+  if jsonb_typeof(p_input->'before'->'date') is distinct from 'string' or length(v_stamp)>80 or v_stamp!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$' then raise exception 'invalid explanation cursor';end if;perform business_simulation_date(to_jsonb(left(v_stamp,10)));v_date:=v_stamp::timestamptz;
+ end if;
+ for r in select * from business_reality_checks where user_id=p_user_id and origin_explanation is not null and (v_case is null or case_id=v_case) and (v_id is null or (created_at,id)<(v_date,v_id)) order by created_at desc,id desc limit 21 loop
+  v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(business_explanation_dto(r,r.revision));v_next:=jsonb_build_object('date',r.created_at,'id',r.id);end if;
+ end loop;return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+
+-- Keep legacy simulation endpoints isolated from every other origin.
+create or replace function public.business_reality_check_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_id uuid;v_request uuid;v_expected integer;v_revision integer;v_simulation uuid;v_round integer;v_plan jsonb;v_hash text;r business_reality_checks;s business_simulations;receipt business_reality_check_receipts;begin
+ perform business_simulation_service(p_user_id);
+ if p_operation='save' then perform business_simulation_keys(p_input,array['operation','id','requestId','expectedRevision','simulationId','round','plan','confirmed']);
+ elsif p_operation='erase' then perform business_simulation_keys(p_input,array['operation','id','requestId','expectedRevision']);
+ else raise exception 'invalid reality check operation';end if;
+ if p_input->>'operation' is distinct from p_operation then raise exception 'invalid reality check operation';end if;
+ v_id:=business_simulation_uuid(p_input->'id');v_request:=business_simulation_uuid(p_input->'requestId');v_expected:=business_simulation_integer(p_input->'expectedRevision',2147483646)::integer;
+ if p_operation='erase' and v_expected=0 then raise exception 'invalid reality check revision';end if;
+ if p_operation='save' then
+  if p_input->'confirmed' is distinct from 'true'::jsonb then raise exception 'reality check confirmation required';end if;
+  v_simulation:=business_simulation_uuid(p_input->'simulationId');v_round:=business_simulation_integer(p_input->'round',6)::integer;if v_round<1 then raise exception 'invalid reality check round';end if;
+  v_plan:=business_reality_check_plan(p_input->'plan');
+ end if;
+ v_hash:=encode(sha256(convert_to(p_operation||':'||p_input::text,'UTF8')),'hex');
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,137));
+ -- Resolve committed requests before rereading sources or comparing revisions.
+ select * into receipt from business_reality_check_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if receipt.input_hash<>v_hash then raise exception 'reality check request conflict';end if;return jsonb_build_object('id',receipt.reality_check_id,'revision',receipt.revision);end if;
+ select * into r from business_reality_checks where user_id=p_user_id and id=v_id for update;
+ if p_operation='save' and v_expected=0 then
+  if r.id is not null or exists(select 1 from business_reality_checks where id=v_id) or exists(select 1 from business_reality_check_receipts where reality_check_id=v_id) then raise exception 'reality check unavailable' using errcode='42501';end if;
+  select * into s from business_simulations where user_id=p_user_id and id=v_simulation for share;
+  if not found or jsonb_array_length(s.turns)<v_round then raise exception 'reality check source unavailable' using errcode='42501';end if;
+  perform 1 from business_daily_cases where user_id=p_user_id and id=s.case_id for share;
+  if not found or business_simulation_context(p_user_id,s.case_id) is null then raise exception 'reality check source unavailable' using errcode='42501';end if;
+  insert into business_reality_checks(id,user_id,case_id,simulation_id,round,source_revision,plan,revision) values(v_id,p_user_id,s.case_id,s.id,v_round,s.revision,v_plan,1);v_revision:=1;
+ else
+  if r.id is null or r.simulation_id is null then raise exception 'reality check unavailable' using errcode='42501';end if;
+  if r.revision<>v_expected then raise exception 'reality check revision conflict: 另一页面已经修改，请比较最新内容';end if;v_revision:=r.revision+1;
+  if p_operation='save' then
+   if r.simulation_id<>v_simulation or r.round<>v_round then raise exception 'reality check source anchor is immutable';end if;
+   update business_reality_checks set plan=v_plan,revision=v_revision,updated_at=clock_timestamp() where id=v_id and user_id=p_user_id;
+  else delete from business_reality_checks where id=v_id and user_id=p_user_id;end if;
+ end if;
+ insert into business_reality_check_receipts values(p_user_id,v_request,v_hash,v_id,v_revision);
+ return jsonb_build_object('id',v_id,'revision',v_revision);
+end$$;
+
+-- Keep legacy simulation endpoints isolated from every other origin.
+create or replace function public.business_reality_check_read(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare r business_reality_checks;s business_simulations;v_id uuid;v_case uuid;v_simulation uuid;v_date timestamptz;v_before uuid;v_items jsonb:='[]';v_count integer:=0;v_next jsonb;v_stamp text;begin
+ perform business_simulation_service(p_user_id);
+ if p_operation in ('get','source') then
+  perform business_simulation_keys(p_input,array['id']);v_id:=business_simulation_uuid(p_input->'id');
+  if p_operation='get' then select * into r from business_reality_checks where user_id=p_user_id and id=v_id and simulation_id is not null;if not found then return null;end if;return business_reality_check_dto(r);end if;
+  select * into s from business_simulations where user_id=p_user_id and id=v_id and jsonb_array_length(turns)>0;if not found then return null;end if;return business_reality_check_source_dto(s,false);
+ elsif p_operation='list' then
+  perform business_simulation_keys(p_input,'{}',array['caseId','simulationId','before']);if p_input?'simulationId' then v_simulation:=business_simulation_uuid(p_input->'simulationId');end if;
+ elsif p_operation='sources' then perform business_simulation_keys(p_input,'{}',array['caseId','before']);
+ else raise exception 'invalid reality check read';end if;
+ if p_input?'caseId' then v_case:=business_simulation_uuid(p_input->'caseId');end if;
+ if p_input?'before' then
+  perform business_simulation_keys(p_input->'before',array['date','id']);v_before:=business_simulation_uuid(p_input->'before'->'id');v_stamp:=p_input->'before'->>'date';
+  if jsonb_typeof(p_input->'before'->'date') is distinct from 'string' or length(v_stamp)>80 or v_stamp!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$' then raise exception 'invalid reality check cursor';end if;
+  perform business_simulation_date(to_jsonb(left(v_stamp,10)));v_date:=v_stamp::timestamptz;
+ end if;
+ if p_operation='list' then
+  for r in select * from business_reality_checks where user_id=p_user_id and simulation_id is not null and (v_case is null or case_id=v_case) and (v_simulation is null or simulation_id=v_simulation) and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21 loop
+   v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(business_reality_check_dto(r));v_next:=jsonb_build_object('date',r.created_at,'id',r.id);end if;
+  end loop;
+ else
+  for s in select * from business_simulations where user_id=p_user_id and jsonb_array_length(turns)>0 and (v_case is null or case_id=v_case) and (v_before is null or (created_at,id)<(v_date,v_before)) order by created_at desc,id desc limit 21 loop
+   v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(business_reality_check_source_dto(s,true));v_next:=jsonb_build_object('date',s.created_at,'id',s.id);end if;
+  end loop;
+ end if;
+ return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+
+create or replace function public.business_reality_result_plan_dto(p business_reality_checks) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare c jsonb;begin
+ c:=business_subject_context(p.user_id,p.case_id);
+ return jsonb_build_object('id',p.id,'caseId',p.case_id,'question',p.plan->'question','revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at,'caseAvailable',c is not null,'caseTitle',c->'caseTitle');
+end$$;
+
+create or replace function public.business_reality_result_version_dto(p business_reality_check_versions) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare c jsonb;current_revision integer;begin
+ select revision into current_revision from business_reality_checks where user_id=p.user_id and id=p.plan_id;
+ c:=business_subject_context(p.user_id,p.case_id);
+ return jsonb_build_object('planId',p.plan_id,'caseId',p.case_id,'revision',p.revision,'plan',p.plan,'savedAt',p.saved_at,'currentRevision',current_revision,'caseAvailable',c is not null,'caseTitle',c->'caseTitle')||case when business_explanation_expectations(p.user_id,p.plan_id,p.revision) is null then '{}'::jsonb else jsonb_build_object('expectations',business_explanation_expectations(p.user_id,p.plan_id,p.revision)) end;
+end$$;
+
+create or replace function public.business_reality_result_dto(p business_reality_results) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare current_revision integer;begin
+ select revision into current_revision from business_reality_checks where user_id=p.user_id and id=p.plan_id;
+ return jsonb_build_object('id',p.id,'caseId',p.case_id,'planId',p.plan_id,'planRevision',p.plan_revision,'planSavedAt',p.plan_saved_at,'planSnapshot',p.plan_snapshot,'snapshotErasedAt',p.snapshot_erased_at,'body',p.body,'createdAt',p.created_at,'revision',1,'planCurrentRevision',current_revision)||case when business_explanation_expectations(p.user_id,p.plan_id,p.plan_revision) is null then '{}'::jsonb else jsonb_build_object('expectations',business_explanation_expectations(p.user_id,p.plan_id,p.plan_revision)) end;
+end$$;
+
+create or replace function public.business_confirmation_history_nodes(p_owner uuid,p_case uuid)
+returns table(kind text,id uuid,case_id uuid,revision integer,at timestamptz,node jsonb)
+language sql stable security definer set search_path=public,pg_temp as $$
+ select 'plan'::text,v.plan_id,v.case_id,v.revision,v.saved_at,
+  jsonb_build_object('kind','plan','id',v.plan_id,'caseId',v.case_id,'revision',v.revision,'at',v.saved_at,
+   'parent',case when p.origin_explanation is not null then jsonb_build_object('kind','explanation','id',p.id,'revision',v.revision,'available',true) when p.origin_result_id is not null then
+    jsonb_build_object('kind','result','id',p.origin_result_id,'revision',1,'available',exists(select 1 from business_reality_results r where r.user_id=p_owner and r.id=p.origin_result_id and r.case_id=v.case_id))
+   else jsonb_build_object('kind','simulation','id',p.simulation_id,'revision',p.source_revision,'available',exists(select 1 from business_simulations s where s.user_id=p_owner and s.id=p.simulation_id and s.case_id=v.case_id and s.revision>=p.source_revision and jsonb_array_length(s.turns)>=p.round)) end,
+   'plan',business_reality_check_plan(v.plan),'body',null,'planSnapshot',null,'planSavedAt',null,'snapshotErasedAt',null)||case when business_explanation_expectations(p_owner,v.plan_id,v.revision) is null then '{}'::jsonb else jsonb_build_object('expectations',business_explanation_expectations(p_owner,v.plan_id,v.revision)) end
+ from business_reality_check_versions v join business_reality_checks p on p.user_id=v.user_id and p.id=v.plan_id and p.case_id=v.case_id and p.revision>=v.revision
+ where v.user_id=p_owner and (p_case is null or v.case_id=p_case)
+ union all
+ select 'result'::text,r.id,r.case_id,1,r.created_at,
+  jsonb_build_object('kind','result','id',r.id,'caseId',r.case_id,'revision',1,'at',r.created_at,
+   'parent',jsonb_build_object('kind','plan','id',r.plan_id,'revision',r.plan_revision,'available',exists(select 1 from business_reality_check_versions v join business_reality_checks p on p.user_id=v.user_id and p.id=v.plan_id and p.case_id=v.case_id where v.user_id=p_owner and v.plan_id=r.plan_id and v.revision=r.plan_revision and v.case_id=r.case_id)),
+   'plan',null,'body',business_reality_result_body(r.body),'planSnapshot',case when r.plan_snapshot is null then null else business_reality_check_plan(r.plan_snapshot) end,'planSavedAt',r.plan_saved_at,'snapshotErasedAt',r.snapshot_erased_at)||case when business_explanation_expectations(p_owner,r.plan_id,r.plan_revision) is null then '{}'::jsonb else jsonb_build_object('expectations',business_explanation_expectations(p_owner,r.plan_id,r.plan_revision)) end
+ from business_reality_results r where r.user_id=p_owner and (p_case is null or r.case_id=p_case)
+$$;
+
+revoke all on function public.business_explanation_anchor(jsonb),public.business_explanation_draft(jsonb),public.business_explanation_expectations(uuid,uuid,integer),public.business_explanation_source(uuid,jsonb),public.business_explanation_dto(business_reality_checks,integer),public.business_explanation_command(uuid,text,jsonb),public.business_explanation_read(uuid,text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.business_explanation_command(uuid,text,jsonb),public.business_explanation_read(uuid,text,jsonb) to service_role;
+commit;
+
+
+-- 148_business_withdrawal_research.sql
+begin;
+-- Extend the existing research store; official source identity is the lesson UUID.
+alter table public.business_research_refs drop constraint business_research_refs_source_kind_check;
+alter table public.business_research_refs add constraint business_research_refs_source_kind_check check(source_kind in ('snapshot','material','job','official'));
+create or replace function public.business_research_source(p_user uuid,p_kind text,p_id uuid,p_cases jsonb,p_lock boolean default false) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$declare v jsonb;begin
+ if p_kind='snapshot' then
+  if p_lock then perform 1 from business_material_snapshots where user_id=p_user and id=p_id for share;end if;
+  select jsonb_build_object('text',s.captured_text,'url',s.source_url,'date',coalesce(s.published_at,s.captured_at)) into v
+  from business_material_snapshots s where s.user_id=p_user and s.id=p_id and s.erased_at is null and length(btrim(s.captured_text))>0
+  and exists(select 1 from business_case_members m where m.user_id=p_user and m.snapshot_id=s.id and m.case_id in (select value::uuid from jsonb_array_elements_text(p_cases)));
+ elsif p_kind='official' then
+  if p_lock then perform 1 from business_withdrawal_sources where user_id=p_user and id=p_id for share;end if;
+  select jsonb_build_object('text',s.captured_text,'url',s.source_url,'date',coalesce(s.published_on::text,s.captured_at::text)) into v
+  from business_withdrawal_sources s join business_withdrawal_lessons l on l.id=s.id and l.user_id=s.user_id
+  where s.user_id=p_user and s.id=p_id and s.erased_at is null and l.erased_at is null and l.confirmed and length(btrim(s.captured_text))>0
+  and encode(sha256(convert_to(s.captured_text,'UTF8')),'hex')=s.content_hash
+  and exists(select 1 from business_daily_cases c where c.user_id=p_user and c.case_kind='withdrawal' and c.withdrawal_lesson_id=s.id and c.id in(select value::uuid from jsonb_array_elements_text(p_cases)));
+ elsif p_kind='material' then
+  if p_lock then perform 1 from reality_materials where user_id=p_user and id=p_id for share;end if;
+  select jsonb_build_object('text',sanitized_text,'url',source_url,'date',created_at) into v from reality_materials
+  where user_id=p_user and id=p_id and status<>'deleted' and length(btrim(sanitized_text))>0;
+ elsif p_kind='job' then
+  if p_lock then perform 1 from job_postings where user_id=p_user and id=p_id for share;end if;
+  select jsonb_build_object('text',body,'url',url,'date',created_at) into v from job_postings where user_id=p_user and id=p_id and length(btrim(body))>0;
+ end if;
+ return v;
+end$$;
+
+create or replace function public.business_research_payload(p_kind text,p jsonb,p_sources jsonb) returns void
+language plpgsql set search_path=public,pg_temp as $$declare k text;d jsonb;v_keys text[];j jsonb;l jsonb;r jsonb;begin
+ if p_kind='failure' then
+  perform business_research_keys(p,array['event','when','scope','disclosureKey','confirmedDisclosure','whatChanged','alternative','condition','checkNext']);
+  foreach k in array array['event','scope','disclosureKey','whatChanged','alternative','condition','checkNext'] loop perform business_research_text(p,k);end loop;
+  perform business_research_text(p,'when',true);
+  if p->>'event' not in ('exit','shrink','stop') or p->>'scope' not in ('company','business','store','product') or p->'confirmedDisclosure' is distinct from 'true'::jsonb then raise exception 'invalid failure disclosure';end if;
+  if not exists(select 1 from jsonb_array_elements(p_sources) s where s->>'key'=p->>'disclosureKey' and s->>'kind' in ('snapshot','material','official')) then raise exception 'failure disclosure source unavailable';end if;
+ elsif p_kind='comparison' then
+  perform business_research_keys(p,array['dimensions','hypothesis','counterexample','checkNext']);
+  foreach k in array array['hypothesis','counterexample','checkNext'] loop perform business_research_text(p,k);end loop;
+  if jsonb_typeof(p->'dimensions') is distinct from 'array' or jsonb_array_length(p->'dimensions')<>6 then raise exception 'invalid comparison dimensions';end if;
+  v_keys:='{}';
+  for d in select value from jsonb_array_elements(p->'dimensions') loop
+   perform business_research_keys(d,array['key','left','right','leftSourceKey','rightSourceKey']);
+   foreach k in array array['key','left','right'] loop perform business_research_text(d,k);end loop;
+   if d->>'key' not in ('buyer','user','payer','trigger','delivery','alternative') or d->>'key'=any(v_keys) then raise exception 'invalid comparison dimension key';end if;v_keys:=array_append(v_keys,d->>'key');
+   foreach k in array array['leftSourceKey','rightSourceKey'] loop
+    if d->k<>'null'::jsonb and (jsonb_typeof(d->k)<>'string' or not exists(select 1 from jsonb_array_elements(p_sources) s where s->>'key'=d->>k)) then raise exception 'comparison source unavailable';end if;
+   end loop;
+  end loop;
+ elsif p_kind='tension' then
+  perform business_research_keys(p,array['task','leftNeed','rightNeed','leftSourceKey','rightSourceKey','tradeoff','alternative','checkNext']);
+  foreach k in array array['task','leftNeed','rightNeed','leftSourceKey','rightSourceKey','tradeoff','alternative','checkNext'] loop perform business_research_text(p,k);end loop;
+  select s into l from jsonb_array_elements(p_sources) s where s->>'key'=p->>'leftSourceKey' and s->>'kind' in ('snapshot','material','official');
+  select s into r from jsonb_array_elements(p_sources) s where s->>'key'=p->>'rightSourceKey' and s->>'kind' in ('snapshot','material','official');
+  if l is null or r is null or (l->>'kind'=r->>'kind' and (l->>'id')::uuid=(r->>'id')::uuid and l->>'quote'=r->>'quote') then raise exception 'distinct tension source quotes required';end if;
+ elsif p_kind='apprenticeship' then
+  perform business_research_keys(p,array['mechanism','timeBudget','cashBudget','constraintsConfirmed','gap','practice','checkNext','jobLink']);
+  foreach k in array array['mechanism','timeBudget','cashBudget','gap','practice','checkNext'] loop perform business_research_text(p,k);end loop;
+  if p->'constraintsConfirmed' is distinct from 'true'::jsonb then raise exception 'confirmed apprenticeship constraints required';end if;
+  j:=p->'jobLink';
+  if j<>'null'::jsonb then
+   perform business_research_keys(j,array['jobId','sourceKey','rationale','employerQuestion']);perform business_research_uuid(j->'jobId');
+   foreach k in array array['sourceKey','rationale','employerQuestion'] loop perform business_research_text(j,k);end loop;
+   if not exists(select 1 from jsonb_array_elements(p_sources) s where s->>'key'=j->>'sourceKey' and s->>'kind'='job' and (s->>'id')::uuid=(j->>'jobId')::uuid) then raise exception 'apprenticeship job source unavailable';end if;
+  end if;
+ else raise exception 'invalid research kind';end if;
+end$$;
+
+create or replace function public.business_research_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare r business_research_records;receipt business_research_receipts;v_id uuid;v_request uuid;v_hash text;v_result jsonb;v_kind text;v_revision integer;
+ s jsonb;v jsonb;e jsonb;v_uuid uuid;v_keys text[]:='{}';v_items jsonb:='[]';v_count integer:=0;v_cursor business_research_records;v_refs jsonb:='[]';
+begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input)<>'object' or octet_length(p_input::text)>250000 then raise exception 'invalid research input';end if;
+ if p_operation='get' then
+  perform business_research_keys(p_input,array['id']);v_id:=business_research_uuid(p_input->'id');select * into r from business_research_records where user_id=p_user_id and id=v_id;
+  if not found then return null;end if;return business_research_dto(r);
+ elsif p_operation='list' then
+  perform business_research_keys(p_input,'{}',array['kind','before']);
+  if p_input ? 'kind' and (jsonb_typeof(p_input->'kind')<>'string' or p_input->>'kind' not in ('failure','comparison','tension','apprenticeship')) then raise exception 'invalid research kind';end if;
+  if p_input ? 'before' then v_id:=business_research_uuid(p_input->'before');select * into v_cursor from business_research_records where user_id=p_user_id and id=v_id;if not found then raise exception 'research cursor unavailable';end if;end if;
+  for r in select * from business_research_records where user_id=p_user_id and (not(p_input ? 'kind') or kind=p_input->>'kind') and (v_id is null or (created_at,id)<(v_cursor.created_at,v_cursor.id)) order by created_at desc,id desc limit 31 loop
+   v_count:=v_count+1;if v_count<=30 then v_items:=v_items||jsonb_build_array(business_research_dto(r));end if;
+  end loop;
+  return jsonb_build_object('available',true,'items',v_items,'nextCursor',case when v_count>30 then v_items->-1->>'id' else null end);
+ elsif p_operation is null or p_operation not in ('save','erase') then raise exception 'invalid research operation';end if;
+ if p_operation='save' then perform business_research_keys(p_input,array['kind','title','caseIds','experienceIds','sources','payload','expectedRevision','requestId'],array['id']);
+ else perform business_research_keys(p_input,array['id','requestId']);end if;
+ v_request:=business_research_uuid(p_input->'requestId');
+ v_hash:=encode(sha256(convert_to(p_operation||':'||p_input::text,'UTF8')),'hex');
+ -- Requests serialize independently of source erasure; receipts contain no copied input.
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text||v_request::text,724));
+ select * into receipt from business_research_receipts where user_id=p_user_id and request_id=v_request;
+ if found then if receipt.input_hash<>v_hash then raise exception 'research request conflict';end if;return receipt.result;end if;
+ if p_input ? 'id' then v_id:=business_research_uuid(p_input->'id');end if;
+ if p_operation='save' then
+  v_kind:=business_research_text(p_input,'kind');perform business_research_text(p_input,'title');
+  if v_kind not in ('failure','comparison','tension','apprenticeship') then raise exception 'invalid research kind';end if;
+  if jsonb_typeof(p_input->'expectedRevision') is distinct from 'number' or p_input->>'expectedRevision' !~ '^[0-9]{1,9}$' then raise exception 'invalid research revision';end if;v_revision:=(p_input->>'expectedRevision')::integer;
+  if jsonb_typeof(p_input->'caseIds') is distinct from 'array' or jsonb_array_length(p_input->'caseIds') not between 1 and 2 or (v_kind='comparison' and jsonb_array_length(p_input->'caseIds')<>2) then raise exception 'invalid research cases';end if;
+  if (select count(distinct business_research_uuid(value)) from jsonb_array_elements(p_input->'caseIds'))<>jsonb_array_length(p_input->'caseIds') then raise exception 'invalid duplicate research cases';end if;
+  for e in select value from jsonb_array_elements(p_input->'caseIds') loop v_uuid:=business_research_uuid(e);perform 1 from business_daily_cases where user_id=p_user_id and id=v_uuid for share;if not found then raise exception 'research case owner unavailable' using errcode='42501';end if;end loop;
+  if jsonb_typeof(p_input->'experienceIds') is distinct from 'array' or jsonb_array_length(p_input->'experienceIds')>20 or (v_kind<>'apprenticeship' and jsonb_array_length(p_input->'experienceIds')<>0) then raise exception 'invalid research experiences';end if;
+  if (select count(distinct business_research_uuid(value)) from jsonb_array_elements(p_input->'experienceIds'))<>jsonb_array_length(p_input->'experienceIds') then raise exception 'invalid duplicate research experiences';end if;
+  for e in select value from jsonb_array_elements(p_input->'experienceIds') order by value loop
+   v_uuid:=business_research_uuid(e);perform 1 from career_entries where user_id=p_user_id and id=v_uuid and confirmed_at is not null for share;if not found then raise exception 'confirmed research experience unavailable' using errcode='42501';end if;
+  end loop;
+  if jsonb_typeof(p_input->'sources') is distinct from 'array' or jsonb_array_length(p_input->'sources')>12 then raise exception 'invalid research sources';end if;
+  -- Sort shared source locks before acquiring the research row lock. Source erasure
+  -- already owns the source row before its AFTER trigger reaches these records.
+  for s in select value from jsonb_array_elements(p_input->'sources') order by value->>'kind',value->>'id',value->>'key' loop
+   perform business_research_keys(s,array['key','kind','id','quote','publicConfirmed']);
+   if jsonb_typeof(s->'key') is distinct from 'string' or s->>'key' !~ '^[A-Za-z][A-Za-z0-9_-]{0,31}$' or s->>'key'=any(v_keys) then raise exception 'invalid duplicate research source key';end if;v_keys:=array_append(v_keys,s->>'key');
+   if jsonb_typeof(s->'kind') is distinct from 'string' or s->>'kind' not in ('snapshot','material','job','official') or (v_kind in ('failure','tension') and s->>'kind'='job') then raise exception 'invalid research source kind';end if;
+   v_uuid:=business_research_uuid(s->'id');
+   if jsonb_typeof(s->'quote') is distinct from 'string' or length(s->>'quote') not between 4 and 1600 or length(btrim(s->>'quote'))<4 or s->'publicConfirmed' is distinct from 'true'::jsonb then raise exception 'invalid confirmed research quote';end if;
+   v:=business_research_source(p_user_id,s->>'kind',v_uuid,p_input->'caseIds',true);
+   if v is null or position(s->>'quote' in v->>'text')=0 then raise exception 'research source owner or exact quote unavailable' using errcode='42501';end if;
+   v_refs:=v_refs||jsonb_build_array(jsonb_build_object('key',s->>'key','kind',s->>'kind','id',v_uuid,'start',position(s->>'quote' in v->>'text'),'length',length(s->>'quote'),'hash',encode(sha256(convert_to(v->>'text','UTF8')),'hex')));
+  end loop;
+  perform business_research_payload(v_kind,p_input->'payload',p_input->'sources');
+  if v_id is null then
+   if v_revision<>0 then raise exception 'research revision conflict';end if;
+   insert into business_research_records(user_id,kind,title,case_ids,experience_ids,payload) values(p_user_id,v_kind,btrim(p_input->>'title'),p_input->'caseIds',p_input->'experienceIds',p_input->'payload') returning * into r;
+  else
+   select * into r from business_research_records where user_id=p_user_id and id=v_id for update;
+   if not found or r.erased_at is not null then raise exception 'research owner unavailable' using errcode='42501';end if;
+   if r.revision<>v_revision then raise exception 'research revision conflict';end if;
+   update business_research_records set kind=v_kind,title=btrim(p_input->>'title'),case_ids=p_input->'caseIds',experience_ids=p_input->'experienceIds',payload=p_input->'payload',revision=revision+1,updated_at=clock_timestamp() where id=r.id returning * into r;
+   delete from business_research_refs where record_id=r.id;
+  end if;
+  for s in select value from jsonb_array_elements(v_refs) loop
+   insert into business_research_refs values(p_user_id,r.id,s->>'key',s->>'kind',(s->>'id')::uuid,(s->>'start')::integer,(s->>'length')::integer,s->>'hash',true);
+  end loop;
+ else
+  select * into r from business_research_records where user_id=p_user_id and id=v_id for update;
+  if not found then raise exception 'research owner unavailable' using errcode='42501';end if;
+  update business_research_records set title='',payload=null,experience_ids='[]',revision=revision+1,updated_at=clock_timestamp(),erased_at=coalesce(erased_at,clock_timestamp()) where id=r.id returning * into r;
+  delete from business_research_refs where record_id=r.id;
+ end if;
+ v_result:=jsonb_build_object('id',r.id,'revision',r.revision);
+ insert into business_research_receipts values(p_user_id,v_request,v_hash,v_result);
+ return v_result;
+end$$;
+
+create or replace function public.business_research_source_erasure() returns trigger
+language plpgsql security definer set search_path=public,pg_temp as $$declare v_kind text;v_scrub boolean;v_ids uuid[];begin
+ v_kind:=case tg_table_name when 'business_material_snapshots' then 'snapshot' when 'reality_materials' then 'material' when 'business_withdrawal_sources' then 'official' else 'job' end;
+ v_scrub:=tg_op='DELETE';
+ if tg_op<>'DELETE' then
+  v_scrub:=new.user_id is distinct from old.user_id or new.id is distinct from old.id;
+  if v_kind in ('snapshot','official') then v_scrub:=v_scrub or new.erased_at is not null or nullif(btrim(new.captured_text),'') is null;
+  elsif v_kind='material' then v_scrub:=v_scrub or new.status='deleted' or nullif(btrim(new.sanitized_text),'') is null;
+  else v_scrub:=v_scrub or nullif(btrim(new.body),'') is null;end if;
+ end if;
+ if v_scrub then
+  select array_agg(distinct record_id) into v_ids from business_research_refs where user_id=old.user_id and source_kind=v_kind and source_id=old.id;
+  -- Take record locks in one order when an erased source has several dependents.
+  perform 1 from business_research_records where id=any(v_ids) order by id for update;
+  update business_research_records set title='',payload=null,experience_ids='[]',erased_at=coalesce(erased_at,clock_timestamp()),updated_at=clock_timestamp(),revision=revision+1 where id=any(v_ids);
+  delete from business_research_refs where record_id=any(v_ids);
+ end if;
+ return null;
+end$$;
+
+
+-- The private subject resolver remains inaccessible; this service RPC resolves ownership first.
+create function public.business_research_context(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare r record;v_case uuid;v_subject jsonb;v_items jsonb:='[]';v_date timestamptz;v_id uuid;v_next jsonb;v_count integer:=0;e jsonb;begin
+ perform business_service(p_user_id);
+ if p_operation='case' then
+  perform business_research_keys(p_input,array['caseId']);v_case:=business_research_uuid(p_input->'caseId');v_subject:=business_subject_context(p_user_id,v_case);
+  if v_subject is null then return null;end if;
+  return (select jsonb_strip_nulls(jsonb_build_object('id',id,'name',v_subject->>'caseTitle','date',local_date,'withdrawalLessonId',withdrawal_lesson_id)) from business_daily_cases where user_id=p_user_id and id=v_case);
+ elsif p_operation='cases' then perform business_research_keys(p_input,'{}',array['before']);
+ elsif p_operation='sources' then
+  perform business_research_keys(p_input,array['caseIds'],array['before','search']);
+  if jsonb_typeof(p_input->'caseIds') is distinct from 'array' or jsonb_array_length(p_input->'caseIds') not between 1 and 2 then raise exception 'invalid selected research cases';end if;
+  for e in select value from jsonb_array_elements(p_input->'caseIds') loop
+   v_case:=business_research_uuid(e);if business_subject_context(p_user_id,v_case) is null then raise exception 'research case owner unavailable' using errcode='42501';end if;
+  end loop;
+  if p_input?'search' and (jsonb_typeof(p_input->'search') is distinct from 'string' or length(p_input->>'search')>300) then raise exception 'invalid source search';end if;
+ else raise exception 'invalid research context operation';end if;
+ if p_input?'before' then
+  perform business_research_keys(p_input->'before',array['date','id']);v_id:=business_research_uuid(p_input->'before'->'id');
+  v_date:=business_withdrawal_stamp(p_input->'before'->'date');
+ end if;
+ if p_operation='cases' then
+  for r in select c.id,c.local_date,c.created_at,c.withdrawal_lesson_id,business_subject_context(p_user_id,c.id) subject from business_daily_cases c where c.user_id=p_user_id and business_subject_context(p_user_id,c.id) is not null and (v_id is null or (c.created_at,c.id)<(v_date,v_id)) order by c.created_at desc,c.id desc limit 21 loop
+   v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('id',r.id,'name',r.subject->>'caseTitle','date',r.local_date,'withdrawalLessonId',r.withdrawal_lesson_id)));v_next:=jsonb_build_object('date',r.created_at,'id',r.id);end if;
+  end loop;
+ else
+  for r in select s.*,l.payload->'subject'->>'name' title from business_withdrawal_sources s join business_withdrawal_lessons l on l.user_id=s.user_id and l.id=s.id
+   where s.user_id=p_user_id and l.erased_at is null and l.confirmed and s.erased_at is null and length(btrim(s.captured_text))>0
+   and exists(select 1 from business_daily_cases c where c.user_id=p_user_id and c.case_kind='withdrawal' and c.withdrawal_lesson_id=s.id and c.id in(select value::uuid from jsonb_array_elements_text(p_input->'caseIds')))
+   and encode(sha256(convert_to(s.captured_text,'UTF8')),'hex')=s.content_hash
+   and (not(p_input?'search') or strpos(lower(s.captured_text),lower(p_input->>'search'))>0)
+   and (v_id is null or (s.captured_at,s.id)<(v_date,v_id)) order by s.captured_at desc,s.id desc limit 21 loop
+   v_count:=v_count+1;if v_count<=20 then v_items:=v_items||jsonb_build_array(jsonb_build_object('id',r.id,'kind','official','title',r.title,'text',r.captured_text,'url',r.source_url,'date',coalesce(r.published_on::text,r.captured_at::text)));v_next:=jsonb_build_object('date',r.captured_at,'id',r.id);end if;
+  end loop;
+ end if;
+ return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+
+create or replace function public.business_workspace_read(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare v_case uuid;v_date timestamptz;v_kind text;v_id uuid;v_count integer:=0;v_items jsonb:='[]';v_next jsonb;r record;begin
+ perform business_pressure_service(p_user_id);
+ if p_operation='case' then perform business_pressure_keys(p_input,array['caseId'],array['before']);v_case:=business_pressure_uuid(p_input->'caseId');
+ elsif p_operation='recent' then perform business_pressure_keys(p_input,'{}',array['before']);
+ else raise exception 'invalid workspace read';end if;
+ if p_input?'before' then
+  perform business_pressure_keys(p_input->'before',array['date','kind','id']);v_id:=business_pressure_uuid(p_input->'before'->'id');
+  if jsonb_typeof(p_input->'before'->'kind') is distinct from 'string' or (p_input->'before'->>'kind')<>all(array['pressure','cash','practice','counterexample','learning','lesson','boundary','simulation','reality_check','reality_result','followup_check']) then raise exception 'invalid workspace cursor kind';end if;v_kind:=p_input->'before'->>'kind';
+  if jsonb_typeof(p_input->'before'->'date') is distinct from 'string' or (p_input->'before'->>'date')!~'^\d{4}-\d\d-\d\dT[0-9:.]+(Z|[+-][0-9]{2}:[0-9]{2})$' then raise exception 'invalid workspace cursor date';end if;v_date:=(p_input->'before'->>'date')::timestamptz;
+ end if;
+ for r in select w.*,left(subject.context->>'caseTitle',300) case_title from business_workspace_items(p_user_id,v_case) w
+ cross join lateral (select business_subject_context(p_user_id,w.case_id) context) subject
+ where subject.context is not null and (v_case is null or w.case_id=v_case) and (v_id is null or (w.updated_at,w.kind collate "C",w.id)<(v_date,v_kind collate "C",v_id))
+ order by w.updated_at desc,w.kind collate "C" desc,w.id desc limit 21 loop
+  v_count:=v_count+1;if v_count<=20 then
+   v_items:=v_items||jsonb_build_array(jsonb_build_object('kind',r.kind,'id',r.id,'caseId',r.case_id,'caseTitle',r.case_title,'revision',r.revision,'updatedAt',r.updated_at,'title',coalesce(r.title,''),'excerpt',coalesce(r.excerpt,''),'nextCheck',r.next_check,'sourceAvailable',r.source_available));
+   v_next:=jsonb_build_object('date',r.updated_at,'kind',r.kind,'id',r.id);
+  end if;
+ end loop;
+ return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+
+create trigger business_research_official_erasure after update or delete on public.business_withdrawal_sources for each row execute function public.business_research_source_erasure();
+revoke all on function public.business_research_context(uuid,text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.business_research_context(uuid,text,jsonb) to service_role;
+revoke all on function public.business_research_source(uuid,text,uuid,jsonb,boolean),public.business_research_payload(text,jsonb,jsonb),public.business_research_source_erasure() from public,anon,authenticated,service_role;
+revoke all on function public.business_research_command(uuid,text,jsonb),public.business_workspace_read(uuid,text,jsonb) from public,anon,authenticated;
+grant execute on function public.business_research_command(uuid,text,jsonb),public.business_workspace_read(uuid,text,jsonb) to service_role;
+commit;
+
+
+-- 149_business_withdrawal_collection.sql
+begin;
+
+-- This paid collection budget is independent of the Rakuten job budget and defaults OFF.
+create table public.business_withdrawal_collection_settings(
+ user_id uuid primary key references auth.users(id) on delete cascade,
+ enabled boolean not null default false,issuer_ids uuid[] not null default '{}',
+ public_text_confirmed boolean not null default false,
+ policy_version text not null default 'official-withdrawal-public-text-v1' check(policy_version='official-withdrawal-public-text-v1'),
+ revision integer not null default 0 check(revision>=0),updated_at timestamptz not null default clock_timestamp(),
+ check(not enabled or(public_text_confirmed and cardinality(issuer_ids)>0)),check(cardinality(issuer_ids)<=20)
+);
+create table public.business_withdrawal_collection_runs(
+ id uuid primary key,user_id uuid not null references auth.users(id) on delete cascade,
+ local_date date not null,status text not null check(status in('running','completed','failed','unknown')),
+ token uuid not null,settings_revision integer not null,issuer_ids uuid[] not null,
+ created_at timestamptz not null default clock_timestamp(),expires_at timestamptz not null,
+ unique(user_id,id),unique(user_id,local_date)
+);
+create table public.business_withdrawal_collection_tickets(
+ id uuid primary key,user_id uuid not null,run_id uuid not null,
+ kind text not null check(kind in('search','page','ai')),
+ status text not null default 'reserved' check(status in('reserved','completed','failed','unknown')),
+ issuer_id uuid,url text,created_at timestamptz not null default clock_timestamp(),
+ foreign key(user_id,run_id) references business_withdrawal_collection_runs(user_id,id),
+ foreign key(user_id,issuer_id) references business_withdrawal_issuers(user_id,id)
+);
+create table public.business_withdrawal_collection_archives(
+ id uuid primary key,user_id uuid not null,run_id uuid not null,raw text not null,
+ issues jsonb not null,validator_version text not null check(validator_version='withdrawal-collection-v1'),
+ truncated boolean not null,created_at timestamptz not null default clock_timestamp(),
+ foreign key(user_id,run_id) references business_withdrawal_collection_runs(user_id,id)
+);
+create table public.business_withdrawal_collection_receipts(
+ user_id uuid not null references auth.users(id) on delete cascade,request_id uuid not null,
+ input_hash text not null,result jsonb not null,primary key(user_id,request_id)
+);
+alter table public.business_withdrawal_collection_settings enable row level security;
+alter table public.business_withdrawal_collection_runs enable row level security;
+alter table public.business_withdrawal_collection_tickets enable row level security;
+alter table public.business_withdrawal_collection_archives enable row level security;
+alter table public.business_withdrawal_collection_receipts enable row level security;
+
+create function public.business_withdrawal_collection_settings_dto(s business_withdrawal_collection_settings) returns jsonb language sql immutable set search_path=public,pg_temp as $$
+ select jsonb_build_object('enabled',s.enabled,'issuerIds',to_jsonb(s.issuer_ids),'publicTextConfirmed',s.public_text_confirmed,'policyVersion',s.policy_version,'revision',s.revision)
+$$;
+create function public.business_withdrawal_collection_run_dto(r business_withdrawal_collection_runs) returns jsonb language sql immutable set search_path=public,pg_temp as $$
+ select jsonb_build_object('id',r.id,'localDate',r.local_date,'status',r.status,'revision',r.settings_revision,'expiresAt',r.expires_at)
+$$;
+create function public.business_withdrawal_collection_expire(p_owner uuid) returns void language plpgsql set search_path=public,pg_temp as $$begin
+ update business_withdrawal_collection_runs set status='unknown' where user_id=p_owner and status='running' and expires_at<=clock_timestamp();
+ update business_withdrawal_collection_tickets t set status='unknown' from business_withdrawal_collection_runs r where t.user_id=p_owner and r.user_id=t.user_id and r.id=t.run_id and r.status in('failed','unknown') and t.status='reserved';
+end$$;
+create function public.business_withdrawal_collection_verify(p_owner uuid,p jsonb) returns business_withdrawal_collection_runs language plpgsql set search_path=public,pg_temp as $$
+declare r business_withdrawal_collection_runs;s business_withdrawal_collection_settings;begin
+ select * into r from business_withdrawal_collection_runs where user_id=p_owner and id=business_simulation_uuid(p->'runId') for update;
+ if not found or r.token<>business_simulation_uuid(p->'token') or r.settings_revision<>business_simulation_integer(p->'revision',2147483646)::integer then raise exception 'collection lease unavailable' using errcode='42501';end if;
+ if r.status<>'running' or r.expires_at<=clock_timestamp() or r.local_date<>business_today() then raise exception 'collection lease terminal or expired';end if;
+ select * into s from business_withdrawal_collection_settings where user_id=p_owner;
+ if not s.enabled or not s.public_text_confirmed or s.revision<>r.settings_revision or s.issuer_ids<>r.issuer_ids then raise exception 'collection stopped or settings revision changed';end if;
+ return r;
+end$$;
+
+-- The frozen issuer registry is a durable run-to-subject relation, including duplicate
+-- subjects reached through a different registered host. Scrub the whole batch because
+-- rejected raw output cannot safely be split back into individual lesson fragments.
+create function public.business_withdrawal_collection_has_erasure(p_owner uuid,p_run uuid) returns boolean language sql stable set search_path=public,pg_temp as $$
+ select exists(
+  select 1 from business_withdrawal_collection_runs r
+  join business_withdrawal_issuers i on i.user_id=r.user_id and i.id=any(r.issuer_ids)
+  join business_withdrawal_lessons l on l.user_id=i.user_id and l.identity_key=i.subject_identity_key
+  left join business_withdrawal_sources s on s.user_id=l.user_id and s.id=l.id
+  where r.user_id=p_owner and r.id=p_run and(l.erased_at is not null or s.erased_at is not null)
+ )
+$$;
+create function public.business_withdrawal_collection_archive_erasure() returns trigger language plpgsql set search_path=public,pg_temp as $$
+declare v_identity text;begin
+ if old.erased_at is not null or new.erased_at is null then return new;end if;
+ perform pg_advisory_xact_lock(hashtextextended(new.user_id::text,719));
+ select identity_key into v_identity from business_withdrawal_lessons where user_id=new.user_id and id=new.id;
+ update business_withdrawal_collection_archives a set raw=''
+ where a.user_id=new.user_id and a.raw<>'' and exists(
+  select 1 from business_withdrawal_collection_runs r
+  join business_withdrawal_issuers i on i.user_id=r.user_id and i.id=any(r.issuer_ids)
+  where r.user_id=a.user_id and r.id=a.run_id and i.subject_identity_key=v_identity
+ );
+ return new;
+end$$;
+create trigger business_withdrawal_collection_lesson_erasure after update of erased_at on public.business_withdrawal_lessons for each row execute function public.business_withdrawal_collection_archive_erasure();
+create trigger business_withdrawal_collection_source_erasure after update of erased_at on public.business_withdrawal_sources for each row execute function public.business_withdrawal_collection_archive_erasure();
+
+create function public.business_withdrawal_collection_command(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare s business_withdrawal_collection_settings;r business_withdrawal_collection_runs;t business_withdrawal_collection_tickets;
+ prior business_withdrawal_collection_receipts;i business_withdrawal_issuers;v_ids uuid[];v_request uuid;v_hash text;v_result jsonb;v jsonb;v_id uuid;v_count integer;v_revision integer;v_kind text;begin
+ perform business_service(p_user_id);
+ if p_input is null or jsonb_typeof(p_input) is distinct from 'object' or octet_length(p_input::text)>500000 then raise exception 'invalid collection input';end if;
+ if p_operation='state' then perform business_simulation_keys(p_input,'{}');
+ elsif p_operation='settings' then perform business_simulation_keys(p_input,array['enabled','issuerIds','publicTextConfirmed','policyVersion','expectedRevision','requestId']);
+ elsif p_operation='claim' then perform business_simulation_keys(p_input,array['requestId']);
+ elsif p_operation='check' then perform business_simulation_keys(p_input,array['runId','token','revision']);
+ elsif p_operation='ticket' then perform business_simulation_keys(p_input,array['runId','token','revision','kind','issuerId','url','requestId']);
+ elsif p_operation='settle' then perform business_simulation_keys(p_input,array['runId','token','revision','ticketId','status','requestId']);
+ elsif p_operation='archive' then perform business_simulation_keys(p_input,array['runId','token','revision','raw','issues','validatorVersion','truncated','requestId']);
+ elsif p_operation='save_candidate' then perform business_simulation_keys(p_input,array['runId','token','revision','command','requestId']);
+ elsif p_operation='complete' then perform business_simulation_keys(p_input,array['runId','token','revision','requestId']);
+ elsif p_operation='terminate' then perform business_simulation_keys(p_input,array['runId','token','revision','status','requestId']);
+ else raise exception 'invalid collection operation';end if;
+ -- Shared lock order with146: candidate check and existing save execute atomically.
+ perform pg_advisory_xact_lock(hashtextextended(p_user_id::text,719));
+ insert into business_withdrawal_collection_settings(user_id) values(p_user_id) on conflict do nothing;
+ perform business_withdrawal_collection_expire(p_user_id);
+ select * into s from business_withdrawal_collection_settings where user_id=p_user_id for update;
+ if p_operation not in('state','check') then
+  v_request:=business_simulation_uuid(p_input->'requestId');v_hash:=encode(sha256(convert_to('withdrawal149:'||p_operation||':'||p_input::text,'UTF8')),'hex');
+  select * into prior from business_withdrawal_collection_receipts where user_id=p_user_id and request_id=v_request;
+  if found then if prior.input_hash<>v_hash then raise exception 'collection request conflict';end if;return prior.result;end if;
+ end if;
+ if p_operation='state' then
+  select * into r from business_withdrawal_collection_runs where user_id=p_user_id and local_date=business_today();
+  return jsonb_build_object('available',true,'settings',business_withdrawal_collection_settings_dto(s),'run',case when r.id is null then null else business_withdrawal_collection_run_dto(r) end,
+   'attempts',coalesce((select jsonb_agg(jsonb_build_object('id',id,'kind',kind,'status',status,'createdAt',created_at) order by created_at,id) from business_withdrawal_collection_tickets where user_id=p_user_id and run_id=r.id),'[]'::jsonb),
+   'diagnostics',coalesce((select jsonb_agg(jsonb_build_object('id',d.id,'validatorVersion',d.validator_version,'issues',d.issues,'truncated',d.truncated,'createdAt',d.created_at) order by d.created_at desc,d.id desc) from(select * from business_withdrawal_collection_archives where user_id=p_user_id order by created_at desc,id desc limit 20)d),'[]'::jsonb));
+ elsif p_operation='settings' then
+  if jsonb_typeof(p_input->'enabled') is distinct from 'boolean' or jsonb_typeof(p_input->'publicTextConfirmed') is distinct from 'boolean' or p_input->>'policyVersion' is distinct from 'official-withdrawal-public-text-v1' or jsonb_typeof(p_input->'issuerIds') is distinct from 'array' or jsonb_array_length(p_input->'issuerIds')>20 then raise exception 'invalid separate collection consent';end if;
+  v_revision:=business_simulation_integer(p_input->'expectedRevision',2147483646)::integer;if v_revision<>s.revision then raise exception 'collection settings revision conflict';end if;
+  select coalesce(array_agg(business_simulation_uuid(value) order by ordinality),'{}'::uuid[]) into v_ids from jsonb_array_elements(p_input->'issuerIds') with ordinality;
+  if cardinality(v_ids)<>(select count(distinct x) from unnest(v_ids)x) then raise exception 'duplicate issuer';end if;
+  if exists(select 1 from unnest(v_ids)x where not exists(select 1 from business_withdrawal_issuers where user_id=p_user_id and id=x and confirmed_at is not null)) then raise exception 'owned confirmed issuer required' using errcode='42501';end if;
+  if (p_input->>'enabled')::boolean and(not(p_input->>'publicTextConfirmed')::boolean or cardinality(v_ids)=0) then raise exception 'extra budget and public text confirmation required';end if;
+  update business_withdrawal_collection_settings set enabled=(p_input->>'enabled')::boolean,issuer_ids=v_ids,public_text_confirmed=(p_input->>'publicTextConfirmed')::boolean,revision=revision+1,updated_at=clock_timestamp() where user_id=p_user_id returning * into s;
+  v_result:=business_withdrawal_collection_settings_dto(s);
+ elsif p_operation='claim' then
+  if not s.enabled then v_result:=jsonb_build_object('status','disabled');else
+   select * into r from business_withdrawal_collection_runs where user_id=p_user_id and local_date=business_today();
+   if found then v_result:=business_withdrawal_collection_run_dto(r);else
+    insert into business_withdrawal_collection_runs(id,user_id,local_date,status,token,settings_revision,issuer_ids,expires_at) values(gen_random_uuid(),p_user_id,business_today(),'running',gen_random_uuid(),s.revision,s.issuer_ids,clock_timestamp()+interval '10 minutes') returning * into r;
+    v_result:=business_withdrawal_collection_run_dto(r)||jsonb_build_object('token',r.token,'issuers',coalesce((select jsonb_agg(business_withdrawal_issuer_dto(x) order by array_position(r.issuer_ids,x.id)) from business_withdrawal_issuers x where user_id=p_user_id and id=any(r.issuer_ids)),'[]'::jsonb));
+   end if;
+  end if;
+ elsif p_operation='terminate' then
+  select * into r from business_withdrawal_collection_runs where user_id=p_user_id and id=business_simulation_uuid(p_input->'runId') for update;
+  if not found or r.token<>business_simulation_uuid(p_input->'token') or r.settings_revision<>business_simulation_integer(p_input->'revision',2147483646)::integer then raise exception 'collection lease unavailable' using errcode='42501';end if;
+  if p_input->>'status' not in('failed','unknown') or jsonb_typeof(p_input->'status') is distinct from 'string' then raise exception 'invalid terminal status';end if;
+  if r.status='running' then update business_withdrawal_collection_runs set status=p_input->>'status' where id=r.id returning * into r;end if;
+  update business_withdrawal_collection_tickets set status='unknown' where run_id=r.id and user_id=p_user_id and status='reserved';v_result:=business_withdrawal_collection_run_dto(r);
+ else
+  r:=business_withdrawal_collection_verify(p_user_id,p_input);
+  if p_operation='check' then return jsonb_build_object('ok',true,'runId',r.id,'revision',r.settings_revision);
+  elsif p_operation='ticket' then
+   v_kind:=p_input->>'kind';if jsonb_typeof(p_input->'kind') is distinct from 'string' or v_kind not in('search','page','ai') then raise exception 'invalid collection ticket';end if;
+   if v_kind='page' then
+    v_id:=business_simulation_uuid(p_input->'issuerId');select * into i from business_withdrawal_issuers where user_id=p_user_id and id=v_id and id=any(r.issuer_ids);if not found then raise exception 'unselected issuer';end if;
+    perform business_withdrawal_url(p_input->'url',i.domain);
+   elsif p_input->'issuerId' is distinct from 'null'::jsonb or p_input->'url' is distinct from 'null'::jsonb then raise exception 'unexpected collection ticket target';end if;
+   select count(*) into v_count from business_withdrawal_collection_tickets where user_id=p_user_id and run_id=r.id and kind=v_kind;
+   if v_count>=(case v_kind when 'search' then 2 when 'page' then 3 else 1 end) then raise exception 'collection budget exhausted';end if;
+   insert into business_withdrawal_collection_tickets(id,user_id,run_id,kind,issuer_id,url) values(gen_random_uuid(),p_user_id,r.id,v_kind,v_id,p_input->>'url') returning * into t;v_result:=jsonb_build_object('id',t.id,'kind',t.kind,'runId',r.id,'status','reserved');
+  elsif p_operation='settle' then
+   if jsonb_typeof(p_input->'status') is distinct from 'string' or p_input->>'status' not in('completed','failed','unknown') then raise exception 'invalid ticket status';end if;
+   select * into t from business_withdrawal_collection_tickets where user_id=p_user_id and run_id=r.id and id=business_simulation_uuid(p_input->'ticketId') for update;
+   if not found or t.status<>'reserved' then raise exception 'ticket terminal or unavailable';end if;
+   update business_withdrawal_collection_tickets set status=p_input->>'status' where id=t.id;v_result:=jsonb_build_object('id',t.id,'status',p_input->>'status','runId',r.id);
+  elsif p_operation='archive' then
+   if jsonb_typeof(p_input->'raw') is distinct from 'string' or length(p_input->>'raw')+length(regexp_replace(p_input->>'raw',U&'[\0001-\FFFF]','','g'))>120000 or jsonb_typeof(p_input->'issues') is distinct from 'array' or jsonb_array_length(p_input->'issues')>30 or p_input->>'validatorVersion' is distinct from 'withdrawal-collection-v1' or jsonb_typeof(p_input->'truncated') is distinct from 'boolean' then raise exception 'invalid collection archive';end if;
+   for v in select value from jsonb_array_elements(p_input->'issues') loop if jsonb_typeof(v) is distinct from 'string' or v#>>'{}' not in('invalid_json','invalid_candidate','invalid_analysis','source_mismatch','unrecognized_subject','page_unavailable','collection_failed') then raise exception 'invalid issue code';end if;end loop;
+   -- Erasure can occur during provider I/O, before any save/duplicate association.
+   -- A tombstone for any frozen subject therefore prevents all late raw restoration.
+   v_id:=gen_random_uuid();insert into business_withdrawal_collection_archives(id,user_id,run_id,raw,issues,validator_version,truncated) values(v_id,p_user_id,r.id,case when business_withdrawal_collection_has_erasure(p_user_id,r.id) then '' else p_input->>'raw' end,p_input->'issues',p_input->>'validatorVersion',(p_input->>'truncated')::boolean);v_result:=jsonb_build_object('id',v_id,'runId',r.id);
+  elsif p_operation='save_candidate' then
+   v:=p_input->'command';perform business_simulation_keys(v,array['operation','id','requestId','expectedRevision','lesson','confirmed']);perform business_simulation_uuid(v->'id');perform business_simulation_uuid(v->'requestId');
+   if v->>'operation' is distinct from 'save' or v->'confirmed' is distinct from 'false'::jsonb or v->'expectedRevision' is distinct from '0'::jsonb or not(business_simulation_uuid(v->'lesson'->'source'->'issuerId')=any(r.issuer_ids)) then raise exception 'automatic candidates must be new unconfirmed owned drafts';end if;
+   if not exists(select 1 from business_withdrawal_collection_tickets where user_id=p_user_id and run_id=r.id and kind='ai' and status='completed') then raise exception 'completed analysis ticket required';end if;
+   if not exists(select 1 from business_withdrawal_collection_tickets where user_id=p_user_id and run_id=r.id and kind='page' and status='completed' and issuer_id=business_simulation_uuid(v->'lesson'->'source'->'issuerId') and url=v->'lesson'->'source'->>'url') then raise exception 'completed official page ticket required';end if;
+   -- Validate the complete frozen facts even when this identity has already been studied.
+   perform business_withdrawal_validate(p_user_id,v->'lesson');
+   if exists(select 1 from business_withdrawal_lessons where user_id=p_user_id and identity_key=business_withdrawal_identity(v->'lesson'->'subject')) then
+    v_result:=jsonb_build_object('status','duplicate','identityKey',business_withdrawal_identity(v->'lesson'->'subject'));
+   else v_result:=business_withdrawal_command(p_user_id,'save',v)||jsonb_build_object('status','saved');end if;
+   if business_withdrawal_collection_has_erasure(p_user_id,r.id) then update business_withdrawal_collection_archives set raw='' where user_id=p_user_id and run_id=r.id and raw<>'';end if;
+  elsif p_operation='complete' then
+   if exists(select 1 from business_withdrawal_collection_tickets where user_id=p_user_id and run_id=r.id and status='reserved') then raise exception 'unsettled ticket';end if;
+   update business_withdrawal_collection_runs set status='completed' where id=r.id returning * into r;v_result:=business_withdrawal_collection_run_dto(r);
+  end if;
+ end if;
+ insert into business_withdrawal_collection_receipts(user_id,request_id,input_hash,result) values(p_user_id,v_request,v_hash,v_result);return v_result;
+end$$;
+
+revoke all on public.business_withdrawal_collection_settings,public.business_withdrawal_collection_runs,public.business_withdrawal_collection_tickets,public.business_withdrawal_collection_archives,public.business_withdrawal_collection_receipts from public,anon,authenticated,service_role;
+revoke all on function public.business_withdrawal_collection_settings_dto(public.business_withdrawal_collection_settings),public.business_withdrawal_collection_run_dto(public.business_withdrawal_collection_runs),public.business_withdrawal_collection_expire(uuid),public.business_withdrawal_collection_verify(uuid,jsonb),public.business_withdrawal_collection_has_erasure(uuid,uuid),public.business_withdrawal_collection_archive_erasure(),public.business_withdrawal_collection_command(uuid,text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.business_withdrawal_collection_command(uuid,text,jsonb) to service_role;
+commit;
+
+
+-- 150_business_workspace_explanations.sql
+begin;
+create or replace function public.business_workspace_items(p_owner uuid,p_case uuid default null)
+returns table(kind text,id uuid,case_id uuid,revision integer,updated_at timestamptz,title text,excerpt text,next_check text,source_available boolean)
+language sql stable security definer set search_path=public,pg_temp as $$
+ select * from business_workspace_base_items(p_owner,p_case)
+ union all
+ select 'boundary',b.id,b.case_id,b.revision,b.updated_at,left(b.definition->>'title',160),
+  (case b.definition->>'side' when 'baseline' then '基准假设' else '替代假设' end)||' · '||
+  (case b.definition->'variable'->>'kind' when 'opening' then '期初现金范围' when 'amount' then '单笔收付金额范围' else '单笔收付日期范围' end),
+  null,
+  exists(select 1 from business_cash_scenarios c where c.user_id=p_owner and c.id=(b.definition->>'cashId')::uuid and c.revision=(b.definition->>'cashRevision')::integer)
+ from business_cash_boundaries b where b.user_id=p_owner and (p_case is null or b.case_id=p_case)
+ union all
+ select 'simulation',s.id,s.case_id,s.revision,s.updated_at,left(s.setup->>'title',160),
+  left(case when jsonb_array_length(s.turns)=0 then '已保存练习条件，尚未记录第一回合的选择。' else s.turns->-1->>'reason' end,400),
+  left(s.turns->-1->>'checkNext',400),business_simulation_context(s.user_id,s.case_id) is not null
+ from business_simulations s where s.user_id=p_owner and (p_case is null or s.case_id=p_case)
+ union all
+ select 'reality_check',q.id,q.case_id,q.revision,q.updated_at,
+  left(q.plan->>'question',120)||' · '||(case when (q.plan->>'dueDate')::date<(current_timestamp at time zone 'Asia/Tokyo')::date then '期限已过 · ' else '截止 ' end)||(q.plan->>'dueDate'),
+  left(q.plan->>'falsifier',400),left(q.plan->>'method',400),
+  exists(select 1 from business_simulations s where s.user_id=p_owner and s.id=q.simulation_id and s.case_id=q.case_id and jsonb_array_length(s.turns)>=q.round)
+ from business_reality_checks q where q.user_id=p_owner and q.simulation_id is not null and (p_case is null or q.case_id=p_case)
+ union all
+ select 'reality_result',r.id,r.case_id,1,r.created_at,
+  left(r.body->>'learned',160),left(r.body->>'found',400),null,
+  r.plan_snapshot is not null
+ from business_reality_results r where r.user_id=p_owner and (p_case is null or r.case_id=p_case)
+
+ union all
+ select 'followup_check',q.id,q.case_id,q.revision,q.updated_at,
+  left(q.plan->>'question',120)||' · '||(case when (q.plan->>'dueDate')::date<(current_timestamp at time zone 'Asia/Tokyo')::date then '期限已过 · ' else '截止 ' end)||(q.plan->>'dueDate'),
+  left(q.plan->>'falsifier',400),left(q.plan->>'method',400),
+  exists(select 1 from business_reality_results r where r.user_id=p_owner and r.id=q.origin_result_id and r.case_id=q.case_id)
+ from business_reality_checks q where q.user_id=p_owner and q.origin_result_id is not null and (p_case is null or q.case_id=p_case)
+
+ union all
+ select 'explanation_check',q.id,q.case_id,q.revision,q.updated_at,left(q.plan->>'question',160),left(q.plan->>'falsifier',400),left(q.plan->>'method',400),
+ case q.origin_explanation->>'kind' when 'report' then exists(select 1 from business_case_revisions r where r.user_id=p_owner and r.case_id=q.case_id and r.id=(q.origin_explanation->>'reportId')::uuid and r.revision=(q.origin_explanation->>'reportRevision')::integer and r.input_manifest_hash=q.origin_explanation->>'manifestHash' and r.erased_at is null)
+ when 'withdrawal' then business_withdrawal_explanation_source(p_owner,(q.origin_explanation->>'lessonId')::uuid,(q.origin_explanation->>'lessonRevision')::integer) is not null else false end
+ from business_reality_checks q where q.user_id=p_owner and q.origin_explanation is not null and (p_case is null or q.case_id=p_case)
+
+$$;
+
+create or replace function public.business_workspace_read(p_user_id uuid,p_operation text,p_input jsonb) returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare v_case uuid;v_date timestamptz;v_kind text;v_id uuid;v_count integer:=0;v_items jsonb:='[]';v_next jsonb;r record;begin
+ perform business_pressure_service(p_user_id);
+ if p_operation='case' then perform business_pressure_keys(p_input,array['caseId'],array['before']);v_case:=business_pressure_uuid(p_input->'caseId');
+ elsif p_operation='recent' then perform business_pressure_keys(p_input,'{}',array['before']);
+ else raise exception 'invalid workspace read';end if;
+ if p_input?'before' then
+  perform business_pressure_keys(p_input->'before',array['date','kind','id']);v_id:=business_pressure_uuid(p_input->'before'->'id');
+  if jsonb_typeof(p_input->'before'->'kind') is distinct from 'string' or (p_input->'before'->>'kind')<>all(array['pressure','cash','practice','counterexample','learning','lesson','boundary','simulation','reality_check','reality_result','followup_check','explanation_check']) then raise exception 'invalid workspace cursor kind';end if;v_kind:=p_input->'before'->>'kind';
+  if jsonb_typeof(p_input->'before'->'date') is distinct from 'string' or (p_input->'before'->>'date')!~'^\d{4}-\d\d-\d\dT[0-9:.]+(Z|[+-][0-9]{2}:[0-9]{2})$' then raise exception 'invalid workspace cursor date';end if;v_date:=(p_input->'before'->>'date')::timestamptz;
+ end if;
+ for r in select w.*,left(subject.context->>'caseTitle',300) case_title from business_workspace_items(p_user_id,v_case) w
+ cross join lateral (select coalesce(business_subject_context(p_user_id,w.case_id),
+  (select jsonb_build_object('caseId',c.id,'caseTitle','已清除的退出教材','kind','withdrawal') from business_daily_cases c
+   where c.user_id=p_user_id and c.id=w.case_id and c.case_kind='withdrawal')) context) subject
+ where subject.context is not null and (v_case is null or w.case_id=v_case) and (v_id is null or (w.updated_at,w.kind collate "C",w.id)<(v_date,v_kind collate "C",v_id))
+ order by w.updated_at desc,w.kind collate "C" desc,w.id desc limit 21 loop
+  v_count:=v_count+1;if v_count<=20 then
+   v_items:=v_items||jsonb_build_array(jsonb_build_object('kind',r.kind,'id',r.id,'caseId',r.case_id,'caseTitle',r.case_title,'revision',r.revision,'updatedAt',r.updated_at,'title',coalesce(r.title,''),'excerpt',coalesce(r.excerpt,''),'nextCheck',r.next_check,'sourceAvailable',r.source_available));
+   v_next:=jsonb_build_object('date',r.updated_at,'kind',r.kind,'id',r.id);
+  end if;
+ end loop;
+ return jsonb_build_object('items',v_items,'nextCursor',case when v_count>20 then v_next else null end);
+end$$;
+revoke all on function public.business_workspace_items(uuid,uuid),public.business_workspace_read(uuid,text,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.business_workspace_read(uuid,text,jsonb) to service_role;
+commit;

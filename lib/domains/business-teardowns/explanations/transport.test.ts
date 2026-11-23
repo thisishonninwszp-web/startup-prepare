@@ -1,0 +1,9 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const {rpc}=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('@/lib/supabase',()=>({supabaseAdminUncached:{rpc}}));
+import {listExplanationPlans,getExplanationPlan,getExplanationSource,explanationCommand} from './transport';
+const owner='10000000-0000-4000-8000-000000000001',id='20000000-0000-4000-8000-000000000001';
+const anchor={kind:'report' as const,reportId:id,reportRevision:1,section:'value' as const,index:0,manifestHash:'hash'};
+beforeEach(()=>rpc.mockReset());
+it('checks owner and exact missing source without hiding real failures',async()=>{rpc.mockResolvedValue({data:null,error:null});expect(await getExplanationSource(owner,anchor)).toBeNull();expect(rpc).toHaveBeenCalledWith('business_explanation_read',{p_user_id:owner,p_operation:'source',p_input:{anchor}});rpc.mockResolvedValue({data:null,error:{code:'42501',message:'denied'}});await expect(listExplanationPlans(owner)).rejects.toThrow('denied');await expect(getExplanationPlan('bad',id)).rejects.toThrow();});
+it('isolates missing migration to list, rejects unknown query keys and noncanonical cursors',async()=>{rpc.mockResolvedValue({data:null,error:{code:'PGRST202',message:'missing'}});expect(await listExplanationPlans(owner)).toEqual({available:false,items:[],nextCursor:null});await expect(getExplanationPlan(owner,id)).rejects.toThrow('missing');await expect(listExplanationPlans(owner,{before:'bad'})).rejects.toThrow();await expect(listExplanationPlans(owner,{caseId:'bad'})).rejects.toThrow();});
+it('rejects receipt mismatches and wrong exact identity',async()=>{rpc.mockResolvedValue({data:{id:owner,revision:2},error:null});await expect(explanationCommand(owner,{operation:'erase',id,requestId:id,expectedRevision:1})).rejects.toThrow('回执');rpc.mockResolvedValue({data:{items:[],nextCursor:{date:'2026-11-20T00:00:00Z',id}},error:null});await expect(listExplanationPlans(owner)).rejects.toThrow('分页');});

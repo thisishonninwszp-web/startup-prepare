@@ -2,11 +2,11 @@ import {z} from 'zod';
 
 export const RESEARCH_KINDS=['failure','comparison','tension','apprenticeship'] as const;
 export const DIMENSION_KEYS=['buyer','user','payer','trigger','delivery','alternative'] as const;
-export type SourceKind='snapshot'|'material'|'job';
+export type SourceKind='snapshot'|'material'|'job'|'official';
 export type ResearchKind=typeof RESEARCH_KINDS[number];
 export type SourceInput={key:string;kind:SourceKind;id:string;quote:string;publicConfirmed:boolean};
 export type SourceOption={id:string;kind:SourceKind;title:string;text:string;url:string|null;date:string|null};
-export type CaseOption={id:string;name:string;date:string};
+export type CaseOption={id:string;name:string;date:string;withdrawalLessonId?:string};
 export type ExperienceOption={id:string;label:string;text:string};
 export type ResearchInput={id?:string;kind:ResearchKind;title:string;caseIds:string[];experienceIds:string[];sources:SourceInput[];payload:Record<string,unknown>;expectedRevision:number;requestId:string};
 export type ResearchRecord={id:string;kind:ResearchKind;title:string;caseIds:string[];experienceIds:string[];payload:Record<string,unknown>|null;revision:number;createdAt:string;updatedAt:string;erasedAt:string|null;invalidated:boolean;experienceInvalidated:boolean;sources:(SourceInput&{url:string|null;date:string|null;invalidated:boolean})[]};
@@ -14,8 +14,8 @@ export type ResearchList={available:boolean;items:ResearchRecord[];nextCursor:st
 export const researchUuid=z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,'无效记录标识').toLowerCase();
 const text=z.string().trim().min(1).max(3000);
 const key=z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,31}$/,'来源键须为短 ASCII 标识');
-const source=z.object({key,kind:z.enum(['snapshot','material','job']),id:researchUuid,quote:z.string().min(4).max(1600).refine(v=>v.trim().length>=4,'请选择至少四个字的逐字引文'),publicConfirmed:z.boolean()}).strict();
-const failurePayload=z.object({event:z.enum(['exit','shrink','stop']),when:z.string().trim().max(3000),scope:z.enum(['company','store','product']),disclosureKey:key,confirmedDisclosure:z.literal(true),whatChanged:text,alternative:text,condition:text,checkNext:text}).strict();
+const source=z.object({key,kind:z.enum(['snapshot','material','job','official']),id:researchUuid,quote:z.string().min(4).max(1600).refine(v=>v.trim().length>=4,'请选择至少四个字的逐字引文'),publicConfirmed:z.boolean()}).strict();
+const failurePayload=z.object({event:z.enum(['exit','shrink','stop']),when:z.string().trim().max(3000),scope:z.enum(['company','business','store','product']),disclosureKey:key,confirmedDisclosure:z.literal(true),whatChanged:text,alternative:text,condition:text,checkNext:text}).strict();
 const comparisonPayload=z.object({dimensions:z.array(z.object({key:z.enum(DIMENSION_KEYS),left:text,right:text,leftSourceKey:key.nullable(),rightSourceKey:key.nullable()}).strict()).length(6),hypothesis:text,counterexample:text,checkNext:text}).strict();
 const tensionPayload=z.object({task:text,leftNeed:text,rightNeed:text,leftSourceKey:key,rightSourceKey:key,tradeoff:text,alternative:text,checkNext:text}).strict();
 const apprenticeshipPayload=z.object({mechanism:text,timeBudget:text,cashBudget:text,constraintsConfirmed:z.literal(true),gap:text,practice:text,checkNext:text,jobLink:z.object({jobId:researchUuid,sourceKey:key,rationale:text,employerQuestion:text}).strict().nullable()}).strict();
