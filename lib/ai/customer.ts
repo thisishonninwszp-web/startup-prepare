@@ -1,4 +1,4 @@
-import { CUSTOMER_MARKET_LANGS, parseCustomerSearchPlan, type CustomerMarket, type CustomerSearchPlan } from "@/app/(app)/customer-view/types";
+import { keepSupportedSetAside, CUSTOMER_MARKET_LANGS, parseCustomerSearchPlan, type CustomerMarket, type CustomerSearchPlan } from "@/app/(app)/customer-view/types";
 import { collectProxyCitationIds, keepCustomerWords, parseCustomerEvidenceBatch, parseCustomerIdeaReaction, parseCustomerOpportunities, parseCustomerPatternReport, parseCustomerProxy, parseCustomerProxyAnswer, parseCustomerProxyDelta, parseCustomerSegments, type CustomerEvidenceAtom, type CustomerIdeaReaction, type CustomerOpportunities, type CustomerPatternReport, type CustomerProxy, type CustomerProxyAnswer, type CustomerProxyDelta, type CustomerSegment, type CustomerSegments, validateCustomerCitations } from "@/app/(app)/customer-view/types";
 import { generateRealityJson } from "./reality";
 
@@ -43,8 +43,14 @@ emotion_basis 只能是 stated（材料明确表达）、inferred（仅由行为
 只输出 JSON：{"pages":[{"material_id":"","kind":"community"}],"atoms":[{"material_id":"","speaker":"customer","quote":"","scene":"","behavior":"","alternative":"","tradeoff":"","emotion":"","emotion_basis":"stated"}]}`;
 
 const CUSTOMER_SEGMENT_PROMPT = `${CUSTOMER_RESEARCH_RULES}
-把证据按真实处境与行为拆成2到3类不同顾客声音。禁止只按年龄、性别、职业等人口标签分类。每类必须有证据ID和未知。
-只输出 JSON：{"segments":[{"key":"","label":"","situation":"","behaviors":[""],"evidence_ids":[""],"unknowns":[""]}]}`;
+输入先给这个顾客课题（顾客假设、处境），再给证据。只用这类人、这件事的证据区分顾客声音。先一条条看是谁在说、说的是什么东西：
+- other_person：证据里写明了说话的人是另一类人，哪怕讲的是同一件活儿也放到一边（例：课题是小饭馆店主，证据里写着「バイト」「店員」「パート」—— 他们做收银结账，但不是店主）。
+- other_matter：证据里写明了讲的是完全另一样东西或服务（例：课题是洗衣店取衣服，证据里写着「プリンター」「家でアイロン」）。同一件事的另一面 —— 准不准、贵不贵、麻不麻烦、时间够不够 —— 不是别的事，照样分进去。
+- 放进 set_aside 的每一条，basis 照抄证据原文里写明这一点的那几个字（2 到 10 个字，例：「バイト」「プリンター」），程序会逐字核对，对不上的不算放到一边；note 用一句话写为什么。
+- 证据里没写说话的是谁、说不清是不是这类人的，不是 other_person，照样分进去。
+不许因为「和课题假设不一样」「不直接支持假设」放到一边：这类人说的、和课题假设相反的话（例：「其实不麻烦」「从来没遇到过」「5 分钟就弄完了」「店が遅くまで開いているので困っていない」）要照样分进顾客声音 —— 反例最值钱。
+把留下的证据按真实处境与行为拆成 1 到 3 类不同顾客声音；只有一种处境就只写一类，不要硬拆。禁止只按年龄、性别、职业等人口标签分类。每类必须有证据ID和未知。
+只输出 JSON：{"segments":[{"key":"","label":"","situation":"","behaviors":[""],"evidence_ids":[""],"unknowns":[""]}],"set_aside":[{"evidence_id":"","reason":"other_person","basis":"","note":""}]}`;
 
 const CUSTOMER_PROXY_PROMPT = `${CUSTOMER_RESEARCH_RULES}
 基于选定顾客声音生成“顾客的一天”。inner_voice 若不是原话支持，必须保持克制并由 emotion_basis 标为 inferred/unknown。
@@ -148,19 +154,26 @@ export async function planCustomerSearch(input: {
   );
 }
 
+/**
+ * 区分顾客声音。课题一起给：证据只看本身时，谁说了话就给谁分一类
+ * （课题是店主，分出来两类是打工的；页面里有「クリーニング」，就分出一类打印机清洁）。
+ */
 export async function segmentCustomerVoices(
-  atoms: CustomerEvidenceAtom[]
+  atoms: CustomerEvidenceAtom[],
+  customerCase: { hypothesis: string; context: string }
 ): Promise<CustomerSegments> {
-  const result = await generateRealityJson(
+  const parsed = await generateRealityJson(
     CUSTOMER_SEGMENT_PROMPT,
-    renderCustomerEvidence(atoms),
+    `顾客课题\n顾客假设：${customerCase.hypothesis}\n处境：${customerCase.context}\n\n证据：\n${renderCustomerEvidence(atoms)}`,
     parseCustomerSegments
   );
   const allowed = customerEvidenceIds(atoms);
-  for (const segment of result.segments) {
+  for (const segment of parsed.segments) {
     validateCustomerCitations(segment.evidence_ids, allowed);
   }
-  return result;
+  // 放到一边要有凭据（证据里写明的字、不是拿不准、不是和假设不一样）；没凭据的不算放到一边，
+  // 会落进页面上的「没分进任何一类」—— 反例不能藏在一个理由后面。
+  return keepSupportedSetAside(parsed, atoms);
 }
 
 export async function buildCustomerProxy(

@@ -48,6 +48,8 @@ const CUSTOMER_PROMPT_VERSION = "customer-v1";
 // v3（2026-11）：整页是商家自己的页面的一条不收（那上面的「お客様の声」是商家挑的）。
 // 以前存下的证据是 customer-v1（两道都没过）、customer-evidence-v2（可能混着商家挑的评价），要清理时按这个认。
 const CUSTOMER_EVIDENCE_PROMPT_VERSION = "customer-evidence-v3";
+// 区分顾客声音 v2（2026-11）：带上课题，别的人、别的事的证据放到一边（set_aside），可以只有一类声音。
+const CUSTOMER_RESEARCH_PROMPT_VERSION = "customer-research-v2";
 
 type CreateCustomerCaseInput = {
   title: string;
@@ -509,17 +511,20 @@ async function loadKeptEvidence(caseId: string, userId: string) {
 
 export async function runCustomerResearch(caseId: string): Promise<string> {
   const userId = await requireUserId();
-  await requireCustomerCase(caseId, userId);
+  const customerCase = await requireCustomerCase(caseId, userId);
   const { atoms } = await loadKeptEvidence(caseId, userId);
   if (atoms.length < 2) throw new Error("至少需要2条已提取证据才能区分顾客声音");
-  const result = await segmentCustomerVoices(atoms);
+  const result = await segmentCustomerVoices(atoms, {
+    hypothesis: customerCase.customer_hypothesis,
+    context: customerCase.problem_context,
+  });
   const { data, error } = await supabaseAdmin
     .from("customer_research_runs")
     .insert({
       case_id: caseId,
       evidence_ids: atoms.map((atom) => atom.id),
       segments: result,
-      prompt_version: CUSTOMER_PROMPT_VERSION,
+      prompt_version: CUSTOMER_RESEARCH_PROMPT_VERSION,
     })
     .select("id")
     .single();

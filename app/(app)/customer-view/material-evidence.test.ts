@@ -262,6 +262,15 @@ describe("pasted customer materials", () => {
     expect(researched.map((atom) => atom.material_id).sort()).toEqual(
       [first.materialId, second.materialId].sort()
     );
+    // 区分顾客声音时带上课题：只用这类人、这件事的证据
+    expect(m.segment.mock.calls[0][1]).toEqual({
+      hypothesis: "个人经营的小店店长",
+      context: "每天关店后对账",
+    });
+    expect(table("customer_research_runs")[0]).toMatchObject({
+      case_id: "case",
+      prompt_version: "customer-research-v2",
+    });
   });
 
   it("does not extract again when the same material is saved twice", async () => {

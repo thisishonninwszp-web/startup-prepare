@@ -31,10 +31,11 @@ import {
 } from "../actions";
 import { redactCustomerPii } from "../privacy";
 import type { CustomerCaseDetail } from "../queries";
-import type {
-  CustomerCadence,
-  CustomerMaterialOrigin,
-  CustomerIdeaReaction,
+import {
+  unplacedEvidenceIds,
+  type CustomerCadence,
+  type CustomerMaterialOrigin,
+  type CustomerIdeaReaction,
 } from "../types";
 import { CustomerProxyView } from "./customer-proxy-view";
 
@@ -116,6 +117,14 @@ export function CustomerWorkspace({
     }
     return counts;
   }, [initialCase.atoms]);
+  const atomById = useMemo(
+    () => new Map(initialCase.atoms.map((atom) => [atom.id, atom])),
+    [initialCase.atoms]
+  );
+  const unplacedIds = useMemo(
+    () => (latestRun ? unplacedEvidenceIds(latestRun) : []),
+    [latestRun]
+  );
   const atomsForSelected = useMemo(() => {
     if (!selectedVersion) return initialCase.atoms;
     const allowed = new Set(selectedVersion.selected_segment.evidence_ids);
@@ -659,6 +668,10 @@ export function CustomerWorkspace({
               <p className="mt-8 text-sm text-muted-foreground">
                 先保留材料并运行研究。
               </p>
+            ) : latestRun.segments.length === 0 ? (
+              <p className="mt-8 text-sm text-muted-foreground">
+                这里空着：保留下来的证据说的都不是这类人，或者不是这件事，全放在下面了。回收件箱多保留几份对题的材料，再研究一次。
+              </p>
             ) : (
               <div className="mt-6 grid gap-4 lg:grid-cols-3">
                 {latestRun.segments.map((segment) => (
@@ -696,6 +709,61 @@ export function CustomerWorkspace({
                     </Button>
                   </article>
                 ))}
+              </div>
+            )}
+            {latestRun && latestRun.set_aside.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-sm font-medium">
+                  没用上的证据（
+                  <span className="font-mono">{latestRun.set_aside.length}</span>
+                  条）
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  说话的不是这类人，或者讲的不是这件事，所以没分进上面的声音。这类人自己说的、和你的假设相反的话不会放在这里。觉得放错了，点上面「用当前证据重新研究」再分一次；对题的材料太少，就回收件箱多保留几份。
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {latestRun.set_aside.map((item) => {
+                    const atom = atomById.get(item.evidence_id);
+                    return (
+                      <li
+                        key={item.evidence_id}
+                        className="rounded-md border bg-card p-3 text-xs leading-5"
+                      >
+                        <span className="text-muted-foreground">
+                          {item.reason === "other_person" ? "别的人" : "别的事"}
+                          {item.basis ? ` · 原文写着「${item.basis}」` : ""}
+                          {item.note ? ` · ${item.note}` : ""}
+                        </span>
+                        {atom && <p className="mt-1">「{atom.quote}」</p>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            {unplacedIds.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-sm font-medium">
+                  没分进任何一类的证据（
+                  <span className="font-mono">{unplacedIds.length}</span>
+                  条）
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  这次研究用到了，AI 却既没分进上面的声音、也没说为什么放到一边。别当它不存在，自己看一眼：和你想的不一样的话，最容易这样漏掉。
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {unplacedIds.map((id) => {
+                    const atom = atomById.get(id);
+                    return atom ? (
+                      <li
+                        key={id}
+                        className="rounded-md border bg-card p-3 text-xs leading-5"
+                      >
+                        「{atom.quote}」
+                      </li>
+                    ) : null;
+                  })}
+                </ul>
               </div>
             )}
           </section>
