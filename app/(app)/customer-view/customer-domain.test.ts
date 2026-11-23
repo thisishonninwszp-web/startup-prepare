@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   isProvisionalProxy,
+  customerVoiceSearch,
   filterEvidenceForSegment,
+  keepCustomerWords,
+  mentionsTopic,
+  quoteInMaterial,
   nextCustomerRun,
+  parseCustomerSearchPlan,
   parseCustomerEvidenceBatch,
   parseCustomerOpportunities,
   parseCustomerProxyAnswer,
@@ -45,10 +50,210 @@ describe("customer evidence", () => {
     ).toThrow("emotion_basis");
   });
 
+  it("reads who said the line, ignoring values it does not know", () => {
+    const atom = {
+      material_id: "m1",
+      quote: "每天对账到凌晨，真的很烦。",
+      scene: "",
+      behavior: "",
+      alternative: "",
+      tradeoff: "",
+      emotion: "",
+      emotion_basis: "stated",
+    };
+    const batch = parseCustomerEvidenceBatch({
+      atoms: [
+        { ...atom, speaker: "seller" },
+        { ...atom, speaker: "顾客" },
+        atom,
+      ],
+    });
+    expect(batch.atoms.map((item) => item.speaker)).toEqual([
+      "seller",
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("reads what each page is, and treats blank fields written as null as empty", () => {
+    const batch = parseCustomerEvidenceBatch({
+      pages: [
+        { material_id: "m1", kind: "seller" },
+        { material_id: "m2", kind: "店铺" },
+        "m3",
+      ],
+      atoms: [
+        {
+          material_id: "m1",
+          quote: "初めての利用でしたが満足しています。",
+          scene: null,
+          behavior: null,
+          tradeoff: null,
+          emotion: null,
+          emotion_basis: "stated",
+        },
+      ],
+    });
+    expect(batch.pages).toEqual([{ material_id: "m1", kind: "seller" }]);
+    expect(batch.atoms[0]).toMatchObject({
+      scene: "",
+      behavior: "",
+      alternative: "",
+      tradeoff: "",
+      emotion: "",
+    });
+    expect(parseCustomerEvidenceBatch({ atoms: [] })).not.toHaveProperty("pages");
+    expect(() =>
+      parseCustomerEvidenceBatch({
+        atoms: [{ material_id: "m1", quote: null, emotion_basis: "stated" }],
+      })
+    ).toThrow("quote");
+  });
+
   it("marks fewer than three independent kept materials as provisional", () => {
     expect(isProvisionalProxy(["m1", "m2"])).toBe(true);
     expect(isProvisionalProxy(["m1", "m2", "m3"])).toBe(false);
     expect(isProvisionalProxy(["m1", "m1", "m2", "m3"])).toBe(false);
+  });
+});
+
+describe("only the customer's own words count as evidence", () => {
+  const text = new Map([
+    [
+      "interview",
+      "店长说：每天关店后还要对两个小时的账，Excel 一张张对，烦死了。\n后来请了兼职，一个月多花三万日元。",
+    ],
+    [
+      "vendor",
+      "「洗濯物の受け取り、もう悩まない」宅配クリーニングなら、24時間いつでも玄関先で受け取れます。お客様の声：本当に楽になりました！",
+    ],
+  ]);
+  const atom = (material_id: string, quote: string, speaker?: string) => ({
+    material_id,
+    quote,
+    scene: "",
+    behavior: "",
+    alternative: "",
+    tradeoff: "",
+    emotion: "",
+    emotion_basis: "stated" as const,
+    ...(speaker ? { speaker: speaker as "customer" | "seller" | "other" } : {}),
+  });
+
+  it("drops what the seller or a bystander said", () => {
+    const kept = keepCustomerWords(
+      {
+        atoms: [
+          atom("interview", "Excel 一张张对，烦死了", "customer"),
+          atom("vendor", "24時間いつでも玄関先で受け取れます", "seller"),
+          atom("vendor", "本当に楽になりました！", "seller"),
+          atom("interview", "后来请了兼职", "other"),
+        ],
+      },
+      text
+    );
+    expect(kept.map((item) => item.quote)).toEqual(["Excel 一张张对，烦死了"]);
+    expect(kept[0]).not.toHaveProperty("speaker");
+  });
+
+  it("keeps nothing from the seller's own page, even testimonials that look like a customer talking", () => {
+    const kept = keepCustomerWords(
+      {
+        pages: [
+          { material_id: "vendor", kind: "seller" },
+          { material_id: "interview", kind: "community" },
+        ],
+        atoms: [
+          atom("vendor", "本当に楽になりました！", "customer"),
+          atom("interview", "Excel 一张张对，烦死了", "customer"),
+        ],
+      },
+      text
+    );
+    expect(kept.map((item) => item.material_id)).toEqual(["interview"]);
+  });
+
+  it("drops quotes that are not word for word in the material", () => {
+    const kept = keepCustomerWords(
+      { atoms: [
+        // 改写
+        atom("interview", "每天关店后要花两小时对账，很烦", "customer"),
+        // 用省略号拼起来
+        atom("interview", "每天关店后……烦死了", "customer"),
+        // 翻译成别的语言
+        atom("vendor", "真的轻松多了", "customer"),
+        // 不是这份材料的
+        atom("vendor", "Excel 一张张对，烦死了", "customer"),
+        // 太短，到处都能对上
+        atom("interview", "烦死了", "customer"),
+        // 没有这份材料
+        atom("missing", "Excel 一张张对，烦死了", "customer"),
+      ] },
+      text
+    );
+    expect(kept).toEqual([]);
+  });
+
+  it("ignores spacing and full-width differences, and keeps lines with no speaker", () => {
+    const kept = keepCustomerWords(
+      { atoms: [atom("interview", "Ｅｘｃｅｌ一张张对， 烦死了")] },
+      text
+    );
+    expect(kept).toHaveLength(1);
+    expect(quoteInMaterial("一个月多花三万日元", text.get("interview")!)).toBe(true);
+  });
+});
+
+describe("where to search for customer materials", () => {
+  it("searches Q&A and forum sites for Japanese and Chinese, and adds experience words for English", () => {
+    expect(customerVoiceSearch("jp", "レジ締め")).toEqual({
+      query: "レジ締め",
+      domains: ["detail.chiebukuro.yahoo.co.jp", "girlschannel.net"],
+    });
+    expect(customerVoiceSearch("cn", "对账")).toEqual({
+      query: "对账",
+      domains: [
+        "douban.com",
+        "v2ex.com",
+        "tieba.baidu.com",
+        "post.smzdm.com",
+        "tousu.sina.com.cn",
+      ],
+    });
+    expect(customerVoiceSearch("en", "bookkeeping")).toEqual({
+      query: "bookkeeping my experience forum",
+    });
+  });
+
+  it("checks the topic word by word, ignoring case, spacing and full-width forms", () => {
+    expect(mentionsTopic("日本 看病", "去日本看病一定要看的这些流程")).toBe(true);
+    expect(mentionsTopic("日本 看病", "华西医院看病攻略")).toBe(false);
+    expect(mentionsTopic("dentist Japan", "Need a DENTIST in Ｊａｐａｎ")).toBe(true);
+    expect(mentionsTopic("クリーニング", "受け取りが遅れたら", "クリーニング屋さんに預けたまま")).toBe(true);
+    expect(mentionsTopic("  ", "anything")).toBe(false);
+  });
+
+  it("reads the AI's search plan per market and puts the topic into every query", () => {
+    const plan = parseCustomerSearchPlan(
+      {
+        ja: {
+          topic: "「飲食店」",
+          queries: ["飲食店 レジ締め 時間", "売上 集計 毎日", 3, "", "四つ目"],
+        },
+        zh: { topic: "干洗", queries: ["只有一个"] },
+        en: { topic: "dentist Japan", queries: ["a", "b"] },
+      },
+      ["jp", "cn"]
+    );
+    expect(plan).toEqual({
+      jp: {
+        topic: "飲食店",
+        queries: ["飲食店 レジ締め 時間", "飲食店 売上 集計 毎日", "飲食店 四つ目"],
+      },
+    });
+    expect(() =>
+      parseCustomerSearchPlan({ ja: { topic: "", queries: ["a", "b"] } }, ["jp"])
+    ).toThrow("搜索计划");
   });
 });
 

@@ -1,4 +1,5 @@
-import { collectProxyCitationIds, parseCustomerEvidenceBatch, parseCustomerIdeaReaction, parseCustomerOpportunities, parseCustomerPatternReport, parseCustomerProxy, parseCustomerProxyAnswer, parseCustomerProxyDelta, parseCustomerSegments, type CustomerEvidenceAtom, type CustomerIdeaReaction, type CustomerOpportunities, type CustomerPatternReport, type CustomerProxy, type CustomerProxyAnswer, type CustomerProxyDelta, type CustomerSegment, type CustomerSegments, validateCustomerCitations } from "@/app/(app)/customer-view/types";
+import { CUSTOMER_MARKET_LANGS, parseCustomerSearchPlan, type CustomerMarket, type CustomerSearchPlan } from "@/app/(app)/customer-view/types";
+import { collectProxyCitationIds, keepCustomerWords, parseCustomerEvidenceBatch, parseCustomerIdeaReaction, parseCustomerOpportunities, parseCustomerPatternReport, parseCustomerProxy, parseCustomerProxyAnswer, parseCustomerProxyDelta, parseCustomerSegments, type CustomerEvidenceAtom, type CustomerIdeaReaction, type CustomerOpportunities, type CustomerPatternReport, type CustomerProxy, type CustomerProxyAnswer, type CustomerProxyDelta, type CustomerSegment, type CustomerSegments, validateCustomerCitations } from "@/app/(app)/customer-view/types";
 import { generateRealityJson } from "./reality";
 
 // ---------------------------------------------------------------------------
@@ -28,9 +29,18 @@ const CUSTOMER_RESEARCH_RULES = `你服务于 IdeaOS 的顾客视点研究工作
 - 目标是理解顾客如何生活、行动、取舍和感受，不是替创业者证明产品。`;
 
 const CUSTOMER_EVIDENCE_PROMPT = `${CUSTOMER_RESEARCH_RULES}
-从每份材料提取最多4个证据原子。quote 应保留顾客自己的短原话；scene、behavior、alternative、tradeoff 没出现时可为空。
+先判断每份材料整页是什么，写进 pages：
+- seller：商家、服务方自己的网站或宣传页，整页在介绍、推销自己的东西（看标题、网站名、价格、优惠、下单引导）。这种页面上的「顾客评价」「お客様の声」「体验谈」也是商家挑出来放上去的。正文里的小标题可能已经被去掉，那些评价看起来会像普通人在说话，不要被骗。
+- community：问答、论坛、评论区、个人讲自己经历的帖子，或访谈、聊天记录。
+- media：新闻、杂志、比较排行网站。
+- other：都不是。
+再从每份材料提取最多4个证据原子。证据只能是顾客（用这个东西、有这个麻烦的人）讲自己的经历和感受；seller 页面一条都不要出。
+quote 从材料里一字不改地连续照抄一段：用材料原来的语言，不翻译、不改写、不用省略号拼接。程序会逐字核对，对不上的会被丢掉。
+speaker 写这句话是谁说的：customer（顾客本人）、seller（商家、服务方自己的介绍、广告、宣传、常见问答）、other（编辑、记者、专家的概括或转述）。
+一份材料里没有顾客本人说的话，这份材料就一条都不要出，宁缺毋滥。
+scene、behavior、alternative、tradeoff 没出现时可为空。
 emotion_basis 只能是 stated（材料明确表达）、inferred（仅由行为谨慎推断）或 unknown。
-只输出 JSON：{"atoms":[{"material_id":"","quote":"","scene":"","behavior":"","alternative":"","tradeoff":"","emotion":"","emotion_basis":"stated"}]}`;
+只输出 JSON：{"pages":[{"material_id":"","kind":"community"}],"atoms":[{"material_id":"","speaker":"customer","quote":"","scene":"","behavior":"","alternative":"","tradeoff":"","emotion":"","emotion_basis":"stated"}]}`;
 
 const CUSTOMER_SEGMENT_PROMPT = `${CUSTOMER_RESEARCH_RULES}
 把证据按真实处境与行为拆成2到3类不同顾客声音。禁止只按年龄、性别、职业等人口标签分类。每类必须有证据ID和未知。
@@ -87,26 +97,55 @@ function customerEvidenceIds(atoms: CustomerEvidenceAtom[]): string[] {
 export async function extractCustomerEvidence(
   materials: CustomerAiMaterial[]
 ): Promise<CustomerEvidenceAtom[]> {
+  // 只给 AI 看前 8000 字，原话也只在这一段里核对。
+  const shown = new Map(
+    materials.map((material) => [material.id, material.text.slice(0, 8000)])
+  );
   const result = await generateRealityJson(
     CUSTOMER_EVIDENCE_PROMPT,
     materials
       .map(
         (material) =>
-          `[材料 ${material.id}][${material.source}] ${material.title}\n${material.text.slice(
-            0,
-            8000
-          )}`
+          `[材料 ${material.id}][${material.source}] ${material.title}\n${shown.get(material.id)}`
       )
       .join("\n\n---\n\n"),
     parseCustomerEvidenceBatch
   );
-  const allowed = new Set(materials.map((material) => material.id));
   for (const atom of result.atoms) {
-    if (!allowed.has(atom.material_id)) {
+    if (!shown.has(atom.material_id)) {
       throw new Error(`AI引用了未被允许的材料：${atom.material_id}`);
     }
   }
-  return result.atoms;
+  // 商家自己的页面整页不收；商家的介绍和广告不算顾客的话；原话在材料里逐字找不到的也丢掉。
+  return keepCustomerWords(result, shown);
+}
+
+const LANG_NAMES = { ja: "日语", zh: "中文", en: "英语" } as const;
+
+const customerSearchPrompt = (langs: string[]) => `下面是一个顾客研究课题：顾客假设和他们的处境。要在问答网站、论坛、评论区里，找这些人自己说出这件事的帖子。
+按 ${langs.join("、")} 每种语言各写：
+- topic：这件事里最核心的东西，这里的普通人搜索时一定会打的词，1 到 2 个词，用空格隔开（例：「クリーニング」「干洗」）。程序只留标题或开头里每个词都有的页面。
+  这个词到处都用得上、离开地点就不是这件事时，把地点也写进去（例：在日本看病写「日本 看病」，不要只写「看病」；在日本找牙医写「dentist Japan」）。不要书面词、行政用语和产品名。
+  同一件事打工的、店员也天天在做时，topic 不写那件事，改写这个人自己的行业或身份（例：小饭馆店主收银结账，topic 写「飲食店」，不写「レジ締め」—— 不然搜到的全是打工的在问怎么结账）。
+- queries：3 个搜索词，每个都包含 topic，再加上这个人遇到这件事时自己会在网上打的话（提问或吐槽），一共 2 到 5 个词，用普通人的说法（例：「クリーニング 取りに行けない」「干洗 下班 来不及取」「飲食店 レジ締め 時間かかる」）。三个从不同角度：这件麻烦本身、他们现在怎么对付、对付时卡在哪。
+不是翻译那句假设，是想这个人自己会怎么搜。
+只输出 JSON，键用 ja / zh / en：{"ja":{"topic":"…","queries":["…","…","…"]}}`;
+
+/** 每个市场写核心词和几个普通人的搜索词，代替把顾客假设整句翻译过去搜。 */
+export async function planCustomerSearch(input: {
+  hypothesis: string;
+  context: string;
+  markets: readonly CustomerMarket[];
+}): Promise<CustomerSearchPlan> {
+  const langs = input.markets.map(
+    (market) =>
+      `${CUSTOMER_MARKET_LANGS[market]}（${LANG_NAMES[CUSTOMER_MARKET_LANGS[market]]}）`
+  );
+  return generateRealityJson(
+    customerSearchPrompt(langs),
+    `顾客假设：${input.hypothesis}\n处境：${input.context}`,
+    (value) => parseCustomerSearchPlan(value, input.markets)
+  );
 }
 
 export async function segmentCustomerVoices(

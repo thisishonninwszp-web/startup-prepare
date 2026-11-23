@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { tavilyExtract } from "@/lib/external";
-import { webSearch } from "@/lib/web-search";
+import { AiGatewayError, humanAiErrorMessage } from "@/lib/ai-gateway";
 import {
   answerAsCustomerProxy,
   buildCustomerProxy,
@@ -13,14 +13,17 @@ import {
   extractCustomerEvidence,
   generateCustomerOpportunities,
   generateCustomerPatternReport,
+  planCustomerSearch,
   reactToIdeaAsCustomer,
   segmentCustomerVoices,
   translateQuery,
   type CustomerProxyTurn,
 } from "@/lib/ai";
 import { redactCustomerPii } from "./privacy";
+import { findMarketCandidates } from "./search";
 import {
   CUSTOMER_CADENCES,
+  CUSTOMER_MARKET_LANGS,
   CUSTOMER_MARKETS,
   CUSTOMER_MATERIAL_ORIGINS,
   CUSTOMER_REVIEW_STATUSES,
@@ -36,10 +39,15 @@ import {
   type CustomerMarket,
   type CustomerMaterialOrigin,
   type CustomerReviewStatus,
+  type CustomerSearchPlan,
   type CustomerSegment,
 } from "./types";
 
 const CUSTOMER_PROMPT_VERSION = "customer-v1";
+// v2（2026-11）：原话由程序逐字核对，商家的介绍和广告不算顾客的话。
+// v3（2026-11）：整页是商家自己的页面的一条不收（那上面的「お客様の声」是商家挑的）。
+// 以前存下的证据是 customer-v1（两道都没过）、customer-evidence-v2（可能混着商家挑的评价），要清理时按这个认。
+const CUSTOMER_EVIDENCE_PROMPT_VERSION = "customer-evidence-v3";
 
 type CreateCustomerCaseInput = {
   title: string;
@@ -156,7 +164,7 @@ async function upsertMaterial(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-  return data.id as string;
+  return { id: data.id as string, sanitizedText: sanitized };
 }
 
 async function attachMaterial(
@@ -214,33 +222,40 @@ export async function searchCustomerMaterials(
 ): Promise<CustomerSearchResult> {
   const userId = await requireUserId();
   const customerCase = await requireCustomerCase(caseId, userId);
-  const translations = await translateQuery(
-    `${customerCase.customer_hypothesis} ${customerCase.problem_context}`
-  );
-  const queryByMarket: Record<CustomerMarket, string> = {
-    cn: translations.zh,
-    jp: translations.ja,
-    en: translations.en,
-  };
-  const languageByMarket: Record<CustomerMarket, string> = {
-    cn: "zh",
-    jp: "ja",
-    en: "en",
-  };
+  const markets = customerCase.markets as CustomerMarket[];
+  const caseText = `${customerCase.customer_hypothesis} ${customerCase.problem_context}`;
+  // 先让 AI 按普通人的说法写搜索词；写不出来就照旧把整句翻译过去搜。
+  let plan: CustomerSearchPlan = {};
+  try {
+    plan = await planCustomerSearch({
+      hypothesis: customerCase.customer_hypothesis,
+      context: customerCase.problem_context,
+      markets,
+    });
+  } catch (caught) {
+    console.error("顾客搜索词没写出来，改用翻译", caught);
+  }
+  const needsTranslation = markets.some((market) => !plan[market]);
+  const translations = needsTranslation
+    ? await translateQuery(caseText)
+    : { zh: caseText, ja: caseText, en: caseText };
   const settled = await Promise.allSettled(
-    (customerCase.markets as CustomerMarket[]).map(async (market) => {
-      const results = await webSearch(queryByMarket[market], 8);
+    markets.map(async (market) => {
+      const results = await findMarketCandidates(
+        market,
+        plan[market],
+        translations[CUSTOMER_MARKET_LANGS[market]]
+      );
       let inserted = 0;
       for (const result of results) {
-        if (!result.url || !result.content.trim()) continue;
-        const materialId = await upsertMaterial(userId, {
+        const { id: materialId } = await upsertMaterial(userId, {
           origin: "web",
           source: hostname(result.url),
           sourceId: result.url,
           sourceUrl: result.url,
           title: result.title,
           text: result.content,
-          language: languageByMarket[market],
+          language: CUSTOMER_MARKET_LANGS[market],
           market,
         });
         await attachMaterial(caseId, materialId, "candidate");
@@ -253,7 +268,7 @@ export async function searchCustomerMaterials(
   let inserted = 0;
   const errors: CustomerSearchResult["errors"] = [];
   settled.forEach((result, index) => {
-    const market = (customerCase.markets as CustomerMarket[])[index];
+    const market = markets[index];
     if (result.status === "fulfilled") inserted += result.value.inserted;
     else {
       console.error("顾客市场搜索失败", { market, error: result.reason });
@@ -285,6 +300,20 @@ export async function previewCustomerUrl(url: string) {
   };
 }
 
+export type CustomerMaterialAddResult = {
+  materialId: string;
+  /** 这份材料现在有几条证据；提取失败时为 null。 */
+  evidenceCount: number | null;
+  /** 提取失败的原因。材料本身已经存下、已保留，可以再提取一次。 */
+  evidenceError: string | null;
+};
+
+function evidenceErrorMessage(caught: unknown): string {
+  if (caught instanceof AiGatewayError) return humanAiErrorMessage(caught.code);
+  if (caught instanceof Error && caught.message.trim()) return caught.message;
+  return "提取失败";
+}
+
 export async function addCustomerMaterial(
   caseId: string,
   input: {
@@ -295,7 +324,7 @@ export async function addCustomerMaterial(
     market?: CustomerMarket;
     confirmed: boolean;
   }
-): Promise<string> {
+): Promise<CustomerMaterialAddResult> {
   if (!input.confirmed) throw new Error("请先确认遮蔽后的材料");
   if (!CUSTOMER_MATERIAL_ORIGINS.includes(input.origin)) {
     throw new Error("材料类型无效");
@@ -303,19 +332,41 @@ export async function addCustomerMaterial(
   const userId = await requireUserId();
   await requireCustomerCase(caseId, userId);
   const sanitized = redactCustomerPii(cleanText(input.text, "材料", 20_000));
-  const materialId = await upsertMaterial(userId, {
+  const title = cleanText(input.title, "材料标题", 160);
+  const source = input.sourceUrl ? hostname(input.sourceUrl) : "user";
+  const { id: materialId, sanitizedText } = await upsertMaterial(userId, {
     origin: input.origin,
-    source: input.sourceUrl ? hostname(input.sourceUrl) : "user",
+    source,
     sourceId: input.sourceUrl || null,
     sourceUrl: input.sourceUrl || null,
-    title: cleanText(input.title, "材料标题", 160),
+    title,
     text: sanitized.text,
     market: input.market ?? null,
   });
   await attachMaterial(caseId, materialId, "kept");
+
+  // 材料先存下、先保留，再提取证据：AI 出错时用户贴进来的东西不能丢。
+  // 只有提取出证据的材料才会进「区分顾客声音」和模式报告。
+  let evidenceCount: number | null = null;
+  let evidenceError: string | null = null;
+  try {
+    evidenceCount = await extractAndSaveMaterialEvidence(
+      {
+        id: materialId,
+        title,
+        source,
+        sanitized_text: sanitizedText,
+      },
+      userId
+    );
+  } catch (caught) {
+    console.error("用户材料提取证据失败", { materialId, error: caught });
+    evidenceError = evidenceErrorMessage(caught);
+  }
+
   revalidatePath(`/customer-view/${caseId}`);
   revalidatePath("/customer-view/library");
-  return materialId;
+  return { materialId, evidenceCount, evidenceError };
 }
 
 async function loadMaterialForCase(
@@ -349,14 +400,13 @@ async function extractAndSaveMaterialEvidence(
     sanitized_text: string;
   },
   userId: string
-) {
+): Promise<number> {
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("customer_evidence_atoms")
     .select("id")
-    .eq("material_id", material.id)
-    .limit(1);
+    .eq("material_id", material.id);
   if (existingError) throw new Error(existingError.message);
-  if ((existing ?? []).length > 0) return;
+  if ((existing ?? []).length > 0) return (existing ?? []).length;
 
   const atoms = await extractCustomerEvidence([
     {
@@ -366,7 +416,7 @@ async function extractAndSaveMaterialEvidence(
       text: material.sanitized_text,
     },
   ]);
-  if (atoms.length === 0) return;
+  if (atoms.length === 0) return 0;
   const { error } = await supabaseAdmin.from("customer_evidence_atoms").insert(
     atoms.map((atom) => ({
       user_id: userId,
@@ -378,10 +428,29 @@ async function extractAndSaveMaterialEvidence(
       tradeoff: atom.tradeoff,
       emotion: atom.emotion,
       emotion_basis: atom.emotion_basis,
-      prompt_version: CUSTOMER_PROMPT_VERSION,
+      prompt_version: CUSTOMER_EVIDENCE_PROMPT_VERSION,
     }))
   );
   if (error) throw new Error(error.message);
+  return atoms.length;
+}
+
+/** 已保留但还没有证据的材料（提取失败过、或修好以前贴进来的），再提取一次。 */
+export async function retryCustomerMaterialEvidence(
+  caseId: string,
+  materialId: string
+): Promise<number> {
+  const userId = await requireUserId();
+  const { link, material } = await loadMaterialForCase(
+    caseId,
+    materialId,
+    userId
+  );
+  if (link.status !== "kept") throw new Error("只有已保留的材料才会提取证据");
+  const count = await extractAndSaveMaterialEvidence(material, userId);
+  revalidatePath(`/customer-view/${caseId}`);
+  revalidatePath("/customer-view/library");
+  return count;
 }
 
 export async function reviewCustomerMaterial(

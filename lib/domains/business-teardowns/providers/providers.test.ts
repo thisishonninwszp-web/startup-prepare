@@ -86,6 +86,14 @@ it("identifies saved item inspection as item fields and excludes ranking evidenc
   mockApi({ Items: [{ ...item, rank: 31 }] });
   const inspected = await inspectRakutenItem(item.itemCode);
   expect(inspected.snapshot.coverage).toContain("未保存候选榜单排名或筛选范围");
-  expect(inspected.snapshot.structured).toMatchObject({ sourceEndpoint: "IchibaItem/Search/20260701", query: { itemCode: item.itemCode, hits: 1, page: 1 }, returnedCount: 1 });
+  expect(inspected.snapshot.structured).toMatchObject({ sourceEndpoint: "IchibaItem/Search/20260701", query: { itemCode: item.itemCode, hits: 1, page: 1, availability: 0 }, returnedCount: 1 });
   expect(inspected.snapshot.structured).not.toHaveProperty("rank");
+});
+
+it("looks up the day's pick even when it has just sold out, and keeps the stock flag", async () => {
+  const fetcher = mockApi({ Items: [{ ...item, availability: 0 }] });
+  const inspected = await inspectRakutenItem(item.itemCode, { shopCode: item.shopCode });
+  expect(new URL(String(fetcher.mock.calls[0][0])).searchParams.get("availability")).toBe("0");
+  expect(inspected.snapshot.structured).toMatchObject({ availability: 0 });
+  expect(inspected.snapshot.coverage).toContain("availability=0");
 });
