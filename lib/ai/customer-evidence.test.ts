@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const gateway = vi.hoisted(() => ({ json: vi.fn() }));
 vi.mock("./reality", () => ({ generateRealityJson: gateway.json }));
 
-import { extractCustomerEvidence } from "./customer";
+import { extractCustomerEvidence, segmentCustomerVoices } from "./customer";
 
 const interview = {
   id: "interview",
@@ -109,5 +109,69 @@ describe("extractCustomerEvidence", () => {
     await expect(extractCustomerEvidence([interview])).rejects.toThrow(
       "未被允许的材料"
     );
+  });
+});
+
+describe("segmentCustomerVoices", () => {
+  const evidence = (id: string, quote: string) => ({
+    id,
+    material_id: `m-${id}`,
+    quote,
+    scene: "",
+    behavior: "",
+    alternative: "",
+    tradeoff: "",
+    emotion: "",
+    emotion_basis: "stated" as const,
+  });
+  const atoms = [
+    evidence("owner", "閉店後に毎日30分かけて手書きの伝票を集計しています。"),
+    evidence("staff", "居酒屋のバイトでレジ締めを任されています。"),
+    evidence("contrary", "うちは小さな店なので、レジ締めは5分で終わります。"),
+  ];
+  const customerCase = {
+    hypothesis: "個人経営の小さな飲食店の店主",
+    context: "閉店後に売上の集計とレジ締めを手作業でしていて、毎日30分以上かかる",
+  };
+
+  it("gives the AI the case, and only counts set-asides backed by words in the evidence", async () => {
+    gateway.json.mockImplementation(async (_system, _content, parse) =>
+      parse({
+        segments: [
+          {
+            key: "owner",
+            label: "手で集計している店主",
+            situation: "閉店後",
+            behaviors: ["手書き伝票を集計"],
+            evidence_ids: ["owner"],
+            unknowns: [],
+          },
+        ],
+        set_aside: [
+          { evidence_id: "staff", reason: "other_person", basis: "バイト", note: "说话的是打工的" },
+          { evidence_id: "contrary", reason: "other_person", basis: "小さな店", note: "和假设相反" },
+        ],
+      })
+    );
+
+    const result = await segmentCustomerVoices(atoms, customerCase);
+
+    const [system, content] = gateway.json.mock.calls[0] as [string, string];
+    expect(content).toContain(`顾客假设：${customerCase.hypothesis}`);
+    expect(content).toContain(customerCase.context);
+    expect(system).toContain("反例最值钱");
+    expect(result.set_aside?.map((item) => item.evidence_id)).toEqual(["staff"]);
+  });
+
+  it("still refuses voices that cite evidence it was not given", async () => {
+    gateway.json.mockImplementation(async (_system, _content, parse) =>
+      parse({
+        segments: [
+          { key: "x", label: "x", situation: "x", behaviors: [], evidence_ids: ["made-up"], unknowns: [] },
+        ],
+      })
+    );
+
+    await expect(segmentCustomerVoices(atoms, customerCase)).rejects.toThrow("未被允许的证据");
   });
 });

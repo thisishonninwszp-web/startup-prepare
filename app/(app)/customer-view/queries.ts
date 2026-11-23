@@ -278,12 +278,16 @@ export async function getCustomerCaseDetail(caseId: string, userId: string) {
       };
     }),
     atoms: (atoms ?? []) as CustomerEvidenceAtom[],
-    runs: (runs ?? []).map((run) => ({
-      id: run.id as string,
-      evidence_ids: (run.evidence_ids ?? []) as string[],
-      segments: parseCustomerSegments(run.segments).segments,
-      created_at: run.created_at as string,
-    })),
+    runs: (runs ?? []).map((run) => {
+      const parsed = parseCustomerSegments(run.segments);
+      return {
+        id: run.id as string,
+        evidence_ids: (run.evidence_ids ?? []) as string[],
+        segments: parsed.segments,
+        set_aside: parsed.set_aside ?? [],
+        created_at: run.created_at as string,
+      };
+    }),
     versions: (versions ?? []).map((version) => ({
       id: version.id as string,
       research_run_id: version.research_run_id as string,

@@ -4,6 +4,7 @@ import {
   customerVoiceSearch,
   filterEvidenceForSegment,
   keepCustomerWords,
+  keepSupportedSetAside,
   mentionsTopic,
   quoteInMaterial,
   nextCustomerRun,
@@ -12,6 +13,7 @@ import {
   parseCustomerOpportunities,
   parseCustomerProxyAnswer,
   parseCustomerSegments,
+  unplacedEvidenceIds,
   validateCustomerCitations,
 } from "./types";
 
@@ -283,6 +285,91 @@ describe("customer segmentation", () => {
     ).toHaveLength(2);
 
     expect(() => parseCustomerSegments({ segments: [] })).toThrow("segments");
+  });
+
+  const voice = (key: string, evidence_ids: string[]) => ({
+    key,
+    label: key,
+    situation: "关店后对账",
+    behaviors: ["手工核对"],
+    evidence_ids,
+    unknowns: [],
+  });
+
+  it("allows one voice, or none when everything was set aside, and reads what was set aside", () => {
+    const one = parseCustomerSegments({
+      segments: [voice("owner", ["e1", "e2"])],
+      set_aside: [
+        { evidence_id: "e3", reason: "other_person", basis: "バイト", note: "说话的是打工的" },
+        // 已经分进声音的，以分进去的为准
+        { evidence_id: "e2", reason: "other_matter", basis: "x", note: "" },
+        { evidence_id: "e3", reason: "other_person", basis: "バイト", note: "重复" },
+      ],
+    });
+    expect(one.segments).toHaveLength(1);
+    expect(one.set_aside).toEqual([
+      { evidence_id: "e3", reason: "other_person", basis: "バイト", note: "说话的是打工的" },
+    ]);
+
+    const none = parseCustomerSegments({
+      segments: [],
+      set_aside: [{ evidence_id: "e1", reason: "other_matter", basis: "プリンター", note: "" }],
+    });
+    expect(none.segments).toEqual([]);
+
+    expect(() =>
+      parseCustomerSegments({
+        segments: [voice("owner", ["e1"])],
+        set_aside: [{ evidence_id: "e2", reason: "not_supporting", basis: "", note: "" }],
+      })
+    ).toThrow("reason");
+    // 以前存下的研究批次没有 set_aside
+    expect(
+      parseCustomerSegments({ segments: [voice("a", ["e1"]), voice("b", ["e2"])] })
+    ).not.toHaveProperty("set_aside");
+  });
+
+  it("only counts a set-aside that cites words in the evidence and is not a hypothesis or a guess", () => {
+    const atom = (id: string, quote: string) => ({
+      id,
+      material_id: `m-${id}`,
+      quote,
+      scene: "",
+      behavior: "",
+      alternative: "",
+      tradeoff: "",
+      emotion: "",
+      emotion_basis: "stated" as const,
+    });
+    const atoms = [
+      atom("staff", "居酒屋のバイトでレジ締めを任されています。"),
+      atom("printer", "プリンターのクリーニングをしても直りません。"),
+      atom("contrary", "うちは小さな店なので、レジ締めは5分で終わります。"),
+      atom("unsure", "毎晩お店を閉めてから計算しています。"),
+    ];
+    const kept = keepSupportedSetAside(
+      {
+        segments: [],
+        set_aside: [
+          { evidence_id: "staff", reason: "other_person", basis: "バイト", note: "说话的是打工的" },
+          { evidence_id: "printer", reason: "other_matter", basis: "プリンター", note: "讲的是打印机" },
+          { evidence_id: "contrary", reason: "other_person", basis: "小さな店", note: "和假设相反，不是这类店主" },
+          { evidence_id: "unsure", reason: "other_person", basis: "お店", note: "无法确认是不是店主" },
+          { evidence_id: "staff", reason: "other_person", basis: "店員", note: "原文里没有这两个字" },
+        ],
+      },
+      atoms
+    );
+    expect(kept.set_aside?.map((item) => item.evidence_id)).toEqual(["staff", "printer"]);
+
+    // 没凭据的那两条不算放到一边，会落进「没分进任何一类」
+    expect(
+      unplacedEvidenceIds({
+        evidence_ids: ["staff", "printer", "contrary", "unsure"],
+        segments: kept.segments,
+        set_aside: kept.set_aside,
+      })
+    ).toEqual(["contrary", "unsure"]);
   });
 
   it("keeps a proxy inside the selected segment evidence boundary", () => {
