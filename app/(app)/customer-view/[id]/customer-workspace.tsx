@@ -427,12 +427,13 @@ export function CustomerWorkspace({
             <Button
               key={key}
               type="button"
+              variant="ghost"
               onClick={() => setTab(key as typeof tab)}
               className={
-                "shrink-0 border-b-2 px-3 py-3 text-xs " +
+                "h-auto shrink-0 rounded-none border-b-2 px-3 py-3 text-xs " +
                 (tab === key
                   ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground")
+                  : "border-transparent text-muted-foreground hover:text-foreground")
               }
             >
               {label}
@@ -457,7 +458,8 @@ export function CustomerWorkspace({
                 type="button"
                 onClick={searchWeb}
                 disabled={busy === "search"}
-                className="rounded-lg border bg-card p-5 text-left hover:bg-muted/40"
+                variant="outline"
+                className="h-auto flex-col items-start justify-start gap-0 whitespace-normal rounded-lg bg-card p-5 text-left font-normal shadow-none hover:bg-muted/40 hover:text-foreground"
               >
                 <Search className="size-4" />
                 <div className="mt-4 text-sm font-medium">搜索公开材料</div>
@@ -468,7 +470,8 @@ export function CustomerWorkspace({
               <Button
                 type="button"
                 onClick={() => setMaterialOpen(true)}
-                className="rounded-lg border bg-card p-5 text-left hover:bg-muted/40"
+                variant="outline"
+                className="h-auto flex-col items-start justify-start gap-0 whitespace-normal rounded-lg bg-card p-5 text-left font-normal shadow-none hover:bg-muted/40 hover:text-foreground"
               >
                 <Plus className="size-4" />
                 <div className="mt-4 text-sm font-medium">添加用户材料</div>
