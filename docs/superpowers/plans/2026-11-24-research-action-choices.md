@@ -57,7 +57,7 @@ type ActionChoiceIdeas={available:boolean;items:{id:string;title:string}[];nextC
 
 **Modify:** `lib/domains/business-teardowns/{reality-checks,followup-checks,explanations,reality-results,history}/{domain.ts,transport.ts}`及对应测试。必要时只改已有SQL测试fixture的组合载入，不修改历史迁移。此任务不改app/schema/git。
 
-- [ ] 先写并观察domain RED，再实现契约与纯helper。例如：
+- [x] 先写并观察domain RED，再实现契约与纯helper。例如：
 
 ```ts
 expect(actionChoiceInputSchema.safeParse({...choice,decision:' '}).success).toBe(false);
@@ -66,14 +66,14 @@ expect(sameActionForKnownOutcomes({...choice,mapping:{a:'hold',b:'hold',unclear:
 expect(expectedAction(choice,'both')).toBe(choice.mapping.unclear);
 ```
 
-- [ ] `npx vitest run lib/domains/business-teardowns/action-choices`确认正确RED；实现strict schema、字符串边界、source kind约束、非评分提示范围；跑GREEN。
-- [ ] 从withdrawals基础SQL harness载入真实119–150（147–150显式按序追加），先执行未有151时的RED。fixture有两个auth owner和最低可用ideas表，三个origin分别用真实命令创建，不用伪造假origin。
-- [ ] 151新增 `business_reality_action_choices` FK(user_id,plan_id,revision)→真实139版本，`business_reality_result_actions` owner/result关联；RLS、零直接grant、固定path、private helper撤EXECUTE。不添加想法状态或新表级API公开权限。
-- [ ] 原子扩展三个save与result append/erase，保持137 owner锁和既有回执语义。扩展回执必须绑定完整input，legacy回执原样可重放；任何约定/review校验失败或回执写失败都回滚主体写入。未知ack不产生新requestId。
-- [ ] 补齐现行DTO与143历史投影的optional字段。计划历史/current/result-plan/result-version/result-record分别取精确revision。不能从较新版重建旧版约定；解释expectations与choice同事务同版，原来源过滤不变。
-- [ ] 实际SQL断言：v1约定→result(v1)→plan(v2约定改变)→result仍v1；显式null创建v3无约定但v1仍在；省略更新有约定报错；其他owner/错误version/foreign idea拒绝；source丢失保留本人约定，idea丢失无旧标题；erase plan清所有choice和结果投影，独立review保留；erase result删除review；receipt重放不恢复擦除正文。
-- [ ] 新context RPC只读ideas，owner/service/strict cursor与20+同时间分页；source metadata不进回执；source/目标内容读失败不能当不存在的成功。
-- [ ] scoped domain/transport + actualSQL；root安排规格审查、修正，再质量审查。稳定契约写HANDOFF，列出任何出于真实代码限制的调整，再交任务2。
+- [x] `npx vitest run lib/domains/business-teardowns/action-choices`确认正确RED；实现strict schema、字符串边界、source kind约束、非评分提示范围；跑GREEN。
+- [x] 从withdrawals基础SQL harness载入真实119–150（147–150显式按序追加），先执行未有151时的RED。fixture有两个auth owner和最低可用ideas表，三个origin分别用真实命令创建，不用伪造假origin。
+- [x] 151新增 `business_reality_action_choices` FK(user_id,plan_id,revision)→真实139版本，`business_reality_result_actions` owner/result关联；RLS、零直接grant、固定path、private helper撤EXECUTE。不添加想法状态或新表级API公开权限。
+- [x] 原子扩展三个save与result append/erase，保持137 owner锁和既有回执语义。扩展回执必须绑定完整input，legacy回执原样可重放；任何约定/review校验失败或回执写失败都回滚主体写入。未知ack不产生新requestId。
+- [x] 补齐现行DTO与143历史投影的optional字段。计划历史/current/result-plan/result-version/result-record分别取精确revision。不能从较新版重建旧版约定；解释expectations与choice同事务同版，原来源过滤不变。
+- [x] 实际SQL断言：v1约定→result(v1)→plan(v2约定改变)→result仍v1；显式null创建v3无约定但v1仍在；省略更新有约定报错；其他owner/错误version/foreign idea拒绝；source丢失保留本人约定，idea丢失无旧标题；erase plan清所有choice和结果投影，独立review保留；erase result删除review；receipt重放不恢复擦除正文。
+- [x] 新context RPC只读ideas，owner/service/strict cursor与20+同时间分页；source metadata不进回执；source/目标内容读失败不能当不存在的成功。
+- [x] scoped domain/transport + actualSQL；root安排规格审查、修正，再质量审查。稳定契约写HANDOFF，列出任何出于真实代码限制的调整，再交任务2。
 
 运行：`node lib/domains/business-teardowns/action-choices/postgres.integration.mjs C:/Users/pc/.codex/visualizations/2026/10/25/01a17228-5263-75d0-96db-ac39e7f31278/event-db-test/node_modules/@electric-sql/pglite/dist/index.js`。期望明确打印三个origin/oldDTO/exact versions/erase/ACL/rollback passed；不宣称真实多连接并发实测。
 
@@ -105,9 +105,9 @@ expect(save.mock.calls[1][0].actionChoice.mapping).toEqual(pendingFirst.actionCh
 
 **Modify:** `simulation/checks/results/{use-reality-results.ts,reality-results-panel.tsx,reality-results-views.tsx}`及workflow/view tests；`history/confirmation-history-view.tsx`及tests。不改Task2计划编辑器。
 
-- [ ] RED snapshot视图：展示选定版decision/conditions/mapping，latest plan不同不覆盖；plan删除显示原约定擦除，独立review只显示本人理由/实际执行，不恢复旧行动正文/关联idea标题。
-- [ ] 结果独立可选review，fields outcome/nextAction/otherAction/reason/执行记录；execution何事+日期共同填或共同留空，最大日期Tokyo today。明确“准备采用”与“本人记录已执行”。未知/同时/都不符合允许，expected mapping只是参照，不自动选赢家。
-- [ ] preview展示原版约定+本人review，任何改动使确认失效；保存完整review到result append同事务；没填写不伪造。changed chosen action与原分支不同允许，并列显示，不写评分。
+- [x] RED snapshot视图：展示选定版decision/conditions/mapping，latest plan不同不覆盖；plan删除显示原约定擦除，独立review只显示本人理由/实际执行，不恢复旧行动正文/关联idea标题。
+- [x] 结果独立可选review，fields outcome/nextAction/otherAction/reason/执行记录；execution何事+日期共同填或共同留空，最大日期Tokyo today。明确“准备采用”与“本人记录已执行”。未知/同时/都不符合允许，expected mapping只是参照，不自动选赢家。
+- [x] preview展示原版约定+本人review，任何改动使确认失效；保存完整review到result append同事务；没填写不伪造。changed chosen action与原分支不同允许，并列显示，不写评分。
 
 ```ts
 expect(renderSnapshot(version1,version2)).toContain(version1.actionChoice.choice.currentAction);
@@ -115,9 +115,9 @@ expect(renderReview({...review,execution:null})).toContain('尚未记录实际�
 expect(renderReview(review)).not.toContain('真实需求已验证');
 ```
 
-- [ ] useRealityResults：review参与dirty、新draft/reset、选plan/version、acklost pin、focus、preview；未知写不能切到较新planRevision；erase清独立review视图和缓存，不让stale read恢复。
-- [ ] 确认历史原节点追加可选ChoiceView/ReviewView；解释/模拟/后续父节点、exact links、pagination和原TimingNote照常。workspace仍用既有种类，不额外复制choice prose到新缓存。
-- [ ] scoped Vitest与真实SQL混合回归；独立规格后质量审查。
+- [x] useRealityResults：review参与dirty、新draft/reset、选plan/version、acklost pin、focus、preview；未知写不能切到较新planRevision；erase清独立review视图和缓存，不让stale read恢复。
+- [x] 确认历史原节点追加可选ChoiceView/ReviewView；解释/模拟/后续父节点、exact links、pagination和原TimingNote照常。workspace仍用既有种类，不额外复制choice prose到新缓存。
+- [x] scoped Vitest与真实SQL混合回归；独立规格后质量审查。
 
 ### Task4: Actual browser lifecycle and final review
 
@@ -139,3 +139,13 @@ expect(renderReview(review)).not.toContain('真实需求已验证');
 ## 计划自检
 
 已覆盖具体设计的三个origin、optional字段、mapping范围、本人条件、linked idea、逐版/事后补录、未知/未执行、full-body retry、source/plan/result删除、旧DTO/旧client写保护、服务权限和发布边界。以上类型和字段为公共契约，代理不得单方面改名；必要调整先反馈root并同步本计划。无新AI/付费任务/锁定/评分/想法状态副作用。
+
+
+## Implementation evidence (2026-11-24 JST)
+
+- Latestmain8fc69c2 customer updates merged without conflict; baseline423files2649tests passed. Existing linkedworktree reused.
+- Task1 domain/contracts,151SQL and all DTOs are stable;15targetedfiles68tests, actual151 and all4old139/141/143/147assertion suites pass. Original pre151-generated receipts replay after151. SPEC finding explanation allowing explicitconditions fixed TS+SQL. Rootfound nullable ideas.title; newSQLfixture reproducednull→emptystring mismatch and now passes withowneduntitledideaavailable. Fresh qualityreview in progress.
+- RootTask3 shared views/results/history done. Independent sequential SPEC+quality clear:11files81tests and8implementationfilelint passed. Source choice/title only shown afterfresh exactversionverification; independent review survives planerase; source readfailure hidesoldmetadata; changed review body cannot be adopted afterack; full pendingrequest includesreview. Reviewoutcome/nextAction startblank, actualexecution optionalanddatebounded.
+- Integratedcurrentfullsuite428files2684tests passed, incremental-disabled TypeScript and ESLint passed. Source/UI/scripts still uncommitted pending Task1quality and Task2planeditors. Localbrowserfixture prepared under.tmp/action-choices, bundlebuild succeeds; no server started or actualbrowser acceptance yet.
+
+- Task1 independentqualityclear:68tests+actual151+fourunchangedlegacySQL suites independently rerunPASS; no remainingmaterialfindings. Rootactual151 andlegacy scripts alsoPASS. Task1 androotTask3ready, Task2begins next.

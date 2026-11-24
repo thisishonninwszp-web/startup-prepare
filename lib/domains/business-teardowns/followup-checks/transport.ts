@@ -1,3 +1,4 @@
+import {actionChoiceMatchesExpectations,actionChoiceViewSchema} from '../action-choices/domain';
 import {z} from 'zod';
 import {supabaseAdminUncached} from '@/lib/supabase';
 import {cashDate} from '../cash/domain';
@@ -11,7 +12,7 @@ const keyset=z.object({date:stamp,id:followupCheckUuid}).strict();
 const encodedCursor=z.string().max(400).regex(/^[A-Za-z0-9_-]+$/).refine(value=>{try{return Buffer.from(value,'base64url').toString('base64url')===value&&keyset.safeParse(JSON.parse(Buffer.from(value,'base64url').toString('utf8'))).success;}catch{return false;}},'分页位置不正确');
 const pageInput=z.object({caseId:followupCheckUuid.optional(),resultId:followupCheckUuid.optional(),before:encodedCursor.optional()}).strict();
 const sourceSchema=z.object({id:followupCheckUuid,caseId:followupCheckUuid,body:realityResultBodySchema,createdAt:stamp}).strict();
-const recordSchema=z.object({id:followupCheckUuid,caseId:followupCheckUuid,resultId:followupCheckUuid,plan:realityCheckPlanSchema,revision,createdAt:stamp,updatedAt:stamp,source:sourceSchema.nullable()}).strict().refine(value=>value.source===null||(value.source.id===value.resultId&&value.source.caseId===value.caseId),'调查来源与计划不一致');
+const recordSchema=z.object({id:followupCheckUuid,caseId:followupCheckUuid,resultId:followupCheckUuid,plan:realityCheckPlanSchema,revision,createdAt:stamp,updatedAt:stamp,source:sourceSchema.nullable(),actionChoice:actionChoiceViewSchema.optional()}).strict().refine(value=>value.source===null||(value.source.id===value.resultId&&value.source.caseId===value.caseId),'调查来源与计划不一致').refine(value=>actionChoiceMatchesExpectations(value.actionChoice),'行动条件与计划起点不一致');
 const pageSchema=z.object({items:z.array(recordSchema).max(20),nextCursor:keyset.nullable()}).strict();
 async function rpc<T>(owner:string,name:string,operation:string,input:unknown,schema:z.ZodType<T>):Promise<T>{const user=followupCheckUuid.parse(owner);const {data,error}=await supabaseAdminUncached.rpc(name,{p_user_id:user,p_operation:operation,p_input:input});if(error)throw Object.assign(new Error(error.message),{code:error.code});return schema.parse(data);}
 function decode(input:z.infer<typeof pageInput>){return {...(input.caseId?{caseId:input.caseId}:{}),...(input.resultId?{resultId:input.resultId}:{}),...(input.before?{before:keyset.parse(JSON.parse(Buffer.from(input.before,'base64url').toString('utf8')))}:{})};}

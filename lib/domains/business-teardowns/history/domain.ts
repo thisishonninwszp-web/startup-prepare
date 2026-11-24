@@ -1,3 +1,4 @@
+import {actionChoiceMatchesExpectations,actionChoiceViewSchema,actionReviewSchema,type ActionChoiceView,type ActionReview} from '../action-choices/domain';
 import {z} from 'zod';
 import {explanationExpectationsSchema,type ExplanationExpectations} from '../explanations/domain';
 import {cashDate,cashUuid} from '../cash/domain';
@@ -6,7 +7,7 @@ import {realityResultBodySchema,type RealityResultBody} from '../reality-results
 
 export const confirmationUuid=cashUuid;
 export type ConfirmationParent={kind:'simulation'|'result'|'plan'|'explanation';id:string;revision:number;available:boolean};
-export type ConfirmationNode={kind:'plan'|'result';id:string;caseId:string;revision:number;at:string;parent:ConfirmationParent;plan:RealityCheckPlan|null;body:RealityResultBody|null;planSnapshot:RealityCheckPlan|null;planSavedAt:string|null;snapshotErasedAt:string|null;expectations?:ExplanationExpectations};
+export type ConfirmationNode={kind:'plan'|'result';id:string;caseId:string;revision:number;at:string;parent:ConfirmationParent;plan:RealityCheckPlan|null;body:RealityResultBody|null;planSnapshot:RealityCheckPlan|null;planSavedAt:string|null;snapshotErasedAt:string|null;expectations?:ExplanationExpectations;actionChoice?:ActionChoiceView;actionReview?:ActionReview};
 export type ConfirmationHistory={available:boolean;items:ConfirmationNode[];nextCursor:string|null};
 export type ConfirmationNodeKey={kind:'plan';id:string;revision:number}|{kind:'result';id:string};
 export const confirmationRevision=z.number().int().min(1).max(2147483647);
@@ -22,10 +23,10 @@ export const confirmationCursorSchema=z.object({at:confirmationStamp,kind:z.enum
 export const confirmationNodeSchema=z.object({
  kind:z.enum(['plan','result']),id:confirmationUuid,caseId:confirmationUuid,revision:confirmationRevision,at:confirmationStamp,
  parent:z.object({kind:z.enum(['simulation','result','plan','explanation']),id:confirmationUuid,revision:confirmationRevision,available:z.boolean()}).strict(),
- plan:realityCheckPlanSchema.nullable(),body:realityResultBodySchema.nullable(),planSnapshot:realityCheckPlanSchema.nullable(),planSavedAt:confirmationStamp.nullable(),snapshotErasedAt:confirmationStamp.nullable(),expectations:explanationExpectationsSchema.optional(),
+ plan:realityCheckPlanSchema.nullable(),body:realityResultBodySchema.nullable(),planSnapshot:realityCheckPlanSchema.nullable(),planSavedAt:confirmationStamp.nullable(),snapshotErasedAt:confirmationStamp.nullable(),expectations:explanationExpectationsSchema.optional(),actionChoice:actionChoiceViewSchema.optional(),actionReview:actionReviewSchema.optional(),
 }).strict().refine(value=>value.kind==='plan'
- ?value.plan!==null&&value.body===null&&value.planSnapshot===null&&value.planSavedAt===null&&value.snapshotErasedAt===null&&((value.parent.kind==='simulation'&&value.parent.revision>=2)||(value.parent.kind==='result'&&value.parent.revision===1)||(value.parent.kind==='explanation'&&value.parent.id===value.id&&value.parent.revision===value.revision&&value.expectations!==undefined))
- :value.revision===1&&value.plan===null&&value.body!==null&&value.parent.kind==='plan'&&value.planSavedAt!==null&&(value.planSnapshot===null)===(value.snapshotErasedAt!==null)&&value.parent.available===(value.planSnapshot!==null)&&(value.planSnapshot!==null||value.expectations===undefined),'记录来源或擦除状态不一致');
+ ?value.actionReview===undefined&&value.plan!==null&&value.body===null&&value.planSnapshot===null&&value.planSavedAt===null&&value.snapshotErasedAt===null&&((value.parent.kind==='simulation'&&value.parent.revision>=2)||(value.parent.kind==='result'&&value.parent.revision===1)||(value.parent.kind==='explanation'&&value.parent.id===value.id&&value.parent.revision===value.revision&&value.expectations!==undefined))
+ :value.revision===1&&value.plan===null&&value.body!==null&&value.parent.kind==='plan'&&value.planSavedAt!==null&&(value.planSnapshot===null)===(value.snapshotErasedAt!==null)&&value.parent.available===(value.planSnapshot!==null)&&(value.planSnapshot!==null||(value.expectations===undefined&&value.actionChoice===undefined)),'记录来源或擦除状态不一致').refine(value=>actionChoiceMatchesExpectations(value.actionChoice,value.expectations),'行动条件与当版预期不一致');
 
 export type ConfirmationCursor=z.infer<typeof confirmationCursorSchema>;
 export function confirmationMicros(at:string):bigint{return BigInt(Date.parse(at))*BigInt(1000)+BigInt((at.match(/\.(\d+)/)?.[1]??'').padEnd(6,'0').slice(3,6));}

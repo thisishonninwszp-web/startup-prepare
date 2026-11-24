@@ -1,0 +1,3 @@
+import type {ActionChoiceView,ActionReview} from '@/lib/domains/business-teardowns/action-choices/domain';
+export const actionChoice:ActionChoiceView={choice:{decision:'下一份样本面向补货还是礼赠？',currentAction:'整理补货报价样本',alternativeAction:'制作礼赠样本',holdAction:'暂不制作，先核对购买说明',conditions:{kind:'explicit',a:'同一场景持续需要补充',b:'围绕一次节庆使用'},mapping:{a:'current',b:'alternative',unclear:'hold'},relatedIdeaId:null},conditionA:'同一场景持续需要补充',conditionB:'围绕一次节庆使用',ideaAvailable:false,ideaTitle:null};
+export const actionReview:ActionReview={outcome:'a',nextAction:'alternative',otherAction:null,reason:'这次材料只说明用途，交付条件仍让我先做礼赠样本。',execution:null};
