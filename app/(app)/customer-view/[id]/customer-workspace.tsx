@@ -37,6 +37,7 @@ import type {
   CustomerIdeaReaction,
 } from "../types";
 import { CustomerProxyView } from "./customer-proxy-view";
+import { CustomerVoices } from "./customer-voices";
 
 const MARKET_LABEL = { cn: "中国", jp: "日本", en: "英语市场" } as const;
 
@@ -639,66 +640,13 @@ export function CustomerWorkspace({
         )}
 
         {tab === "research" && (
-          <section>
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-medium">不同顾客声音</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  选择一种处境与行为，不要把几类人平均成不存在的典型顾客。
-                </p>
-              </div>
-              <Button
-                type="button"
-                onClick={research}
-                className="text-xs underline underline-offset-4"
-              >
-                用当前证据重新研究
-              </Button>
-            </div>
-            {!latestRun ? (
-              <p className="mt-8 text-sm text-muted-foreground">
-                先保留材料并运行研究。
-              </p>
-            ) : (
-              <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                {latestRun.segments.map((segment) => (
-                  <article
-                    key={segment.key}
-                    className="flex flex-col rounded-lg border bg-card p-5"
-                  >
-                    <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {segment.evidence_ids.length} evidence refs
-                    </div>
-                    <h3 className="mt-3 text-sm font-medium">{segment.label}</h3>
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                      {segment.situation}
-                    </p>
-                    <ul className="mt-4 space-y-1 text-xs leading-5">
-                      {segment.behaviors.map((item, index) => (
-                        <li key={index}>· {item}</li>
-                      ))}
-                    </ul>
-                    <div className="mt-4 rounded-md bg-muted p-3">
-                      <div className="text-[10px] text-muted-foreground">未知</div>
-                      {segment.unknowns.map((item, index) => (
-                        <p key={index} className="mt-1 text-xs">
-                          · {item}
-                        </p>
-                      ))}
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={() => selectSegment(segment.key)}
-                      disabled={busy === segment.key}
-                      className="mt-5"
-                    >
-                      用这类声音建立代理
-                    </Button>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
+          <CustomerVoices
+            run={latestRun}
+            atoms={initialCase.atoms}
+            busyKey={busy}
+            onResearch={research}
+            onSelectSegment={selectSegment}
+          />
         )}
 
         {tab === "proxy" && (

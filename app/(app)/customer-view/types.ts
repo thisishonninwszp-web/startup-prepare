@@ -164,7 +164,26 @@ export type CustomerSegment = {
   unknowns: string[];
 };
 
-export type CustomerSegments = { segments: CustomerSegment[] };
+/**
+ * 区分顾客声音时放到一边的证据：说话的不是课题里这类人（other_person，比如课题是店主、说话的是打工的），
+ * 或者讲的不是这件事（other_matter，比如课题是洗衣店、讲的是打印机清洁）。
+ * 只有这两种原因；这类人自己说的、和假设相反的话不许放到一边。
+ */
+export const SET_ASIDE_REASONS = ["other_person", "other_matter"] as const;
+export type SetAsideReason = (typeof SET_ASIDE_REASONS)[number];
+export type CustomerSetAside = {
+  evidence_id: string;
+  reason: SetAsideReason;
+  /** 证据里写明这一点的那几个字（「バイト」「店員」「プリンター」），程序逐字核对。 */
+  basis: string;
+  note: string;
+};
+
+export type CustomerSegments = {
+  segments: CustomerSegment[];
+  /** 以前的研究批次没有这一项。 */
+  set_aside?: CustomerSetAside[];
+};
 
 export type CustomerDayMoment = {
   time: string;
@@ -362,25 +381,92 @@ export function keepCustomerWords(
 export function parseCustomerSegments(value: unknown): CustomerSegments {
   const input = asObject(value, "顾客类型");
   if (!Array.isArray(input.segments)) throw new Error("segments必须是数组");
-  if (input.segments.length < 2 || input.segments.length > 3) {
-    throw new Error("segments必须包含2到3类顾客声音");
+  if (input.segments.length > 3) {
+    throw new Error("segments最多3类顾客声音");
   }
+  const rawSetAside = input.set_aside ?? [];
+  if (!Array.isArray(rawSetAside)) throw new Error("set_aside必须是数组");
+  // 只有一种处境就只写一类，不硬拆；证据全不是这个课题的人和事时可以一类都没有，但要说明放到一边的是哪些。
+  if (input.segments.length === 0 && rawSetAside.length === 0) {
+    throw new Error("segments至少要有1类顾客声音");
+  }
+  const segments = input.segments.map((item, index) => {
+    const row = asObject(item, `segments[${index}]`);
+    return {
+      key: asString(row.key, `segments[${index}].key`),
+      label: asString(row.label, `segments[${index}].label`),
+      situation: asString(row.situation, `segments[${index}].situation`),
+      behaviors: asStrings(row.behaviors, `segments[${index}].behaviors`),
+      evidence_ids: asIds(row.evidence_ids, `segments[${index}].evidence_ids`),
+      unknowns: asStrings(row.unknowns, `segments[${index}].unknowns`),
+    };
+  });
+  // 一条证据既分进了某类声音、又放到一边时，以分进去的为准。
+  const used = new Set(segments.flatMap((segment) => segment.evidence_ids));
+  const seen = new Set<string>();
+  const setAside = rawSetAside.flatMap((item, index): CustomerSetAside[] => {
+    const row = asObject(item, `set_aside[${index}]`);
+    const evidenceId = asString(row.evidence_id, `set_aside[${index}].evidence_id`);
+    if (!(SET_ASIDE_REASONS as readonly unknown[]).includes(row.reason)) {
+      throw new Error(`set_aside[${index}].reason只能是other_person或other_matter`);
+    }
+    if (used.has(evidenceId) || seen.has(evidenceId)) return [];
+    seen.add(evidenceId);
+    return [
+      {
+        evidence_id: evidenceId,
+        reason: row.reason as SetAsideReason,
+        basis: asString(row.basis, `set_aside[${index}].basis`, true).slice(0, 40),
+        note: asString(row.note, `set_aside[${index}].note`, true).slice(0, 120),
+      },
+    ];
+  });
   return {
-    segments: input.segments.map((item, index) => {
-      const row = asObject(item, `segments[${index}]`);
-      return {
-        key: asString(row.key, `segments[${index}].key`),
-        label: asString(row.label, `segments[${index}].label`),
-        situation: asString(row.situation, `segments[${index}].situation`),
-        behaviors: asStrings(row.behaviors, `segments[${index}].behaviors`),
-        evidence_ids: asIds(
-          row.evidence_ids,
-          `segments[${index}].evidence_ids`
-        ),
-        unknowns: asStrings(row.unknowns, `segments[${index}].unknowns`),
-      };
-    }),
+    segments,
+    ...(Array.isArray(input.set_aside) ? { set_aside: setAside } : {}),
   };
+}
+
+/** 研究用了、却既没分进哪类声音、也没放到一边的证据（AI 漏掉的）。页面上单独列出来，不让它悄悄不见。 */
+export function unplacedEvidenceIds(run: {
+  evidence_ids: string[];
+  segments: CustomerSegment[];
+  set_aside?: CustomerSetAside[];
+}): string[] {
+  const placed = new Set([
+    ...run.segments.flatMap((segment) => segment.evidence_ids),
+    ...(run.set_aside ?? []).map((item) => item.evidence_id),
+  ]);
+  return Array.from(new Set(run.evidence_ids)).filter((id) => !placed.has(id));
+}
+
+/** 放到一边的理由里出现这些说法，就是自己也拿不准 —— 拿不准的规矩是照样分进去。 */
+const UNSURE_NOTE =
+  /可能|不确定|无法确认|不能确认|无法判断|说不清|不清楚|不明|或许|也许|疑似|かもしれ|わから|不明確|判断できない|maybe|unclear|not sure|possibly/i;
+/** 理由里拿假设说事（「和假设相反」「不符合课题假设」），就是在拿「不支持假设」当理由 —— 不许。 */
+const HYPOTHESIS_NOTE = /假设|假說|仮説|相反|反対の|逆の|hypothes|contrary|opposite/i;
+
+/**
+ * 放到一边要有凭据：指出证据里写明「不是这类人 / 不是这件事」的那几个字（程序逐字核对），
+ * 理由里不许说自己拿不准，也不许拿「和假设不一样」当理由。没凭据的那一条不算放到一边 ——
+ * 它会落进「没分进任何一类」，摆在页面上给人看，而不是藏在一个理由后面；整份结果照样能用。
+ * （核对只保证这几个字真在证据里，证明不了它们真说明了「不是这类人」，所以页面上把这几个字也摆出来。）
+ */
+export function keepSupportedSetAside(
+  result: CustomerSegments,
+  atoms: CustomerEvidenceAtom[]
+): CustomerSegments {
+  if (!result.set_aside) return result;
+  const byId = new Map(atoms.map((atom) => [atom.id, atom]));
+  const supported = result.set_aside.filter((item) => {
+    if (UNSURE_NOTE.test(item.note) || HYPOTHESIS_NOTE.test(item.note)) return false;
+    const atom = byId.get(item.evidence_id);
+    if (!atom) return false;
+    const text = [atom.quote, atom.scene, atom.behavior, atom.alternative, atom.tradeoff, atom.emotion].join("\n");
+    const basis = squashQuote(item.basis);
+    return basis.length >= 2 && squashQuote(text).includes(basis);
+  });
+  return { ...result, set_aside: supported };
 }
 
 function parseBarrierMap(value: unknown): CustomerBarrierMap {
