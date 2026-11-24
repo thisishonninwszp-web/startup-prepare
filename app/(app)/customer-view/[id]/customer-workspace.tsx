@@ -31,13 +31,13 @@ import {
 } from "../actions";
 import { redactCustomerPii } from "../privacy";
 import type { CustomerCaseDetail } from "../queries";
-import {
-  unplacedEvidenceIds,
-  type CustomerCadence,
-  type CustomerMaterialOrigin,
-  type CustomerIdeaReaction,
+import type {
+  CustomerCadence,
+  CustomerMaterialOrigin,
+  CustomerIdeaReaction,
 } from "../types";
 import { CustomerProxyView } from "./customer-proxy-view";
+import { CustomerVoices } from "./customer-voices";
 
 const MARKET_LABEL = { cn: "中国", jp: "日本", en: "英语市场" } as const;
 
@@ -117,14 +117,6 @@ export function CustomerWorkspace({
     }
     return counts;
   }, [initialCase.atoms]);
-  const atomById = useMemo(
-    () => new Map(initialCase.atoms.map((atom) => [atom.id, atom])),
-    [initialCase.atoms]
-  );
-  const unplacedIds = useMemo(
-    () => (latestRun ? unplacedEvidenceIds(latestRun) : []),
-    [latestRun]
-  );
   const atomsForSelected = useMemo(() => {
     if (!selectedVersion) return initialCase.atoms;
     const allowed = new Set(selectedVersion.selected_segment.evidence_ids);
@@ -648,125 +640,13 @@ export function CustomerWorkspace({
         )}
 
         {tab === "research" && (
-          <section>
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-medium">不同顾客声音</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  选择一种处境与行为，不要把几类人平均成不存在的典型顾客。
-                </p>
-              </div>
-              <Button
-                type="button"
-                onClick={research}
-                className="text-xs underline underline-offset-4"
-              >
-                用当前证据重新研究
-              </Button>
-            </div>
-            {!latestRun ? (
-              <p className="mt-8 text-sm text-muted-foreground">
-                先保留材料并运行研究。
-              </p>
-            ) : latestRun.segments.length === 0 ? (
-              <p className="mt-8 text-sm text-muted-foreground">
-                这里空着：保留下来的证据说的都不是这类人，或者不是这件事，全放在下面了。回收件箱多保留几份对题的材料，再研究一次。
-              </p>
-            ) : (
-              <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                {latestRun.segments.map((segment) => (
-                  <article
-                    key={segment.key}
-                    className="flex flex-col rounded-lg border bg-card p-5"
-                  >
-                    <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {segment.evidence_ids.length} evidence refs
-                    </div>
-                    <h3 className="mt-3 text-sm font-medium">{segment.label}</h3>
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                      {segment.situation}
-                    </p>
-                    <ul className="mt-4 space-y-1 text-xs leading-5">
-                      {segment.behaviors.map((item, index) => (
-                        <li key={index}>· {item}</li>
-                      ))}
-                    </ul>
-                    <div className="mt-4 rounded-md bg-muted p-3">
-                      <div className="text-[10px] text-muted-foreground">未知</div>
-                      {segment.unknowns.map((item, index) => (
-                        <p key={index} className="mt-1 text-xs">
-                          · {item}
-                        </p>
-                      ))}
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={() => selectSegment(segment.key)}
-                      disabled={busy === segment.key}
-                      className="mt-5"
-                    >
-                      用这类声音建立代理
-                    </Button>
-                  </article>
-                ))}
-              </div>
-            )}
-            {latestRun && latestRun.set_aside.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-sm font-medium">
-                  没用上的证据（
-                  <span className="font-mono">{latestRun.set_aside.length}</span>
-                  条）
-                </h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  说话的不是这类人，或者讲的不是这件事，所以没分进上面的声音。这类人自己说的、和你的假设相反的话不会放在这里。觉得放错了，点上面「用当前证据重新研究」再分一次；对题的材料太少，就回收件箱多保留几份。
-                </p>
-                <ul className="mt-3 space-y-2">
-                  {latestRun.set_aside.map((item) => {
-                    const atom = atomById.get(item.evidence_id);
-                    return (
-                      <li
-                        key={item.evidence_id}
-                        className="rounded-md border bg-card p-3 text-xs leading-5"
-                      >
-                        <span className="text-muted-foreground">
-                          {item.reason === "other_person" ? "别的人" : "别的事"}
-                          {item.basis ? ` · 原文写着「${item.basis}」` : ""}
-                          {item.note ? ` · ${item.note}` : ""}
-                        </span>
-                        {atom && <p className="mt-1">「{atom.quote}」</p>}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-            {unplacedIds.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-sm font-medium">
-                  没分进任何一类的证据（
-                  <span className="font-mono">{unplacedIds.length}</span>
-                  条）
-                </h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  这次研究用到了，AI 却既没分进上面的声音、也没说为什么放到一边。别当它不存在，自己看一眼：和你想的不一样的话，最容易这样漏掉。
-                </p>
-                <ul className="mt-3 space-y-2">
-                  {unplacedIds.map((id) => {
-                    const atom = atomById.get(id);
-                    return atom ? (
-                      <li
-                        key={id}
-                        className="rounded-md border bg-card p-3 text-xs leading-5"
-                      >
-                        「{atom.quote}」
-                      </li>
-                    ) : null;
-                  })}
-                </ul>
-              </div>
-            )}
-          </section>
+          <CustomerVoices
+            run={latestRun}
+            atoms={initialCase.atoms}
+            busyKey={busy}
+            onResearch={research}
+            onSelectSegment={selectSegment}
+          />
         )}
 
         {tab === "proxy" && (
