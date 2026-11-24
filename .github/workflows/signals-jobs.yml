@@ -1,67 +1,28 @@
-# 外部信号的后台活（算新闻的指纹、预测题进账本、AI 押题、到期对账、练习题的 AI 先判、到期判断的证据、假门先做好）。
-# Vercel 免费版只有两个定时任务，量大的活放在这里：
-# 这里不跑项目代码，只按顺序一次次调线上的 /api/cron/jobs/<step>，每次最多 300 秒（Fluid Compute），没做完就再调。
-# 只需要一个仓库 Secret：CRON_SECRET（和 Vercel 里的同一个值）。
 name: signals-jobs
-
 on:
-  schedule:
-    - cron: "30 22 * * *" # 日本时间 7:30（早上的报告出来以后）
-    - cron: "0 10 * * *" # 日本时间 19:00
   workflow_dispatch:
     inputs:
       business_only:
-        description: Only run the daily business teardown
+        description: Isolated withdrawal selection smoke only
         type: boolean
-        default: false
-
+        default: true
+permissions:
+  contents: read
 jobs:
   run:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 5
     steps:
-      - name: Prepare daily business teardown for the owner
+      - name: Trial withdrawal selection only
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           APP_URL: https://startup-prepare.vercel.app
         run: |
           if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET is missing"; exit 1; fi
-          code=$(curl --silent --show-error --max-time 190 --dump-header business-response.headers --output business-result.json --write-out '%{http_code}' \
+          code=$(curl --silent --show-error --max-time 60 --output withdrawal-trial.json --write-out '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/business-teardowns?invocation=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT")
-          cat business-result.json
-          grep -iE '^(date|age|cache-control|x-vercel-cache|x-vercel-id):' business-response.headers || true
-          if [ "$code" = "503" ] && jq -e '.error == "business_jobs_disabled"' business-result.json >/dev/null; then
-            echo "Daily business jobs are disabled; skipped."
-            exit 0
-          fi
-          if [ "$code" != "200" ]; then exit 1; fi
-      - name: Select withdrawal lesson for the owner
-        if: ${{ always() && !cancelled() }}
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: https://startup-prepare.vercel.app
-        run: |
-          if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET is missing"; exit 1; fi
-          code=$(curl --silent --show-error --max-time 190 --output withdrawal-result.json --write-out '%{http_code}' \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/business-withdrawals?invocation=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT")
-          cat withdrawal-result.json
-          if [ "$code" != "200" ]; then exit 1; fi
-      - name: Run steps
-        if: ${{ !cancelled() && inputs.business_only != true }}
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: https://startup-prepare.vercel.app
-        run: |
-          if [ -z "$CRON_SECRET" ]; then echo "没配 CRON_SECRET，跳过"; exit 0; fi
-          call() {
-            curl -sS --max-time 310 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/jobs/$1" || echo '{"done":true,"note":"没连上"}'
-          }
-          for step in embed indicators resolve markets business forecast practice factors due prep; do
-            for i in $(seq 1 15); do
-              out=$(call "$step")
-              echo "$step #$i $out"
-              echo "$out" | grep -q '"done":true' && break
-            done
-          done
+            "$APP_URL/api/cron/business-withdrawals?invocation=authorized-smoke-$GITHUB_RUN_ID")
+          cat withdrawal-trial.json
+          if [ "$code" != "200" ]; then echo "Unexpected HTTP status: $code"; exit 1; fi
+          jq -e '.collection.status == "disabled"' withdrawal-trial.json
