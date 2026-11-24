@@ -49,3 +49,14 @@
 - 最终数据库只读核对：1行关闭设置，0启用账号、0收集任务、0请求票据、0退出教材。
 
 生产截图（本地验收产物）：`.tmp/explanations-withdrawals/production-explanations.jpg`、`production-withdrawals.jpg`、`production-collection-off.jpg`、`production-collection-mobile.jpg`。发布后的证据文档提交单独保存在功能分支，应用与main保持上述已验证提交。
+
+
+## 授权后补充的单次任务试跑（2026-11-24 JST）
+
+用户在询问是否补做生产日次任务后回复「继续」，确认本次单次操作。先前的自动审批拒绝已记录为历史，本次已完成实际试跑。
+
+- 本地现存CRON_SECRET请求返回401，任务未执行。自动审批拒绝从Vercel提取生产密钥，因此没有读取或导出密钥，也没有修改生产配置。
+- 改用仓库现有Secret在隔离分支 `codex/withdrawal-cron-smoke` 上执行单次临时workflow。临时版本只有一次新退出教材接口请求，无重试、无定时触发、无楽天或其他任务，且必须断言collection为disabled。yaml解析与这些范围约束检查通过。
+- [实际试跑45382302564](https://github.com/thisishonninwszp-web/startup-prepare/actions/runs/45382302564)成功；执行时间2026-11-24 20:14 JST。唯一业务步骤 `Trial withdrawal selection only` 成功，HTTP200，响应 `{"selection":{"id":null,"caseId":null,"revision":null},"collection":{"status":"disabled"}}`。
+- 前后数据库核对：选出回执2→3；教材0→0、采集任务0→0、请求票据0→0、启用账号0→0。确认队列为空，正确保留空教材，未调用新增搜索／网页／AI。
+- 临时试跑配置未合入main；已切回原功能分支，原定时任务配置恢复。生产应用提交与付费采集配置保持原样。
