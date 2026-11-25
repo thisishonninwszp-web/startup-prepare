@@ -1,3 +1,4 @@
+vi.mock('@/app/(app)/business-lab/action-choices/actions',()=>({loadActionChoiceIdeasAction:vi.fn(async()=>({available:true,items:[],nextCursor:null}))}));
 import {it,expect,vi} from 'vitest';import {renderToStaticMarkup} from 'react-dom/server';
 vi.mock('./actions',()=>({explanationListAction:vi.fn(),explanationGetAction:vi.fn(),explanationSourceAction:vi.fn(),explanationSaveAction:vi.fn()}));
 import {ExplanationPlansPanel} from './explanation-plans-panel';import {PlanSnapshot} from '../simulation/checks/results/reality-results-views';import {ConfirmationNodeView} from '../history/confirmation-history-view';import {source,record,draft} from './test-fixtures';

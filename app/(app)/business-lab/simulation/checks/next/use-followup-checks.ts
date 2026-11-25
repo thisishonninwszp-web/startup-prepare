@@ -1,6 +1,8 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
+import {useActionChoiceEditor} from '../../../action-choices/use-action-choice-ideas';
+import type {ActionChoiceInput} from '@/lib/domains/business-teardowns/action-choices/domain';
 import {realityCheckPlanSchema,type RealityCheckPlan} from '@/lib/domains/business-teardowns/reality-checks/domain';
 import type {FollowupCheckCommand,FollowupCheckRecord,FollowupCheckSource} from '@/lib/domains/business-teardowns/followup-checks/domain';
 import {followupChecksListAction,followupCheckGetAction,followupCheckSourceAction,followupCheckSaveAction,followupCheckSourcesAction} from './actions';
@@ -23,6 +25,7 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
  const [pending,setPending]=useState<FollowupCheckCommand|null>(null),[busy,setBusy]=useState(false);
  const [remote,setRemote]=useState<FollowupCheckRecord|null>(null),[conflict,setConflict]=useState(false);
  const [message,setMessage]=useState(''),[releasable,setReleasable]=useState(false),[requestedSource,setRequestedSource]=useState<string|null>(null);
+ const choiceEditor=useActionChoiceEditor(initialRecord?.actionChoice,'explicit',()=>setPreview(null));
  const working=useRef(false),epoch=useRef(0),identity=useRef(initialRecord?.id??'');
  const erasedIds=useRef(new Set<string>());
  const activeRef=useRef(active),pendingRef=useRef(pending),sourceIdRef=useRef(sourceId);
@@ -43,26 +46,27 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
   return next;
  }
  function hideSource(){setSource(null);}
- function install(record:FollowupCheckRecord){
+ function install(record:FollowupCheckRecord,metadataTicket?:number){
   ++epoch.current;const own=ownOnly(record);identity.current=record.id;
   setActive(own);activeRef.current=own;setSourceId(record.resultId);sourceIdRef.current=record.resultId;
-  setDraft(record.plan);setPreview(null);setDirty(false);setRemote(null);setConflict(false);setRequestedSource(null);hideSource();
+  setDraft(record.plan);choiceEditor.install(record.actionChoice,metadataTicket);setPreview(null);setDirty(false);setRemote(null);setConflict(false);setRequestedSource(null);hideSource();
  }
  function clearOwn(id:string){
   erasedIds.current.add(id);
   ++epoch.current;setState(old=>({...old,items:old.items.filter(item=>item.id!==id)}));
-  identity.current='';setActive(null);activeRef.current=null;setDraft(blank());setPreview(null);setDirty(false);
+  identity.current='';setActive(null);activeRef.current=null;setDraft(blank());choiceEditor.reset();setPreview(null);setDirty(false);
   setRemote(null);setConflict(false);setRequestedSource(null);hideSource();
   setSourceId(resultId??'');sourceIdRef.current=resultId??'';
  }
  function change(patch:Partial<RealityCheckPlan>){
   if(working.current||pendingRef.current)return;
-  ++epoch.current;setDraft(old=>({...old,...patch}));setPreview(null);setDirty(true);
+  ++epoch.current;choiceEditor.invalidate();setDraft(old=>({...old,...patch}));setPreview(null);setDirty(true);
  }
- function compareRecord(next:FollowupCheckRecord,current:FollowupCheckRecord){
+ function compareRecord(next:FollowupCheckRecord,current:FollowupCheckRecord,metadataTicket?:number){
   assertRecord(next,current.id,current);
   if(next.revision<current.revision)throw Error('读取到的计划仍早于当前版本，请重新核对。');
   if(next.revision===current.revision&&!samePlan(next.plan,current.plan))throw Error('读取到的正文与当前版本不一致，请重新核对。');
+  if(metadataTicket!==undefined)choiceEditor.verifyLinked(next.actionChoice,metadataTicket);
   if(next.revision>current.revision){
    setRemote(ownOnly(next));setConflict(true);setPreview(null);
    setMessage('另一页面修改了计划。当前输入仍保留，请比较后明确采用最新保存内容。');
@@ -72,14 +76,14 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
   if(working.current&&!insideRefresh)return;
   hideSource();setPreview(null);
   if(pendingRef.current)return;
-  const ticket=++epoch.current,current=activeRef.current,id=current?.resultId??sourceIdRef.current;
+  const ticket=++epoch.current,metadataTicket=choiceEditor.ideas.generation(),current=activeRef.current,id=current?.resultId??sourceIdRef.current;
   if(!id)return;
   try{
    if(current){
     const next=await followupCheckGetAction(current.id);
     if(ticket!==epoch.current||(!insideRefresh&&working.current)||pendingRef.current)return;
     if(!next){clearOwn(current.id);setMessage('这份计划已不可读取，已从当前画面清除。');return;}
-    compareRecord(next,current);
+    compareRecord(next,current,metadataTicket);
    }
    const next=assertSource(await followupCheckSourceAction(id),id,current?.caseId);
    if(ticket!==epoch.current||(!insideRefresh&&working.current)||pendingRef.current)return;
@@ -119,7 +123,7 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
  }
  async function open(id:string){
   if(working.current||pendingRef.current)return;
-  const ticket=++epoch.current;working.current=true;setBusy(true);hideSource();setPreview(null);setMessage('');
+  const ticket=++epoch.current,metadataTicket=choiceEditor.ideas.generation();working.current=true;setBusy(true);hideSource();setPreview(null);setMessage('');
   try{
    const next=await followupCheckGetAction(id);
    if(ticket!==epoch.current)return;
@@ -129,7 +133,7 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
     else setState(old=>({...old,items:old.items.filter(item=>item.id!==id)}));
     setMessage('这份计划已不可读取，已从当前画面清除。其他独立输入仍保留。');return;
    }
-   assertRecord(next,id);install(next);const installed=epoch.current;
+   assertRecord(next,id);install(next,metadataTicket);const installed=epoch.current;
    const fresh=assertSource(await followupCheckSourceAction(next.resultId),next.resultId,next.caseId);
    if(installed===epoch.current)setSource(fresh);
   }catch(error){setMessage(errorText(error));}
@@ -137,7 +141,7 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
  }
  async function newDraft(){
   if(working.current||pendingRef.current)return;
-  ++epoch.current;identity.current='';setActive(null);activeRef.current=null;setDraft(blank());setPreview(null);setDirty(false);
+  ++epoch.current;identity.current='';setActive(null);activeRef.current=null;setDraft(blank());choiceEditor.reset();setPreview(null);setDirty(false);
   setRemote(null);setConflict(false);setRequestedSource(null);hideSource();setMessage('');
   setSourceId(resultId??'');sourceIdRef.current=resultId??'';
   if(resultId)await chooseSource(resultId,true);
@@ -157,7 +161,7 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
  async function execute(command:FollowupCheckCommand){
   if(working.current)return;
   working.current=true;++epoch.current;setBusy(true);setPending(command);pendingRef.current=command;
-  setReleasable(false);setMessage('');hideSource();let acknowledged=false;
+  setReleasable(false);setMessage('');hideSource();const metadataTicket=choiceEditor.ideas.generation();let acknowledged=false;
   try{
    const receipt=await followupCheckSaveAction(command);acknowledged=true;
    if(receipt.id!==command.id||receipt.revision!==command.expectedRevision+1)throw Error('保存回执与本次请求不一致');
@@ -176,7 +180,7 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
      setMessage('本次已保存，随后又有修改。当前输入仍保留，请比较最新内容。');
     }else{
      if(!samePlan(saved.plan,command.plan))throw Error('读取的计划正文与本次请求不一致');
-     install(saved);setMessage('计划已保存，接下来去做这次真实确认。');
+     install(saved,metadataTicket);setMessage('计划已保存，接下来去做这次真实确认。');
      try{setSource(assertSource(await followupCheckSourceAction(saved.resultId),saved.resultId,saved.caseId));}
      catch{setMessage('计划已保存；原调查结果核对没有完成，来源文字保持隐藏。');}
     }
@@ -187,20 +191,21 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
    setMessage(acknowledged?`已收到保存回执，重新读取尚未完成：${errorText(error)}。输入和原请求仍保留，请重试本次请求核对。`:`${errorText(error)} 输入和原请求仍保留，请重试本次请求。`);
   }finally{working.current=false;setBusy(false);}
  }
- function submit(operation:'save'|'erase'){
+ async function submit(operation:'save'|'erase'){
   if(working.current||pendingRef.current||conflict)return;
   if(operation==='erase'&&!active)return;
   if(operation==='save'&&(!preview||!canSave))return;
   if(!identity.current)identity.current=crypto.randomUUID();
   const common={id:identity.current,requestId:crypto.randomUUID(),expectedRevision:active?.revision??0};
-  const command:FollowupCheckCommand=operation==='erase'?{operation,...common}:{operation,...common,resultId:sourceId,plan:preview!,confirmed:true};
-  void execute(command);
+  working.current=true;setBusy(true);
+  try{const extension=operation==='save'?await choiceEditor.command():{};const command:FollowupCheckCommand=operation==='erase'?{operation,...common}:{operation,...common,...extension,resultId:sourceId,plan:preview!,confirmed:true};
+  working.current=false;await execute(command);}catch(error){working.current=false;setBusy(false);setMessage(errorText(error));}
  }
  function makePreview(){
   if(working.current||pendingRef.current||!canSave)return;
   const parsed=realityCheckPlanSchema.safeParse(draft);
   if(!parsed.success){setPreview(null);setMessage('请分别填写问题、什么会推翻它、具体做法和有效截止日期（1900—2200 年）。');return;}
-  ++epoch.current;setPreview(parsed.data);setMessage('请逐项核对下方预览，再明确确认保存。');
+  try{choiceEditor.makePreview();}catch(error){setMessage(errorText(error));return;}++epoch.current;setPreview(parsed.data);setMessage('请逐项核对下方预览，再明确确认保存。');
  }
  async function comparePending(){
   const command=pendingRef.current;if(working.current||!command)return;
@@ -259,5 +264,6 @@ export function useFollowupChecks(props:FollowupChecksPanelProps){
   }catch(error){setMessage(`读取没有完成：${errorText(error)} 已读取的独立内容仍保留。`);}
   finally{working.current=false;setBusy(false);}
  }
- return {state,sources,active,source,sourceId,draft,preview,dirty,pending,busy,blocked,remote,conflict,message,releasable,requestedSource,canSave,change,chooseSource,open,newDraft,refresh,execute,submit,makePreview,comparePending,adoptRemote,reconcilePending,releasePending,more,setPreview,setRequestedSource};
+ function changeChoice(value:ActionChoiceInput|null){if(working.current||pendingRef.current)return;++epoch.current;choiceEditor.change(value);setDirty(true);}
+ return {choice:choiceEditor.choice,previewChoice:choiceEditor.previewChoice,ideas:choiceEditor.ideas,changeChoice,state,sources,active,source,sourceId,draft,preview,dirty,pending,busy,blocked,remote,conflict,message,releasable,requestedSource,canSave,change,chooseSource,open,newDraft,refresh,execute,submit,makePreview,comparePending,adoptRemote,reconcilePending,releasePending,more,setPreview,setRequestedSource};
 }

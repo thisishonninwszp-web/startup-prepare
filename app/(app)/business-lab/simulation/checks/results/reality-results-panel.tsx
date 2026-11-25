@@ -32,6 +32,6 @@ export function RealityResultsPanel(props:RealityResultsPanelProps){
   {w.preview&&<section className="space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">保存前对照</h2><p className="text-sm leading-7 text-muted-foreground">上方左侧是选定的原计划版本，以下是你独立填写的记录。保存不会判断成立与否。</p><ResultBody body={w.preview}/>{w.reviewPreview&&<ActionReviewView value={w.reviewPreview} choice={actionChoice}/>}{savedAt&&<TimingNote checkedOn={w.preview.checkedOn} savedAt={savedAt}/>}<div className="flex flex-wrap gap-2"><Button disabled={w.blocked||!w.canCreate} onClick={w.append}>确认保存这条调查结果</Button><Button disabled={w.blocked} variant="outline" onClick={()=>w.setPreview(null)}>返回修改</Button></div></section>}
   {w.active&&!w.blocked&&<Button asChild variant="outline"><Link href={`/business-lab/simulation/checks/next?caseId=${w.active.caseId}&resultId=${w.active.id}`}>根据这条结果写下一份确认计划</Link></Button>}
   {w.active&&!w.blocked&&<div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href={`/business-lab/methods?caseId=${w.active.caseId}&resultId=${w.active.id}`}>把这次调查整理为本人方法</Link></Button><Button asChild variant="outline"><Link href={`/business-lab/history?caseId=${w.active.caseId}&nodeKind=result&nodeId=${w.active.id}`}>查看这次确认的前后经过</Link></Button></div>}
-  <p className="text-sm text-muted-foreground"><Link href={planHref} className="underline">返回这份确认计划</Link></p>
+  <p className="text-sm text-muted-foreground">{w.verified&&!w.blocked?<Link href={planHref} className="underline">返回这份确认计划</Link>:'原计划当前尚未核对。重新读取后，再打开原计划。'}</p>
  </div>;
 }

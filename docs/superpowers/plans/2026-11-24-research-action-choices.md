@@ -46,6 +46,7 @@ type ActionChoiceIdeas={available:boolean;items:{id:string;title:string}[];nextC
 - Trim/nonempty UTF16 limits: decision1000, currentAction/alternativeAction/holdAction/otherAction2000, explicit a/b3000, reason/execution.what3000. Strict keys, valid UUID, real cashDate1900..2200; execution.actedOn不能晚于Tokyo today，DB最终校验。execution完整对象或null，otherAction非空 iff nextAction=other。
 - `actionChoiceInputSchema`, `actionChoiceViewSchema`, `actionReviewSchema`, `ActionChoiceInput/View/Review`统一出口。共用 `sameActionForKnownOutcomes(choice)`只比较mapping.a/b，`expectedAction(choice,outcome)`把both/neither/unclear映射到unclear，不判断因果。
 - 模拟/后续/解释save顶层 `actionChoice?:ActionChoiceInput|null`。新UI显式对象或null。省略仅兼容创建或当前无约定的旧计划；当前有约定而省略则报明确错误，不悄悄复制。erase不接收该字段。
+- 旧库兼容澄清：只有确认缺少151对应RPC，且当前、历史载入及本人输入均无约定时，新UI才省略该字段以使用旧保存流程。已有或已填约定、非预期读取错误都不能降级、丢弃或静默提交null。
 - 解释origin必须conditions.kind=expectations，实时projection读取精确版的本人expectedA/B；其他origin必须explicit。不得保存报告AI解释为本人观察条件。
 - DTO按有内容时增加 `actionChoice?:ActionChoiceView`：三个计划record、ResultPlan/Version/Record、ConfirmationNode。结果record/node另外可有 `actionReview?:ActionReview`，即使plan删除也保留本人独立review；actionChoice则随plan版本擦除。无内容继续省略，不能加null破坏原strict shape。
 - result append顶层 `actionReview?:ActionReview`，省略合法；存在时必须有该owner/result所选planRevision的约定。命令总体JSON UTF8上限160000；旧主体字段仍保留原限额。
@@ -83,9 +84,9 @@ expect(expectedAction(choice,'both')).toBe(choice.mapping.unclear);
 
 **Modify:** explanation `use-explanation-plans.ts`,`explanation-plans-panel.tsx`,`explanation-views.tsx`；simulation/checks `reality-checks-panel.tsx`,`reality-checks-views.tsx`；simulation/checks/next `followup-checks-panel.tsx`,`followup-checks-views.tsx`；三处page/actions仅在所需metadata/初始化上修改。各workflow/panel测试。不要改任务3结果/history文件或domain/SQL/schema。
 
-- [ ] RED共享fields：disabled/optional closed没有新增必填；启用显示本人空字段；expectations模式不重复输入A/B；explicit模式显示观察条件；相同行动提示仅a/b、不阻止保存；hold语义具体。使用受控字段，null明确关闭。
-- [ ] 实现共享fields，传value/onChange/conditionsMode/currentExpectations/disabled，不在组件内保存业务记录。只读idea-picker actions由session解owner，owner不能来自input；20项分页、exact linked option、focus清旧title并代次隔离，失败隐藏旧候选，不恢复被删标题。
-- [ ] 三个编辑器状态、预览和pending保存均纳入choice。新save总传对象/null，保存记录重开用`record.actionChoice?.choice??null`；expectedA/B变更要清preview，分支预览展示当版本人预期。
+- [x] RED共享fields：disabled/optional closed没有新增必填；启用显示本人空字段；expectations模式不重复输入A/B；explicit模式显示观察条件；相同行动提示仅a/b、不阻止保存；hold语义具体。使用受控字段，null明确关闭。
+- [x] 实现共享fields，传value/onChange/conditionsMode/currentExpectations/disabled，不在组件内保存业务记录。只读idea-picker actions由session解owner，owner不能来自input；20项分页、exact linked option、focus清旧title并代次隔离，失败隐藏旧候选，不恢复被删标题。
+- [x] 三个编辑器状态、预览和pending保存均纳入choice。新save总传对象/null，保存记录重开用`record.actionChoice?.choice??null`；expectedA/B变更要清preview，分支预览展示当版本人预期。
 
 ```ts
 const pendingFirst=save.mock.calls[0][0];
@@ -95,9 +96,9 @@ expect(save.mock.calls[1][0]).toEqual(pendingFirst);
 expect(save.mock.calls[1][0].actionChoice.mapping).toEqual(pendingFirst.actionChoice.mapping);
 ```
 
-- [ ] RED→GREEN三个origin工作流：新开/reset空块；dirty刷新保留本人输入；切record必须fresh revalidate，旧source/title不恢复；冲突不自动合并；pending锁定块和record切换；修改choice/expectedA/B清预览；未知回执原body重试。
-- [ ] 缺151仅新块标“行动约定尚未就绪”，旧阅读/编辑可用；检测已有choice却metadata读取失败时不可假装旧版无choice并保存。后补约定只通过正常新计划revision，不重写旧结果。
-- [ ] scope Vitest+TS/lint，规格审查后质量审查；修正闭环，交root结果/历史整体验收。
+- [x] RED→GREEN三个origin工作流：新开/reset空块；dirty刷新保留本人输入；切record必须fresh revalidate，旧source/title不恢复；冲突不自动合并；pending锁定块和record切换；修改choice/expectedA/B清预览；未知回执原body重试。
+- [x] 缺151仅新块标“行动约定尚未就绪”，旧阅读/编辑可用；检测已有choice却metadata读取失败时不可假装旧版无choice并保存。后补约定只通过正常新计划revision，不重写旧结果。
+- [x] scope Vitest+TS/lint，规格审查后质量审查；修正闭环，交root结果/历史整体验收。
 
 ### Task3: Result and history comparison (root, disjoint from Task2)
 
@@ -123,16 +124,16 @@ expect(renderReview(review)).not.toContain('真实需求已验证');
 
 **Files:** `.tmp/action-choices/{build.mjs,fixture.ts,entry.tsx,serve.mjs}`仅本地；`docs/superpowers/plans/2026-11-24-research-action-choices.md`追踪证据。
 
-- [ ] 用真实共享Fields、三类PlanPanel和Results/History组件，合成actions内存存储/回执，无生产或provider。创建独立fixture端口，不影响用户4333。
-- [ ] 浏览器完成：可选块默认关闭→本人填写→同分支提示→改分支→预览保存v1→结果比较→改planv2→结果仍v1→未知/不同动作/未执行；另测acklost+focus原body重试、idea/source/plan/result擦除与旧内容隐藏。
-- [ ] 桌面/391px无横向溢出、长文本/console、重置viewport/关闭临时tab；保存截图。按CUA协议在完成后发browser-complete标记。停止fixture后再考虑本地build，生产构建单独验证。
-- [ ] 新鲜最终整体验收：规格映射、legacy DTO/no source leakage、原四项计划条件和历史，owner/FK/擦除与副作用；修正所有material findings并重跑对应回归。
-- [ ] `npm test`、`npx tsc --noEmit --incremental false --pretty false`、`npm run lint`、actual151SQL及原147/139/141/143混合脚本全部通过。不修改无关顾客页面。
+- [x] 用真实共享Fields、三类PlanPanel和Results/History组件，合成actions内存存储/回执，无生产或provider。创建独立fixture端口，不影响用户4333。
+- [x] 浏览器完成：可选块默认关闭→本人填写→同分支提示→改分支→预览保存v1→结果比较→改planv2→结果仍v1→未知/不同动作/未执行；另测acklost+focus原body重试、idea/source/plan/result擦除与旧内容隐藏。
+- [x] 桌面/391px无横向溢出、长文本/console、重置viewport/关闭临时tab；保存截图。按CUA协议在完成后发browser-complete标记。停止fixture后再考虑本地build，生产构建单独验证。
+- [x] 新鲜最终整体验收：规格映射、legacy DTO/no source leakage、原四项计划条件和历史，owner/FK/擦除与副作用；修正所有material findings并重跑对应回归。
+- [x] `npm test`、`npx tsc --noEmit --incremental false --pretty false`、`npm run lint`、actual151SQL及原147/139/141/143混合脚本全部通过。不修改无关顾客页面。
 
 ### Task5: Production migration and release
 
-- [ ] fetch main并保留他人提交，再核对151编号。schema.sql逐字追加最终151。收集生产最新migration/catalog和security advisor baseline，检查后通过apply_migration一次应用；连接器确认过期最多重试一次，再转既有授权安全路径，不用execute_sql绕DDL。
-- [ ] 只读production probes验证版本、tableACL/RLS/private helpers/only intended RPC、匿名/nullowner拒绝、旧plan/result/history等原接口和missing IDs。不创建个人演示记录、不跑定时任务或provider。
+- [x] fetch main并保留他人提交，再核对151编号。schema.sql逐字追加最终151。收集生产最新migration/catalog和security advisor baseline，检查后通过apply_migration一次应用；连接器确认过期最多重试一次，再转既有授权安全路径，不用execute_sql绕DDL。
+- [x] 只读production probes验证版本、tableACL/RLS/private helpers/only intended RPC、匿名/nullowner拒绝、旧plan/result/history等原接口和missing IDs。不创建个人演示记录、不跑定时任务或provider。
 - [ ] commit仅本轮明确文件，排除.tmp，推送功能分支和main无force；确认精确应用commit对应Production Vercel成功，不混用Preview状态。
 - [ ] 登录后的正式域名检查现有记录/空态、可选块、旧表单、结果/历史和截图；不保存验收计划。新收集flags仍OFF。停止临时server，更新本计划和验收文档。发布后纯证据doc可单独保留功能分支，避免无意义重复生产部署。
 
@@ -149,3 +150,15 @@ expect(renderReview(review)).not.toContain('真实需求已验证');
 - Integratedcurrentfullsuite428files2684tests passed, incremental-disabled TypeScript and ESLint passed. Source/UI/scripts still uncommitted pending Task1quality and Task2planeditors. Localbrowserfixture prepared under.tmp/action-choices, bundlebuild succeeds; no server started or actualbrowser acceptance yet.
 
 - Task1 independentqualityclear:68tests+actual151+fourunchangedlegacySQL suites independently rerunPASS; no remainingmaterialfindings. Rootactual151 andlegacy scripts alsoPASS. Task1 androotTask3ready, Task2begins next.
+
+## 收尾记录（2026-11-26，东京）
+
+- 延续已批准范围；已fetch，origin/main无新增未合入提交，迁移编号仍到150，151未在生产执行。生产security advisor基线：INFO无policy134项；WARN固定search_path19、anon definer5、authenticated definer12、密码泄露检查1。
+- 三类真实计划组件在本地合成actions中完成保存；解释计划A/B来自本人正在编辑的条件。修改预期使预览失效；丢失ack后focus再重试只产生一份计划；v2修改后，结果及履历仍展示v1的原条件/行动。材料不足、另选行动和未执行文案均实测。
+- 391px长文本编辑无横向溢出（clientWidth=scrollWidth=376）；focus保留400字本人输入；删除关联想法后旧标题隐藏。控制台无error/warn。截图位于本地.tmp/action-choices，未写入生产记录、未调用provider。来源擦除后的异步完成状态待最后补验。
+- 新鲜真实151SQL与四套未改断言的139/141/143/147兼容SQL均PASS。schema.sql已逐字追加151。计划编辑器独立规格审查发现并发focus与候选标题缓存的过时响应风险，正在回归修正，尚未发布。
+- 上述元数据问题已修复并经独立规格复审：旧focus响应不能恢复删除标题；精确计划读的不可用元数据覆盖候选缓存，并跨reset/切换保留。最终质量审查另发现模拟计划精确get-null后保留未修改旧约定，已用清除未修改缓存与ID墓碑修复；真正未保存输入保持冲突、不可继续保存，错误读取及其他记录缺失不会误清。规格增量审查与质量复审均clear，最终相关35测试PASS。
+- 最终全项目431文件、2722测试PASS；非增量TypeScript与全项目ESLint通过。默认本地Next构建遇Windows跨盘node_modules联接解析错误，已定位，正在保留符号链接路径重跑构建。
+- 最后来源擦除浏览器补验：并发focus/props更新先隐藏派生内容，按页面提示重新读取后，未保存本人选择完整保留，来源原文仍隐藏；控制台error/warn为空。截图source-recovery-final.jpg；本地fixture服务器已停止。
+- 生产151已通过apply_migration执行（首次确认过期，按连接器提示重试一次成功），版本20261125154633，完整SQL的raw MD5为ea4a86f472e660f1520cba4722b8db93，与本地文件一致。2表RLS开启，anon/authenticated/service_role均无直接SELECT；6个helper均不对API角色开放，唯一context RPC仅service_role可执行，全部固定search_path。12项真实transport/匿名/nullowner/helper/直接表读取探针PASS，无写入或provider调用。security advisor仅INFO无policy134→136（两张有意私表），WARN计数未变。应用代码待部署。
+- 保留符号链接路径的本地构建仍受C/D跨盘共用模块影响，产生mini-css-extract-plugin身份不一致；不为验收环境修改产品配置。改为先推功能分支，在Vercel正常检出环境验证Preview构建，成功后再发布main，并以精确提交的Production成功为最终构建证据。

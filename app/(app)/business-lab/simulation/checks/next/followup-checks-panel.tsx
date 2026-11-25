@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import {ActionChoiceFields} from '../../../action-choices/action-choice-fields';
+import {ActionChoiceSummary} from '../../../action-choices/action-choice-view';
 import {Button} from '@/components/ui/button';
 import {ConfirmButton} from '@/components/ui/confirm-button';
 import type {FollowupCheckList,FollowupCheckRecord,FollowupCheckSource} from '@/lib/domains/business-teardowns/followup-checks/domain';
@@ -32,11 +34,11 @@ export function FollowupChecksPanel(props:FollowupChecksPanelProps){
    </section>
    <section aria-label="独立确认计划" className="min-w-0 space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">亲手写下下一次要确认的事</h2>
     {w.active&&<p className="text-sm leading-7 text-muted-foreground">这份计划的调查来源已固定。你可以修改下面四项，也可以删除计划。删除会擦除结果中保留的计划正文，独立调查记录仍会保留。</p>}
-    <form onSubmit={event=>{event.preventDefault();w.makePreview();}} className="space-y-5"><fieldset disabled={w.blocked} className="min-w-0 space-y-5"><PlanFields plan={w.draft} onChange={w.change}/>{w.draft.dueDate&&<p className="text-sm leading-7 text-muted-foreground">{w.draft.dueDate<props.today?'已过截止日期':'截止日期'}：{w.draft.dueDate}（东京日期）。日期只作提醒，计划不会自动完成。</p>}<div className="flex flex-wrap gap-2"><Button type="submit" disabled={!w.canSave}>先预览确认计划</Button>{w.active&&<ConfirmButton type="button" disabled={w.conflict} variant="outline" confirmLabel="确认删除这份独立计划" onClick={()=>w.submit('erase')}>删除这份计划</ConfirmButton>}</div></fieldset></form>
+    <form onSubmit={event=>{event.preventDefault();w.makePreview();}} className="space-y-5"><fieldset disabled={w.blocked} className="min-w-0 space-y-5"><PlanFields plan={w.draft} onChange={w.change}/><ActionChoiceFields value={w.choice} onChange={w.changeChoice} conditionsMode="explicit" disabled={w.blocked} ideas={w.ideas}/>{w.draft.dueDate&&<p className="text-sm leading-7 text-muted-foreground">{w.draft.dueDate<props.today?'已过截止日期':'截止日期'}：{w.draft.dueDate}（东京日期）。日期只作提醒，计划不会自动完成。</p>}<div className="flex flex-wrap gap-2"><Button type="submit" disabled={!w.canSave}>先预览确认计划</Button>{w.active&&<ConfirmButton type="button" disabled={w.conflict} variant="outline" confirmLabel="确认删除这份独立计划" onClick={()=>w.submit('erase')}>删除这份计划</ConfirmButton>}</div></fieldset></form>
    </section>
   </div>
-  {w.preview&&<section className="space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">保存前逐项核对</h2><p className="text-sm leading-7 text-muted-foreground">以下四项由你亲手填写，原调查结果只供对照。保存不会改写先前的计划或调查记录，也不代表想法已经成立。</p><PlanPreview plan={w.preview}/><div className="flex flex-wrap gap-2"><Button disabled={w.blocked||!w.canSave} onClick={()=>w.submit('save')}>确认保存这份计划</Button><Button disabled={w.blocked} variant="outline" onClick={()=>w.setPreview(null)}>返回修改</Button></div></section>}
-  {w.remote&&<section className="space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">最新保存内容 · 第 {w.remote.revision} 版</h2><PlanPreview plan={w.remote.plan}/><ConfirmButton disabled={w.busy} variant="outline" confirmLabel={w.pending?'确认结束本次重试并替换为最新保存内容':'确认替换当前输入并采用最新保存内容'} onClick={w.adoptRemote}>采用最新保存内容</ConfirmButton></section>}
+  {w.preview&&<section className="space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">保存前逐项核对</h2><p className="text-sm leading-7 text-muted-foreground">以下四项由你亲手填写，原调查结果只供对照。保存不会改写先前的计划或调查记录，也不代表想法已经成立。</p><PlanPreview plan={w.preview}/>{w.previewChoice&&<ActionChoiceSummary value={w.previewChoice}/>}<div className="flex flex-wrap gap-2"><Button disabled={w.blocked||!w.canSave} onClick={()=>w.submit('save')}>确认保存这份计划</Button><Button disabled={w.blocked} variant="outline" onClick={()=>w.setPreview(null)}>返回修改</Button></div></section>}
+  {w.remote&&<section className="space-y-4 rounded-lg border p-5"><h2 className="text-lg font-semibold">最新保存内容 · 第 {w.remote.revision} 版</h2><PlanPreview plan={w.remote.plan}/>{w.remote.actionChoice&&<ActionChoiceSummary value={{...w.remote.actionChoice,...(w.remote.actionChoice.choice.relatedIdeaId?w.ideas.lookup(w.remote.actionChoice.choice.relatedIdeaId):{ideaAvailable:false,ideaTitle:null})}}/>}<ConfirmButton disabled={w.busy} variant="outline" confirmLabel={w.pending?'确认结束本次重试并替换为最新保存内容':'确认替换当前输入并采用最新保存内容'} onClick={w.adoptRemote}>采用最新保存内容</ConfirmButton></section>}
   {w.active&&!w.dirty&&!w.blocked&&!w.remote&&!w.conflict&&<Button asChild variant="outline"><Link href={`/business-lab/simulation/checks/results?caseId=${w.active.caseId}&planId=${w.active.id}&planRevision=${w.active.revision}`}>记录这版计划的核对结果</Link></Button>}
   {w.sourceId&&<p className="text-sm text-muted-foreground"><Link href={returnHref} className="underline">返回这条原调查结果</Link></p>}
  </div>;

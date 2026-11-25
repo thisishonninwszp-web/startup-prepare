@@ -1,3 +1,4 @@
+vi.mock('@/app/(app)/business-lab/action-choices/actions',()=>({loadActionChoiceIdeasAction:vi.fn(async()=>({available:true,items:[],nextCursor:null}))}));
 import {describe,it,expect,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
 vi.mock('./actions',()=>({followupChecksListAction:vi.fn(),followupCheckGetAction:vi.fn(),followupCheckSourceAction:vi.fn(),followupCheckSaveAction:vi.fn(),followupCheckSourcesAction:vi.fn()}));
