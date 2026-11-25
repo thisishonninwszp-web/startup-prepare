@@ -134,8 +134,8 @@ expect(renderReview(review)).not.toContain('真实需求已验证');
 
 - [x] fetch main并保留他人提交，再核对151编号。schema.sql逐字追加最终151。收集生产最新migration/catalog和security advisor baseline，检查后通过apply_migration一次应用；连接器确认过期最多重试一次，再转既有授权安全路径，不用execute_sql绕DDL。
 - [x] 只读production probes验证版本、tableACL/RLS/private helpers/only intended RPC、匿名/nullowner拒绝、旧plan/result/history等原接口和missing IDs。不创建个人演示记录、不跑定时任务或provider。
-- [ ] commit仅本轮明确文件，排除.tmp，推送功能分支和main无force；确认精确应用commit对应Production Vercel成功，不混用Preview状态。
-- [ ] 登录后的正式域名检查现有记录/空态、可选块、旧表单、结果/历史和截图；不保存验收计划。新收集flags仍OFF。停止临时server，更新本计划和验收文档。发布后纯证据doc可单独保留功能分支，避免无意义重复生产部署。
+- [x] commit仅本轮明确文件，排除.tmp，推送功能分支和main无force；确认精确应用commit对应Production Vercel成功，不混用Preview状态。
+- [x] 登录后的正式域名检查现有记录/空态、可选块、旧表单、结果/历史和截图；不保存验收计划。新收集flags仍OFF。停止临时server，更新本计划和验收文档。发布后纯证据doc可单独保留功能分支，避免无意义重复生产部署。
 
 ## 计划自检
 
@@ -162,3 +162,5 @@ expect(renderReview(review)).not.toContain('真实需求已验证');
 - 最后来源擦除浏览器补验：并发focus/props更新先隐藏派生内容，按页面提示重新读取后，未保存本人选择完整保留，来源原文仍隐藏；控制台error/warn为空。截图source-recovery-final.jpg；本地fixture服务器已停止。
 - 生产151已通过apply_migration执行（首次确认过期，按连接器提示重试一次成功），版本20261125154633，完整SQL的raw MD5为ea4a86f472e660f1520cba4722b8db93，与本地文件一致。2表RLS开启，anon/authenticated/service_role均无直接SELECT；6个helper均不对API角色开放，唯一context RPC仅service_role可执行，全部固定search_path。12项真实transport/匿名/nullowner/helper/直接表读取探针PASS，无写入或provider调用。security advisor仅INFO无policy134→136（两张有意私表），WARN计数未变。应用代码待部署。
 - 保留符号链接路径的本地构建仍受C/D跨盘共用模块影响，产生mini-css-extract-plugin身份不一致；不为验收环境修改产品配置。改为先推功能分支，在Vercel正常检出环境验证Preview构建，成功后再发布main，并以精确提交的Production成功为最终构建证据。
+- 最终431文件/2722测试、非增量TypeScript、全项目ESLint及真实SQL全部通过。模拟精确null的规格增量审查和质量复审均clear。
+- 应用提交d00de87842ae0935ae5d0b6f848938d0ff677f55已推功能分支并快进main；PR12自动标记MERGED。Vercel Preview先Ready，之后同提交Production R7VQoe8CkrbDcnietrVSWMHxjKLo于2026-11-26 01:01:11 JST Ready。登录后的正式域名三起点、结果、历史、真实picker、默认空输入与391px（376=376）均验收通过，console error/warn为空；无生产演示写入/新增provider调用。所有范围已完成，详细证据见2026-11-26-research-action-choices-acceptance.md。
